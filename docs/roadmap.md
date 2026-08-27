@@ -16,7 +16,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In flight (PRs open)
 
-- none
+- 2026 08 27 T0.3 writer queue `internal/writer` (`Queue` single drain goroutine, per-path sequence numbers, `writer.Fence`/`writer.Shard` queue-backed entry points; `TestQueueOrderingProperty` 8x200 goroutines/jobs over overlapping paths race-clean) -- PR #5 (`task/t0-3-writer-queue`), CI running. Owner: kazi lane, ephemeral `kazi-worktrees/p-9341a03a31716c39-*` worktree (see docs/lore.md L-0002: the pre-existing `wt-T0.3` worktree for this task was confirmed idle and left untouched). Unblocks wave 0b (T0.4, T0.5, T0.13).
 
 ## Planned
 
