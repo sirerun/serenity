@@ -46,8 +46,8 @@ func TestNormalizeKeyIdempotent(t *testing.T) {
 }
 
 func TestDerivedIDStable(t *testing.T) {
-	a := DerivedID("alice-tan", "works_at", "acme", "2025-06", "e42")
-	b := DerivedID("alice-tan", "works_at", "acme", "2025-06", "e42")
+	a := DerivedID("alice-tan", "works_at", "acme", "2025-06", "e42", DefaultIDWidth)
+	b := DerivedID("alice-tan", "works_at", "acme", "2025-06", "e42", DefaultIDWidth)
 	if a != b {
 		t.Fatalf("same inputs must derive same id: %s != %s", a, b)
 	}
@@ -56,8 +56,37 @@ func TestDerivedIDStable(t *testing.T) {
 	}
 	// Same logical claim from a different source gets a different id by
 	// design — that is corroboration (§7.2).
-	c := DerivedID("alice-tan", "works_at", "acme", "2025-06", "e57")
+	c := DerivedID("alice-tan", "works_at", "acme", "2025-06", "e57", DefaultIDWidth)
 	if a == c {
 		t.Fatal("different source_ref must derive different id")
+	}
+}
+
+// TestDerivedIDWidth: width controls the returned id's hex length, and an
+// out-of-range width falls back to DefaultIDWidth (ADR 004 D2).
+func TestDerivedIDWidth(t *testing.T) {
+	cases := []struct {
+		width int
+		want  int
+	}{
+		{1, 1},
+		{16, 16},
+		{64, 64},
+		{0, DefaultIDWidth},
+		{-1, DefaultIDWidth},
+		{65, DefaultIDWidth},
+	}
+	for _, tc := range cases {
+		id := DerivedID("alice-tan", "works_at", "acme", "2025-06", "e42", tc.width)
+		if len(id) != tc.want {
+			t.Errorf("width %d: got id %q (len %d), want len %d", tc.width, id, len(id), tc.want)
+		}
+	}
+	// Widening must not change the leading characters — a migration only
+	// ever appends more of the same digest, it never re-derives.
+	narrow := DerivedID("alice-tan", "works_at", "acme", "2025-06", "e42", 8)
+	wide := DerivedID("alice-tan", "works_at", "acme", "2025-06", "e42", 16)
+	if wide[:8] != narrow {
+		t.Fatalf("widening must extend the same digest: narrow=%s wide=%s", narrow, wide)
 	}
 }
