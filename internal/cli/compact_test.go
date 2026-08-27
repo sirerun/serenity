@@ -38,8 +38,12 @@ func TestCompactCLINoConfirmExits1(t *testing.T) {
 	bin := buildSerenityBinary(t)
 	root := t.TempDir()
 
-	if out, err := exec.Command(bin, "-C", root, "init").CombinedOutput(); err != nil {
-		t.Fatalf("init: %v\n%s", err, out)
+	// Scaffold in-process (like TestSyncWipeRebuildViaCLI) so this relies
+	// on TestMain's keychain mock — `init` execed as a separate binary
+	// would hit the real OS keychain, which CI runners don't have.
+	var initOut bytes.Buffer
+	if err := runInit(root, &initOut); err != nil {
+		t.Fatalf("init: %v\n%s", err, initOut.String())
 	}
 
 	cmd := exec.Command(bin, "-C", root, "compact")
@@ -67,8 +71,9 @@ func TestCompactCLIConfirm(t *testing.T) {
 	bin := buildSerenityBinary(t)
 	root := t.TempDir()
 
-	if out, err := exec.Command(bin, "-C", root, "init").CombinedOutput(); err != nil {
-		t.Fatalf("init: %v\n%s", err, out)
+	var initOut bytes.Buffer
+	if err := runInit(root, &initOut); err != nil {
+		t.Fatalf("init: %v\n%s", err, initOut.String())
 	}
 
 	const slug, family = "acct-42", "has_balance"
