@@ -1,0 +1,40 @@
+version: 2
+
+project_name: serenity
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/serenity
+    binary: serenity
+    env:
+      - CGO_ENABLED=0 # pure-Go SQLite (modernc); single static binary
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ignore:
+      # M0 targets (RFC §17): macOS arm64 + Linux amd64/arm64.
+      - goos: darwin
+        goarch: amd64
+    ldflags:
+      - -s -w -X github.com/sirerun/serenity/internal/cli.Version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github-native
+
+brews:
+  - repository:
+      owner: sirerun
+      name: homebrew-tap
+    directory: Formula
+    homepage: https://github.com/sirerun/serenity
+    description: Claim-based personal memory and direction system
+    license: Apache-2.0
