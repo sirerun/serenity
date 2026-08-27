@@ -4,6 +4,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026 08 27 T0.3 writer queue `internal/writer` (`Queue`: one drain goroutine, per-path sequence numbers assigned under lock so submission order == execution order; `writer.Fence`/`writer.Shard` queue-backed entry points wrapping `store.FenceWriter.WriteEntity`/`store.ShardStore.Append` -- both stay pure primitives per ADR 004; `TestQueueOrderingProperty` 8 goroutines x 200 jobs over 3 overlapping paths, race-clean, proves no interleaving + total per-file order + all 1600 jobs landed) -- PR #5, merge commit `be8d2bc`. Owner: kazi lane (goal `t0-3-writer-queue`, converged rung 1 claude-sonnet-5, first-pass rate 0.6). Independently re-verified (fresh fetch + `go test -race -v ./internal/writer/...`, `go vet`, `gofmt -l`, full suite) before merge, not just kazi's self-report. Deviation (non-blocking): `Submit`/`Fence`/`Shard` return richer tuples (`Result{Seq,Bytes,Err}` / `(path, bytes, err)`) instead of a bare `error` as scoped -- keeps the four mandated names, and the extra return values are what T0.4's dirty-tree guard will need (rendered bytes for pending records). **`internal/writer` is now available** -- unblocks wave 0b (T0.4 dirty-tree guard, T0.5 daemon commits, T0.13 wiring + gate extension).
 - 2026 08 27 T0.12 golangci-lint CI gate (`.golangci.yml` v2: govet, staticcheck, errcheck, unused / gofmt, goimports; `make lint`; CI `lint` job; the 26 pre-existing errcheck findings it surfaced fixed for real, incl. two genuine bugs -- `ShardStore.Append` swallowing a flush error and `ShardStore.Compact` swallowing a tmp-file write error) -- PR #4, merge commit `2ee0a14`. Owner: kazi lane (goal `t0-12-golangci-lint-ci`, converged on claude-sonnet-5 rung 1, no escalation needed). Unblocks T0.11 (v0.1.0 release cut, David).
 - 2026 08 27 T0.1 threat model doc `docs/threat-model.md` (RFC 0001 §14: five adversaries, one mermaid data-flow diagram, redaction contract, keys-in-keychain, loopback-authenticated daemon, precept-integrity invariant, right-to-forget deletion chain) plus `internal/docs/threat_model_test.go`, the file-first heading gate that keeps the doc honest -- PR #2. Owner: `/apply --pool` session af341d66 (subagent lane).
 - 2026 08 27 docs/lore.md L-0001 (GOWORK=off landmine: the parent sirerun/go.work references removed ./api and ./gist, breaking `go build`/`test` for any Go command run from serenity/ or a worktree parented under sirerun/) -- PR #1. Owner: a third concurrent `/apply --pool` session on this shared checkout.
@@ -17,7 +18,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In flight (PRs open)
 
-- 2026 08 27 T0.3 writer queue `internal/writer` (`Queue` single drain goroutine, per-path sequence numbers, `writer.Fence`/`writer.Shard` queue-backed entry points; `TestQueueOrderingProperty` 8x200 goroutines/jobs over overlapping paths race-clean) -- PR #5 (`task/t0-3-writer-queue`), CI running. Owner: kazi lane, ephemeral `kazi-worktrees/p-9341a03a31716c39-*` worktree (see docs/lore.md L-0002: the pre-existing `wt-T0.3` worktree for this task was confirmed idle and left untouched). Unblocks wave 0b (T0.4, T0.5, T0.13).
+- none
 
 ## Planned
 
