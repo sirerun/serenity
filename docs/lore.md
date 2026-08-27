@@ -40,3 +40,33 @@ subagent, or a kazi-converged predicate's `custom_script`/build guard --
 run from `serenity/` or a worktree parented under `sirerun/` without
 `GOWORK=off` set. A predicate that reports a module-not-found error
 mentioning `../api` or `../gist` is this landmine, not a real build break.
+
+## L-0002: A task's `task/<id>` branch may already be checked out in an idle sibling worktree
+
+**Tags:** #git #worktree #gotcha
+**Date:** 2026-08-27
+**Repo:** sirerun/serenity
+
+**Rule:** Never `git checkout -b task/<id>` for a goal's branch inside a
+kazi-worktree without first checking `git branch -vv` for that name. If
+it is already checked out elsewhere (`+` prefix in the listing), commit
+on the current local branch instead and push straight to the remote ref:
+`git push origin HEAD:refs/heads/task/<id>`. This satisfies a `landed`
+predicate that fetches and compares `origin/task/<id>` without needing a
+same-named local branch, so it never collides with the other worktree.
+**Why:** Wave 0a's dispatch (docs/roadmap.md, 2026 08 27) created one
+long-lived worktree per task under `/Users/dndungu/Code/sirerun/wt-T0.<n>`
+*and* separately routed the actual work order for at least one of those
+tasks (T0.3) to an ephemeral `kazi-worktrees/p-*` worktree on a different
+local branch. Both worktrees have a local branch named
+`task/t0-3-writer-queue`; git refuses `checkout -b` on a name that already
+exists, and would refuse a plain `checkout` too since the branch was
+checked out in the other worktree. The sibling `wt-T0.<n>` worktree was
+confirmed idle (clean tree, `+0 -0` vs `origin/main`, no commits) before
+working around it this way -- if it is not idle, that is a live duplicate
+claim on the same task and needs a human/coordinator decision, not a
+git workaround.
+**Trigger:** A kazi goal whose `landed` predicate checks
+`origin/task/<id>` while the executing worktree's local branch has a
+different name than `task/<id>`, and `git branch -vv` shows `task/<id>`
+already checked out (`+`) in another worktree on this machine.
