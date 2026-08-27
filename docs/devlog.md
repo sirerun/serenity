@@ -1,0 +1,13 @@
+# Devlog
+
+Newest first. Investigation findings, benchmarks, and ops notes for the greenfield code. Architecture goes to docs/design.md, decisions to docs/adr/.
+
+## 2026 08 27 -- Planning pass to code complete
+
+- Verified at 13dc0d2: `GOWORK=off go test -race ./...` green for internal/cli, internal/index, internal/store (16 tests). No open PRs. Remote: sirerun/serenity (private).
+- gbrain (dndungu/gbrain@d35c9c9e441e, branch master) DOES keep facts and takes as markdown fences: `src/core/facts-fence.ts` (markers `<!--- gbrain:facts:begin -->` / `end`, 10 columns plus row number, kinds event|preference|commitment|belief|fact, strikethrough with context `superseded by #N` or `forgotten: <reason>`) and `takes-fence.ts` (7 columns, `since` ranges `A -> B`). A research agent's full-text scan of the docs concluded no fence syntax existed; the source refuted it. Lesson: verify structural claims about a dependency in its source tree, not its prose docs. The GitHub code-search API returned 0 hits for every query on this repo (including `fence`), so it is not usable as evidence of absence here.
+- `src/schema.sql` at master has no `facts` or `takes` CREATE TABLE; those tables arrive through migrations, so schema.sql alone under-describes gbrain's DB.
+- gbrain `protocol conformance` is a live write test: it seeds `people/conformance-<marker>` (when put_page exists), cycles remember/forget, and does not clean up. CI must point it at a throwaway brain. Cases ship as data at `test/fixtures/memory-verbs/cases.json`.
+- dira (kazi-org/dira@15686940aa08): `additionalProperties: false` on the entry root and every $defs object, so `applies_when` cannot ride in frontmatter without failing dira's validator (ADR 008 puts it in a body block). `dira check` is lexical and offline by construction (`internal/nomodel`); exit 2 = conflict cited, 1 = its own errors. Interview is a fixed four-prompt script, no model. LICENSE/NOTICE name Sire Run, Inc.
+- RFC internal inconsistencies found: section 10.1 lists the voice-note connector as P0 while section 17's M1 AC omits it (resolved: M2, ADR 005); section 8.3 fixes `check` exit codes but leaves `no_applicable_constraints` and `unverified` codes implicit (resolved: ADR 010).
+- Tooling: the Claude-in-Chrome extension reported "not connected" on this machine; `agent-browser` drove oxalpha.com/chat instead (file upload works, `fill` does not enable Send, real keystrokes do; long replies need a typed `continue`). oxAlpha's decomposition was useful for task granularity and invented several RFC deviations (exit 3, `.dira/rules` sidecars, a different orphan detector); every structural claim was checked against the RFC before adoption.
