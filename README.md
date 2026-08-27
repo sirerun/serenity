@@ -29,7 +29,9 @@ What exists today:
 - **SQLite derived index** with the wipe-and-rebuild invariant:
   `rm -rf .serenity/ && serenity sync` reconstructs identical state from
   repo bytes. There are no database backups by design.
-- `serenity sync`, `extract`, `doctor`, `status`.
+- `serenity sync`, `extract`, `doctor`, `status`, `compact --confirm`
+  (archives superseded/retracted shard lines; explicit until M2 gates it
+  behind an approved disposition item, §7.7).
 
 Not yet here (see RFC §17 for the milestone order): connectors and
 extraction (M1), reconciliation + the disposition queue + the
@@ -53,6 +55,7 @@ serenity init      # scaffold + git + keychain token; warns loudly if no remote
 serenity doctor    # health: config, durability, keychain, index
 serenity sync      # (re)build the derived index from repo bytes
 serenity status
+serenity compact --confirm   # archive superseded/retracted shard lines
 ```
 
 ## Development
