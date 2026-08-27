@@ -62,7 +62,7 @@ func TestRuntimeTableSchemaShells(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer eng.Close()
+	defer func() { _ = eng.Close() }()
 
 	for _, table := range RuntimeTables {
 		if _, err := eng.db.ExecContext(ctx,
@@ -88,7 +88,7 @@ func TestRebuildPreservesRuntimeState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer eng.Close()
+	defer func() { _ = eng.Close() }()
 
 	for _, table := range RuntimeTables {
 		seedRuntimeRow(t, eng, table, "seed-1")
@@ -129,7 +129,7 @@ func TestResetAllPreservesRuntimeStateWipesOthers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer eng.Close()
+	defer func() { _ = eng.Close() }()
 
 	if err := Rebuild(ctx, root, cfg, eng); err != nil {
 		t.Fatal(err)
