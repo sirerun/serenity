@@ -24,8 +24,8 @@ func newDoctorCmd() *cobra.Command {
 }
 
 func runDoctor(root string, out io.Writer) error {
-	ok := func(format string, a ...any) { fmt.Fprintf(out, "ok    "+format+"\n", a...) }
-	warn := func(format string, a ...any) { fmt.Fprintf(out, "WARN  "+format+"\n", a...) }
+	ok := func(format string, a ...any) { _, _ = fmt.Fprintf(out, "ok    "+format+"\n", a...) }
+	warn := func(format string, a ...any) { _, _ = fmt.Fprintf(out, "WARN  "+format+"\n", a...) }
 
 	cfg, err := config.Load(filepath.Join(root, config.FileName))
 	if err != nil {

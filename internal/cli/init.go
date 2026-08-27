@@ -56,9 +56,9 @@ func runInit(root string, out io.Writer) error {
 		if err := config.Default().Save(cfgPath); err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "created %s (pinned model set: none — configure providers to pin)\n", config.FileName)
+		_, _ = fmt.Fprintf(out, "created %s (pinned model set: none — configure providers to pin)\n", config.FileName)
 	} else {
-		fmt.Fprintf(out, "%s exists, left untouched\n", config.FileName)
+		_, _ = fmt.Fprintf(out, "%s exists, left untouched\n", config.FileName)
 	}
 
 	if err := ensureGitignore(root); err != nil {
@@ -69,17 +69,17 @@ func runInit(root string, out io.Writer) error {
 		if err := gitInit(root); err != nil {
 			return fmt.Errorf("git init: %w", err)
 		}
-		fmt.Fprintln(out, "initialized git repository")
+		_, _ = fmt.Fprintln(out, "initialized git repository")
 	}
 	if installed, err := installPostCommitPush(root); err != nil {
 		return err
 	} else if installed {
-		fmt.Fprintln(out, "installed post-commit push hook (durability floor)")
+		_, _ = fmt.Fprintln(out, "installed post-commit push hook (durability floor)")
 	}
 	if len(gitRemotes(root)) == 0 {
-		fmt.Fprintln(out, "WARNING: no git remote configured — the brain repo is your only copy.")
-		fmt.Fprintln(out, "         Disaster recovery is `git clone` + rebuild; add a remote and push:")
-		fmt.Fprintln(out, "         git remote add origin <url> && git push -u origin main")
+		_, _ = fmt.Fprintln(out, "WARNING: no git remote configured — the brain repo is your only copy.")
+		_, _ = fmt.Fprintln(out, "         Disaster recovery is `git clone` + rebuild; add a remote and push:")
+		_, _ = fmt.Fprintln(out, "         git remote add origin <url> && git push -u origin main")
 	}
 
 	_, created, err := secrets.EnsureDaemonToken()
@@ -87,12 +87,12 @@ func runInit(root string, out io.Writer) error {
 		return fmt.Errorf("daemon auth token: OS keychain unavailable: %w", err)
 	}
 	if created {
-		fmt.Fprintf(out, "daemon auth token generated and stored in the OS keychain (service %q)\n", secrets.Service)
+		_, _ = fmt.Fprintf(out, "daemon auth token generated and stored in the OS keychain (service %q)\n", secrets.Service)
 	} else {
-		fmt.Fprintln(out, "daemon auth token already present in the OS keychain")
+		_, _ = fmt.Fprintln(out, "daemon auth token already present in the OS keychain")
 	}
 
-	fmt.Fprintln(out, "brain repo ready")
+	_, _ = fmt.Fprintln(out, "brain repo ready")
 	return nil
 }
 

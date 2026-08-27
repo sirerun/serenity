@@ -151,7 +151,7 @@ func dumpIndex(t *testing.T, root string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer eng.Close()
+	defer func() { _ = eng.Close() }()
 	s, err := index.DumpString(context.Background(), eng)
 	if err != nil {
 		t.Fatal(err)

@@ -20,13 +20,13 @@ func newStatusCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
 			}
-			fmt.Fprintf(out, "models    embedding=%s extraction=%s\n", cfg.Models.Embedding, cfg.Models.Extraction)
-			fmt.Fprintf(out, "engine    %s\n", cfg.Index.Engine)
+			_, _ = fmt.Fprintf(out, "models    embedding=%s extraction=%s\n", cfg.Models.Embedding, cfg.Models.Extraction)
+			_, _ = fmt.Fprintf(out, "engine    %s\n", cfg.Index.Engine)
 			eng, err := openIndex(flagRoot)
 			if err != nil {
 				return err
 			}
-			defer eng.Close()
+			defer func() { _ = eng.Close() }()
 			return printStats(cmd.Context(), eng, out)
 		},
 	}
