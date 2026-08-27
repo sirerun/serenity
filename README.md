@@ -61,6 +61,7 @@ serenity status
 make build   # CGO_ENABLED=0 go build ./cmd/serenity
 make test    # go test -race ./...
 make vet
+make lint    # golangci-lint run (govet, staticcheck, errcheck, unused; gofmt/goimports)
 ```
 
 The load-bearing invariants are enforced by tests, not convention:
