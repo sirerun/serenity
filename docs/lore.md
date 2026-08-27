@@ -70,3 +70,49 @@ git workaround.
 `origin/task/<id>` while the executing worktree's local branch has a
 different name than `task/<id>`, and `git branch -vv` shows `task/<id>`
 already checked out (`+`) in another worktree on this machine.
+
+## L-0003: A kazi `landed` predicate must not hardcode the push branch name -- the scheduler-owned worktree runs on its own `kazi-partition/p-<hash>` branch
+
+**Tags:** #kazi #git #worktree #gotcha
+**Date:** 2026-08-27
+**Repo:** sirerun/serenity
+
+**Rule:** When authoring a kazi JIT proposal's TASK BRIEF (apply/KAZI-EXEC.md
+step 1), never instruct the grind harness to `git push -u origin
+task/<goal-id>` by literal name. Either omit the branch name (`git push -u
+origin HEAD`) or, if a `landed` predicate needs a stable ref to check,
+check `HEAD == @{u}` only (no hardcoded remote branch name) and separately
+verify the *content* landed (e.g. grep for the new file/symbol on
+`origin/main` post-merge) rather than asserting a specific branch exists.
+If a goal reports `stuck` with only a `landed`-shaped predicate in the
+failing set while every code/behavior predicate is green, treat it as this
+landmine before escalating the model ladder: `git branch -a` /
+`git ls-remote origin` for a `kazi-partition/p-<hash>` ref is very likely
+where the real, converged commit already landed and is recoverable by
+`git fetch origin <that-ref>` + `git cherry-pick`.
+**Why:** kazi >=1.27x (confirmed on 1.275.0) executes every goal --
+serial or `--parallel`, single-partition or not -- in a scheduler-owned
+worktree it derives from `--workspace`, checked out on its own
+`kazi-partition/p-<partition-hash>` branch, not a branch literally named
+`task/<goal-id>`. `--workspace` is a *source* the scheduler copies from,
+never the actual execution environment. T0.2's JIT brief hardcoded `git
+push -u origin task/t0-2-file-first-gate`; the harness (Claude Sonnet 5,
+following the brief faithfully) had no local branch by that name in the
+scheduler's own worktree, so the `landed` predicate's `HEAD == @{u}`
+check could never be satisfied -- the goal cycled `stuck` with the exact
+same single failing predicate for 3 iterations before kazi escalated to
+a human, even though `cap-gate-package-green`, both named subtests,
+`guard-full-suite`, `guard-vet-clean`, and `guard-repo-identity` all
+converged genuinely (verified independently after recovery: `go test
+./internal/gate -v`, `go vet ./...`, `go test ./... -race`, `golangci-lint
+run ./...` all clean on the recovered commit). The real work was never
+lost -- kazi had already pushed it to `origin/kazi-partition/p-16b82378e-
+8787989-790523c6-1039f1b4` -- but nothing in the stuck-verdict JSON says
+"your code is fine, only your bookkeeping predicate is broken"; that
+diagnosis takes reading the full predicate vector (kazi_status --json)
+and noticing every OTHER predicate already reads `pass`.
+**Trigger:** A kazi goal's terminal verdict is `stuck` (not `error`), the
+persistent failing-predicate set is exactly one id and that id is your
+own process/landed predicate (not a `cap-`/`guard-` predicate tied to real
+code or tests), and every other predicate in the last observed vector
+reads `pass`.
