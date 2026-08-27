@@ -82,7 +82,7 @@ func (s *ShardStore) Append(c domain.Claim) error {
 		return fmt.Errorf("shard append: objects must be single-line")
 	}
 	if vocab := s.vocabulary(); !vocab[c.Family] {
-		return fmt.Errorf("shard append: family %q is not in the controlled vocabulary (extend via serenity.yml + migration)", c.Family)
+		return fmt.Errorf("shard append: family %q: %w", c.Family, ErrUnknownPredicate)
 	}
 	if c.ObjectKey == "" {
 		c.ObjectKey = NormalizeKey(c.Object)

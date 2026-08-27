@@ -2,8 +2,10 @@ package store
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"math/rand"
+	"os"
 	"reflect"
 	"testing"
 
@@ -198,8 +200,12 @@ func TestFenceWriteEntityRejectsUnknownPredicate(t *testing.T) {
 	w := NewFenceWriter(t.TempDir())
 	p := NewEntityPage(domain.Entity{Type: "person", Slug: "dave"})
 	p.Claims = []domain.Claim{{ID: "k2", Predicate: "launches_missiles", Object: "nowhere", State: domain.StateActive}}
-	if _, err := w.WriteEntity(p); err == nil {
-		t.Fatal("expected unknown predicate to be rejected")
+	path, err := w.WriteEntity(p)
+	if !errors.Is(err, ErrUnknownPredicate) {
+		t.Fatalf("WriteEntity with unknown predicate: got err=%v, want errors.Is(err, ErrUnknownPredicate)", err)
+	}
+	if _, statErr := os.Stat(path); statErr == nil {
+		t.Fatalf("WriteEntity must not write the file when the predicate is rejected: %s exists", path)
 	}
 }
 
