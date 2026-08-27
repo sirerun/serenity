@@ -10,7 +10,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In progress
 
-- none (next: /apply on E0 wave 0a)
+- 2026 08 27 E0 wave 0a (T0.1, T0.2, T0.3, T0.6, T0.7, T0.8, T0.9, T0.10, T0.12) claimed and in flight via `/apply --pool` from a session on Davids-Mac-mini (session af341d66). A second `/apply --pool` session (this one) found the wave fully claimed and is holding for wave 0b (T0.4, T0.5, T0.13 depend on T0.2/T0.3) or any released/abandoned wave-0a claim.
 
 ## In flight (PRs open)
 
