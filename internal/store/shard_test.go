@@ -222,8 +222,11 @@ func TestShardAppendRejectsUnknownPredicate(t *testing.T) {
 	s := NewShardStore(t.TempDir())
 	c := domain.Claim{SubjectSlug: "x", Predicate: "launches_missiles", Family: "launches_missiles",
 		Object: "10.00 usd", State: domain.StateActive}
-	if err := s.Append(c); err == nil {
-		t.Fatal("expected unknown predicate to be rejected")
+	if err := s.Append(c); !errors.Is(err, ErrUnknownPredicate) {
+		t.Fatalf("Append with unknown predicate: got err=%v, want errors.Is(err, ErrUnknownPredicate)", err)
+	}
+	if lines, err := s.Lines(c.SubjectSlug, c.Family); err != nil || len(lines) != 0 {
+		t.Fatalf("Append must not write a shard line when the predicate is rejected: lines=%v err=%v", lines, err)
 	}
 }
 

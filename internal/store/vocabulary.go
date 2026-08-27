@@ -1,6 +1,16 @@
 package store
 
-import "github.com/sirerun/serenity/internal/config"
+import (
+	"errors"
+
+	"github.com/sirerun/serenity/internal/config"
+)
+
+// ErrUnknownPredicate is returned by the writers (FenceWriter.RenderEntity,
+// ShardStore.Append) when a claim's predicate/family is not in the
+// controlled vocabulary (RFC §7.2). Wrapped with the offending predicate;
+// callers detect this failure class with errors.Is.
+var ErrUnknownPredicate = errors.New("store: predicate not in controlled vocabulary (serenity.yml)")
 
 // defaultVocabulary is the controlled predicate vocabulary seeded at
 // install (RFC §7.2, T0.8): the floor every writer enforces when a caller

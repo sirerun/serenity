@@ -93,7 +93,7 @@ func (w *FenceWriter) RenderEntity(p *EntityPage) ([]byte, error) {
 			return nil, fmt.Errorf("claim %s: objects must be single-line (canonical form)", p.Claims[i].ID)
 		}
 		if pred := p.Claims[i].Predicate; !vocab[pred] {
-			return nil, fmt.Errorf("claim %s: predicate %q is not in the controlled vocabulary (extend via serenity.yml + migration)", p.Claims[i].ID, pred)
+			return nil, fmt.Errorf("claim %s: predicate %q: %w", p.Claims[i].ID, pred, ErrUnknownPredicate)
 		}
 	}
 
