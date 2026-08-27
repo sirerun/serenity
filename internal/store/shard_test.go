@@ -116,6 +116,18 @@ func TestShard10KProperty(t *testing.T) {
 		t.Fatalf("merge dedup wrong: %d lines, want %d", len(merged), len(all))
 	}
 	assertHeads(t, "merged", ResolveHeadLines(merged), expected)
+
+	// Compact, then resolve/rebuild over the compacted on-disk state
+	// (§7.7): the dead lines move to the archive shard, but a FRESH store
+	// resolving the live shard alone must still reach the identical heads.
+	if _, err := s.Compact(slug, family); err != nil {
+		t.Fatal(err)
+	}
+	heads3, err := NewShardStore(root).ResolveHeads(slug, family)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertHeads(t, "compacted-rebuild", heads3, expected)
 }
 
 func assertHeads(t *testing.T, label string, got map[string]domain.Claim, want map[string]string) {
