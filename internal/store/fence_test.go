@@ -181,6 +181,28 @@ func TestFenceConcurrentMergeDeterministic(t *testing.T) {
 	}
 }
 
+// TestFenceWriteEntityAcceptsKnownPredicate asserts a claim whose predicate
+// is in the seeded controlled vocabulary (RFC §7.2) writes cleanly.
+func TestFenceWriteEntityAcceptsKnownPredicate(t *testing.T) {
+	w := NewFenceWriter(t.TempDir())
+	p := NewEntityPage(domain.Entity{Type: "person", Slug: "carol"})
+	p.Claims = []domain.Claim{{ID: "k1", Predicate: "works_at", Object: "acme", State: domain.StateActive}}
+	if _, err := w.WriteEntity(p); err != nil {
+		t.Fatalf("known predicate rejected: %v", err)
+	}
+}
+
+// TestFenceWriteEntityRejectsUnknownPredicate is T0.8: a predicate outside
+// the controlled vocabulary must be rejected, not written ad hoc (§7.2).
+func TestFenceWriteEntityRejectsUnknownPredicate(t *testing.T) {
+	w := NewFenceWriter(t.TempDir())
+	p := NewEntityPage(domain.Entity{Type: "person", Slug: "dave"})
+	p.Claims = []domain.Claim{{ID: "k2", Predicate: "launches_missiles", Object: "nowhere", State: domain.StateActive}}
+	if _, err := w.WriteEntity(p); err == nil {
+		t.Fatal("expected unknown predicate to be rejected")
+	}
+}
+
 func TestRejectsMultilineObjects(t *testing.T) {
 	w := NewFenceWriter(t.TempDir())
 	p := NewEntityPage(domain.Entity{Type: "person", Slug: "eve"})

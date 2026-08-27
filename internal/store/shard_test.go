@@ -205,6 +205,28 @@ func TestShardCompact(t *testing.T) {
 	}
 }
 
+// TestShardAppendAcceptsKnownPredicate asserts a claim whose family is in
+// the seeded controlled vocabulary (RFC §7.2) appends cleanly.
+func TestShardAppendAcceptsKnownPredicate(t *testing.T) {
+	s := NewShardStore(t.TempDir())
+	c := domain.Claim{SubjectSlug: "x", Predicate: "has_balance", Family: "has_balance",
+		Object: "10.00 usd", State: domain.StateActive}
+	if err := s.Append(c); err != nil {
+		t.Fatalf("known predicate rejected: %v", err)
+	}
+}
+
+// TestShardAppendRejectsUnknownPredicate is T0.8: a family outside the
+// controlled vocabulary must be rejected, not appended ad hoc (§7.2).
+func TestShardAppendRejectsUnknownPredicate(t *testing.T) {
+	s := NewShardStore(t.TempDir())
+	c := domain.Claim{SubjectSlug: "x", Predicate: "launches_missiles", Family: "launches_missiles",
+		Object: "10.00 usd", State: domain.StateActive}
+	if err := s.Append(c); err == nil {
+		t.Fatal("expected unknown predicate to be rejected")
+	}
+}
+
 func TestShardAppendDerivesID(t *testing.T) {
 	s := NewShardStore(t.TempDir())
 	c := domain.Claim{SubjectSlug: "x", Predicate: "costs", Family: "costs",
