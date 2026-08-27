@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -20,6 +21,14 @@ func TestShard10KProperty(t *testing.T) {
 	root := t.TempDir()
 	s := NewShardStore(root)
 	const slug, family = "checking-acct", "has_balance"
+	// 10,000 claims crammed into ONE shard file is a bulk/shard-scale
+	// stress case, not the "per-entity population" DefaultIDWidth (32
+	// bits) is sized for (ADR 004 D2) -- at that volume the birthday bound
+	// gives a non-negligible chance of a genuine collision (this test hit
+	// one at DefaultIDWidth with its fixed seed, correctly caught by
+	// ErrIDCollision). Use a wider id here; DefaultIDWidth stays the
+	// standard elsewhere.
+	const shardTestIDWidth = 16
 
 	// expected[key] = id of the live head, maintained independently of the
 	// resolver so the test is not tautological.
@@ -43,7 +52,7 @@ func TestShard10KProperty(t *testing.T) {
 				Supersedes: expected[key],
 				Provenance: domain.Provenance{ObservedAt: obs, Actor: "machine", SourceSHA256: fmt.Sprintf("src-%d", i)},
 			}
-			c.ID = DerivedID(slug, family, key, "", c.Provenance.SourceSHA256)
+			c.ID = DerivedID(slug, family, key, "", c.Provenance.SourceSHA256, shardTestIDWidth)
 			expected[key] = c.ID
 		case len(liveKeys) > 20 && rng.Intn(100) < 2: // retraction tombstone
 			ki := rng.Intn(len(liveKeys))
@@ -66,7 +75,7 @@ func TestShard10KProperty(t *testing.T) {
 				State:      domain.StateActive,
 				Provenance: domain.Provenance{ObservedAt: obs, Actor: "machine", SourceSHA256: fmt.Sprintf("src-%d", i)},
 			}
-			c.ID = DerivedID(slug, family, key, "", c.Provenance.SourceSHA256)
+			c.ID = DerivedID(slug, family, key, "", c.Provenance.SourceSHA256, shardTestIDWidth)
 			expected[key] = c.ID
 			liveKeys = append(liveKeys, key)
 		}
@@ -198,5 +207,74 @@ func TestShardAppendDerivesID(t *testing.T) {
 	}
 	if len(lines) != 1 || lines[0].ID == "" || lines[0].ObjectKey != "12.5" {
 		t.Fatalf("id/object-key not derived: %+v", lines)
+	}
+}
+
+// TestShardAppendIDCollision: two claims with different identity tuples
+// (ADR 004 D2: subject, predicate, object key, valid_from, source ref)
+// forced onto the same id — via a deliberately narrow DerivedID width, so a
+// real collision is cheap and deterministic to produce — get
+// ErrIDCollision from Append, never a silent overwrite (§7.2).
+func TestShardAppendIDCollision(t *testing.T) {
+	const slug, family = "acme-corp", "works_at"
+	const width = 1 // 16 possible ids: a collision is easy to force
+
+	// Find two distinct source refs whose DerivedID(width=1) collides.
+	// Deterministic: sha256 has no randomness, so this is reproducible
+	// across every run.
+	var refA, refB string
+	seen := map[string]string{}
+	for i := 0; ; i++ {
+		ref := fmt.Sprintf("src-%d", i)
+		id := DerivedID(slug, family, "acme", "2026-01", ref, width)
+		if prior, ok := seen[id]; ok {
+			refA, refB = prior, ref
+			break
+		}
+		seen[id] = ref
+		if i > 10_000 {
+			t.Fatal("no id collision found in 10000 tries at width 1 -- DerivedID changed?")
+		}
+	}
+
+	s := NewShardStore(t.TempDir())
+	first := domain.Claim{
+		SubjectSlug: slug, Predicate: family, Family: family,
+		Object: "first", ObjectKey: "acme", ValidFrom: "2026-01",
+		Confidence: 0.9, State: domain.StateActive,
+		ID:         DerivedID(slug, family, "acme", "2026-01", refA, width),
+		Provenance: domain.Provenance{SourceSHA256: refA},
+	}
+	if err := s.Append(first); err != nil {
+		t.Fatalf("first append: %v", err)
+	}
+
+	second := domain.Claim{
+		SubjectSlug: slug, Predicate: family, Family: family,
+		Object: "second", ObjectKey: "acme", ValidFrom: "2026-01",
+		Confidence: 0.9, State: domain.StateActive,
+		ID:         DerivedID(slug, family, "acme", "2026-01", refB, width),
+		Provenance: domain.Provenance{SourceSHA256: refB},
+	}
+	if second.ID != first.ID {
+		t.Fatalf("test setup: ids should collide, got %s and %s", first.ID, second.ID)
+	}
+	err := s.Append(second)
+	if !errors.Is(err, ErrIDCollision) {
+		t.Fatalf("Append with colliding id/differing tuple = %v, want ErrIDCollision", err)
+	}
+
+	lines, err := s.Lines(slug, family)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || lines[0].Object != "first" {
+		t.Fatalf("collision must not overwrite: %+v", lines)
+	}
+
+	// A repeated observation of the SAME tuple (identical source ref too)
+	// is not a collision -- Append must accept it.
+	if err := s.Append(first); err != nil {
+		t.Fatalf("re-appending the identical tuple must not error: %v", err)
 	}
 }
