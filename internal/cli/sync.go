@@ -47,7 +47,7 @@ func runSync(ctx context.Context, root string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer eng.Close()
+	defer func() { _ = eng.Close() }()
 	if err := index.Rebuild(ctx, root, cfg, eng); err != nil {
 		return err
 	}
@@ -65,19 +65,19 @@ func runExtract(ctx context.Context, root string, out io.Writer) error {
 		return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
 	}
 	if cfg.Models.Extraction == "" || cfg.Models.Extraction == "none@v0" {
-		fmt.Fprintln(out, "no extraction model pinned (models.extraction: none@v0); model extraction skipped")
+		_, _ = fmt.Fprintln(out, "no extraction model pinned (models.extraction: none@v0); model extraction skipped")
 	} else {
-		fmt.Fprintf(out, "extraction model %s pinned; model extraction lands in M1 — skipped\n", cfg.Models.Extraction)
+		_, _ = fmt.Fprintf(out, "extraction model %s pinned; model extraction lands in M1 — skipped\n", cfg.Models.Extraction)
 	}
 	eng, err := openIndex(root)
 	if err != nil {
 		return err
 	}
-	defer eng.Close()
+	defer func() { _ = eng.Close() }()
 	if err := index.Rebuild(ctx, root, cfg, eng); err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "re-derived claim index from canonical files")
+	_, _ = fmt.Fprintln(out, "re-derived claim index from canonical files")
 	return printStats(ctx, eng, out)
 }
 
@@ -100,7 +100,7 @@ func printStats(ctx context.Context, eng index.Engine, out io.Writer) error {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		fmt.Fprintf(out, "%-10s %d\n", k, stats[k])
+		_, _ = fmt.Fprintf(out, "%-10s %d\n", k, stats[k])
 	}
 	return nil
 }
