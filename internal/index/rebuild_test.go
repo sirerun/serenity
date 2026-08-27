@@ -91,7 +91,7 @@ func TestWipeAndRebuildInvariant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer eng2.Close()
+	defer func() { _ = eng2.Close() }()
 	if err := Rebuild(ctx, root, cfg, eng2); err != nil {
 		t.Fatal(err)
 	}
@@ -117,12 +117,14 @@ func TestShardAuthorityOverFenceHead(t *testing.T) {
 	cfg := config.Default()
 
 	dbPath := filepath.Join(root, ".serenity", "index.db")
-	os.MkdirAll(filepath.Dir(dbPath), 0o755)
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	eng, err := Open(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer eng.Close()
+	defer func() { _ = eng.Close() }()
 	if err := Rebuild(ctx, root, cfg, eng); err != nil {
 		t.Fatal(err)
 	}
@@ -158,12 +160,14 @@ func TestSearchFTS(t *testing.T) {
 	ctx := context.Background()
 	root := scaffoldBrain(t)
 	dbPath := filepath.Join(root, ".serenity", "index.db")
-	os.MkdirAll(filepath.Dir(dbPath), 0o755)
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	eng, err := Open(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer eng.Close()
+	defer func() { _ = eng.Close() }()
 	if err := Rebuild(ctx, root, config.Default(), eng); err != nil {
 		t.Fatal(err)
 	}

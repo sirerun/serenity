@@ -54,7 +54,7 @@ func Open(path string) (*SQLite, error) {
 	}
 	s := &SQLite{db: db}
 	if err := s.migrate(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("index migrate: %w", err)
 	}
 	return s, nil
@@ -133,7 +133,7 @@ func (s *SQLite) SearchFTS(ctx context.Context, query string, limit int) ([]Hit,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var hits []Hit
 	for rows.Next() {
 		var h Hit
@@ -196,20 +196,25 @@ func (s *SQLite) Dump(ctx context.Context, w io.Writer) error {
 		}
 		for rows.Next() {
 			if err := rows.Scan(ptrs...); err != nil {
-				rows.Close()
+				_ = rows.Close()
 				return err
 			}
 			cells := make([]string, q.cols)
 			for i, v := range vals {
 				cells[i] = formatValue(v)
 			}
-			fmt.Fprintf(w, "%s\t%s\n", q.label, strings.Join(cells, "\t"))
+			if _, err := fmt.Fprintf(w, "%s\t%s\n", q.label, strings.Join(cells, "\t")); err != nil {
+				_ = rows.Close()
+				return err
+			}
 		}
 		if err := rows.Err(); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return err
 		}
-		rows.Close()
+		if err := rows.Close(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
