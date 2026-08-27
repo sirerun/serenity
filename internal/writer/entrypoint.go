@@ -38,7 +38,7 @@ func Shard(q *Queue, ss *store.ShardStore, c domain.Claim) (path string, line []
 		c.ObjectKey = store.NormalizeKey(c.Object)
 	}
 	if c.ID == "" {
-		c.ID = store.DerivedID(c.SubjectSlug, c.Predicate, c.ObjectKey, c.ValidFrom, c.Provenance.SourceSHA256)
+		c.ID = store.DerivedID(c.SubjectSlug, c.Predicate, c.ObjectKey, c.ValidFrom, c.Provenance.SourceSHA256, store.DefaultIDWidth)
 	}
 	path = ss.PathFor(c.SubjectSlug, c.Family)
 	res := q.Submit(Job{

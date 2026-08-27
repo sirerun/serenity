@@ -37,16 +37,33 @@ func canonicalDate(d string) string {
 	return fmt.Sprintf("%s-%02d-%02d", m[1], mo, day)
 }
 
+// DefaultIDWidth is the standard claim-id length in hex characters — 32
+// bits, sized for a per-entity claim population (§7.2, D2 in ADR 004:
+// docs/adr/004-writer-queue-pending-records-and-hash-width.md). A detected
+// collision (store.ErrIDCollision, internal/store/shard.go) is the signal
+// to widen this for the affected family and re-render every derived id —
+// never to let the newer claim silently overwrite the older one at the
+// same id.
+const DefaultIDWidth = 8
+
 // DerivedID implements §7.2's claim-id rule:
 // shorthash(subject_slug, predicate, normalized_object_key, valid_from,
 // source_ref). Two machines extracting the same claim from the same source
 // derive the same id; the same logical claim from different sources gets
 // different ids by design (that is corroboration — dedup is semantic, at
-// reconcile, never id equality). A detected collision (same id, different
-// normalized content) is a hard error that widens the hash via migration —
-// the reconciler (M2) owns that check.
-func DerivedID(subject, predicate, objectKey, validFrom, sourceRef string) string {
+// reconcile, never id equality). width is the id length in hex characters
+// (1..64); callers pass DefaultIDWidth unless migrating a family to a wider
+// id after a collision — width <= 0 or > 64 also falls back to
+// DefaultIDWidth. A detected collision (same id, different normalized
+// content) is a hard error — the writer's per-file id registry
+// (store.ErrIDCollision) — that the migration resolves by widening this
+// parameter, never by overwriting.
+func DerivedID(subject, predicate, objectKey, validFrom, sourceRef string, width int) string {
 	h := sha256.Sum256([]byte(strings.Join(
 		[]string{subject, predicate, objectKey, validFrom, sourceRef}, "\x00")))
-	return hex.EncodeToString(h[:4]) // 8 hex chars, sized for per-entity populations
+	full := hex.EncodeToString(h[:])
+	if width <= 0 || width > len(full) {
+		width = DefaultIDWidth
+	}
+	return full[:width]
 }
