@@ -48,13 +48,15 @@ func (s *ShardStore) Append(c domain.Claim) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	line, err := json.Marshal(c)
 	if err != nil {
 		return err
 	}
-	_, err = f.Write(append(line, '\n'))
-	return err
+	if _, err := f.Write(append(line, '\n')); err != nil {
+		return err
+	}
+	return f.Close()
 }
 
 // Lines reads every claim line in file order. A corrupt line is a hard
@@ -71,7 +73,7 @@ func readShardFile(path string) ([]domain.Claim, error) {
 		}
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var out []domain.Claim
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 16*1024*1024)
@@ -224,7 +226,7 @@ func (s *ShardStore) Compact(slug, family string) (moved int, err error) {
 	if err != nil {
 		return 0, err
 	}
-	defer af.Close()
+	defer func() { _ = af.Close() }()
 	for _, c := range archive {
 		line, err := json.Marshal(c)
 		if err != nil {
@@ -234,30 +236,38 @@ func (s *ShardStore) Compact(slug, family string) (moved int, err error) {
 			return 0, err
 		}
 	}
+	if err := af.Close(); err != nil {
+		return 0, err
+	}
 
 	tmp := p + ".compact"
 	tf, err := os.Create(tmp)
 	if err != nil {
 		return 0, err
 	}
+	abort := func(err error) (int, error) {
+		_ = tf.Close()
+		_ = os.Remove(tmp)
+		return 0, err
+	}
 	bw := bufio.NewWriter(tf)
 	for _, c := range keep {
 		line, err := json.Marshal(c)
 		if err != nil {
-			tf.Close()
-			os.Remove(tmp)
-			return 0, err
+			return abort(err)
 		}
-		bw.Write(line)
-		bw.WriteByte('\n')
+		if _, err := bw.Write(line); err != nil {
+			return abort(err)
+		}
+		if err := bw.WriteByte('\n'); err != nil {
+			return abort(err)
+		}
 	}
 	if err := bw.Flush(); err != nil {
-		tf.Close()
-		os.Remove(tmp)
-		return 0, err
+		return abort(err)
 	}
 	if err := tf.Close(); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return 0, err
 	}
 	return len(archive), os.Rename(tmp, p)
