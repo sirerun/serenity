@@ -55,11 +55,11 @@ func runCompact(root string, confirm bool, out io.Writer) error {
 				return fmt.Errorf("compact %s/%s: %w", slug, family, err)
 			}
 			if moved > 0 {
-				fmt.Fprintf(out, "compacted %s/%s: %d line(s) archived\n", slug, family, moved)
+				_, _ = fmt.Fprintf(out, "compacted %s/%s: %d line(s) archived\n", slug, family, moved)
 			}
 			total += moved
 		}
 	}
-	fmt.Fprintf(out, "compact complete: %d line(s) archived across %d entit(y/ies)\n", total, len(slugs))
+	_, _ = fmt.Fprintf(out, "compact complete: %d line(s) archived across %d entit(y/ies)\n", total, len(slugs))
 	return nil
 }
