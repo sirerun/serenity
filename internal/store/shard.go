@@ -33,6 +33,11 @@ var ErrIDCollision = errors.New("store: claim id collision")
 // explicit, disposition-approved compaction (§7.7).
 type ShardStore struct {
 	Root string
+	// Vocabulary restricts which predicate families Append accepts. Nil
+	// uses the controlled vocabulary seeded at install (defaultVocabulary);
+	// set it from a loaded config.Config.Families to enforce a project's
+	// actual, migrated vocabulary instead of the seed (§7.2).
+	Vocabulary map[string]bool
 
 	// mu guards registry: concurrent Append calls across different shard
 	// files (once the writer queue lands, §7.7) share one ShardStore's
@@ -52,6 +57,13 @@ type ShardStore struct {
 
 func NewShardStore(root string) *ShardStore { return &ShardStore{Root: root} }
 
+func (s *ShardStore) vocabulary() map[string]bool {
+	if s.Vocabulary != nil {
+		return s.Vocabulary
+	}
+	return defaultVocabulary
+}
+
 func (s *ShardStore) PathFor(slug, family string) string {
 	return filepath.Join(s.Root, "brain", "claims", slug, family+".jsonl")
 }
@@ -68,6 +80,9 @@ func (s *ShardStore) PathFor(slug, family string) string {
 func (s *ShardStore) Append(c domain.Claim) error {
 	if strings.ContainsRune(c.Object, '\n') {
 		return fmt.Errorf("shard append: objects must be single-line")
+	}
+	if vocab := s.vocabulary(); !vocab[c.Family] {
+		return fmt.Errorf("shard append: family %q is not in the controlled vocabulary (extend via serenity.yml + migration)", c.Family)
 	}
 	if c.ObjectKey == "" {
 		c.ObjectKey = NormalizeKey(c.Object)
