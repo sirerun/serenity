@@ -1,0 +1,16 @@
+version: "2"
+
+# Minimal, deliberately narrow gate: catch real bugs (govet, staticcheck,
+# unused) and unchecked errors (errcheck) without imposing a house style.
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
