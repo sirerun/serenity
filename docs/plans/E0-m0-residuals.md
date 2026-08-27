@@ -22,7 +22,7 @@ Verified at 13dc0d2 (2026 08 27): `go test -race ./...` green (cli, index, store
 - [ ] T0.9 `serenity compact` verb (explicit, `--confirm` required until M2 disposition gating)  Owner: pool  Est: 45m  verifies: [UC-033]  acc: [serenity compact without --confirm exits 1; with it the archive shard exists, live shard keeps only heads, and sync after compaction dumps byte-identically to sync before]
   - Extend TestShard10KProperty to run resolve/rebuild over compacted state.
 - [ ] T0.10 Runtime-state allowlist in `internal/index`  Owner: pool  Est: 45m  verifies: [UC-002]  acc: [index.RuntimeTables lists {jobs, disposition_items, disposition_history, spend_ledger, caches}; a test seeds a row in each and proves Rebuild/ResetAll leave them intact while all other tables are wiped]
-- [ ] T0.12 golangci-lint config + CI step + `make lint`  Owner: pool  Est: 30m  verifies: [infrastructure]  acc: [.golangci.yml exists, ci.yml runs golangci-lint, and the run is green on main]
+- [x] T0.12 golangci-lint config + CI step + `make lint`  Owner: pool  Est: 30m  verifies: [infrastructure]  acc: [.golangci.yml exists, ci.yml runs golangci-lint, and the run is green on main] (merged PR #4, 2026-08-27, kazi goal t0-12-golangci-lint-ci)
 
 ### Wave 0b (after 0a; 4 agents)
 
