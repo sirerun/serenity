@@ -16,7 +16,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In flight (PRs open)
 
-- none
+- 2026 08 27 T0.12 golangci-lint CI gate (`.golangci.yml` v2: govet, staticcheck, errcheck, unused / gofmt, goimports; `make lint`; CI `lint` job; the 26 errcheck findings it surfaced fixed for real, incl. two genuine bugs — `ShardStore.Append` swallowing a flush error and `ShardStore.Compact` swallowing a tmp-file write error) -- PR #4, checks green, awaiting merge. Owner: kazi lane (worktree `task/t0-12-golangci-lint-ci`, freed from an idle duplicate `wt-T0.12` worktree that held the branch with no commits).
 
 ## Planned
 
