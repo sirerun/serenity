@@ -4,11 +4,12 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026 08 27 Plan to code complete (commit 9474e5a): docs/plan.md, docs/plans/E0-E6 (108 tasks), ADRs 001-010, devlog. Owner: David's planning session.
 - 2026 08 26 M0 skeleton + substrate invariants (commit 13dc0d2): init, fence + shard writers with round-trip property tests, 10K-claim shard property test, SQLite index with wipe-and-rebuild invariant and the fence/shard disagreement fixture, sync/extract/doctor/status, keychain daemon token, CI (vet/build/test-race, cross-build), goreleaser + brew tap config (never tagged).
 
 ## In progress
 
-- 2026 08 27 Planning pass to code complete (this session): docs/plan.md, docs/plans/E0-E6, ADRs 001-009, use-case manifest. Owner: David's planning session.
+- none (next: /apply on E0 wave 0a)
 
 ## In flight (PRs open)
 
