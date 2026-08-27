@@ -6,7 +6,7 @@ Verified at 13dc0d2 (2026 08 27): `go test -race ./...` green (cli, index, store
 
 ### Wave 0a (no deps; 9 agents)
 
-- [ ] T0.1 Threat model document (`docs/threat-model.md`) with data-flow diagram and testable invariants  Owner: pool  Est: 90m  verifies: [UC-030, UC-043, UC-046]  lane: agent  acc: [docs/threat-model.md exists and internal/docs test asserts headings for the five RFC section 14 adversaries, the redaction contract, the right-to-forget chain, and the line "no ingest path can create or modify a precept"]
+- [x] T0.1 Threat model document (`docs/threat-model.md`) with data-flow diagram and testable invariants  Owner: pool  Est: 90m  verifies: [UC-030, UC-043, UC-046]  lane: agent  acc: [docs/threat-model.md exists and internal/docs test asserts headings for the five RFC section 14 adversaries, the redaction contract, the right-to-forget chain, and the line "no ingest path can create or modify a precept"] (merged PR #2, 2026-08-27)
   - Deps: none. Content: the five adversaries (injected source content, compromised MCP client, model-provider handling, secrets in ingested repos, local attacker on index/keys); mermaid data-flow of what leaves the machine; the deletion chain source -> observations -> claims -> rebuild; keys-in-keychain; loopback-authenticated daemon.
   - Pitfall: one mermaid block inside the doc, no second diagram format.
 - [ ] T0.2 File-first CI gate: AST allowlist test over `internal/` for Engine write calls  Owner: pool  Est: 75m  verifies: [UC-002]  acc: [go test ./internal/gate fails when a synthetic file outside the allowlist calls eng.UpsertClaim, passes on the current tree]
