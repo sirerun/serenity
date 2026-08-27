@@ -3,14 +3,26 @@ package store
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/sirerun/serenity/internal/domain"
 )
+
+// ErrIDCollision is returned when a claim id (derived or supplied) matches
+// an existing row in the same shard file whose (subject, predicate, object
+// key, valid_from, source ref) tuple differs — a hash collision, or two
+// distinct claims fighting over one id. The writer never resolves this by
+// overwriting: §7.2 and ADR 004 D2
+// (docs/adr/004-writer-queue-pending-records-and-hash-width.md) make it a
+// hard error, and the fix is to widen DerivedID's width for the family and
+// re-render, never to retry the write.
+var ErrIDCollision = errors.New("store: claim id collision")
 
 // ShardStore holds high-volume claim families as append-only JSONL under
 // brain/claims/<entity-slug>/<family>.jsonl — one claim per line, same
@@ -21,6 +33,21 @@ import (
 // explicit, disposition-approved compaction (§7.7).
 type ShardStore struct {
 	Root string
+
+	// mu guards registry: concurrent Append calls across different shard
+	// files (once the writer queue lands, §7.7) share one ShardStore's
+	// registry map.
+	mu sync.Mutex
+	// registry is the per-file claim-id registry (ADR 004 D2): path -> id
+	// -> the claim already on disk under that id. It is lazily built from
+	// disk on first use per path and kept current in memory after each
+	// successful Append, so a long-lived ShardStore does one file parse per
+	// path rather than one per Append (TestShard10KProperty depends on
+	// that: 10,000 appends into one file must stay O(n), not O(n^2)). A
+	// fresh ShardStore instance always rebuilds from the file's actual
+	// bytes on first use — the cache is a performance layer over that
+	// on-disk truth, never a second source of it.
+	registry map[string]map[string]domain.Claim
 }
 
 func NewShardStore(root string) *ShardStore { return &ShardStore{Root: root} }
@@ -29,7 +56,15 @@ func (s *ShardStore) PathFor(slug, family string) string {
 	return filepath.Join(s.Root, "brain", "claims", slug, family+".jsonl")
 }
 
-// Append adds one claim line. IDs are derived when absent (§7.2).
+// Append adds one claim line. IDs are derived when absent (§7.2). Before
+// writing, an ACTIVE claim's id is checked against the per-file id
+// registry (ADR 004 D2): an id that already names a different (subject,
+// predicate, object key, valid_from, source ref) tuple in this file is
+// ErrIDCollision, and Append writes nothing — never a silent overwrite. A
+// retracted row is exempt: a retraction is a lifecycle tombstone that
+// deliberately reuses its target claim's id (ResolveHeadLines keys
+// retraction off exactly that id match) rather than asserting a new,
+// independent claim identity — it is never a collision candidate.
 func (s *ShardStore) Append(c domain.Claim) error {
 	if strings.ContainsRune(c.Object, '\n') {
 		return fmt.Errorf("shard append: objects must be single-line")
@@ -38,9 +73,23 @@ func (s *ShardStore) Append(c domain.Claim) error {
 		c.ObjectKey = NormalizeKey(c.Object)
 	}
 	if c.ID == "" {
-		c.ID = DerivedID(c.SubjectSlug, c.Predicate, c.ObjectKey, c.ValidFrom, c.Provenance.SourceSHA256)
+		c.ID = DerivedID(c.SubjectSlug, c.Predicate, c.ObjectKey, c.ValidFrom, c.Provenance.SourceSHA256, DefaultIDWidth)
 	}
 	p := s.PathFor(c.SubjectSlug, c.Family)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	reg, err := s.loadRegistryLocked(p)
+	if err != nil {
+		return err
+	}
+	if c.State != domain.StateRetracted {
+		if prior, ok := reg[c.ID]; ok && !sameClaimTuple(prior, c) {
+			return fmt.Errorf("shard %s: %w: id %s already identifies subject=%s predicate=%s object_key=%s valid_from=%s source=%s",
+				p, ErrIDCollision, c.ID, prior.SubjectSlug, prior.Predicate, prior.ObjectKey, prior.ValidFrom, prior.Provenance.SourceSHA256)
+		}
+	}
+
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
@@ -56,7 +105,46 @@ func (s *ShardStore) Append(c domain.Claim) error {
 	if _, err := f.Write(append(line, '\n')); err != nil {
 		return err
 	}
-	return f.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if c.State != domain.StateRetracted {
+		reg[c.ID] = c // a retraction's thin tombstone tuple must never shadow the identity it retracts
+	}
+	return nil
+}
+
+// loadRegistryLocked returns the id registry for path, building it from
+// disk on first use and caching it on s.registry afterward (s.mu must be
+// held). Reading is O(file) once per path, not once per Append call.
+func (s *ShardStore) loadRegistryLocked(path string) (map[string]domain.Claim, error) {
+	if s.registry == nil {
+		s.registry = map[string]map[string]domain.Claim{}
+	}
+	if reg, ok := s.registry[path]; ok {
+		return reg, nil
+	}
+	lines, err := readShardFile(path)
+	if err != nil {
+		return nil, err
+	}
+	reg := make(map[string]domain.Claim, len(lines))
+	for _, c := range lines {
+		reg[c.ID] = c // last line for a given id wins, matching file order
+	}
+	s.registry[path] = reg
+	return reg, nil
+}
+
+// sameClaimTuple reports whether a and b are the same logical claim
+// identity (§7.2's id-derivation tuple) — true here means a repeated
+// observation, not a collision.
+func sameClaimTuple(a, b domain.Claim) bool {
+	return a.SubjectSlug == b.SubjectSlug &&
+		a.Predicate == b.Predicate &&
+		a.ObjectKey == b.ObjectKey &&
+		a.ValidFrom == b.ValidFrom &&
+		a.Provenance.SourceSHA256 == b.Provenance.SourceSHA256
 }
 
 // Lines reads every claim line in file order. A corrupt line is a hard
