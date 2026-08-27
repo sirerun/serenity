@@ -4,6 +4,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026 08 27 T0.12 golangci-lint CI gate (`.golangci.yml` v2: govet, staticcheck, errcheck, unused / gofmt, goimports; `make lint`; CI `lint` job; the 26 pre-existing errcheck findings it surfaced fixed for real, incl. two genuine bugs -- `ShardStore.Append` swallowing a flush error and `ShardStore.Compact` swallowing a tmp-file write error) -- PR #4, merge commit `2ee0a14`. Owner: kazi lane (goal `t0-12-golangci-lint-ci`, converged on claude-sonnet-5 rung 1, no escalation needed). Unblocks T0.11 (v0.1.0 release cut, David).
 - 2026 08 27 T0.1 threat model doc `docs/threat-model.md` (RFC 0001 §14: five adversaries, one mermaid data-flow diagram, redaction contract, keys-in-keychain, loopback-authenticated daemon, precept-integrity invariant, right-to-forget deletion chain) plus `internal/docs/threat_model_test.go`, the file-first heading gate that keeps the doc honest -- PR #2. Owner: `/apply --pool` session af341d66 (subagent lane).
 - 2026 08 27 docs/lore.md L-0001 (GOWORK=off landmine: the parent sirerun/go.work references removed ./api and ./gist, breaking `go build`/`test` for any Go command run from serenity/ or a worktree parented under sirerun/) -- PR #1. Owner: a third concurrent `/apply --pool` session on this shared checkout.
 - 2026 08 27 Podcast script docs/content/podcast-serenity-and-gbrain.md (two voices, ~13 min) and its ElevenLabs Studio render (Turbo v2.5, Alice as HOST, Adam as MAINTAINER, MP3). Owner: David's planning session.
@@ -12,11 +13,11 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In progress
 
-- 2026 08 27 E0 wave 0a (T0.1, T0.2, T0.3, T0.6, T0.7, T0.8, T0.9, T0.10, T0.12) re-claimed and dispatched via `/apply --pool` (session af341d66, `/loop` tick). At claim time `git ls-remote origin refs/claims/*` was empty and `gh pr list --state all` showed no PRs beyond #1 (the lore fix) -- the prior "claimed and in flight" line this superseded never reached a PR, so its claims were either released or went stale and were pruned by another session; no duplicate work found (no `wt-T0.*` worktrees, no `task/*` branches on origin). T0.1 -> subagent lane (isolated worktree, docs+test) -- **done, see Shipped**. T0.2/T0.3/T0.6/T0.7/T0.8/T0.9/T0.10/T0.12 -> kazi lane (JIT proposal from acc:, converge in `../wt-T0.<n>`, GOWORK=off per L-0001), still in flight. Other concurrent sessions observed on this machine (serenity-a/b/c/d, sire-a, seat, blink-oxalpha) hold no active claims on these 9 tasks as of dispatch. Wave 0b (T0.4, T0.5, T0.13) stays blocked on T0.2/T0.3 landing.
+- 2026 08 27 E0 wave 0a (T0.1, T0.2, T0.3, T0.6, T0.7, T0.8, T0.9, T0.10, T0.12) re-claimed and dispatched via `/apply --pool` (session af341d66, `/loop` tick). At claim time `git ls-remote origin refs/claims/*` was empty and `gh pr list --state all` showed no PRs beyond #1 (the lore fix) -- the prior "claimed and in flight" line this superseded never reached a PR, so its claims were either released or went stale and were pruned by another session; no duplicate work found (no `wt-T0.*` worktrees, no `task/*` branches on origin). T0.1 -> subagent lane (isolated worktree, docs+test) -- **done, see Shipped**. T0.12 -> kazi lane (JIT proposal from acc:, converged rung 1 claude-sonnet-5, merged PR #4) -- **done, see Shipped**. T0.2/T0.3/T0.6/T0.7/T0.8/T0.9/T0.10 -> kazi lane (JIT proposal from acc:, converge in `../wt-T0.<n>`, GOWORK=off per L-0001), still in flight. Other concurrent sessions observed on this machine (serenity-a/b/c/d, sire-a, seat, blink-oxalpha) hold no active claims on these 9 tasks as of dispatch. Wave 0b (T0.4, T0.5, T0.13) stays blocked on T0.2/T0.3 landing.
 
 ## In flight (PRs open)
 
-- 2026 08 27 T0.12 golangci-lint CI gate (`.golangci.yml` v2: govet, staticcheck, errcheck, unused / gofmt, goimports; `make lint`; CI `lint` job; the 26 errcheck findings it surfaced fixed for real, incl. two genuine bugs — `ShardStore.Append` swallowing a flush error and `ShardStore.Compact` swallowing a tmp-file write error) -- PR #4, checks green, awaiting merge. Owner: kazi lane (worktree `task/t0-12-golangci-lint-ci`, freed from an idle duplicate `wt-T0.12` worktree that held the branch with no commits).
+- none
 
 ## Planned
 
