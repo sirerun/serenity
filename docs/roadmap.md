@@ -11,7 +11,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In progress
 
-- 2026 08 27 E0 wave 0a (T0.1, T0.2, T0.3, T0.6, T0.7, T0.8, T0.9, T0.10, T0.12) claimed and in flight via `/apply --pool` from a session on Davids-Mac-mini (session af341d66). A second `/apply --pool` session (this one) found the wave fully claimed and is holding for wave 0b (T0.4, T0.5, T0.13 depend on T0.2/T0.3) or any released/abandoned wave-0a claim.
+- 2026 08 27 E0 wave 0a (T0.1, T0.2, T0.3, T0.6, T0.7, T0.8, T0.9, T0.10, T0.12) re-claimed and dispatched via `/apply --pool` (session af341d66, `/loop` tick). At claim time `git ls-remote origin refs/claims/*` was empty and `gh pr list --state all` showed no PRs beyond #1 (the lore fix) -- the prior "claimed and in flight" line this superseded never reached a PR, so its claims were either released or went stale and were pruned by another session; no duplicate work found (no `wt-T0.*` worktrees, no `task/*` branches on origin). T0.1 -> subagent lane (isolated worktree, docs+test). T0.2/T0.3/T0.6/T0.7/T0.8/T0.9/T0.10/T0.12 -> kazi lane (JIT proposal from acc:, converge in `../wt-T0.<n>`, GOWORK=off per L-0001). Other concurrent sessions observed on this machine (serenity-a/b/c/d, sire-a, seat, blink-oxalpha) hold no active claims on these 9 tasks as of dispatch. Wave 0b (T0.4, T0.5, T0.13) stays blocked on T0.2/T0.3 landing.
 
 ## In flight (PRs open)
 
