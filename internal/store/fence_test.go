@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"reflect"
 	"testing"
 
 	"github.com/sirerun/serenity/internal/domain"
@@ -118,6 +119,65 @@ func TestFenceWriteIdempotent(t *testing.T) {
 	}
 	if roundTripped.Summary != "hi" || roundTripped.Entity.Slug != "bob" {
 		t.Fatalf("write round trip lost data: %+v", roundTripped)
+	}
+}
+
+// TestFenceConcurrentMergeDeterministic simulates two concurrent branches
+// each making a merge-safe edit (append a row / mark-superseded a row) to
+// copies of the same page, then a git-merge-file style three-way union of
+// both sides' rows. Per §7.2 the writer sorts and normalizes on render, so
+// the same row set renders byte-identically no matter which side's rows
+// land first in the union — that's what makes concurrent git merges on
+// these pages resolve deterministically rather than by diff3 conflict
+// markers or line order.
+func TestFenceConcurrentMergeDeterministic(t *testing.T) {
+	w := NewFenceWriter(t.TempDir())
+	entity := domain.Entity{Type: "person", Slug: "alice-tan"}
+
+	base := domain.Claim{
+		ID: "cbase01", SubjectSlug: "alice-tan", Predicate: "works_at", Family: "works_at",
+		Object: "initech", Confidence: 0.8, ValidFrom: "2023", SourceRef: "e1#1", State: domain.StateActive,
+	}
+
+	// Side A's edit: append a new row (merge-safe class).
+	sideAAppend := domain.Claim{
+		ID: "ca00001", SubjectSlug: "alice-tan", Predicate: "prefers", Family: "prefers",
+		Object: "async standups", Confidence: 0.7, SourceRef: "e2#1", State: domain.StateActive,
+	}
+	// Side B's edit: append a different new row and mark the base row
+	// superseded (also merge-safe: the row is kept, only state/pointer
+	// change — no line is deleted or rewritten in place).
+	sideBAppend := domain.Claim{
+		ID: "cb00002", SubjectSlug: "alice-tan", Predicate: "works_at", Family: "works_at",
+		Object: "acme", Confidence: 0.9, ValidFrom: "2025-06", SourceRef: "e3#1", State: domain.StateActive,
+	}
+	baseSupersededByB := base
+	baseSupersededByB.State = domain.StateSuperseded
+	baseSupersededByB.SupersededBy = sideBAppend.ID
+
+	// Union the three rows in A-then-B concatenation order.
+	pageAB := NewEntityPage(entity)
+	pageAB.Claims = []domain.Claim{baseSupersededByB, sideAAppend, sideBAppend}
+
+	// Union the same three rows in B-then-A order — a real three-way merge
+	// can land either side's hunk first depending on diff/patch order.
+	pageBA := NewEntityPage(entity)
+	pageBA.Claims = []domain.Claim{sideBAppend, baseSupersededByB, sideAAppend}
+
+	if reflect.DeepEqual(pageAB.Claims, pageBA.Claims) {
+		t.Fatal("test setup broken: the two pre-render row orderings must differ to exercise merge-order independence")
+	}
+
+	renderedAB, err := w.RenderEntity(pageAB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderedBA, err := w.RenderEntity(pageBA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(renderedAB, renderedBA) {
+		t.Fatalf("merge-order dependent render:\n--- A-then-B ---\n%s\n--- B-then-A ---\n%s", renderedAB, renderedBA)
 	}
 }
 
