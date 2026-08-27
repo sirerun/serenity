@@ -3,6 +3,8 @@
 
 # Ephemeral agent outputs
 .claude/
+.kazi/
+.mcp.json
 
 # Release artifacts
 dist/
