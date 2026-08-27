@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -38,6 +39,23 @@ type Engine interface {
 }
 
 var _ Engine = (*SQLite)(nil)
+
+// RuntimeTables lists tables that hold runtime-only state — queues,
+// caches, and ledgers whose only source of truth is this database, not
+// the canonical repo (RFC §7 preamble: "Runtime-only state ... is DB-only
+// by design, enumerated in an allowlist exactly as gbrain's
+// system-of-record doc does"). Rebuild and ResetAll must never wipe a
+// table on this list. Each entry gets its real schema when the milestone
+// that owns it lands (T1.1 jobs, M2 disposition_items/disposition_history,
+// T1.7 spend_ledger); until then they're schema shells so the allowlist
+// can be proven before any consumer exists.
+var RuntimeTables = []string{
+	"jobs",
+	"disposition_items",
+	"disposition_history",
+	"spend_ledger",
+	"caches",
+}
 
 // Hit is one search result.
 type Hit struct {
@@ -89,6 +107,14 @@ func (s *SQLite) migrate() error {
 			chunk_ref TEXT PRIMARY KEY,
 			model TEXT NOT NULL,
 			vec BLOB NOT NULL)`,
+	}
+	// Schema shells for runtime-only state (see RuntimeTables): generic
+	// enough to hold a row today, replaced with a real schema by whichever
+	// milestone task owns the table.
+	for _, t := range RuntimeTables {
+		stmts = append(stmts, fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s(
+			id TEXT PRIMARY KEY,
+			payload TEXT NOT NULL DEFAULT '')`, t))
 	}
 	for _, q := range stmts {
 		if _, err := s.db.Exec(q); err != nil {
@@ -148,7 +174,16 @@ func (s *SQLite) SearchFTS(ctx context.Context, query string, limit int) ([]Hit,
 }
 
 func (s *SQLite) ResetAll(ctx context.Context) error {
-	for _, t := range []string{"entities", "claims", "chunks", "vectors"} {
+	derived := []string{"entities", "claims", "chunks", "vectors"}
+	for _, t := range derived {
+		if slices.Contains(RuntimeTables, t) {
+			// A table can't be both rebuilt-from-repo and runtime-only;
+			// catch the allowlist bug loudly instead of silently wiping
+			// runtime state on the next rebuild.
+			return fmt.Errorf("index: %s is listed as both derived and RuntimeTables", t)
+		}
+	}
+	for _, t := range derived {
 		if _, err := s.db.ExecContext(ctx, `DELETE FROM `+t); err != nil {
 			return err
 		}
