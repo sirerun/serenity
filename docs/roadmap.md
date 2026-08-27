@@ -4,6 +4,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026 08 27 Podcast script docs/content/podcast-serenity-and-gbrain.md (two voices, ~13 min) and its ElevenLabs Studio render (Turbo v2.5, Alice as HOST, Adam as MAINTAINER, MP3). Owner: David's planning session.
 - 2026 08 27 Plan to code complete (commit 9474e5a): docs/plan.md, docs/plans/E0-E6 (108 tasks), ADRs 001-010, devlog. Owner: David's planning session.
 - 2026 08 26 M0 skeleton + substrate invariants (commit 13dc0d2): init, fence + shard writers with round-trip property tests, 10K-claim shard property test, SQLite index with wipe-and-rebuild invariant and the fence/shard disagreement fixture, sync/extract/doctor/status, keychain daemon token, CI (vet/build/test-race, cross-build), goreleaser + brew tap config (never tagged).
 
