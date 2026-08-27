@@ -62,9 +62,21 @@ func NewEntityPage(e domain.Entity) *EntityPage {
 // FenceWriter renders and parses entity pages under root/brain/entities.
 type FenceWriter struct {
 	Root string
+	// Vocabulary restricts which predicates RenderEntity accepts. Nil uses
+	// the controlled vocabulary seeded at install (defaultVocabulary);
+	// set it from a loaded config.Config.Families to enforce a project's
+	// actual, migrated vocabulary instead of the seed (§7.2).
+	Vocabulary map[string]bool
 }
 
 func NewFenceWriter(root string) *FenceWriter { return &FenceWriter{Root: root} }
+
+func (w *FenceWriter) vocabulary() map[string]bool {
+	if w.Vocabulary != nil {
+		return w.Vocabulary
+	}
+	return defaultVocabulary
+}
 
 // PathFor returns the canonical page path: brain/entities/<type>/<slug>.md.
 func (w *FenceWriter) PathFor(entityType, slug string) string {
@@ -75,9 +87,13 @@ func (w *FenceWriter) PathFor(entityType, slug string) string {
 // timeline entries are sorted so concurrent git merges are deterministic
 // (§7.2: rows are append-mostly; the writer sorts and normalizes).
 func (w *FenceWriter) RenderEntity(p *EntityPage) ([]byte, error) {
+	vocab := w.vocabulary()
 	for i := range p.Claims {
 		if strings.ContainsRune(p.Claims[i].Object, '\n') {
 			return nil, fmt.Errorf("claim %s: objects must be single-line (canonical form)", p.Claims[i].ID)
+		}
+		if pred := p.Claims[i].Predicate; !vocab[pred] {
+			return nil, fmt.Errorf("claim %s: predicate %q is not in the controlled vocabulary (extend via serenity.yml + migration)", p.Claims[i].ID, pred)
 		}
 	}
 
