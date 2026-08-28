@@ -17,10 +17,38 @@ import (
 func newConnectorsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "connectors",
-		Short: "Manage connector authentication",
+		Short: "Manage connectors: authentication and status",
 	}
-	cmd.AddCommand(newConnectorsAuthCmd())
+	cmd.AddCommand(newConnectorsAuthCmd(), newConnectorsStatusCmd())
 	return cmd
+}
+
+// connectorDocs lists every connector by its stable name (the prefix
+// before any per-instance suffix in Connector.Name, e.g. "imap:you@gmail.com"
+// reports as "imap" here) alongside the doc page documenting it (T1.18).
+// Order is the support matrix's order in docs/connectors/README.md.
+var connectorDocs = []struct {
+	Name string
+	Doc  string
+}{
+	{"file", "docs/connectors/file.md"},
+	{"git-repo", "docs/connectors/gitrepo.md"},
+	{"imap", "docs/connectors/imap.md"},
+}
+
+func newConnectorsStatusCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "status",
+		Short: "List connectors and the path to each one's doc page",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			out := cmd.OutOrStdout()
+			for _, c := range connectorDocs {
+				_, _ = fmt.Fprintf(out, "%-10s %s\n", c.Name, c.Doc)
+			}
+			return nil
+		},
+	}
 }
 
 func newConnectorsAuthCmd() *cobra.Command {
