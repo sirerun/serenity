@@ -28,10 +28,10 @@ func TestSearchVectorsNeverMixesPins(t *testing.T) {
 	ctx := context.Background()
 	eng := openTestEngine(t)
 
-	if err := eng.InsertChunk(ctx, "c1", "acme", "alpha content"); err != nil {
+	if err := eng.InsertChunk(ctx, "c1", "acme", "alpha content", "sha-alpha", "file"); err != nil {
 		t.Fatal(err)
 	}
-	if err := eng.InsertChunk(ctx, "c2", "acme", "beta content"); err != nil {
+	if err := eng.InsertChunk(ctx, "c2", "acme", "beta content", "sha-beta", "file"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -79,7 +79,7 @@ func TestSearchVectorsRanksByCosineDescending(t *testing.T) {
 		{"far", []float32{0, 0, 1}},
 		{"exact", []float32{1, 0, 0}},
 	} {
-		if err := eng.InsertChunk(ctx, c.ref, "e", c.ref); err != nil {
+		if err := eng.InsertChunk(ctx, c.ref, "e", c.ref, "sha-"+c.ref, "file"); err != nil {
 			t.Fatal(err)
 		}
 		if err := eng.UpsertVector(ctx, c.ref, "m@v1", c.vec); err != nil {
@@ -109,7 +109,7 @@ func TestHasVectorIsPinScoped(t *testing.T) {
 	ctx := context.Background()
 	eng := openTestEngine(t)
 
-	if err := eng.InsertChunk(ctx, "c1", "e", "text"); err != nil {
+	if err := eng.InsertChunk(ctx, "c1", "e", "text", "sha-c1", "file"); err != nil {
 		t.Fatal(err)
 	}
 	if err := eng.UpsertVector(ctx, "c1", "modelA@v1", []float32{1, 0}); err != nil {
@@ -137,7 +137,7 @@ func TestUpsertVectorIsIdempotentPerPin(t *testing.T) {
 	ctx := context.Background()
 	eng := openTestEngine(t)
 
-	if err := eng.InsertChunk(ctx, "c1", "e", "text"); err != nil {
+	if err := eng.InsertChunk(ctx, "c1", "e", "text", "sha-c1", "file"); err != nil {
 		t.Fatal(err)
 	}
 	if err := eng.UpsertVector(ctx, "c1", "modelA@v1", []float32{1, 0}); err != nil {

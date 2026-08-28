@@ -60,6 +60,28 @@ func (s *SQLite) HasVector(ctx context.Context, chunkRef, model string) (bool, e
 	return n > 0, nil
 }
 
+// VectorFor returns chunkRef's own stored vector under model, and whether
+// one exists at all. Unlike SearchVectors (query-vs-every-chunk), this is
+// chunk-vs-chunk: the primitive internal/search's near-duplicate dedup
+// layer (T1.11) needs to compare two candidate results' own vectors
+// directly, rather than either one's similarity to the query.
+func (s *SQLite) VectorFor(ctx context.Context, chunkRef, model string) ([]float32, bool, error) {
+	var blob []byte
+	err := s.db.QueryRowContext(ctx,
+		`SELECT vec FROM vectors WHERE chunk_ref = ? AND model = ?`, chunkRef, model).Scan(&blob)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("index: vector for %s: %w", chunkRef, err)
+	}
+	vec, err := decodeVector(blob)
+	if err != nil {
+		return nil, false, fmt.Errorf("index: vector for %s: %w", chunkRef, err)
+	}
+	return vec, true, nil
+}
+
 // SearchVectors performs an exact cosine scan (§7.5: "exact cosine scan
 // over memory-mapped embeddings ... single-digit milliseconds" at
 // gbrain-production scale) restricted to model's own rows. It never reads,
@@ -119,16 +141,20 @@ func (s *SQLite) SearchVectors(ctx context.Context, model string, query []float3
 
 	hits := make([]Hit, 0, len(candidates))
 	for _, c := range candidates {
-		var entitySlug, text string
+		var entitySlug, text, sourceSHA256, kind string
 		err := s.db.QueryRowContext(ctx,
-			`SELECT entity_slug, text FROM chunks WHERE chunk_ref = ?`, c.chunkRef).Scan(&entitySlug, &text)
+			`SELECT entity_slug, text, source_sha256, kind FROM chunks WHERE chunk_ref = ?`, c.chunkRef).
+			Scan(&entitySlug, &text, &sourceSHA256, &kind)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
 		if err != nil {
 			return nil, fmt.Errorf("index: search vectors: hydrate chunk %s: %w", c.chunkRef, err)
 		}
-		hits = append(hits, Hit{ChunkRef: c.chunkRef, EntitySlug: entitySlug, Text: text, Score: c.score})
+		hits = append(hits, Hit{
+			ChunkRef: c.chunkRef, EntitySlug: entitySlug, Text: text,
+			SourceSHA256: sourceSHA256, Kind: kind, Score: c.score,
+		})
 	}
 	return hits, nil
 }
