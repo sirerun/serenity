@@ -26,7 +26,7 @@ Verified at 13dc0d2 (2026 08 27): `go test -race ./...` green (cli, index, store
 
 ### Wave 0b (after 0a; 4 agents)
 
-- [ ] T0.4 Dirty-tree guard: pause writes to a human-dirty file and record a pending conflict  Owner: pool  Est: 75m  verifies: [UC-016]  deps: [T0.3]  acc: [test: hand-edit a page, submit a machine write for it; file bytes unchanged, .serenity/pending/<slug>.json holds both sides, clearing it resumes the write]
+- [x] T0.4 Dirty-tree guard: pause writes to a human-dirty file and record a pending conflict  Owner: pool  Est: 75m  verifies: [UC-016]  deps: [T0.3]  acc: [test: hand-edit a page, submit a machine write for it; file bytes unchanged, .serenity/pending/<slug>.json holds both sides, clearing it resumes the write] (merged PR #12, 2026-08-27, kazi goal t0-4-dirty-tree-guard, all 12 predicates pass — 5 capability + 6 guard + 1 landed, verified via `kazi apply --check --json`)
   - Scope: `git status --porcelain -- <path>` per target file before each job (never whole-repo dirtiness); pending records are runtime state (T0.10) and become disposition items in T2.1.
 - [ ] T0.5 Daemon commits (`serenity:` prefix) + doctor last-push age  Owner: pool  Est: 60m  verifies: [UC-040, UC-003]  deps: [T0.3]  acc: [queue flush produces a commit whose subject starts with "serenity:"; doctor against a fixture with a local bare remote reports last-push age and warns when > 24h or never pushed]
   - Pitfall: `git log origin/<branch>` on a never-pushed repo is "never pushed", not an error.
