@@ -65,6 +65,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 ## In flight (PRs open)
 
 - 2026 08 28 Wave 6 closed 6/6 (T3.6's plan-file checkbox was found dropped during a concurrent-rebase conflict resolution and backfilled by the coordinator; roadmap Shipped entry was never affected). Wave 7 dispatched via `/apply --pool` (claims WON), overnight/quiet-hours sizing: T1.12 composer `serenity ask`, T1.16 `serenity migrate --models`, T3.7 `serenity check` CLI, T3.15 upstream dira PR (drafted for founder review before actual submission to kazi-org/dira -- see task brief). Owner: pool. Each task owns its own S6 docs entries.
+- 2026 08 28 T3.15 (PR #45, sirerun/serenity, open) -- the Serenity-side half of the task, complete: `internal/dira/UPSTREAM.md` records the full decision log for the proposed upstream `applies_when` schema field, a real diff (schema + `internal/ledger` codec + tests, all green against a fresh clone of the real `kazi-org/dira`) pushed to a fork (`dndungu/dira`, branch `propose/optional-applies-when-field`), and the exact drafted PR title/body ready to submit. The outward-facing half -- `gh pr create --repo kazi-org/dira` -- is deliberately held: opening a PR against a repo we don't own, under David's identity, is not this session's call. Blocked on team-lead review of the drafted content in UPSTREAM.md; once cleared, submit and edit UPSTREAM.md with the real PR URL. No code path depends on this either way (ADR 008's body-block form is what `internal/direction` actually reads).
 
 ## Planned
 
