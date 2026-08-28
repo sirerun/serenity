@@ -1,0 +1,9 @@
+span: Ava's expense reconciliation email cites the finance ledger's $4,750.00 figure for the Q3 offsite venue.
+expected:
+    predicate: costs
+    object: 4750.00-usd
+    valid_from: 2026-07
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-costs-conflict
+contradiction_role: b

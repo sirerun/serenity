@@ -1,0 +1,7 @@
+span: Ava's email after the vendor sync stated the vendor's SLA response times are unacceptable.
+expected:
+    predicate: said
+    object: vendor-sla-unacceptable
+    valid_from: 2026-03
+labeler: human-reviewer
+adjudicated: true

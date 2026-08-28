@@ -1,0 +1,7 @@
+span: Ava mentioned to her doctor that she's been taking melatonin nightly.
+expected:
+    predicate: takes_medication
+    object: melatonin
+    valid_from: 2023-02
+labeler: model-b
+adjudicated: false

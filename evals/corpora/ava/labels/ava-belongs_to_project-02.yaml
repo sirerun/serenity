@@ -1,0 +1,8 @@
+span: Ava's team roster lists her under Project Lighthouse.
+expected:
+    predicate: belongs_to_project
+    object: project-lighthouse
+    valid_from: 2024-02
+    valid_to: 2024-11
+labeler: model-b
+adjudicated: false

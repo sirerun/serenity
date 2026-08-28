@@ -1,0 +1,9 @@
+span: Ava Standardo joined Beta LLC in February 2026 as her new employer.
+expected:
+    predicate: works_at
+    object: beta-llc
+    valid_from: 2026-02
+labeler: model-b
+adjudicated: true
+contradiction_pair_id: ava-works_at-conflict
+contradiction_role: b

@@ -1,0 +1,9 @@
+span: Ava forwarded the vendor's original Q3 offsite invoice showing $3,200.00.
+expected:
+    predicate: costs
+    object: 3200.00-usd
+    valid_from: 2026-07
+labeler: model-a
+adjudicated: true
+contradiction_pair_id: ava-costs-conflict
+contradiction_role: a

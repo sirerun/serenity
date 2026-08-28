@@ -1,0 +1,9 @@
+span: Ava's own calendar entry, updated after the 1:1, now shows the performance review due 2026-03-29.
+expected:
+    predicate: deadline_on
+    object: "2026-03-29"
+    valid_from: 2026-03
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-deadline_on-conflict
+contradiction_role: b

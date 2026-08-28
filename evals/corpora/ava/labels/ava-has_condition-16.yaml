@@ -1,0 +1,7 @@
+span: Ava's wellness app tracks generalized anxiety as a chronic condition.
+expected:
+    predicate: has_condition
+    object: generalized-anxiety
+    valid_from: 2021-09
+labeler: model-a
+adjudicated: false

@@ -1,0 +1,9 @@
+span: A February 2026 statement was mailed to Ava for her still-open Chase checking account.
+expected:
+    predicate: owns_account
+    object: chase-checking-active
+    valid_from: 2026-02
+labeler: model-a
+adjudicated: true
+contradiction_pair_id: ava-owns_account-conflict
+contradiction_role: a

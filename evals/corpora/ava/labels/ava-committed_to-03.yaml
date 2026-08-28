@@ -1,0 +1,7 @@
+span: Ava's task tracker shows a commitment to shipping the Q3 report by the end of the month.
+expected:
+    predicate: committed_to
+    object: ship-q3-report
+    valid_from: 2026-07
+labeler: human-reviewer
+adjudicated: true

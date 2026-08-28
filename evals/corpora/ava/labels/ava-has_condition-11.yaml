@@ -1,0 +1,7 @@
+span: In a message to her manager, Ava mentioned she has chronic migraine.
+expected:
+    predicate: has_condition
+    object: chronic-migraine
+    valid_from: 2020-06
+labeler: model-b
+adjudicated: false

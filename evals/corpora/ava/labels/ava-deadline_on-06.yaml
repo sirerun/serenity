@@ -1,0 +1,7 @@
+span: A calendar reminder shows Ava's her tax filing due 2026-04-15.
+expected:
+    predicate: deadline_on
+    object: "2026-04-15"
+    valid_from: 2026-04
+labeler: human-reviewer
+adjudicated: true

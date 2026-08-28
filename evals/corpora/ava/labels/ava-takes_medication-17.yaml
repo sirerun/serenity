@@ -1,0 +1,7 @@
+span: Ava Standardo takes melatonin nightly.
+expected:
+    predicate: takes_medication
+    object: melatonin
+    valid_from: 2023-02
+labeler: model-b
+adjudicated: false

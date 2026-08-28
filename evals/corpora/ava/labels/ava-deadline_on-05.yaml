@@ -1,0 +1,7 @@
+span: Ava's deadline for her tax filing is 2026-04-15.
+expected:
+    predicate: deadline_on
+    object: "2026-04-15"
+    valid_from: 2026-04
+labeler: model-b
+adjudicated: false

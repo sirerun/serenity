@@ -1,0 +1,7 @@
+span: An onboarding email confirms Ava was granted a Coinbase wallet.
+expected:
+    predicate: owns_account
+    object: coinbase-wallet
+    valid_from: 2022-04
+labeler: model-a
+adjudicated: false

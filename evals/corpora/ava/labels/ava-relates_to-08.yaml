@@ -1,0 +1,7 @@
+span: Ava's emergency contact form names her sister as Lily Chen.
+expected:
+    predicate: relates_to
+    object: lily-chen
+    valid_from: 1994-03
+labeler: model-b
+adjudicated: false

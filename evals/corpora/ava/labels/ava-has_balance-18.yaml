@@ -1,0 +1,7 @@
+span: The statement shows Ava's GitHub organization account at $0.00.
+expected:
+    predicate: has_balance
+    object: 0.00-usd
+    valid_from: 2026-04
+labeler: human-reviewer
+adjudicated: true

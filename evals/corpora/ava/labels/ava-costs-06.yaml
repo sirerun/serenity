@@ -1,0 +1,7 @@
+span: Ava's expense report lists Ava's conference ticket for the Systems Summit at $899.00.
+expected:
+    predicate: costs
+    object: 899.00-usd
+    valid_from: 2026-05
+labeler: human-reviewer
+adjudicated: true

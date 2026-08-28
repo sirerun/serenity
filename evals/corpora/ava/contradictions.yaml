@@ -1,0 +1,66 @@
+pairs:
+    - id: ava-belongs_to_project-conflict
+      family: belongs_to_project
+      span_a: As of February 2026, Ava is still listed as a core contributor to the Beacon redesign.
+      span_b: A February 2026 org update reassigned Ava fully to Project Anchorpoint, replacing her Beacon redesign work.
+      why: One source keeps Ava on the Beacon redesign in February 2026 while another has her fully reassigned off it to Project Anchorpoint the same month.
+    - id: ava-committed_to-conflict
+      family: committed_to
+      span_a: Ava committed in a March 2026 planning doc to cutting over the Postgres migration by the end of March.
+      span_b: In a Slack thread that same week, Ava committed to holding the Postgres migration cutover until April so QA has more time.
+      why: Ava commits to two different cutover timings for the same Postgres migration within the same week.
+    - id: ava-costs-conflict
+      family: costs
+      span_a: The vendor's original invoice for the Q3 offsite venue lists a cost of $3,200.00.
+      span_b: The finance team's reconciled ledger shows the Q3 offsite venue actually cost $4,750.00.
+      why: The vendor's original invoice and finance's reconciled ledger disagree on what the same Q3 offsite venue actually cost.
+    - id: ava-deadline_on-conflict
+      family: deadline_on
+      span_a: Ava's HR portal lists her performance review as due 2026-03-15.
+      span_b: Ava's manager verbally moved the performance review deadline to 2026-03-29 during a 1:1.
+      why: Two sources name different due dates for the same performance-review deadline in the same month -- only one can be the real deadline.
+    - id: ava-has_balance-conflict
+      family: has_balance
+      span_a: According to the March 2026 bank statement, Ava's Chase checking balance was $4,230.18.
+      span_b: Ava's budgeting app showed her Chase checking balance at $5,910.44 for March 2026.
+      why: Two sources report different balances for the same Chase checking account in the same month -- at most one figure is current.
+    - id: ava-has_condition-conflict
+      family: has_condition
+      span_a: Ava's physical therapy chart lists her lower back strain as still active in February 2026.
+      span_b: Ava's annual physical in February 2026 recorded her lower back strain as fully resolved with no ongoing symptoms.
+      why: One record keeps Ava's lower back strain open as active in February 2026 while another closes it out as resolved the same month -- it cannot be both.
+    - id: ava-has_role-conflict
+      family: has_role
+      span_a: As of February 2026, Ava is still listed as Staff Engineer.
+      span_b: A promotion announcement in February 2026 named Ava Standardo Engineering Manager.
+      why: One source keeps Ava's title at Staff Engineer from February 2026 onward while another has her promoted to Engineering Manager the same month -- one title is stale.
+    - id: ava-owns_account-conflict
+      family: owns_account
+      span_a: Ava's bank records show her Chase checking account is still open and active as of February 2026.
+      span_b: A February 2026 closure notice confirms Ava's Chase checking account was closed and no longer exists.
+      why: One source shows Ava's Chase checking account still open in February 2026 while another shows it closed that same month -- an account cannot be both.
+    - id: ava-prefers-conflict
+      family: prefers
+      span_a: As of February 2026, Ava's IDE settings sync still shows VS Code as her preferred editor.
+      span_b: Ava told a new hire in February 2026 that she now prefers JetBrains Fleet over anything else for editing code.
+      why: Two sources claim Ava's current preferred editor for the same month, naming two different tools.
+    - id: ava-relates_to-conflict
+      family: relates_to
+      span_a: As of February 2026, Ava's org chart still lists Priya Ram as her manager.
+      span_b: Ava told a colleague in February 2026 that Marcus Webb is now her manager.
+      why: Two sources name a different person as Ava's manager for the same month -- she reports to only one manager at a time.
+    - id: ava-said-conflict
+      family: said
+      span_a: In the March 2026 planning meeting, Ava said the Postgres migration would ship by end of March.
+      span_b: In a March 2026 Slack message, Ava said the Postgres migration would slip to April.
+      why: Ava is quoted giving two different ship dates for the same Postgres migration within the same month.
+    - id: ava-takes_medication-conflict
+      family: takes_medication
+      span_a: Ava's pharmacy record shows an active sertraline prescription refilled in February 2026.
+      span_b: Ava told her therapist in February 2026 that she had stopped taking sertraline entirely.
+      why: One record shows an active sertraline refill for Ava in February 2026 while another has her stopping it that same month.
+    - id: ava-works_at-conflict
+      family: works_at
+      span_a: As of February 2026, Ava Standardo's HR record still lists Acme Corp as her employer.
+      span_b: Ava Standardo joined Beta LLC in February 2026 as her new employer.
+      why: Two sources both claim to be Ava's current (open-ended) employer starting the same month -- she cannot be employed by both Acme Corp and Beta LLC at once.

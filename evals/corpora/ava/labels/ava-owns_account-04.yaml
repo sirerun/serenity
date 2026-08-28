@@ -1,0 +1,7 @@
+span: Ava's password manager lists a saved login for her Chase checking account.
+expected:
+    predicate: owns_account
+    object: chase-checking
+    valid_from: 2018-03
+labeler: model-a
+adjudicated: false

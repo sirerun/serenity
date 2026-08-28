@@ -1,0 +1,9 @@
+span: In a March 2026 Slack message, Ava said the Postgres migration would slip to April.
+expected:
+    predicate: said
+    object: migration-ships-april
+    valid_from: 2026-03
+labeler: model-b
+adjudicated: true
+contradiction_pair_id: ava-said-conflict
+contradiction_role: b

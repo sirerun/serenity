@@ -1,0 +1,7 @@
+span: The invoice for Ava's therapy session copay shows $40.00.
+expected:
+    predicate: costs
+    object: 40.00-usd
+    valid_from: 2026-03
+labeler: model-b
+adjudicated: false

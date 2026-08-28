@@ -1,0 +1,9 @@
+span: Payroll's February 2026 export still runs Ava Standardo's paycheck through Acme Corp.
+expected:
+    predicate: works_at
+    object: acme-corp
+    valid_from: 2026-02
+labeler: model-a
+adjudicated: true
+contradiction_pair_id: ava-works_at-conflict
+contradiction_role: a

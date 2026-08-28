@@ -1,0 +1,9 @@
+span: Ava's February 2026 badge-system profile still shows her title as Staff Engineer.
+expected:
+    predicate: has_role
+    object: staff-engineer
+    valid_from: 2026-02
+labeler: model-a
+adjudicated: true
+contradiction_pair_id: ava-has_role-conflict
+contradiction_role: a

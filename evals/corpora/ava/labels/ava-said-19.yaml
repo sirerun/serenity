@@ -1,0 +1,7 @@
+span: Ava's email after the quarterly review stated the Q2 roadmap review went well.
+expected:
+    predicate: said
+    object: q2-roadmap-review-went-well
+    valid_from: 2026-06
+labeler: model-a
+adjudicated: false

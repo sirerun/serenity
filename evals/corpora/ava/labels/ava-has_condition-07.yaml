@@ -1,0 +1,7 @@
+span: In a message to her manager, Ava mentioned she has mild asthma.
+expected:
+    predicate: has_condition
+    object: mild-asthma
+    valid_from: 2010-01
+labeler: model-a
+adjudicated: false

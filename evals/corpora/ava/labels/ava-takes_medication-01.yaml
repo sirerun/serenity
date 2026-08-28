@@ -1,0 +1,7 @@
+span: Ava Standardo takes Zyrtec daily.
+expected:
+    predicate: takes_medication
+    object: zyrtec
+    valid_from: 2016-01
+labeler: model-a
+adjudicated: false

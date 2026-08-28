@@ -1,0 +1,7 @@
+span: Ava's deadline for her passport renewal is 2026-09-01.
+expected:
+    predicate: deadline_on
+    object: "2026-09-01"
+    valid_from: 2026-09
+labeler: human-reviewer
+adjudicated: true

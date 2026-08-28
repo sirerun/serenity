@@ -1,0 +1,7 @@
+span: In a message to her manager, Ava mentioned she has generalized anxiety.
+expected:
+    predicate: has_condition
+    object: generalized-anxiety
+    valid_from: 2021-09
+labeler: human-reviewer
+adjudicated: true

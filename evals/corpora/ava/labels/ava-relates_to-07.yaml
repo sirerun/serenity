@@ -1,0 +1,7 @@
+span: Ava introduced her sister, Lily Chen, at the team offsite.
+expected:
+    predicate: relates_to
+    object: lily-chen
+    valid_from: 1994-03
+labeler: model-a
+adjudicated: false

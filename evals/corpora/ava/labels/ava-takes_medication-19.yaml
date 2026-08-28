@@ -1,0 +1,7 @@
+span: A pharmacy refill record shows Ava picked up melatonin nightly.
+expected:
+    predicate: takes_medication
+    object: melatonin
+    valid_from: 2023-02
+labeler: model-a
+adjudicated: false

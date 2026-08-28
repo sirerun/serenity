@@ -1,0 +1,7 @@
+span: Ava's medical intake form lists mild asthma as an ongoing condition.
+expected:
+    predicate: has_condition
+    object: mild-asthma
+    valid_from: 2010-01
+labeler: human-reviewer
+adjudicated: true

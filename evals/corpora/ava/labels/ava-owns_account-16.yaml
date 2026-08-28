@@ -1,0 +1,7 @@
+span: Ava's password manager lists a saved login for her AWS billing account.
+expected:
+    predicate: owns_account
+    object: aws-billing-account
+    valid_from: 2021-11
+labeler: model-a
+adjudicated: false

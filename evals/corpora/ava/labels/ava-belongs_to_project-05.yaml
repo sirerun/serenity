@@ -1,0 +1,8 @@
+span: Ava belongs to Project Meridian.
+expected:
+    predicate: belongs_to_project
+    object: project-meridian
+    valid_from: 2024-12
+    valid_to: 2025-06
+labeler: model-b
+adjudicated: false

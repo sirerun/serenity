@@ -1,0 +1,9 @@
+span: The finance team's reconciled ledger shows the Q3 offsite venue actually cost $4,750.00.
+expected:
+    predicate: costs
+    object: 4750.00-usd
+    valid_from: 2026-07
+labeler: model-b
+adjudicated: true
+contradiction_pair_id: ava-costs-conflict
+contradiction_role: b

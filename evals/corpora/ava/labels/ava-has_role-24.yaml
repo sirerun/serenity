@@ -1,0 +1,9 @@
+span: Ava's new February 2026 email signature reads "Ava Standardo, Engineering Manager."
+expected:
+    predicate: has_role
+    object: engineering-manager
+    valid_from: 2026-02
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-has_role-conflict
+contradiction_role: b

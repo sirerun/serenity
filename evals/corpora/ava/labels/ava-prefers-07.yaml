@@ -1,0 +1,6 @@
+span: Ava's standing order confirms she prefers oat milk.
+expected:
+    predicate: prefers
+    object: oat-milk
+labeler: model-a
+adjudicated: false

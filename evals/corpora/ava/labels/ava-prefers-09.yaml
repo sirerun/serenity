@@ -1,0 +1,6 @@
+span: Ava prefers VS Code as her editor.
+expected:
+    predicate: prefers
+    object: vs-code
+labeler: human-reviewer
+adjudicated: true

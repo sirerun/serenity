@@ -1,0 +1,9 @@
+span: A promotion announcement in February 2026 named Ava Standardo Engineering Manager.
+expected:
+    predicate: has_role
+    object: engineering-manager
+    valid_from: 2026-02
+labeler: model-b
+adjudicated: true
+contradiction_pair_id: ava-has_role-conflict
+contradiction_role: b

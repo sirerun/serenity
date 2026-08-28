@@ -1,0 +1,7 @@
+span: Ava Standardo has been diagnosed with seasonal allergies.
+expected:
+    predicate: has_condition
+    object: seasonal-allergies
+    valid_from: 2015-04
+labeler: model-a
+adjudicated: false

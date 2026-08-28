@@ -1,0 +1,7 @@
+span: In a message to her manager, Ava mentioned she has a lower back strain.
+expected:
+    predicate: has_condition
+    object: lower-back-strain
+    valid_from: 2024-11
+labeler: model-a
+adjudicated: false

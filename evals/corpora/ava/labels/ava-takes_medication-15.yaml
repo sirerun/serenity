@@ -1,0 +1,7 @@
+span: A pharmacy refill record shows Ava picked up sertraline daily.
+expected:
+    predicate: takes_medication
+    object: sertraline
+    valid_from: 2021-10
+labeler: human-reviewer
+adjudicated: true

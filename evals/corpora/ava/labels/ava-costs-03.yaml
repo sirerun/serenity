@@ -1,0 +1,7 @@
+span: The invoice for Ava's AWS bill shows $312.00.
+expected:
+    predicate: costs
+    object: 312.00-usd
+    valid_from: 2026-04
+labeler: human-reviewer
+adjudicated: true

@@ -1,0 +1,7 @@
+span: Ava's task tracker shows a commitment to mentoring a new hire through onboarding.
+expected:
+    predicate: committed_to
+    object: mentor-new-hire
+    valid_from: 2026-05
+labeler: model-a
+adjudicated: false

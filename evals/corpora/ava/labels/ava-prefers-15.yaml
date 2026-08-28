@@ -1,0 +1,6 @@
+span: Ava's standing order confirms she prefers a standing desk.
+expected:
+    predicate: prefers
+    object: standing-desk
+labeler: human-reviewer
+adjudicated: true

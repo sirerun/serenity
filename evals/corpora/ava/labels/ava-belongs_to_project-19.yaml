@@ -1,0 +1,7 @@
+span: In a project kickoff doc, Ava is named a contributor to Operation Tidewater.
+expected:
+    predicate: belongs_to_project
+    object: operation-tidewater
+    valid_from: 2026-01
+labeler: model-a
+adjudicated: false

@@ -1,0 +1,7 @@
+span: In a message to her manager, Ava mentioned she has seasonal allergies.
+expected:
+    predicate: has_condition
+    object: seasonal-allergies
+    valid_from: 2015-04
+labeler: human-reviewer
+adjudicated: true

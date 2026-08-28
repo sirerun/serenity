@@ -1,0 +1,8 @@
+span: According to her HR record, Ava Standardo is employed by Contoso Systems.
+expected:
+    predicate: works_at
+    object: contoso-systems
+    valid_from: 2019-01
+    valid_to: 2020-12
+labeler: model-b
+adjudicated: false

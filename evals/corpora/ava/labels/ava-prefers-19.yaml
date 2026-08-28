@@ -1,0 +1,6 @@
+span: Ava's standing order confirms she prefers remote work on Fridays.
+expected:
+    predicate: prefers
+    object: remote-fridays
+labeler: model-a
+adjudicated: false

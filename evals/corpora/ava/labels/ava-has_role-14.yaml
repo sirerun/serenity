@@ -1,0 +1,8 @@
+span: Per the org chart, Ava holds the role of Engineering Manager.
+expected:
+    predicate: has_role
+    object: engineering-manager
+    valid_from: 2024-01
+    valid_to: 2025-05
+labeler: model-b
+adjudicated: false

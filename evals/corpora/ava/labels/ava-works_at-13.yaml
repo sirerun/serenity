@@ -1,0 +1,8 @@
+span: Ava Standardo works at Northwind Traders.
+expected:
+    predicate: works_at
+    object: northwind-traders
+    valid_from: 2024-01
+    valid_to: 2025-05
+labeler: model-a
+adjudicated: false

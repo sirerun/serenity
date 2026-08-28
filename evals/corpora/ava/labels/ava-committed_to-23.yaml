@@ -1,0 +1,9 @@
+span: In a Slack thread that same week, Ava committed to holding the Postgres migration cutover until April so QA has more time.
+expected:
+    predicate: committed_to
+    object: migrate-postgres-delay-to-april
+    valid_from: 2026-03
+labeler: model-b
+adjudicated: true
+contradiction_pair_id: ava-committed_to-conflict
+contradiction_role: b

@@ -1,0 +1,9 @@
+span: Ava told a new hire in February 2026 that she now prefers JetBrains Fleet over anything else for editing code.
+expected:
+    predicate: prefers
+    object: jetbrains-fleet
+    valid_from: 2026-02
+labeler: model-b
+adjudicated: true
+contradiction_pair_id: ava-prefers-conflict
+contradiction_role: b

@@ -1,0 +1,7 @@
+span: Ava committed to running a half marathon in the fall.
+expected:
+    predicate: committed_to
+    object: run-half-marathon
+    valid_from: 2026-03
+labeler: model-b
+adjudicated: false

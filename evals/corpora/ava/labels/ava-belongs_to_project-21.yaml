@@ -1,0 +1,9 @@
+span: As of February 2026, Ava is still listed as a core contributor to the Beacon redesign.
+expected:
+    predicate: belongs_to_project
+    object: beacon-redesign
+    valid_from: 2026-02
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-belongs_to_project-conflict
+contradiction_role: a

@@ -1,0 +1,9 @@
+span: Ava told a colleague in February 2026 that Marcus Webb is now her manager.
+expected:
+    predicate: relates_to
+    object: marcus-webb
+    valid_from: 2026-02
+labeler: model-b
+adjudicated: true
+contradiction_pair_id: ava-relates_to-conflict
+contradiction_role: b

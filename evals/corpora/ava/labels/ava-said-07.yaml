@@ -1,0 +1,7 @@
+span: Ava's email after the sprint planning session stated she'd rather use feature flags than a hard cutover.
+expected:
+    predicate: said
+    object: prefer-feature-flags
+    valid_from: 2026-05
+labeler: model-a
+adjudicated: false

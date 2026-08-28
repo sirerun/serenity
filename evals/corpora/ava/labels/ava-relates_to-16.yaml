@@ -1,0 +1,7 @@
+span: Ava's emergency contact form names her accountant as Renee Ortiz.
+expected:
+    predicate: relates_to
+    object: renee-ortiz
+    valid_from: 2019-01
+labeler: model-a
+adjudicated: false

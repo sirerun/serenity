@@ -1,0 +1,7 @@
+span: Ava's manager set a deadline for the Q3 report of 2026-07-31.
+expected:
+    predicate: deadline_on
+    object: "2026-07-31"
+    valid_from: 2026-07
+labeler: human-reviewer
+adjudicated: true

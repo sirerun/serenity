@@ -1,0 +1,7 @@
+span: Ava's banking app displays a current Fidelity 401k balance of $88,410.02.
+expected:
+    predicate: has_balance
+    object: 88410.02-usd
+    valid_from: 2026-03
+labeler: model-a
+adjudicated: false

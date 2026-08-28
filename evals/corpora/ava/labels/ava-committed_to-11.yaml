@@ -1,0 +1,7 @@
+span: Ava's task tracker shows a commitment to reviewing a pending PR by Friday.
+expected:
+    predicate: committed_to
+    object: review-pr-by-friday
+    valid_from: 2026-06
+labeler: model-b
+adjudicated: false

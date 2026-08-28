@@ -1,0 +1,7 @@
+span: Ava's domain renewal for avastandar.do costs $18.00.
+expected:
+    predicate: costs
+    object: 18.00-usd
+    valid_from: 2026-02
+labeler: model-b
+adjudicated: false

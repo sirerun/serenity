@@ -1,0 +1,8 @@
+span: In her performance review, Ava is listed as a QA Analyst.
+expected:
+    predicate: has_role
+    object: qa-analyst
+    valid_from: 2019-01
+    valid_to: 2020-12
+labeler: human-reviewer
+adjudicated: true

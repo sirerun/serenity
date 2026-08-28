@@ -1,0 +1,8 @@
+span: Ava Standardo's job title is Engineering Manager.
+expected:
+    predicate: has_role
+    object: engineering-manager
+    valid_from: 2024-01
+    valid_to: 2025-05
+labeler: model-a
+adjudicated: false

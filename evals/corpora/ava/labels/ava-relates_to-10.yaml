@@ -1,0 +1,7 @@
+span: In an email signature, Ava listed her best friend as Theo Kim.
+expected:
+    predicate: relates_to
+    object: theo-kim
+    valid_from: 2010-09
+labeler: model-a
+adjudicated: false

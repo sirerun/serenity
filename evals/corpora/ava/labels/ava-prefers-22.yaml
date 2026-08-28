@@ -1,0 +1,9 @@
+span: A February 2026 dotfiles commit from Ava still targets VS Code as her editor of choice.
+expected:
+    predicate: prefers
+    object: vs-code
+    valid_from: 2026-02
+labeler: model-a
+adjudicated: true
+contradiction_pair_id: ava-prefers-conflict
+contradiction_role: a

@@ -1,0 +1,7 @@
+span: Ava was quoted in the vendor sync retro notes saying the vendor's SLA response times are unacceptable.
+expected:
+    predicate: said
+    object: vendor-sla-unacceptable
+    valid_from: 2026-03
+labeler: model-a
+adjudicated: false

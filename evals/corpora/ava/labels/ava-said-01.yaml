@@ -1,0 +1,7 @@
+span: In the Tuesday standup, Ava said the deploy window should move to Thursday.
+expected:
+    predicate: said
+    object: deploy-window-thursday
+    valid_from: 2026-05
+labeler: model-a
+adjudicated: false

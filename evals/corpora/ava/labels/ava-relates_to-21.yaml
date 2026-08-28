@@ -1,0 +1,9 @@
+span: As of February 2026, Ava's org chart still lists Priya Ram as her manager.
+expected:
+    predicate: relates_to
+    object: priya-ram
+    valid_from: 2026-02
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-relates_to-conflict
+contradiction_role: a

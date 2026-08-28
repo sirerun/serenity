@@ -1,0 +1,9 @@
+span: Ava's HR portal lists her performance review as due 2026-03-15.
+expected:
+    predicate: deadline_on
+    object: "2026-03-15"
+    valid_from: 2026-03
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-deadline_on-conflict
+contradiction_role: a

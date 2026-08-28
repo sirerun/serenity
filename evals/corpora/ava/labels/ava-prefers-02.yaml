@@ -1,0 +1,6 @@
+span: Ava mentioned in a team survey that she prefers dark roast coffee.
+expected:
+    predicate: prefers
+    object: dark-roast-coffee
+labeler: model-b
+adjudicated: false

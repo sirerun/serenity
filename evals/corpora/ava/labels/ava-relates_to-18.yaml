@@ -1,0 +1,7 @@
+span: In an email signature, Ava listed her therapist as Dr. Novak.
+expected:
+    predicate: relates_to
+    object: dr-novak
+    valid_from: 2021-10
+labeler: human-reviewer
+adjudicated: true

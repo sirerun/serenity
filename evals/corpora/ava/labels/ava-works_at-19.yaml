@@ -1,0 +1,8 @@
+span: In a Slack intro, Ava mentioned she's now with Acme Corp.
+expected:
+    predicate: works_at
+    object: acme-corp
+    valid_from: 2025-06
+    valid_to: 2026-01
+labeler: model-a
+adjudicated: false

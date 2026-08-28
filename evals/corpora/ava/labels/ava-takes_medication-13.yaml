@@ -1,0 +1,7 @@
+span: Ava Standardo takes sertraline daily.
+expected:
+    predicate: takes_medication
+    object: sertraline
+    valid_from: 2021-10
+labeler: model-a
+adjudicated: false

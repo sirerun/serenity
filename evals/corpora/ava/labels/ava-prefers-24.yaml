@@ -1,0 +1,9 @@
+span: Ava's February 2026 tool-survey response names JetBrains Fleet as her preferred editor.
+expected:
+    predicate: prefers
+    object: jetbrains-fleet
+    valid_from: 2026-02
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-prefers-conflict
+contradiction_role: b

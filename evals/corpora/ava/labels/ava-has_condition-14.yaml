@@ -1,0 +1,7 @@
+span: Ava's medical intake form lists generalized anxiety as an ongoing condition.
+expected:
+    predicate: has_condition
+    object: generalized-anxiety
+    valid_from: 2021-09
+labeler: model-b
+adjudicated: false

@@ -1,0 +1,9 @@
+span: The Beacon redesign's February 2026 contributor list still carries Ava's name.
+expected:
+    predicate: belongs_to_project
+    object: beacon-redesign
+    valid_from: 2026-02
+labeler: model-a
+adjudicated: true
+contradiction_pair_id: ava-belongs_to_project-conflict
+contradiction_role: a

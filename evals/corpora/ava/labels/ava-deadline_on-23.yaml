@@ -1,0 +1,9 @@
+span: Ava's manager verbally moved the performance review deadline to 2026-03-29 during a 1:1.
+expected:
+    predicate: deadline_on
+    object: "2026-03-29"
+    valid_from: 2026-03
+labeler: model-b
+adjudicated: true
+contradiction_pair_id: ava-deadline_on-conflict
+contradiction_role: b

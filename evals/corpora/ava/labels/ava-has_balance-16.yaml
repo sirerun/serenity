@@ -1,0 +1,7 @@
+span: A finance summary lists Ava's AWS billing account holding $312.00 owed.
+expected:
+    predicate: has_balance
+    object: 312.00-usd-owed
+    valid_from: 2026-04
+labeler: model-a
+adjudicated: false

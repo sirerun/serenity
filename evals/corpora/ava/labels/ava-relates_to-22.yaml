@@ -1,0 +1,9 @@
+span: Ava's February 2026 1:1 calendar series is still booked under Priya Ram as her manager.
+expected:
+    predicate: relates_to
+    object: priya-ram
+    valid_from: 2026-02
+labeler: model-a
+adjudicated: true
+contradiction_pair_id: ava-relates_to-conflict
+contradiction_role: a

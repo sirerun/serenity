@@ -1,0 +1,7 @@
+span: Ava Standardo owns a Coinbase wallet.
+expected:
+    predicate: owns_account
+    object: coinbase-wallet
+    valid_from: 2022-04
+labeler: model-b
+adjudicated: false

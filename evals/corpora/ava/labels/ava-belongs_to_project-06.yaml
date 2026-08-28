@@ -1,0 +1,8 @@
+span: Ava's team roster lists her under Project Meridian.
+expected:
+    predicate: belongs_to_project
+    object: project-meridian
+    valid_from: 2024-12
+    valid_to: 2025-06
+labeler: human-reviewer
+adjudicated: true

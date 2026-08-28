@@ -1,0 +1,9 @@
+span: Beta LLC's February 2026 new-hire welcome email addresses Ava Standardo as its newest employee.
+expected:
+    predicate: works_at
+    object: beta-llc
+    valid_from: 2026-02
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-works_at-conflict
+contradiction_role: b
