@@ -89,6 +89,16 @@ type Result struct {
 	// RFC 0001 §8.3 / ADR 010 attach to a no_applicable_constraints
 	// verdict ("naming how many active constraints matched nothing").
 	ConsideredCount int
+
+	// Warnings holds one QuestionWarning per open question precept that
+	// blocks one of the checked actions (RFC 0001 §8.3: check_plan
+	// returns "warnings for unanswered blocking questions" alongside the
+	// schema verdict above). A blocking question never changes Status --
+	// it is additive to the constraint verdict, not a third kind of
+	// violation -- so a plan can be StatusPass or
+	// StatusNoApplicableConstraints and still carry warnings. See
+	// questions.go.
+	Warnings []QuestionWarning
 }
 
 // ErrUnknownAction marks an Action naming something outside
@@ -186,6 +196,13 @@ func (m *Matcher) Match(ctx context.Context, actions []Action) (Result, error) {
 	if len(result.Constraints) == 0 {
 		result.Status = StatusNoApplicableConstraints
 	}
+
+	warnings, err := m.matchQuestions(ctx, actions)
+	if err != nil {
+		return Result{}, err
+	}
+	result.Warnings = warnings
+
 	return result, nil
 }
 
