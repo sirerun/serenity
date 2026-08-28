@@ -156,6 +156,62 @@ func TestShardAuthorityOverFenceHead(t *testing.T) {
 	}
 }
 
+// TestRebuildIndexesRawSourceText pins T1.15's extension to Rebuild: every
+// stored source's own text is chunked and indexed for full-text search,
+// distinct from the entity-page/claim-derived chunks -- searchable even
+// before any extraction has run over it. A binary (non-UTF8) source is
+// stored but never chunked into the FTS index (the disclosed v1 gap: no
+// text-extraction pipeline for binary formats yet).
+func TestRebuildIndexesRawSourceText(t *testing.T) {
+	ctx := context.Background()
+	root := scaffoldBrain(t)
+	cfg := config.Default()
+
+	ss := store.NewSourceStore(root)
+	textSrc, err := ss.Write([]byte("Alice mentions the quarterly roadmap in this email."), domain.Source{Kind: "email"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binSrc, err := ss.Write([]byte{0xff, 0xfe, 0x00, 0xff}, domain.Source{Kind: "file"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dbPath := filepath.Join(root, ".serenity", "index.db")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	eng, err := Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = eng.Close() }()
+	if err := Rebuild(ctx, root, cfg, eng); err != nil {
+		t.Fatal(err)
+	}
+
+	hits, err := eng.SearchFTS(ctx, "roadmap", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("SearchFTS(roadmap) returned %d hits, want 1: %+v", len(hits), hits)
+	}
+	if hits[0].SourceSHA256 != textSrc.SHA256 || hits[0].Kind != "email" {
+		t.Fatalf("hit = %+v, want SourceSHA256=%q Kind=email", hits[0], textSrc.SHA256)
+	}
+
+	chunks, err := eng.AllChunks(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range chunks {
+		if c.SourceSHA256 == binSrc.SHA256 {
+			t.Fatalf("binary source was chunked into the FTS index: %+v", c)
+		}
+	}
+}
+
 func TestSearchFTS(t *testing.T) {
 	ctx := context.Background()
 	root := scaffoldBrain(t)

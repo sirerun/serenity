@@ -57,6 +57,10 @@ type Engine interface {
 	// empty for chunks with no backing Source (e.g. rebuild's entity-page
 	// summaries). internal/search's dedup layers (T1.11) key off both.
 	InsertChunk(ctx context.Context, chunkRef, entitySlug, text, sourceSHA256, kind string) error
+	// AllChunks returns every indexed chunk, ordered by chunk_ref -- the
+	// full enumeration a re-embed pass needs (T1.15), as distinct from
+	// SearchFTS's keyword-matched subset.
+	AllChunks(ctx context.Context) ([]Hit, error)
 	SearchFTS(ctx context.Context, query string, limit int) ([]Hit, error)
 	// UpsertVector stores one chunk's embedding under an explicit model
 	// pin (§7.5 "every stored vector carries its model@version"). Keyed
@@ -210,6 +214,27 @@ func (s *SQLite) InsertChunk(ctx context.Context, chunkRef, entitySlug, text, so
 		`INSERT INTO chunks(chunk_ref, entity_slug, text, source_sha256, kind) VALUES(?,?,?,?,?)`,
 		chunkRef, entitySlug, text, sourceSHA256, kind)
 	return err
+}
+
+// AllChunks returns every indexed chunk, ordered by chunk_ref -- the
+// enumeration primitive a full re-embed pass needs (T1.15's `serenity
+// extract`), as distinct from SearchFTS's keyword-matched subset.
+func (s *SQLite) AllChunks(ctx context.Context) ([]Hit, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT chunk_ref, entity_slug, text, source_sha256, kind FROM chunks ORDER BY chunk_ref`)
+	if err != nil {
+		return nil, fmt.Errorf("index: all chunks: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Hit
+	for rows.Next() {
+		var h Hit
+		if err := rows.Scan(&h.ChunkRef, &h.EntitySlug, &h.Text, &h.SourceSHA256, &h.Kind); err != nil {
+			return nil, fmt.Errorf("index: all chunks: %w", err)
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }
 
 func (s *SQLite) SearchFTS(ctx context.Context, query string, limit int) ([]Hit, error) {
