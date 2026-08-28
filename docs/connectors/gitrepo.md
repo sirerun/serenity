@@ -55,8 +55,23 @@ means a moved-then-reverted `HEAD` still adds no new sources.
 
 ## Setup
 
-The git-repo crawler has no CLI command yet (see the connector guide's
-[what's wired today](README.md#whats-wired-today)). Construct it directly:
+Configure one entry per repository under `serenity.yml`'s
+`connectors.git_repo` list (see the connector guide's
+[what's wired today](README.md#whats-wired-today)), then run
+`serenity sync` — `sync` sets `BrainRoot` to your brain repo automatically:
+
+```yaml
+connectors:
+  git_repo:
+    - path: /path/to/repo-one
+    - path: /path/to/repo-two
+```
+
+Crawl five repositories with five entries — each gets its own `Name()`
+(derived from the repo root's base name) and so its own cursor. There's
+still no CLI command to author this config; edit `serenity.yml` directly.
+
+To use the package directly instead, construct it yourself:
 
 ```go
 c := gitrepo.New(gitrepo.Config{
@@ -64,9 +79,6 @@ c := gitrepo.New(gitrepo.Config{
     BrainRoot: "/path/to/brain-repo", // excluded by default; leave empty to skip this check
 })
 ```
-
-One `Connector` crawls exactly one repository. Crawl five repositories
-with five `Connector` instances.
 
 ## Limitations
 
@@ -76,6 +88,5 @@ with five `Connector` instances.
 - The crawler reads the tree at `HEAD` only; it doesn't walk commit
   history.
 - It shells out to `git`, so `git` must be on `PATH`.
-- There's no CLI command to configure or run this connector — you use it
-  through its Go package, and wiring it into `serenity sync` is plan task
-  T1.15.
+- There's no CLI command to author `serenity.yml`'s `connectors.git_repo`
+  list; edit the file directly.

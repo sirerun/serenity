@@ -22,14 +22,54 @@ line, with the path to each connector's page.
 ## What's wired today
 
 `serenity connectors auth imap` authenticates the IMAP connector and is the
-only connector-facing CLI command beyond `status`. The file watcher and
-git-repo crawler need no authentication step and have no CLI command yet —
-you construct and poll them directly through their Go packages
-(`internal/connector/file`, `internal/connector/gitrepo`). Wiring all three
-connectors into `serenity sync` and `serenity extract` for continuous,
-scheduled ingestion is plan task T1.15, not yet built. Until then, treat
-each connector's own package tests as the reference for its exact
-behavior.
+only connector-facing CLI command beyond `status`. `serenity sync` polls
+every connector configured under `serenity.yml`'s `connectors:` map and
+ingests what it finds (plan T1.15):
+
+```yaml
+connectors:
+  imap:
+    account: you@gmail.com        # written by `serenity connectors auth imap`
+  file:
+    path: /path/to/watched/dir     # a single directory, polled (not watched) each sync
+  git_repo:
+    - path: /path/to/repo-one      # one entry per repository -- crawl 5 repos with 5 entries
+    - path: /path/to/repo-two
+```
+
+The file watcher always runs in poll mode from `sync` (`file.NewPoll`), not
+watch mode: `sync` is a one-shot CLI invocation, and watch mode's
+background change-notification only accumulates events while something
+keeps it running, which a one-shot process never does long enough to see
+anything. Only one `file` entry is supported today — the connector's own
+`Name()` doesn't vary by path, so two configured directories would share
+one cursor. Configure as many `git_repo` entries as you have repositories;
+each gets its own cursor from its own repo root.
+
+A connector with no entry is simply not polled — a brain repo with nothing
+configured yet runs `sync` as a no-op. `serenity extract` (or
+`serenity extract all` — the same full pass today) then runs extraction and
+embedding over every source `sync` has ever ingested; see
+[the extraction and embedding section](#extraction-and-embedding) below.
+
+## Extraction and embedding
+
+`serenity extract` needs a pinned model plus a credential to do anything —
+otherwise it reports why it skipped and exits cleanly, the same posture
+`sync` takes for an unconfigured connector:
+
+- `serenity.yml`'s `models.extraction` and `models.embedding` pins select
+  the model (`none@v0`, the install default, skips that stage entirely).
+- The provider is inferred from the model name: a name containing
+  `claude` uses the Anthropic Messages API (`ANTHROPIC_API_KEY`); anything
+  else uses an OpenAI-compatible chat-completions endpoint
+  (`OPENAI_API_KEY`, or `OPENAI_BASE_URL` to point at a local
+  Ollama-class server instead). Embedding always uses a real
+  OpenAI-compatible `/embeddings` endpoint (`OPENAI_API_KEY`, or
+  `OPENAI_EMBEDDINGS_BASE_URL` for a local server).
+- Credentials are read from the environment, not the OS keychain — unlike
+  the IMAP connector's app password, there is no keychain entry for these
+  yet. This is a deliberate, minimal scope, not a final design.
 
 ## Re-auth path
 

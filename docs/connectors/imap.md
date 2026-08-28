@@ -61,9 +61,11 @@ revoked one. Re-authenticate when:
 - The connector's `Poll` call fails with an authentication error citing
   `serenity connectors auth imap`.
 
-Connecting a second mailbox is the same command with a different
-`--email` — each account gets its own keychain entry, so authenticating
-one account never disturbs another.
+Authenticating a different `--email` is the same command and gets its own
+keychain entry, so switching accounts never disturbs a previous one's
+stored password. `serenity.yml`'s `connectors.imap` entry holds a single
+account, though: `serenity sync` polls whichever account `auth` wrote most
+recently, not every account you've ever authenticated (see Limitations).
 
 ## How polling works
 
@@ -82,12 +84,17 @@ one account never disturbs another.
   connector skips it and still advances the cursor past its UID, so a
   message deleted mid-poll can never wedge ingestion.
 
+Once authenticated, `serenity sync` polls the mailbox on every run — no
+further config is needed; `auth` already wrote the `connectors.imap`
+entry `sync` reads.
+
 ## Limitations
 
 - Gmail with an app password is the only certified provider. OAuth and
   other IMAP providers (Fastmail, iCloud) aren't supported yet.
 - Only `INBOX` is polled; there's no CLI flag to select a different
   mailbox.
-- `serenity connectors auth imap` stores credentials, but nothing polls
-  the mailbox automatically yet — wiring this connector into
-  `serenity sync` is plan task T1.15.
+- Only one mailbox is polled per brain repo: `serenity.yml`'s
+  `connectors.imap` holds a single account, not a list. Re-running `auth`
+  with a different `--email` replaces which mailbox `sync` polls, rather
+  than adding a second one.
