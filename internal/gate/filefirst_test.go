@@ -46,6 +46,14 @@ var writeCalls = map[string]bool{
 var allowlist = []string{
 	"internal/index/rebuild.go",
 	"internal/writer/",
+	// T1.21: the BrainBench adapter builds a throwaway index.SQLite per
+	// fixture, in a temp directory it deletes before returning, to score
+	// retrieval quality against a vendored benchmark corpus. It never
+	// opens the real .serenity/ index or writes a canonical brain-repo
+	// file -- there is nothing here for the writer queue to serialize
+	// against, so the file-first invariant (concurrent writers to the
+	// SAME canonical file/index never interleave) does not apply.
+	"internal/eval/brainbench/",
 }
 
 // violation is one disallowed write call site.
