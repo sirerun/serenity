@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -13,6 +14,18 @@ import (
 	"github.com/sirerun/serenity/internal/extract"
 	"github.com/sirerun/serenity/internal/router"
 )
+
+// repoRoot resolves the repo root relative to this test file's own path,
+// so the real evals/corpora/direction corpus and its checked-in cached
+// fixture resolve regardless of the working directory a test runner uses.
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	return filepath.Join(filepath.Dir(file), "..", "..", "..")
+}
 
 // buildTinyCorpus writes a minimal T1.14-shaped corpus (labels/,
 // checksums.yaml, split.yaml) under t.TempDir(), using the real
@@ -205,6 +218,83 @@ func TestRunLiveStopsAtBudget(t *testing.T) {
 	}
 	if provider.callCount > 2 {
 		t.Errorf("provider called %d times, want at most 2 -- the third call should have been skipped before it was made", provider.callCount)
+	}
+}
+
+// TestRunScoresDirectionSectionAlongsidePrimaryCorpus is T3.16's wiring
+// test: Config.DirectionCorpusDir/DirectionFixturePath layer the real
+// evals/corpora/direction corpus and its checked-in cached-predictions
+// fixture onto the same Run call that scores the primary (ava-shaped)
+// corpus, producing both sections in one Report -- one evals/report.json,
+// two corpora.
+func TestRunScoresDirectionSectionAlongsidePrimaryCorpus(t *testing.T) {
+	corpus := buildTinyCorpus(t)
+
+	fixture := struct {
+		Predictions []eval.Prediction `yaml:"predictions"`
+	}{Predictions: []eval.Prediction{
+		{Span: "Ava works at Acme.", Predicate: "works_at", Object: "acme"},
+		{Span: "Ava is a Staff Engineer.", Predicate: "has_role", Object: "staff-engineer"},
+		{Span: "Ava prefers tea.", Predicate: "prefers", Object: "tea"},
+	}}
+	fb, err := yaml.Marshal(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixturePath := filepath.Join(t.TempDir(), "predictions.yaml")
+	if err := os.WriteFile(fixturePath, fb, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := repoRoot(t)
+	report, err := Run(context.Background(), Config{
+		CorpusDir:            corpus,
+		Mode:                 ModeCached,
+		FixturePath:          fixturePath,
+		DirectionCorpusDir:   filepath.Join(root, "evals", "corpora", "direction"),
+		DirectionFixturePath: filepath.Join(root, "evals", "fixtures", "direction-cached-predictions.yaml"),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if report.Families["works_at"].TP != 1 {
+		t.Errorf("primary corpus scoring regressed: works_at TP = %d, want 1", report.Families["works_at"].TP)
+	}
+	if report.Direction == nil {
+		t.Fatal("Direction section is nil, want populated")
+	}
+	if !report.Direction.Adversarial.AllCaught {
+		t.Errorf("Direction.Adversarial.AllCaught = false, want true: %+v", report.Direction.Adversarial)
+	}
+	if report.Direction.RowsScored == 0 {
+		t.Error("Direction.RowsScored = 0, want > 0")
+	}
+}
+
+// TestRunDirectionRejectsLiveMode guards against a silent no-op: DIRECTION
+// scoring has no ModeLive adapter yet (it would need a real ledger.Store
+// built from this corpus's own applies_when representation, not just a
+// router+extractor the way the primary corpus's live mode works), so
+// requesting live mode with a direction corpus configured must fail loudly
+// rather than skip scoring it.
+func TestRunDirectionRejectsLiveMode(t *testing.T) {
+	corpus := buildTinyCorpus(t)
+	provider := &fakeProvider{response: router.Response{Text: `{"observations":[]}`}}
+	ledger := NewTrackingLedger(0)
+	rt := router.New(map[router.Tier]router.Provider{router.TierLocalCheap: provider}, ledger)
+	ex := extract.New(rt, "fake-model@v1", nil, extract.NewMemoryCache())
+
+	root := repoRoot(t)
+	_, err := Run(context.Background(), Config{
+		CorpusDir:          corpus,
+		Mode:               ModeLive,
+		Extractor:          ex,
+		Ledger:             ledger,
+		DirectionCorpusDir: filepath.Join(root, "evals", "corpora", "direction"),
+	})
+	if err == nil {
+		t.Fatal("Run with DirectionCorpusDir set and Mode live must error, got nil")
 	}
 }
 

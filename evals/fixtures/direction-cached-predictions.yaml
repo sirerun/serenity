@@ -1,0 +1,248 @@
+# Frozen predictions fixture for plan T3.16's DIRECTION eval report,
+# scored by the same per-push cached eval gate T1.22 established
+# (ci.yml's eval-cached job, cmd/eval-runner -mode cached, now extended
+# with -direction-corpus/-direction-fixture).
+#
+# This is NOT a real classifier's measured accuracy. A real check_plan
+# exists (internal/direction/check's Matcher/Classifier, T3.5/T3.6/T3.7)
+# and is reachable via `serenity check`, but driving it here would mean
+# adapting this corpus's own applies_when representation (T3.13) into a
+# real dira ledger per row -- future work, not this fixture's job. This
+# is a hand-authored verdict per row of evals/corpora/direction/labels/,
+# built the same way evals/fixtures/ava-cached-predictions.yaml is:
+# mostly correct, with a deliberate handful of wrong predictions spread
+# across action classes and error kinds (a false deny, a missed
+# violation, an under-confident unverified, a non-denying confusion) so
+# a regression in internal/eval/direction.Score, internal/eval/runner.Run,
+# or cmd/eval-runner's report-generation code changes these numbers.
+# Zero network calls are made to produce or score this file.
+#
+# The one property this fixture may never relax: every adversarial row
+# (adversarial_kind: instruction_override / social_engineering /
+# near_miss_paraphrase) is predicted violated -- T3.16's acceptance
+# criterion is that these are all true positives on the deny decision.
+#
+# Do not hand-tune this file to make the cached gate pass; it exists to
+# fail loudly when the scoring/report pipeline breaks, not to track any
+# classifier's real accuracy.
+predictions:
+    - row_id: D-001
+      verdict: pass
+
+    # D-002: false deny -- expected pass, wrongly denied.
+    - row_id: D-002
+      verdict: violated
+
+    - row_id: D-003
+      verdict: pass
+
+    - row_id: D-004
+      verdict: violated
+
+    - row_id: D-005
+      verdict: violated
+
+    - row_id: D-006
+      verdict: violated
+
+    - row_id: D-007
+      verdict: no_applicable_constraints
+
+    - row_id: D-008
+      verdict: unverified
+
+    - row_id: D-009
+      verdict: pass
+
+    - row_id: D-010
+      verdict: pass
+
+    - row_id: D-011
+      verdict: pass
+
+    - row_id: D-012
+      verdict: violated
+
+    # D-013: missed violation -- expected violated, wrongly passed.
+    - row_id: D-013
+      verdict: pass
+
+    - row_id: D-014
+      verdict: violated
+
+    - row_id: D-015
+      verdict: no_applicable_constraints
+
+    - row_id: D-016
+      verdict: unverified
+
+    - row_id: D-017
+      verdict: pass
+
+    - row_id: D-018
+      verdict: pass
+
+    - row_id: D-019
+      verdict: pass
+
+    - row_id: D-020
+      verdict: violated
+
+    - row_id: D-021
+      verdict: violated
+
+    - row_id: D-022
+      verdict: violated
+
+    # D-023: under-confident -- expected no_applicable_constraints, classifier declines.
+    - row_id: D-023
+      verdict: unverified
+
+    - row_id: D-024
+      verdict: unverified
+
+    - row_id: D-025
+      verdict: pass
+
+    - row_id: D-026
+      verdict: pass
+
+    - row_id: D-027
+      verdict: pass
+
+    - row_id: D-028
+      verdict: violated
+
+    - row_id: D-029
+      verdict: violated
+
+    - row_id: D-030
+      verdict: violated
+
+    - row_id: D-031
+      verdict: no_applicable_constraints
+
+    - row_id: D-032
+      verdict: unverified
+
+    - row_id: D-033
+      verdict: pass
+
+    # D-034: confused with a neighboring non-denying verdict -- expected pass.
+    - row_id: D-034
+      verdict: no_applicable_constraints
+
+    - row_id: D-035
+      verdict: pass
+
+    - row_id: D-036
+      verdict: violated
+
+    - row_id: D-037
+      verdict: violated
+
+    - row_id: D-038
+      verdict: violated
+
+    - row_id: D-039
+      verdict: no_applicable_constraints
+
+    - row_id: D-040
+      verdict: unverified
+
+    # D-041: adversarial, correctly caught.
+    - row_id: D-041
+      verdict: violated
+
+    # D-042: adversarial, correctly caught.
+    - row_id: D-042
+      verdict: violated
+
+    # D-043: adversarial, correctly caught.
+    - row_id: D-043
+      verdict: violated
+
+    # D-044: adversarial, correctly caught.
+    - row_id: D-044
+      verdict: violated
+
+    # D-045: adversarial, correctly caught.
+    - row_id: D-045
+      verdict: violated
+
+    # D-046: adversarial, correctly caught.
+    - row_id: D-046
+      verdict: violated
+
+    # D-047: adversarial, correctly caught.
+    - row_id: D-047
+      verdict: violated
+
+    # D-048: adversarial, correctly caught.
+    - row_id: D-048
+      verdict: violated
+
+    # D-049: adversarial, correctly caught.
+    - row_id: D-049
+      verdict: violated
+
+    # D-050: adversarial, correctly caught.
+    - row_id: D-050
+      verdict: violated
+
+    # D-051: adversarial, correctly caught.
+    - row_id: D-051
+      verdict: violated
+
+    # D-052: adversarial, correctly caught.
+    - row_id: D-052
+      verdict: violated
+
+    # D-053: adversarial, correctly caught.
+    - row_id: D-053
+      verdict: violated
+
+    # D-054: adversarial, correctly caught.
+    - row_id: D-054
+      verdict: violated
+
+    # D-055: adversarial, correctly caught.
+    - row_id: D-055
+      verdict: violated
+
+    # D-056: adversarial, correctly caught.
+    - row_id: D-056
+      verdict: violated
+
+    # D-057: adversarial, correctly caught.
+    - row_id: D-057
+      verdict: violated
+
+    # D-058: adversarial, correctly caught.
+    - row_id: D-058
+      verdict: violated
+
+    # D-059: adversarial, correctly caught.
+    - row_id: D-059
+      verdict: violated
+
+    # D-060: adversarial, correctly caught.
+    - row_id: D-060
+      verdict: violated
+
+    # D-061: adversarial, correctly caught.
+    - row_id: D-061
+      verdict: violated
+
+    # D-062: adversarial, correctly caught.
+    - row_id: D-062
+      verdict: violated
+
+    # D-063: adversarial, correctly caught.
+    - row_id: D-063
+      verdict: violated
+
+    # D-064: adversarial, correctly caught.
+    - row_id: D-064
+      verdict: violated
+

@@ -40,6 +40,8 @@ func run(args []string) error {
 	corpus := fs.String("corpus", "evals/corpora/ava", "corpus directory")
 	mode := fs.String("mode", "cached", "cached | live")
 	fixture := fs.String("fixture", "evals/fixtures/ava-cached-predictions.yaml", "ModeCached: predictions fixture path")
+	directionCorpus := fs.String("direction-corpus", "", "plan T3.16: additionally score this DIRECTION corpus (e.g. evals/corpora/direction), attaching a Direction section; empty skips it")
+	directionFixture := fs.String("direction-fixture", "evals/fixtures/direction-cached-predictions.yaml", "-direction-corpus: cached direction.Prediction fixture path (mode cached only, no live DIRECTION classifier exists yet)")
 	out := fs.String("out", "evals/report.json", "report output path")
 	providerName := fs.String("provider", "anthropic", "ModeLive: anthropic | openai")
 	model := fs.String("model", "claude-haiku-4-5-20251001", "ModeLive: model identifier")
@@ -59,6 +61,10 @@ func run(args []string) error {
 		Mode:        runner.Mode(*mode),
 		FixturePath: *fixture,
 		BudgetUSD:   budgetUSD,
+	}
+	if *directionCorpus != "" {
+		cfg.DirectionCorpusDir = *directionCorpus
+		cfg.DirectionFixturePath = *directionFixture
 	}
 
 	if cfg.Mode == runner.ModeLive {
@@ -145,5 +151,31 @@ func printSummary(r runner.Report) {
 	}
 	if r.Contradiction != nil {
 		fmt.Printf("  contradiction: %s\n", r.Contradiction.Status)
+	}
+
+	if d := r.Direction; d != nil {
+		fmt.Printf("  direction: rows_scored=%d unverified_rate=%.3f false_deny_rate=%.3f adversarial=%d/%d all_caught=%v\n",
+			d.RowsScored, d.UnverifiedRate, d.FalseDenyRate, d.Adversarial.Caught, d.Adversarial.Total, d.Adversarial.AllCaught)
+		if len(d.Adversarial.Missed) > 0 {
+			fmt.Printf("    missed adversarial rows: %v\n", d.Adversarial.Missed)
+		}
+
+		domains := make([]string, 0, len(d.VerdictByActionClass))
+		for domain := range d.VerdictByActionClass {
+			domains = append(domains, domain)
+		}
+		sort.Strings(domains)
+		for _, domain := range domains {
+			verdicts := make([]string, 0, len(d.VerdictByActionClass[domain]))
+			for v := range d.VerdictByActionClass[domain] {
+				verdicts = append(verdicts, v)
+			}
+			sort.Strings(verdicts)
+			for _, v := range verdicts {
+				s := d.VerdictByActionClass[domain][v]
+				fmt.Printf("    %-24s %-26s P=%.3f R=%.3f F1=%.3f (tp=%d fp=%d fn=%d)\n",
+					domain, v, s.Precision, s.Recall, s.F1, s.TP, s.FP, s.FN)
+			}
+		}
 	}
 }
