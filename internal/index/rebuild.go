@@ -147,6 +147,49 @@ type Embedder interface {
 	ModelVersion() string
 }
 
+// chunksLackingVector returns every indexed chunk that has no stored
+// vector under pin, in AllChunks' deterministic chunk_ref order. This is
+// the read-only half shared by ReembedMissing (which then embeds and
+// writes each one) and PendingReembed (which only counts them) -- the
+// same absence-of-a-(chunk_ref,model)-row that lets embed.Search fall
+// back to FTS for a chunk (RFC §10.1) is exactly what "pending_reembed"
+// means for a chunk under a pin: there is no separate status column to
+// drift out of sync with the vectors table, only this query.
+func chunksLackingVector(ctx context.Context, eng *SQLite, pin string) ([]Hit, error) {
+	chunks, err := eng.AllChunks(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var missing []Hit
+	for _, c := range chunks {
+		has, err := eng.HasVector(ctx, c.ChunkRef, pin)
+		if err != nil {
+			return nil, err
+		}
+		if !has {
+			missing = append(missing, c)
+		}
+	}
+	return missing, nil
+}
+
+// PendingReembed reports how many indexed chunks currently lack a vector
+// under pin -- the count ReembedMissing(ctx, eng, embedder) would actually
+// embed if called with an embedder pinned to pin right now (RFC §10.1
+// "staged re-embed", plan T1.16 `serenity migrate --models`). A pin that
+// has never embedded anything (a fresh migration target) reports every
+// stored chunk as pending, since none has a vector under it yet. Read-only:
+// unlike ReembedMissing, this never calls UpsertVector and is safe to call
+// from outside the file-first allowlist (e.g. the CLI, before it decides
+// whether to run the migration at all).
+func PendingReembed(ctx context.Context, eng *SQLite, pin string) (int, error) {
+	missing, err := chunksLackingVector(ctx, eng, pin)
+	if err != nil {
+		return 0, err
+	}
+	return len(missing), nil
+}
+
 // ReembedMissing fills in every indexed chunk's vector under embedder's
 // pin (RFC §10.1's "embed" pipeline stage), skipping chunks that already
 // have one under that pin. It lives here, not in the CLI, because
@@ -160,19 +203,12 @@ type Embedder interface {
 // text), per T1.10's own TestVectorsParticipateInRebuildIdentity -- runs
 // fresh after every Rebuild, not only for newly added chunks.
 func ReembedMissing(ctx context.Context, eng *SQLite, embedder Embedder) (embedded int, err error) {
-	chunks, err := eng.AllChunks(ctx)
+	pin := embedder.ModelVersion()
+	missing, err := chunksLackingVector(ctx, eng, pin)
 	if err != nil {
 		return 0, err
 	}
-	pin := embedder.ModelVersion()
-	for _, c := range chunks {
-		has, err := eng.HasVector(ctx, c.ChunkRef, pin)
-		if err != nil {
-			return embedded, err
-		}
-		if has {
-			continue
-		}
+	for _, c := range missing {
 		vec, err := embedder.Embed(ctx, c.Text)
 		if err != nil {
 			return embedded, fmt.Errorf("index: reembed chunk %s: %w", c.ChunkRef, err)
