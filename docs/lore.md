@@ -279,3 +279,40 @@ concurrent load instead.
 **Rule:** Do not assume `router.Result.BudgetExceeded`, a `router.SpendEntry.CostUSD` value, or any aggregate spend total derived from `SpendLedger.Record` reflects real dollars. Both `AnthropicProvider.Send` and `OpenAICompatibleProvider.Send` (internal/router/anthropic.go, openai_compatible.go) construct their `Response.Usage` with `InputTokens`/`OutputTokens` only -- `CostUSD` is never assigned, so it is always the zero value on every real call either provider makes. `Router.Complete`'s `exceeded := b.MaxUSD > 0 && resp.Usage.CostUSD > b.MaxUSD` check (router.go) can therefore never trip against a real provider, and any `SpendLedger` that sums `CostUSD` to enforce an aggregate cap (e.g. `internal/eval/runner.TrackingLedger`, T1.22) stays at `$0.00` regardless of real call volume.
 **Why:** Both providers report real, non-zero `InputTokens`/`OutputTokens` from their APIs' own usage blocks, so the raw data to compute a real cost is already present at the call site -- nobody has yet added a per-model USD/token price table and multiplied it in. This was found while building T1.22's nightly-eval budget cap: the cap is correctly wired end-to-end (`internal/eval/runner.TrackingLedger`, unit-tested with a fake provider that *does* report `CostUSD`) but is provably inert against the two real providers as they stand, which is disclosed in that PR (#41) rather than silently shipped as a working guardrail.
 **Trigger:** Any code that reads `router.Result.BudgetExceeded`, a `SpendEntry.CostUSD`, or a `SpendLedger`-derived total and treats a `$0.00`/`false` result as "no cost was incurred" or "the cap held" -- it may just mean the cost was never computed. Fix is scoped to `internal/router`'s two provider `Send` methods (a per-model price table keyed on `Model`, applied to `Usage.InputTokens`/`OutputTokens`); no task currently owns it.
+
+## L-0009: `serenity search`'s query is never escaped for FTS5 -- any query containing `?`, `"`, `(`, `)`, `:`, `*`, `-`, or a bareword AND/OR/NOT/NEAR crashes instead of searching
+
+**Tags:** #search #index #fts5 #gotcha
+**Date:** 2026-08-28
+**Repo:** sirerun/serenity
+
+**Rule:** Never pass free-text user/caller input straight into
+`internal/index.SQLite.SearchFTS`'s `chunks MATCH ?` (equivalently,
+`internal/search.Search`'s `query` argument or `serenity search <query>`'s
+CLI args) without sanitizing it first. FTS5's query grammar treats several
+punctuation characters as syntax, not literal text; a query built from
+ordinary prose routinely contains at least one.
+
+**Why:** Confirmed empirically while building T1.21's BrainBench adapter:
+`search.Search(ctx, eng, nil, "What did Alice Example say about the Widget
+Co deal?", 10, search.Options{})` returns `search: fts scan: SQL logic
+error: fts5: syntax error near "?"` -- a hard error, not a no-match --
+because SQLite's FTS5 MATCH parser treats `?` as a syntax token. The same
+crash hits `serenity search "what's the deal?"` today from a real
+terminal: `internal/cli/search.go` (`runSearch`) and
+`internal/search.Search` (T1.11) pass the joined CLI args straight through
+with zero escaping. Any question-shaped query -- the single most common
+shape a human actually types -- trips this.
+
+**Trigger:** A `serenity search` query containing `?`, unbalanced `"`,
+`(`/`)`, `:`, `*`, `-`, or a bareword `AND`/`OR`/`NOT`/`NEAR` returns this
+error instead of results. `internal/eval/brainbench.ftsQuery`
+(`internal/eval/brainbench/evaluate.go`) is a worked, tested example of
+the fix -- tokenize on non-alphanumeric runes, double-quote each token
+(FTS5's documented technique for literal-text matching), OR them together
+-- deliberately applied only inside that eval-only package (T1.21's scope)
+rather than patched into `internal/search`/`internal/index` themselves,
+which were concurrently touched by T1.15 this wave. Whoever next touches
+`internal/cli/search.go` or `internal/search.Search` should apply the same
+sanitization at that shared boundary instead of leaving every future
+caller to rediscover this.
