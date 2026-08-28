@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -39,12 +40,15 @@ func runDoctor(root string, out io.Writer) error {
 		warn("not a git repository — no history, no durability; run `serenity init`")
 	} else if remotes := gitRemotes(root); len(remotes) == 0 {
 		warn("no git remote — a lost disk is lost data; add a remote and push")
-	} else if n := gitUnpushed(root); n < 0 {
-		warn("remote %s configured but no upstream tracking — `git push -u`", remotes[0])
-	} else if n > 0 {
-		warn("%d commit(s) not yet pushed to the remote", n)
+	} else if last, pushed := gitLastPushTime(root); !pushed {
+		warn("never pushed — no upstream tracking branch; run `git push -u %s <branch>`", remotes[0])
+	} else if age := time.Since(last); age > 24*time.Hour {
+		warn("last push was %s ago — over the 24h durability floor; push again", age.Round(time.Minute))
 	} else {
-		ok("git remote configured and fully pushed")
+		ok("last push %s ago, within the 24h durability floor", age.Round(time.Second))
+		if n := gitUnpushed(root); n > 0 {
+			warn("%d commit(s) made since that push are not yet on the remote", n)
+		}
 	}
 
 	if _, err := secrets.DaemonToken(); err != nil {
