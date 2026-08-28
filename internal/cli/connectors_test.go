@@ -107,6 +107,28 @@ func TestConnectorsAuthIMAPStoresPasswordInKeychain(t *testing.T) {
 	grepTreeFor(t, root, password)
 }
 
+// TestConnectorsStatusPrintsDocPaths proves T1.18's acc line: `serenity
+// connectors status` prints each connector's doc path.
+func TestConnectorsStatusPrintsDocPaths(t *testing.T) {
+	var out bytes.Buffer
+	cmd := newConnectorsStatusCmd()
+	cmd.SetOut(&out)
+	if err := cmd.RunE(cmd, nil); err != nil {
+		t.Fatalf("RunE: %v", err)
+	}
+
+	got := out.String()
+	for _, want := range []string{
+		"file       docs/connectors/file.md",
+		"git-repo   docs/connectors/gitrepo.md",
+		"imap       docs/connectors/imap.md",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("output %q missing line %q", got, want)
+		}
+	}
+}
+
 func TestConnectorsAuthIMAPRequiresEmail(t *testing.T) {
 	root := t.TempDir()
 	var out bytes.Buffer
