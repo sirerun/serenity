@@ -53,9 +53,24 @@ unchanged directory tree twice adds zero new sources.
 
 ## Setup
 
-The file watcher has no CLI command yet (see the connector
-guide's [what's wired today](README.md#whats-wired-today)). Construct it
-directly:
+Configure one watched directory under `serenity.yml`'s `connectors.file`
+key (see the connector guide's
+[what's wired today](README.md#whats-wired-today)), then run
+`serenity sync`:
+
+```yaml
+connectors:
+  file:
+    path: /path/to/watched/dir
+```
+
+`serenity sync` always polls in poll mode (`file.NewPoll`), never watch
+mode — see the connector guide for why. There's still no CLI command to
+author this config; edit `serenity.yml` directly. Only one directory is
+supported per brain repo today (see the next section).
+
+To use the package directly instead — for example from a long-running
+process that wants watch mode — construct it yourself:
 
 ```go
 c, err := file.New(root) // watch mode
@@ -72,6 +87,9 @@ the background goroutine. Poll mode has nothing to close.
   grows with the size of the tree.
 - Hidden directories are always skipped; there's no option to include
   them.
-- There's no CLI command to configure or run this connector — you use it
-  through its Go package, and wiring it into `serenity sync` is plan task
-  T1.15.
+- Only one `connectors.file` directory is supported per brain repo:
+  `Connector.Name()` always returns the constant `"file"` regardless of
+  root, so a second configured directory would collide with the first on
+  the same cursor/job-history slot. Widening this to multiple directories
+  (mirroring the git-repo crawler's per-repo `Name()`) is unblocked
+  follow-up work, not done by plan task T1.15.
