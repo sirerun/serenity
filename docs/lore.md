@@ -189,6 +189,45 @@ their own `git commit`/`kazi apply`/`golangci-lint` on the same host --
 the exact condition of an `/apply --pool` wave with many parallel kazi-lane
 tasks.
 
+## L-0006: The same hook-triggered corruption (L-0005) can write a stray `core.worktree` into the PRIMARY checkout's shared `.git/config`, silently redirecting every git command run there onto a task worktree
+
+**Tags:** #git #hooks #worktree #critical
+
+**Rule:** If `git status`/`git diff` run from the PRIMARY checkout shows
+files, directories, or diffs that belong to someone's task worktree (an
+untracked package you know you only created in a worktree, an unstaged
+diff on a doc you only edited in a worktree), do not conclude the primary
+checkout's tracked files are corrupted. First run
+`git config --local --get core.worktree` against the primary's own
+`.git/config`. Any output at all is wrong for a non-linked primary repo --
+it means every git command run from there (including `-C <path>`; only
+explicit `--git-dir`/`--work-tree` flags bypass it) is being silently
+redirected to compare the primary's own HEAD/index against that OTHER
+directory's working-tree files. Fix with
+`git config --local --unset core.worktree` run directly against the
+primary's `.git/config` -- safe, since it only removes a metadata key, it
+touches no tracked file or commit. Re-verify with
+`git rev-parse --show-toplevel` (must print the primary's own path) and a
+fresh `git status` before trusting anything else you see from there.
+**Why:** Hit once (T1.7) alongside L-0005's corruption on a task branch --
+after the hook-triggered `internal/writer` git-fixture tests misfired
+during a `git commit` in an isolated task worktree, the PRIMARY checkout's
+`.git/config` had gained `[core] worktree = <that task worktree's path>`.
+Since hooks (`.git/hooks/pre-commit`) are stored in the shared,
+non-per-worktree part of `.git/`, and a linked worktree's `.git/config`
+does not normally carry a `core.worktree` override at all (it's derived
+from the worktree's own gitdir), this line can only have been written by
+some process during the incident cross-writing into the wrong `.git/config`
+-- most likely the same load-contention condition L-0005 documents, just
+a different corrupted target. The practical blast radius is worse than a
+single task branch: while this key is set, EVERY session running plain git
+commands from the primary checkout -- status checks, other agents' `cd
+.../serenity && git ...` -- silently sees a mix of the primary's own
+history and a stranger's worktree files, with no error at all.
+**Trigger:** `git status`/`git diff`/`git rev-parse --show-toplevel` from
+the primary checkout report anything that doesn't match what you (or the
+primary's own HEAD) actually put there.
+
 ## L-0007: L-0005/L-0006's stated root cause (GIT_DIR/GIT_WORK_TREE env inheritance) was tested and does NOT reproduce -- the real mechanism is still unknown
 
 **Tags:** #git #hooks #gotcha #unconfirmed
