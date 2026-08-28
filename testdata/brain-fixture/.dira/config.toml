@@ -1,0 +1,6 @@
+# Minimal config for the T3.14 CLI-conformance fixture. See
+# testdata/brain-fixture/README.md for what this ledger is and is not.
+
+[ledger]
+name = "brain-fixture"
+tier = "repo"

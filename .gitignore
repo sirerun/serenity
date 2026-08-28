@@ -8,3 +8,6 @@
 
 # Release artifacts
 dist/
+
+# dira's own derived read cache, rebuilt on demand (T3.14 fixture ledger)
+testdata/brain-fixture/.dira/cache/

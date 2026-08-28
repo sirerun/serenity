@@ -40,6 +40,19 @@ jobs:
       - uses: actions/checkout@v4
       - run: internal/dira/verify-pin.sh
 
+  dira-cli-conformance:
+    # T3.14: the real kazi-org/dira binary, installed unmodified at the pin in
+    # internal/dira/PIN, must still run `check`/`why`/`brief` against a fixture
+    # ledger the way this repo depends on. Separate from `test` because it
+    # needs network access to install the pinned upstream binary.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: scripts/verify-dira-cli.sh
+
   crossbuild:
     # M0 acceptance: single binary on macOS arm64 + Linux amd64/arm64.
     runs-on: ubuntu-latest
