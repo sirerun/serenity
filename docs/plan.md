@@ -102,7 +102,7 @@ Each wave lists the exact agent count (one agent per task); the task lines here 
 
 ### Wave 0b: E0 wiring (4 agents)
 - [ ] T0.4 Dirty-tree guard: pause writes to a human-dirty file and record a pending conflict
-- [ ] T0.5 Daemon commits (`serenity:` prefix) + doctor last-push age
+- [x] T0.5 Daemon commits (`serenity:` prefix) + doctor last-push age
 - [ ] T0.11 Cut v0.1.0: verify goreleaser publishes darwin/arm64 + linux/amd64 + linux/arm64 archives and the brew tap formula (human)
 - [ ] T0.13 Wire T0.3 into existing callers + extend the CLI wipe-rebuild test through the queue
 
