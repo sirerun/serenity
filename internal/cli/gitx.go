@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Small git helpers. The daemon-side writer queue and GitOps port arrive
@@ -49,6 +50,30 @@ func gitUnpushed(root string) int {
 		n = n*10 + int(c-'0')
 	}
 	return n
+}
+
+// gitLastPushTime reports when this branch was last pushed, approximated
+// by the mtime of its local remote-tracking ref (`.git/refs/remotes/<r>/<b>`)
+// -- git creates or refreshes that loose ref file on every successful push,
+// including the first `push -u`. ok is false when there is no upstream
+// configured at all, i.e. this branch has never been pushed anywhere.
+func gitLastPushTime(root string) (t time.Time, ok bool) {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		return time.Time{}, false
+	}
+	upstream := strings.TrimSpace(string(out)) // e.g. "origin/main"
+	remote, branch, found := strings.Cut(upstream, "/")
+	if !found {
+		return time.Time{}, false
+	}
+	fi, err := os.Stat(filepath.Join(root, ".git", "refs", "remotes", remote, branch))
+	if err != nil {
+		return time.Time{}, false
+	}
+	return fi.ModTime(), true
 }
 
 // installPostCommitPush writes the durability-floor hook (§7.7): push
