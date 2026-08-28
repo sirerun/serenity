@@ -3,15 +3,21 @@
 // expected verdict) rows under evals/corpora/direction/labels/, one YAML
 // file per row.
 //
-// This is not the production check_plan matcher -- that is T3.5 (structured
-// stage 1) and T3.6 (free-text stage 2 classifier), neither landed yet. It
-// is a small, independent reference implementation of the same deterministic
-// stage-1 semantics (RFC SS8.3: match a structured action against a
-// constraint's applies_when clause), used only to prove this corpus's own
-// labels are internally consistent -- an adversarial row whose declared
-// expected_verdict doesn't actually follow from its declared actions and
-// constraints would be exactly the "mislabeled adversarial row" failure mode
-// the corpus exists to avoid.
+// This is not the production check_plan matcher -- that is
+// internal/direction/check's Matcher (T3.5 structured stage 1) and
+// Classifier (T3.6 free-text stage 2), both landed and reachable via
+// `serenity check` (T3.7). Evaluate here is a small, independent reference
+// implementation of the same deterministic stage-1 semantics (RFC SS8.3:
+// match a structured action against a constraint's applies_when clause),
+// used only to prove this corpus's own labels are internally consistent --
+// an adversarial row whose declared expected_verdict doesn't actually
+// follow from its declared actions and constraints would be exactly the
+// "mislabeled adversarial row" failure mode the corpus exists to avoid.
+// It stays independent of the real Matcher deliberately: this corpus's
+// Row/Constraint shape (flat comparator-suffix params, see paramsSatisfy)
+// is its own convention, not internal/direction's ledger-backed
+// applies_when representation, so scoring the corpus never requires
+// standing up a real dira ledger.
 package direction
 
 import (

@@ -14,6 +14,13 @@
 // number -- there is no detector anywhere in this codebase for Run to
 // call, and reporting a manufactured 0 or 1 here would misrepresent a
 // capability gap as a measurement.
+//
+// Plan T3.16 layers a second, independent corpus onto the same Run/Report
+// shape: Config.DirectionCorpusDir scores the DIRECTION plan-check corpus
+// (T3.13) via internal/eval/direction.Score, attaching the result as
+// Report.Direction alongside the primary corpus's Families -- one
+// evals/report.json, two corpora, reusing the ModeCached fixture
+// convention rather than a second reporting pipeline.
 package runner
 
 import (
@@ -23,6 +30,7 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/eval"
+	"github.com/sirerun/serenity/internal/eval/direction"
 	"github.com/sirerun/serenity/internal/extract"
 	"github.com/sirerun/serenity/internal/extract/chunk"
 	"github.com/sirerun/serenity/internal/router"
@@ -79,6 +87,25 @@ type Config struct {
 	// ModelVersion is recorded in the report (ModeLive only).
 	ModelVersion string
 
+	// DirectionCorpusDir, when set, additionally scores plan T3.16's
+	// DIRECTION corpus (evals/corpora/direction) and attaches the result
+	// as Report.Direction -- independent of the primary corpus scored
+	// above: a DIRECTION row carries a verdict, not a (predicate, object)
+	// fact, so it is scored by internal/eval/direction.Score's own
+	// one-verdict-per-row matching rather than eval.Score's set matching,
+	// and the corpus has no held-out split (T3.13 built all of its rows
+	// as one golden set, not a train/held-out partition). Requires
+	// DirectionFixturePath and cfg.Mode == ModeCached: a real production
+	// check_plan exists (internal/direction/check, T3.5/T3.6/T3.7), but
+	// driving it here would mean adapting this corpus's own applies_when
+	// representation (T3.13) into a real ledger.Store per row -- future
+	// work, not this section's scope -- so DIRECTION is cached-fixture-only
+	// for now.
+	DirectionCorpusDir string
+	// DirectionFixturePath is a direction.LoadPredictions cached-verdicts
+	// fixture, required whenever DirectionCorpusDir is set.
+	DirectionFixturePath string
+
 	// Now stubs time.Now for deterministic tests; nil means time.Now.
 	Now func() time.Time
 }
@@ -109,6 +136,9 @@ type Report struct {
 	Spend         *SpendSection         `json:"spend,omitempty"`
 	SpansScored   int                   `json:"spans_scored"`
 	SpansSkipped  int                   `json:"spans_skipped_on_budget,omitempty"`
+	// Direction is plan T3.16's DIRECTION eval section, present whenever
+	// Config.DirectionCorpusDir was set.
+	Direction *direction.Report `json:"direction,omitempty"`
 }
 
 // notImplementedContradiction is the honest placeholder every Report
@@ -191,7 +221,49 @@ func Run(ctx context.Context, cfg Config) (Report, error) {
 	}
 
 	report.Families = eval.Score(heldOut, predictions)
+
+	if cfg.DirectionCorpusDir != "" {
+		if cfg.Mode != ModeCached {
+			return Report{}, fmt.Errorf("runner: direction corpus scoring only supports mode cached (a live DIRECTION run would need a real ledger.Store adapter over this corpus, not built yet)")
+		}
+		dirReport, err := scoreDirection(cfg.DirectionCorpusDir, cfg.DirectionFixturePath)
+		if err != nil {
+			return Report{}, err
+		}
+		report.Direction = &dirReport
+	}
+
 	return report, nil
+}
+
+// scoreDirection loads plan T3.16's DIRECTION corpus and its cached
+// predictions fixture and scores them. Unlike the primary corpus above,
+// its checksum manifest lives inside labels/ itself
+// (direction.ManifestName), matching internal/eval/direction's own layout
+// convention rather than evals/corpora/ava's manifest-at-corpus-root
+// layout -- the two corpora predate a shared layout decision, and T3.16
+// reads direction's real one rather than imposing ava's.
+func scoreDirection(corpusDir, fixturePath string) (direction.Report, error) {
+	labelsDir := filepath.Join(corpusDir, labelsSubdir)
+	manifestPath := filepath.Join(labelsDir, direction.ManifestName)
+	if err := eval.VerifyManifest(labelsDir, manifestPath); err != nil {
+		return direction.Report{}, fmt.Errorf("runner: direction corpus %s failed manifest verification: %w", corpusDir, err)
+	}
+
+	rows, err := direction.LoadRows(labelsDir)
+	if err != nil {
+		return direction.Report{}, err
+	}
+	if len(rows) == 0 {
+		return direction.Report{}, fmt.Errorf("runner: direction corpus %s has zero rows", corpusDir)
+	}
+
+	predictions, err := direction.LoadPredictions(fixturePath)
+	if err != nil {
+		return direction.Report{}, err
+	}
+
+	return direction.Score(rows, predictions)
 }
 
 // runLive extracts one Prediction set per held-out label by calling

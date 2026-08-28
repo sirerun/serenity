@@ -48,6 +48,16 @@ func prf1(tp, fp, fn int) PRF1 {
 	return PRF1{TP: tp, FP: fp, FN: fn, Precision: precision, Recall: recall, F1: f1Of(precision, recall)}
 }
 
+// PRF1FromCounts derives a PRF1 from raw true/false positive/negative
+// counts, exported so a caller scoring a different confusion shape (e.g.
+// internal/eval/direction's one-verdict-per-row, per-action-class
+// matching, T3.16) reuses the same precision/recall/F1 math instead of
+// reimplementing it -- ContradictionRecall uses the unexported prf1 the
+// same way from inside this package.
+func PRF1FromCounts(tp, fp, fn int) PRF1 {
+	return prf1(tp, fp, fn)
+}
+
 // Score computes precision/recall/F1 per family (== predicate; see Label)
 // by matching each Prediction against the golden Labels on the exact
 // triple (Span, Predicate, Object) -- no fuzzy or partial-credit matching.
