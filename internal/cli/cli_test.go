@@ -169,3 +169,22 @@ func requireGit(t *testing.T) {
 		t.Skip("git not available")
 	}
 }
+
+// configureGitIdentity sets a local (not global) git identity for root's
+// repo, so a test that reaches a real `git commit` -- directly, or via
+// writer.Flush -- passes on machines/CI runners with no global git config
+// set. Same convention as internal/writer/commit_test.go,
+// internal/writer/dirtytree_test.go, and doctor_test.go's pushFixture.
+func configureGitIdentity(t *testing.T, root string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"config", "user.email", "cli-test@example.com"},
+		{"config", "user.name", "cli test"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
