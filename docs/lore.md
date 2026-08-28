@@ -188,3 +188,45 @@ isolated to a specific line in `internal/writer`.
 their own `git commit`/`kazi apply`/`golangci-lint` on the same host --
 the exact condition of an `/apply --pool` wave with many parallel kazi-lane
 tasks.
+
+## L-0007: L-0005/L-0006's stated root cause (GIT_DIR/GIT_WORK_TREE env inheritance) was tested and does NOT reproduce -- the real mechanism is still unknown
+
+**Tags:** #git #hooks #gotcha #unconfirmed
+
+**Rule:** Treat L-0005 and L-0006's "Why:" sections as an unconfirmed
+working theory, not a settled root cause. Do not implement a fix (e.g.
+clearing GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE in internal/writer's
+git-fixture test helpers) on the assumption that theory is correct without
+first re-confirming it independently -- it already failed one clean-room
+repro attempt.
+
+**Why:** L-0005/L-0006 state that the shared `.git/hooks/pre-commit`'s
+`go test ./...` step lets `internal/writer`'s git-fixture tests (which
+`git init`/`add`/`commit` inside a `t.TempDir()` via `cmd.Dir`) inherit
+GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE from the hook's own process, causing
+the "isolated" fixture commits to land on the real repo instead. A
+follow-up clean-room repro (single process, zero pool contention: a
+minimal repo, the same hook, a test doing exactly what the fixture helpers
+do) did NOT reproduce this -- GIT_DIR/GIT_WORK_TREE were confirmed unset in
+the hook's own environment (only a relative GIT_INDEX_FILE=.git/index was
+present), and the nested fixture commit landed correctly in its own
+tempdir every time.
+
+The corruption itself is real and repeatedly observed during this wave
+(multiple task branches and the primary checkout all hit variants of it)
+-- only the explanation is unconfirmed. The leading alternative theory is
+concurrent pool-load contention: this incident occurred with 7+ agents
+running their own `git commit`/`kazi apply`/`go test`/`golangci-lint`
+processes against worktrees of the same repo on the same host
+simultaneously, which is a meaningfully different (and much less
+tractable) failure class than a deterministic env-var leak -- possible
+culprits include races on the shared `.git/objects`/`.git/index` under
+concurrent access, OS-level file-descriptor or process-limit pressure, or
+something not yet identified.
+
+**Trigger:** Before spending effort on a fix targeting the GIT_DIR/
+GIT_WORK_TREE theory specifically, re-run the clean-room repro described
+above (single process, no concurrent pool load) to confirm it actually
+reproduces in this repo's exact test helpers first. If it doesn't, the fix
+effort should go toward isolating/serializing git operations under
+concurrent load instead.
