@@ -22,7 +22,7 @@ func newRootCmd() *cobra.Command {
 		Version:       Version,
 	}
 	root.PersistentFlags().StringVarP(&flagRoot, "root", "C", ".", "brain repo root")
-	root.AddCommand(newInitCmd(), newSyncCmd(), newExtractCmd(), newDoctorCmd(), newStatusCmd(), newCompactCmd(), newConnectorsCmd())
+	root.AddCommand(newInitCmd(), newSyncCmd(), newExtractCmd(), newDoctorCmd(), newStatusCmd(), newCompactCmd(), newConnectorsCmd(), newSearchCmd())
 	return root
 }
 
