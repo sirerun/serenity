@@ -58,7 +58,10 @@ func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) e
 			}
 		}
 		text := p.Title + "\n" + p.Summary
-		if err := eng.InsertChunk(ctx, "page:"+p.Entity.Slug, p.Entity.Slug, text); err != nil {
+		// Entity-page chunks are derived summaries, not raw Source
+		// material -- no SourceSHA256 to carry, "entity_page" as their
+		// own Kind bucket for internal/search's per-type cap (T1.11).
+		if err := eng.InsertChunk(ctx, "page:"+p.Entity.Slug, p.Entity.Slug, text, "", "entity_page"); err != nil {
 			return err
 		}
 	}

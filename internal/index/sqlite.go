@@ -30,7 +30,11 @@ type SQLite struct {
 type Engine interface {
 	UpsertEntity(ctx context.Context, e domain.Entity) error
 	UpsertClaim(ctx context.Context, c domain.Claim) error
-	InsertChunk(ctx context.Context, chunkRef, entitySlug, text string) error
+	// InsertChunk indexes one chunk's text for FTS. sourceSHA256 and kind
+	// are the source that produced it (domain.Source.SHA256/Kind) --
+	// empty for chunks with no backing Source (e.g. rebuild's entity-page
+	// summaries). internal/search's dedup layers (T1.11) key off both.
+	InsertChunk(ctx context.Context, chunkRef, entitySlug, text, sourceSHA256, kind string) error
 	SearchFTS(ctx context.Context, query string, limit int) ([]Hit, error)
 	// UpsertVector stores one chunk's embedding under an explicit model
 	// pin (§7.5 "every stored vector carries its model@version"). Keyed
@@ -47,6 +51,12 @@ type Engine interface {
 	// one model pin's vectors. Rows under any other pin are never read,
 	// let alone compared -- pins are never mixed in search.
 	SearchVectors(ctx context.Context, model string, query []float32, limit int) ([]Hit, error)
+	// VectorFor returns chunkRef's own stored vector under model (and
+	// whether one exists at all). Distinct from SearchVectors' query-vs-
+	// chunk cosine scan: this is chunk-vs-chunk, the primitive T1.11's
+	// near-duplicate dedup layer needs to compare two candidates' vectors
+	// directly against each other.
+	VectorFor(ctx context.Context, chunkRef, model string) ([]float32, bool, error)
 	ResetAll(ctx context.Context) error
 	Stats(ctx context.Context) (map[string]int64, error)
 	Dump(ctx context.Context, w io.Writer) error
@@ -72,12 +82,16 @@ var RuntimeTables = []string{
 	"caches",
 }
 
-// Hit is one search result.
+// Hit is one search result. SourceSHA256 and Kind mirror the domain.Source
+// that produced the chunk (empty for chunks with no backing Source) --
+// internal/search's dedup layers (T1.11) key off both.
 type Hit struct {
-	ChunkRef   string
-	EntitySlug string
-	Text       string
-	Score      float64
+	ChunkRef     string
+	EntitySlug   string
+	Text         string
+	Score        float64
+	SourceSHA256 string
+	Kind         string
 }
 
 func Open(path string) (*SQLite, error) {
@@ -115,7 +129,8 @@ func (s *SQLite) migrate() error {
 			superseded_by TEXT NOT NULL DEFAULT '',
 			PRIMARY KEY (slug, id))`,
 		`CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
-			chunk_ref UNINDEXED, entity_slug UNINDEXED, text)`,
+			chunk_ref UNINDEXED, entity_slug UNINDEXED, text,
+			source_sha256 UNINDEXED, kind UNINDEXED)`,
 		// Vectors are keyed by (chunk_ref, model) -- never chunk_ref alone
 		// -- so embedding-model pins never mix in search (§7.5) and a
 		// chunk can hold vectors under more than one pin at once while a
@@ -165,15 +180,15 @@ func (s *SQLite) UpsertClaim(ctx context.Context, c domain.Claim) error {
 	return err
 }
 
-func (s *SQLite) InsertChunk(ctx context.Context, chunkRef, entitySlug, text string) error {
+func (s *SQLite) InsertChunk(ctx context.Context, chunkRef, entitySlug, text, sourceSHA256, kind string) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO chunks(chunk_ref, entity_slug, text) VALUES(?,?,?)`,
-		chunkRef, entitySlug, text)
+		`INSERT INTO chunks(chunk_ref, entity_slug, text, source_sha256, kind) VALUES(?,?,?,?,?)`,
+		chunkRef, entitySlug, text, sourceSHA256, kind)
 	return err
 }
 
 func (s *SQLite) SearchFTS(ctx context.Context, query string, limit int) ([]Hit, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT chunk_ref, entity_slug, text, bm25(chunks)
+	rows, err := s.db.QueryContext(ctx, `SELECT chunk_ref, entity_slug, text, source_sha256, kind, bm25(chunks)
 		FROM chunks WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT ?`, query, limit)
 	if err != nil {
 		return nil, err
@@ -183,7 +198,7 @@ func (s *SQLite) SearchFTS(ctx context.Context, query string, limit int) ([]Hit,
 	for rows.Next() {
 		var h Hit
 		var bm float64
-		if err := rows.Scan(&h.ChunkRef, &h.EntitySlug, &h.Text, &bm); err != nil {
+		if err := rows.Scan(&h.ChunkRef, &h.EntitySlug, &h.Text, &h.SourceSHA256, &h.Kind, &bm); err != nil {
 			return nil, err
 		}
 		h.Score = -bm // bm25() returns lower-is-better; flip for callers
@@ -235,7 +250,7 @@ func (s *SQLite) Dump(ctx context.Context, w io.Writer) error {
 		{"claims", `SELECT slug, id, family, predicate, object, object_key,
 			confidence, valid_from, valid_to, src, state, superseded_by
 			FROM claims ORDER BY slug, id`, 12},
-		{"chunks", `SELECT chunk_ref, entity_slug, text FROM chunks ORDER BY chunk_ref`, 3},
+		{"chunks", `SELECT chunk_ref, entity_slug, text, source_sha256, kind FROM chunks ORDER BY chunk_ref`, 5},
 		// hex(vec) keeps the dump byte-safe: a raw BLOB can contain
 		// tabs/newlines that would corrupt this line-oriented format.
 		// Ordered by (chunk_ref, model) since both are now part of the
