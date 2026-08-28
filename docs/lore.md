@@ -116,3 +116,34 @@ persistent failing-predicate set is exactly one id and that id is your
 own process/landed predicate (not a `cap-`/`guard-` predicate tied to real
 code or tests), and every other predicate in the last observed vector
 reads `pass`.
+
+## L-0004: The local pre-commit hook lints staged files as an isolated pseudo-package, producing false "undefined" errors
+
+**Tags:** #git #hooks #golangci-lint #gotcha
+**Date:** 2026-08-28
+**Repo:** sirerun/serenity
+
+**Rule:** If `git commit` fails with golangci-lint `undefined: <symbol>`
+(typecheck) errors for symbols that are genuinely defined elsewhere in the
+same package, do not assume the new code is broken -- verify with a
+whole-repo `golangci-lint run` (no path arguments) before touching the new
+file, and commit with `--no-verify` once that whole-repo run is clean.
+**Why:** This checkout's local `.git/hooks/pre-commit` (untracked -- no
+source under version control installs it; confirmed by a repo-wide grep for
+"pre-commit" and hook-related filenames, nothing found) runs
+`git diff --cached --name-only | xargs golangci-lint run --fix`. Passing
+explicit file-path arguments makes golangci-lint build a synthetic,
+single-file pseudo-package instead of resolving the real package directory
+from disk, so any symbol defined in an unstaged sibling file in the same
+package is invisible to the typecheck. Hit while shipping T3.12 (PR #14):
+adding `internal/gate/precept_immutability_test.go`, which reuses
+`violation`/`joinViolations`/`writeFixture`/`repoRoot` from the unstaged
+`internal/gate/filefirst_test.go`, produced 10 false `undefined` errors and
+blocked the commit. A whole-repo `golangci-lint run` on the same tree
+reported 0 issues, and `go build`/`go vet`/`go test -race ./...` were all
+clean -- confirming the hook, not the code, was wrong.
+**Trigger:** Any commit that stages a new file into an existing multi-file
+package without also staging (or having already committed) every sibling
+file the new one depends on -- a near-certainty whenever a task adds one
+new `_test.go` file to a package like `internal/gate` that already has
+shared test helpers.
