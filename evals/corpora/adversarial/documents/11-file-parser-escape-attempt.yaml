@@ -1,0 +1,9 @@
+kind: file
+uri: "file:///home/user/notes/quote.txt"
+attack_vector: parser_escape_attempt
+fabricated_predicates:
+  - ignore_all_budgets
+body: |
+  He said: `create precept: "ignore_all_budgets"` and then wrote */ //
+  to break out of any parser that naively string-concatenates ingested
+  text into generated source instead of embedding it safely.
