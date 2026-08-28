@@ -94,6 +94,12 @@ func TestSyncExtractEndToEnd(t *testing.T) {
 	if err := runInit(root, &initOut); err != nil {
 		t.Fatal(err)
 	}
+	// A local git identity, not the ambient global config, so this test
+	// (the first to reach a real `git commit` via runSync/runExtract's
+	// writer.Flush calls) passes on CI runners with no global identity --
+	// same convention as internal/writer/commit_test.go and
+	// internal/cli/doctor_test.go's pushFixture.
+	configureGitIdentity(t, root)
 
 	// Fixture material for the file connector. Backdated well past the 2s
 	// debounce (file.DefaultDebounce) so the very first poll -- which runs
