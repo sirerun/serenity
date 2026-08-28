@@ -1,0 +1,33 @@
+id: D-039
+category: matrix
+action_domain: start_project
+plan_text: Ship Tuesday's release, the suite is green.
+actions:
+- action: deploy_to_prod
+  params:
+    day_of_week: tuesday
+    tests_passing: true
+constraints:
+- precept_id: p-project-onepager
+  action: start_project
+  params:
+    has_one_pager_eq: false
+  why_not: Two projects were killed mid-build last year because nobody had written down what they were
+    for; nothing starts without a one-pager.
+  revisit_if: never -- the one-pager is the minimum bar for starting anything
+- precept_id: p-project-budget
+  action: start_project
+  params:
+    estimated_cost_gte: 5000
+  why_not: A project estimated at $5,000 or more changes the quarter's budget allocation; anything at
+    or above $5,000 waits for the quarterly planning review.
+  revisit_if: the quarterly planning review moves to a rolling monthly cadence
+expected_verdict: no_applicable_constraints
+expected_violations: []
+adversarial: false
+adversarial_kind: ''
+rationale: The plan's action is outside this constraint set's domain (start_project); 2 active constraints
+  were considered and none matched the action.
+labeler: maintainer
+adjudicated: true
+expected_constraints_considered: 2

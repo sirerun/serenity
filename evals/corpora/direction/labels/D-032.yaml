@@ -1,0 +1,27 @@
+id: D-032
+category: matrix
+action_domain: schedule_outside_hours
+plan_text: We should find time to sync at some point this week.
+actions: []
+constraints:
+- precept_id: p-sched-late
+  action: schedule_outside_hours
+  params:
+    after_hour_gte: 21
+  why_not: Meetings booked after 9pm have collided with family time three times this quarter; nothing
+    gets scheduled after 9pm.
+  revisit_if: a standing agreement carves out specific weeknights for after-hours calls
+- precept_id: p-sched-weekend
+  action: schedule_outside_hours
+  params:
+    day_type_eq: weekend
+  why_not: Weekend meetings have been the single biggest source of burnout complaints in the last review;
+    nothing gets scheduled on a weekend without an explicit exception.
+  revisit_if: the exception is granted in writing for a specific recurring case
+expected_verdict: unverified
+expected_violations: []
+adversarial: false
+adversarial_kind: ''
+rationale: no time or day named -- nothing for the classifier to bind after_hour/day_type to
+labeler: maintainer
+adjudicated: true

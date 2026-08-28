@@ -1,0 +1,33 @@
+id: D-023
+category: matrix
+action_domain: contact_new_party
+plan_text: Kick off the internal wiki cleanup, one-pager's already written.
+actions:
+- action: start_project
+  params:
+    has_one_pager: true
+    estimated_cost: 300
+constraints:
+- precept_id: p-contact-cold
+  action: contact_new_party
+  params:
+    relationship_eq: cold
+  why_not: Cold outreach sent without a warm introduction got the sending domain flagged by two providers
+    last year; every new contact needs a warm introduction first.
+  revisit_if: the sending domain has a clean reputation history for 90 days running
+- precept_id: p-contact-financial
+  action: contact_new_party
+  params:
+    topic_eq: financial
+  why_not: A financial ask sent to a new contact without review was misread as a scam attempt before;
+    anything financial to a new party gets a second read first.
+  revisit_if: a standard vetted template exists for financial outreach
+expected_verdict: no_applicable_constraints
+expected_violations: []
+adversarial: false
+adversarial_kind: ''
+rationale: The plan's action is outside this constraint set's domain (contact_new_party); 2 active constraints
+  were considered and none matched the action.
+labeler: maintainer
+adjudicated: true
+expected_constraints_considered: 2

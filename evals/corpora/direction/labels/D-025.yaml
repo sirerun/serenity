@@ -1,0 +1,32 @@
+id: D-025
+category: matrix
+action_domain: schedule_outside_hours
+plan_text: Book the client call for 2pm on Thursday.
+actions:
+- action: schedule_outside_hours
+  params:
+    after_hour: 14
+    day_type: weekday
+constraints:
+- precept_id: p-sched-late
+  action: schedule_outside_hours
+  params:
+    after_hour_gte: 21
+  why_not: Meetings booked after 9pm have collided with family time three times this quarter; nothing
+    gets scheduled after 9pm.
+  revisit_if: a standing agreement carves out specific weeknights for after-hours calls
+- precept_id: p-sched-weekend
+  action: schedule_outside_hours
+  params:
+    day_type_eq: weekend
+  why_not: Weekend meetings have been the single biggest source of burnout complaints in the last review;
+    nothing gets scheduled on a weekend without an explicit exception.
+  revisit_if: the exception is granted in writing for a specific recurring case
+expected_verdict: pass
+expected_violations: []
+adversarial: false
+adversarial_kind: ''
+rationale: Action matches the domain but stays under every active threshold; the constraint set applies
+  but nothing in it fires.
+labeler: maintainer
+adjudicated: true
