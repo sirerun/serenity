@@ -32,6 +32,21 @@ type Engine interface {
 	UpsertClaim(ctx context.Context, c domain.Claim) error
 	InsertChunk(ctx context.Context, chunkRef, entitySlug, text string) error
 	SearchFTS(ctx context.Context, query string, limit int) ([]Hit, error)
+	// UpsertVector stores one chunk's embedding under an explicit model
+	// pin (§7.5 "every stored vector carries its model@version"). Keyed
+	// by (chunk_ref, model): a chunk may hold vectors under several pins
+	// at once during a migration (T1.16), and writing pin B never
+	// touches pin A's row for the same chunk.
+	UpsertVector(ctx context.Context, chunkRef, model string, vec []float32) error
+	// HasVector reports whether chunkRef has a stored vector under
+	// model. Callers use this to decide whether a chunk must fall back
+	// to FTS for a given pin (§10.1: "not-yet-re-embedded chunks are
+	// served by FTS") -- never to substitute a different pin's vector.
+	HasVector(ctx context.Context, chunkRef, model string) (bool, error)
+	// SearchVectors performs an exact cosine scan (§7.5) against exactly
+	// one model pin's vectors. Rows under any other pin are never read,
+	// let alone compared -- pins are never mixed in search.
+	SearchVectors(ctx context.Context, model string, query []float32, limit int) ([]Hit, error)
 	ResetAll(ctx context.Context) error
 	Stats(ctx context.Context) (map[string]int64, error)
 	Dump(ctx context.Context, w io.Writer) error
@@ -101,12 +116,16 @@ func (s *SQLite) migrate() error {
 			PRIMARY KEY (slug, id))`,
 		`CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
 			chunk_ref UNINDEXED, entity_slug UNINDEXED, text)`,
-		// Vectors are keyed by model@version so embedding-model pins never
-		// mix in search (§7.5). Empty until an embedding model is pinned.
+		// Vectors are keyed by (chunk_ref, model) -- never chunk_ref alone
+		// -- so embedding-model pins never mix in search (§7.5) and a
+		// chunk can hold vectors under more than one pin at once while a
+		// migration (T1.16) is in flight. Empty until an embedding model
+		// is pinned.
 		`CREATE TABLE IF NOT EXISTS vectors(
-			chunk_ref TEXT PRIMARY KEY,
+			chunk_ref TEXT NOT NULL,
 			model TEXT NOT NULL,
-			vec BLOB NOT NULL)`,
+			vec BLOB NOT NULL,
+			PRIMARY KEY (chunk_ref, model))`,
 	}
 	// Schema shells for runtime-only state (see RuntimeTables): generic
 	// enough to hold a row today, replaced with a real schema by whichever
@@ -217,7 +236,11 @@ func (s *SQLite) Dump(ctx context.Context, w io.Writer) error {
 			confidence, valid_from, valid_to, src, state, superseded_by
 			FROM claims ORDER BY slug, id`, 12},
 		{"chunks", `SELECT chunk_ref, entity_slug, text FROM chunks ORDER BY chunk_ref`, 3},
-		{"vectors", `SELECT chunk_ref, model FROM vectors ORDER BY chunk_ref`, 2},
+		// hex(vec) keeps the dump byte-safe: a raw BLOB can contain
+		// tabs/newlines that would corrupt this line-oriented format.
+		// Ordered by (chunk_ref, model) since both are now part of the
+		// primary key -- a chunk may have one row per pin.
+		{"vectors", `SELECT chunk_ref, model, hex(vec) FROM vectors ORDER BY chunk_ref, model`, 3},
 	}
 	for _, q := range queries {
 		rows, err := s.db.QueryContext(ctx, q.query)
