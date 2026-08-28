@@ -28,7 +28,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In flight (PRs open)
 
-- none
+- 2026 08 28 E1 wave 1a dispatched via `/apply --pool` (kazi lane, claims WON): T1.1 connector interface + jobs table, T1.2 source store, T1.6 chunker, T1.7 model router, T1.13 eval harness, T1.19 redaction pass v1. Owner: pool.
+- 2026 08 28 E3 wave 3a dispatched via `/apply --pool` (kazi lane, claims WON): T3.1 vendor dira, T3.12 precept-immutability invariant test. Owner: pool. (T3.2/T3.3/T3.13, the rest of wave 3a, stay blocked until T3.1/T1.13 land.)
 
 ## Planned
 
