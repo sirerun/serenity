@@ -11,6 +11,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/store"
+	"github.com/sirerun/serenity/internal/writer"
 )
 
 // buildSerenityBinary compiles the real ./cmd/serenity binary once per test
@@ -78,13 +79,15 @@ func TestCompactCLIConfirm(t *testing.T) {
 
 	const slug, family = "acct-42", "has_balance"
 	ss := store.NewShardStore(root)
+	q := writer.NewQueue(nil)
+	defer q.Close()
 	obs := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	c1 := domain.Claim{
 		SubjectSlug: slug, Predicate: family, Family: family,
 		Object: "100.00 usd", ObjectKey: "k1", Confidence: 0.9, State: domain.StateActive,
 		Provenance: domain.Provenance{ObservedAt: obs, Actor: "machine", SourceSHA256: "src-1"},
 	}
-	if err := ss.Append(c1); err != nil {
+	if _, _, err := writer.Shard(q, ss, c1); err != nil {
 		t.Fatal(err)
 	}
 	lines, err := ss.Lines(slug, family)
@@ -97,7 +100,7 @@ func TestCompactCLIConfirm(t *testing.T) {
 		Supersedes: lines[0].ID,
 		Provenance: domain.Provenance{ObservedAt: obs.Add(time.Hour), Actor: "machine", SourceSHA256: "src-2"},
 	}
-	if err := ss.Append(c2); err != nil {
+	if _, _, err := writer.Shard(q, ss, c2); err != nil {
 		t.Fatal(err)
 	}
 	lines, err = ss.Lines(slug, family)
