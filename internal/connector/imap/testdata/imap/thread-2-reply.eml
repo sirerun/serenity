@@ -1,0 +1,11 @@
+From: bob@example.com
+To: alice@example.com
+Subject: Re: Project kickoff
+Date: Mon, 03 Aug 2026 09:42:00 -0700
+Message-ID: <thread-2-reply@example.com>
+In-Reply-To: <thread-1-hello@example.com>
+Content-Type: text/plain; charset=us-ascii
+
+Works for me, 2pm it is.
+
+-- Bob
