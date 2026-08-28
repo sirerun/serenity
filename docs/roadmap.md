@@ -53,7 +53,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In flight (PRs open)
 
-- 2026 08 28 Wave 4 closed 6/6 (T3.5 merged PR #34, Shipped entry above). Wave 5 dispatched via `/apply --pool` (claims WON): T1.9 observation-to-claim write path, T1.11 hybrid search + `serenity search`, T1.14 Ava extraction corpus, T1.17 `serenity status` v1. Owner: pool. Each task owns its own S6 docs entries. T1.17 merged PR #37, T1.11 merged PR #38, T1.9 merged PR #35, T1.14 merged PR #36 (Shipped entries above) -- wave 5 closed 4/4.
+- 2026 08 28 Wave 5 closed 4/4 (see Shipped entries above). Wave 6 dispatched via `/apply --pool` (claims WON): T1.15 real `serenity extract`/`sync` end-to-end (the M1 critical-path integration task), T1.21 BrainBench adapter, T1.22 nightly eval workflow, T3.6 check_plan stage 2 classifier, T3.8 question precepts, T3.14 dira CLI conformance job. Owner: pool. Each task owns its own S6 docs entries. (T1.12 deferred to a later wave to avoid CLI-wiring collision risk with T1.15; T3.15 also deferred.)
 
 ## Planned
 
