@@ -72,6 +72,26 @@ jobs:
       - run: go run ./cmd/eval-runner -mode cached -corpus evals/corpora/ava -fixture evals/fixtures/ava-cached-predictions.yaml -out "$RUNNER_TEMP/report.json"
       - run: cat "$RUNNER_TEMP/report.json"
 
+  brainbench-trend:
+    # T1.21: runs the vendored dndungu/gbrain BrainBench fixtures
+    # (evals/brainbench/, pinned in evals/brainbench/PIN) through
+    # Serenity's real hybrid search (internal/search, T1.11 -- FTS-only,
+    # zero live model calls) and uploads evals/brainbench-trend.json as
+    # this run's score row. No network access needed: the corpus is
+    # vendored, not fetched. T5.10 persists these rows into an actual
+    # trend across runs and renders the chart into the docs site.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go run evals/brainbench/gen_trend.go
+      - uses: actions/upload-artifact@v4
+        with:
+          name: brainbench-trend
+          path: evals/brainbench-trend.json
+
   crossbuild:
     # M0 acceptance: single binary on macOS arm64 + Linux amd64/arm64.
     runs-on: ubuntu-latest
