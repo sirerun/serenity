@@ -15,6 +15,7 @@ import (
 	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/secrets"
 	"github.com/sirerun/serenity/internal/store"
+	"github.com/sirerun/serenity/internal/writer"
 )
 
 func TestMain(m *testing.M) {
@@ -97,6 +98,9 @@ func TestSyncWipeRebuildViaCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	q := writer.NewQueue(nil)
+	defer q.Close()
+
 	fw := store.NewFenceWriter(root)
 	p := store.NewEntityPage(domain.Entity{Type: "person", Slug: "alice-tan"})
 	p.Summary = "Runs engineering at Acme."
@@ -105,11 +109,11 @@ func TestSyncWipeRebuildViaCLI(t *testing.T) {
 		Object: "acme", Confidence: 0.92, ValidFrom: "2025-06",
 		SourceRef: "e42#3", State: domain.StateActive,
 	}}
-	if _, err := fw.WriteEntity(p); err != nil {
+	if _, _, err := writer.Fence(q, fw, p); err != nil {
 		t.Fatal(err)
 	}
 	ss := store.NewShardStore(root)
-	if err := ss.Append(domain.Claim{
+	if _, _, err := writer.Shard(q, ss, domain.Claim{
 		SubjectSlug: "alice-tan", Predicate: "has_balance", Family: "has_balance",
 		Object: "1200.00 usd", ObjectKey: "acct-1", Confidence: 0.9, State: domain.StateActive,
 		Provenance: domain.Provenance{ObservedAt: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)},
