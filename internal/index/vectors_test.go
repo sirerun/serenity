@@ -344,3 +344,60 @@ func TestReembedMissingSkipsAlreadyEmbedded(t *testing.T) {
 		t.Fatalf("Embed called %d time(s) total, want 1 (no redundant calls on the second pass)", fe.calls)
 	}
 }
+
+// TestPendingReembedCountsChunksLackingThePin is T1.16's "changing the
+// embedding pin flags chunks pending_reembed" acceptance clause at the
+// index layer: a brand new pin (one that has never embedded anything) is
+// pending for every stored chunk, an already-fully-embedded pin is
+// pending for none, and after ReembedMissing runs for the new pin nothing
+// is pending under it any more.
+func TestPendingReembedCountsChunksLackingThePin(t *testing.T) {
+	ctx := context.Background()
+	eng := openTestEngine(t)
+
+	if err := eng.InsertChunk(ctx, "c1", "e", "hello", "sha-c1", "file"); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.InsertChunk(ctx, "c2", "e", "world", "sha-c2", "file"); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.UpsertVector(ctx, "c1", "old@v1", []float32{1, 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.UpsertVector(ctx, "c2", "old@v1", []float32{0, 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	pendingOld, err := PendingReembed(ctx, eng, "old@v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pendingOld != 0 {
+		t.Fatalf("PendingReembed(old@v1) = %d, want 0 (every chunk already has this pin's vector)", pendingOld)
+	}
+
+	pendingNew, err := PendingReembed(ctx, eng, "new@v2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pendingNew != 2 {
+		t.Fatalf("PendingReembed(new@v2) = %d, want 2 (a never-used pin is pending for every chunk)", pendingNew)
+	}
+
+	// A migration flips the active pin to new@v2 and re-embeds -- nothing
+	// stays pending under new@v2 afterward, and old@v1's own vectors are
+	// untouched (still present, but that is irrelevant to search: T1.10's
+	// TestSearchVectorsNeverMixesPins already proves SearchVectors(new@v2)
+	// can never surface an old@v1 row).
+	fe := &fakeEmbedder{pin: "new@v2"}
+	if _, err := ReembedMissing(ctx, eng, fe); err != nil {
+		t.Fatal(err)
+	}
+	pendingAfter, err := PendingReembed(ctx, eng, "new@v2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pendingAfter != 0 {
+		t.Fatalf("PendingReembed(new@v2) after ReembedMissing = %d, want 0", pendingAfter)
+	}
+}
