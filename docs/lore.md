@@ -269,3 +269,13 @@ above (single process, no concurrent pool load) to confirm it actually
 reproduces in this repo's exact test helpers first. If it doesn't, the fix
 effort should go toward isolating/serializing git operations under
 concurrent load instead.
+
+## L-0008: `router.AnthropicProvider`/`OpenAICompatibleProvider` never populate `Usage.CostUSD` -- any USD budget cap built on `router.Budget`/`SpendLedger` is a no-op today
+
+**Tags:** #router #eval #budget #gotcha
+**Date:** 2026-08-28
+**Repo:** sirerun/serenity
+
+**Rule:** Do not assume `router.Result.BudgetExceeded`, a `router.SpendEntry.CostUSD` value, or any aggregate spend total derived from `SpendLedger.Record` reflects real dollars. Both `AnthropicProvider.Send` and `OpenAICompatibleProvider.Send` (internal/router/anthropic.go, openai_compatible.go) construct their `Response.Usage` with `InputTokens`/`OutputTokens` only -- `CostUSD` is never assigned, so it is always the zero value on every real call either provider makes. `Router.Complete`'s `exceeded := b.MaxUSD > 0 && resp.Usage.CostUSD > b.MaxUSD` check (router.go) can therefore never trip against a real provider, and any `SpendLedger` that sums `CostUSD` to enforce an aggregate cap (e.g. `internal/eval/runner.TrackingLedger`, T1.22) stays at `$0.00` regardless of real call volume.
+**Why:** Both providers report real, non-zero `InputTokens`/`OutputTokens` from their APIs' own usage blocks, so the raw data to compute a real cost is already present at the call site -- nobody has yet added a per-model USD/token price table and multiplied it in. This was found while building T1.22's nightly-eval budget cap: the cap is correctly wired end-to-end (`internal/eval/runner.TrackingLedger`, unit-tested with a fake provider that *does* report `CostUSD`) but is provably inert against the two real providers as they stand, which is disclosed in that PR (#41) rather than silently shipped as a working guardrail.
+**Trigger:** Any code that reads `router.Result.BudgetExceeded`, a `SpendEntry.CostUSD`, or a `SpendLedger`-derived total and treats a `$0.00`/`false` result as "no cost was incurred" or "the cap held" -- it may just mean the cost was never computed. Fix is scoped to `internal/router`'s two provider `Send` methods (a per-model price table keyed on `Model`, applied to `Usage.InputTokens`/`OutputTokens`); no task currently owns it.
