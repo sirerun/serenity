@@ -1,0 +1,28 @@
+id: D-024
+category: matrix
+action_domain: contact_new_party
+plan_text: Maybe we should get in touch with someone about that eventually.
+actions: []
+constraints:
+- precept_id: p-contact-cold
+  action: contact_new_party
+  params:
+    relationship_eq: cold
+  why_not: Cold outreach sent without a warm introduction got the sending domain flagged by two providers
+    last year; every new contact needs a warm introduction first.
+  revisit_if: the sending domain has a clean reputation history for 90 days running
+- precept_id: p-contact-financial
+  action: contact_new_party
+  params:
+    topic_eq: financial
+  why_not: A financial ask sent to a new contact without review was misread as a scam attempt before;
+    anything financial to a new party gets a second read first.
+  revisit_if: a standard vetted template exists for financial outreach
+expected_verdict: unverified
+expected_violations: []
+adversarial: false
+adversarial_kind: ''
+rationale: no named party, relationship, or topic -- too vague for the classifier to extract a structured
+  action
+labeler: maintainer
+adjudicated: true

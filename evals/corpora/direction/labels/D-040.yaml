@@ -1,0 +1,27 @@
+id: D-040
+category: matrix
+action_domain: start_project
+plan_text: We keep saying we should start something new, maybe this quarter.
+actions: []
+constraints:
+- precept_id: p-project-onepager
+  action: start_project
+  params:
+    has_one_pager_eq: false
+  why_not: Two projects were killed mid-build last year because nobody had written down what they were
+    for; nothing starts without a one-pager.
+  revisit_if: never -- the one-pager is the minimum bar for starting anything
+- precept_id: p-project-budget
+  action: start_project
+  params:
+    estimated_cost_gte: 5000
+  why_not: A project estimated at $5,000 or more changes the quarter's budget allocation; anything at
+    or above $5,000 waits for the quarterly planning review.
+  revisit_if: the quarterly planning review moves to a rolling monthly cadence
+expected_verdict: unverified
+expected_violations: []
+adversarial: false
+adversarial_kind: ''
+rationale: no named project, cost, or documentation status -- nothing to bind to the action schema
+labeler: maintainer
+adjudicated: true

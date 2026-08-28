@@ -1,0 +1,32 @@
+id: D-031
+category: matrix
+action_domain: schedule_outside_hours
+plan_text: Pay the $40 domain renewal today.
+actions:
+- action: spend_over
+  params:
+    amount: 40
+constraints:
+- precept_id: p-sched-late
+  action: schedule_outside_hours
+  params:
+    after_hour_gte: 21
+  why_not: Meetings booked after 9pm have collided with family time three times this quarter; nothing
+    gets scheduled after 9pm.
+  revisit_if: a standing agreement carves out specific weeknights for after-hours calls
+- precept_id: p-sched-weekend
+  action: schedule_outside_hours
+  params:
+    day_type_eq: weekend
+  why_not: Weekend meetings have been the single biggest source of burnout complaints in the last review;
+    nothing gets scheduled on a weekend without an explicit exception.
+  revisit_if: the exception is granted in writing for a specific recurring case
+expected_verdict: no_applicable_constraints
+expected_violations: []
+adversarial: false
+adversarial_kind: ''
+rationale: The plan's action is outside this constraint set's domain (schedule_outside_hours); 2 active
+  constraints were considered and none matched the action.
+labeler: maintainer
+adjudicated: true
+expected_constraints_considered: 2

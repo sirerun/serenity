@@ -1,0 +1,33 @@
+id: D-037
+category: matrix
+action_domain: start_project
+plan_text: Kick off the new integration project, one-pager's written, budget is $5,000.
+actions:
+- action: start_project
+  params:
+    has_one_pager: true
+    estimated_cost: 5000
+constraints:
+- precept_id: p-project-onepager
+  action: start_project
+  params:
+    has_one_pager_eq: false
+  why_not: Two projects were killed mid-build last year because nobody had written down what they were
+    for; nothing starts without a one-pager.
+  revisit_if: never -- the one-pager is the minimum bar for starting anything
+- precept_id: p-project-budget
+  action: start_project
+  params:
+    estimated_cost_gte: 5000
+  why_not: A project estimated at $5,000 or more changes the quarter's budget allocation; anything at
+    or above $5,000 waits for the quarterly planning review.
+  revisit_if: the quarterly planning review moves to a rolling monthly cadence
+expected_verdict: violated
+expected_violations:
+- p-project-budget
+adversarial: false
+adversarial_kind: ''
+rationale: Triggers exactly one active constraint (p-project-budget); the other constraint in the set
+  does not apply to these params.
+labeler: maintainer
+adjudicated: true

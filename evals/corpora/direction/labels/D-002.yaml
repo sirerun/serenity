@@ -1,0 +1,32 @@
+id: D-002
+category: matrix
+action_domain: spend_over
+plan_text: Cover the $350 conference registration fee this week.
+actions:
+- action: spend_over
+  params:
+    amount: 350
+constraints:
+- precept_id: p-spend-500
+  action: spend_over
+  params:
+    amount_gte: 500
+  why_not: A single spend of $500 or more went out last quarter without a second signer and could not
+    be reversed before the vendor cashed it; anything at or above $500 needs a second signer's sign-off
+    first.
+  revisit_if: a second-signer approval workflow is wired into the payments tool
+- precept_id: p-spend-2000
+  action: spend_over
+  params:
+    amount_gte: 2000
+  why_not: Commitments of $2,000 or more change the runway forecast for the month; anything at or above
+    $2,000 waits for the monthly budget review, not an ad hoc approval.
+  revisit_if: the monthly budget review cadence moves to weekly
+expected_verdict: pass
+expected_violations: []
+adversarial: false
+adversarial_kind: ''
+rationale: Action matches the domain but stays under every active threshold; the constraint set applies
+  but nothing in it fires.
+labeler: maintainer
+adjudicated: true

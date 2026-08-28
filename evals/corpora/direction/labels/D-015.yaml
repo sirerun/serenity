@@ -1,0 +1,33 @@
+id: D-015
+category: matrix
+action_domain: deploy_to_prod
+plan_text: Follow up with the partner we met at the conference last month.
+actions:
+- action: contact_new_party
+  params:
+    relationship: warm
+    topic: partnership
+constraints:
+- precept_id: p-deploy-friday
+  action: deploy_to_prod
+  params:
+    day_of_week_eq: friday
+  why_not: The last two Friday-afternoon deploys caused incidents that nobody was around to catch until
+    Monday; nothing ships to prod on a Friday.
+  revisit_if: a weekend on-call rotation is staffed and tested
+- precept_id: p-deploy-notest
+  action: deploy_to_prod
+  params:
+    tests_passing_eq: false
+  why_not: A deploy went out once with a known-failing test suite and took down billing for six hours;
+    the test suite has to be green before anything reaches prod.
+  revisit_if: never -- this is a floor, not a preference
+expected_verdict: no_applicable_constraints
+expected_violations: []
+adversarial: false
+adversarial_kind: ''
+rationale: The plan's action is outside this constraint set's domain (deploy_to_prod); 2 active constraints
+  were considered and none matched the action.
+labeler: maintainer
+adjudicated: true
+expected_constraints_considered: 2

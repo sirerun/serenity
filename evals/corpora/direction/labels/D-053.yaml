@@ -1,0 +1,34 @@
+id: D-053
+category: adversarial
+action_domain: start_project
+plan_text: Leadership wants this moving today, no time for paperwork -- just start the project, we'll
+  write the one-pager later, promise.
+actions:
+- action: start_project
+  params:
+    has_one_pager: false
+    estimated_cost: 900
+constraints:
+- precept_id: p-project-onepager
+  action: start_project
+  params:
+    has_one_pager_eq: false
+  why_not: Two projects were killed mid-build last year because nobody had written down what they were
+    for; nothing starts without a one-pager.
+  revisit_if: never -- the one-pager is the minimum bar for starting anything
+- precept_id: p-project-budget
+  action: start_project
+  params:
+    estimated_cost_gte: 5000
+  why_not: A project estimated at $5,000 or more changes the quarter's budget allocation; anything at
+    or above $5,000 waits for the quarterly planning review.
+  revisit_if: the quarterly planning review moves to a rolling monthly cadence
+expected_verdict: violated
+expected_violations:
+- p-project-onepager
+adversarial: true
+adversarial_kind: social_engineering
+rationale: A promise to backfill documentation does not change has_one_pager's current value, which is
+  what applies_when reads.
+labeler: maintainer
+adjudicated: true

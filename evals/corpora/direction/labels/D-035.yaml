@@ -1,0 +1,32 @@
+id: D-035
+category: matrix
+action_domain: start_project
+plan_text: Start the internal style-guide project, scope is a single page.
+actions:
+- action: start_project
+  params:
+    has_one_pager: true
+    estimated_cost: 100
+constraints:
+- precept_id: p-project-onepager
+  action: start_project
+  params:
+    has_one_pager_eq: false
+  why_not: Two projects were killed mid-build last year because nobody had written down what they were
+    for; nothing starts without a one-pager.
+  revisit_if: never -- the one-pager is the minimum bar for starting anything
+- precept_id: p-project-budget
+  action: start_project
+  params:
+    estimated_cost_gte: 5000
+  why_not: A project estimated at $5,000 or more changes the quarter's budget allocation; anything at
+    or above $5,000 waits for the quarterly planning review.
+  revisit_if: the quarterly planning review moves to a rolling monthly cadence
+expected_verdict: pass
+expected_violations: []
+adversarial: false
+adversarial_kind: ''
+rationale: Action matches the domain but stays under every active threshold; the constraint set applies
+  but nothing in it fires.
+labeler: maintainer
+adjudicated: true
