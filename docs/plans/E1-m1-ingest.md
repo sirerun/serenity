@@ -6,7 +6,7 @@ Design anchors: RFC 7.4, 7.5, 7.6, 9, 10.1, 11, 14 (redaction), 16. Decisions: d
 
 ### Wave 1a (deps on E0 wave 0a only; 8 agents)
 
-- [ ] T1.1 Connector interface + jobs table  Owner: pool  Est: 60m  verifies: [UC-006, UC-007, UC-008]  deps: [T0.10]  acc: [internal/connector exports Connector, Cursor(json.RawMessage), RawItem exactly as RFC 10.1; a fake connector run writes one jobs row with status; a run killed mid-poll is marked interrupted by the next sweep]
+- [x] T1.1 Connector interface + jobs table  Owner: pool  Est: 60m  verifies: [UC-006, UC-007, UC-008]  deps: [T0.10]  acc: [internal/connector exports Connector, Cursor(json.RawMessage), RawItem exactly as RFC 10.1; a fake connector run writes one jobs row with status; a run killed mid-poll is marked interrupted by the next sweep] — done 2026-08-28, PR #16, merge commit `e04c0810`.
 - [ ] T1.2 Source store: content-addressed bytes + meta.yaml + tombstone stub  Owner: pool  Est: 75m  verifies: [UC-006, UC-035]  deps: [T0.3]  acc: [writing identical bytes twice is a no-op; index_only sources are gitignored and meta says index_only: true; Tombstone(sha) returns every claim whose provenance cites the sha]
   - Layout `brain/sources/<sha[0:2]>/<sha>/{bytes,meta.yaml}`; dedup on raw bytes before any normalization.
 - [x] T1.6 Chunker `internal/extract/chunk`  Owner: pool  Est: 60m  verifies: [UC-005]  acc: [property test: chunk union == source text, spans ordered and non-overlapping, text[span] reconstructs each chunk; token bound and overlap are config constants pinned by test] — done 2026-08-28, PR #15, merge commit `5a1b8c8`.
