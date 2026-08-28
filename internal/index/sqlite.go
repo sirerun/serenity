@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -23,8 +24,29 @@ import (
 // search. Postgres+pgvector is the documented scale profile, not the
 // default; the Engine interface keeps it pluggable.
 type SQLite struct {
-	db *sql.DB
+	db    *sql.DB
+	clock Clock
 }
+
+// Clock abstracts time.Now for job timestamps (StartJob/FinishJob), the
+// same shape as internal/connector/file's Clock/WithClock (T1.3). Real
+// callers get realClock via Open; `serenity status`'s golden test (T1.17)
+// injects a fake one via WithClock so StartedAt/FinishedAt -- and the
+// ingest-lag math status derives from them -- are byte-stable without
+// real sleeps.
+type Clock interface {
+	Now() time.Time
+}
+
+type realClock struct{}
+
+func (realClock) Now() time.Time { return time.Now() }
+
+// Option configures a SQLite engine at construction (Open).
+type Option func(*SQLite)
+
+// WithClock overrides the real clock. Test-only hook.
+func WithClock(c Clock) Option { return func(s *SQLite) { s.clock = c } }
 
 // Engine is the pluggable derived-index boundary (§7.5 BrainIndex).
 type Engine interface {
@@ -80,12 +102,15 @@ type Hit struct {
 	Score      float64
 }
 
-func Open(path string) (*SQLite, error) {
+func Open(path string, opts ...Option) (*SQLite, error) {
 	db, err := sql.Open("sqlite", path+"?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, err
 	}
-	s := &SQLite{db: db}
+	s := &SQLite{db: db, clock: realClock{}}
+	for _, opt := range opts {
+		opt(s)
+	}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("index migrate: %w", err)

@@ -65,7 +65,7 @@ func (s *SQLite) StartJob(ctx context.Context, connector string) (string, error)
 		ID:        id,
 		Connector: connector,
 		Status:    JobRunning,
-		StartedAt: time.Now().UTC(),
+		StartedAt: s.clock.Now().UTC(),
 	}
 	payload, err := json.Marshal(j)
 	if err != nil {
@@ -87,7 +87,7 @@ func (s *SQLite) FinishJob(ctx context.Context, jobID string, status string, cur
 		return err
 	}
 	j.Status = status
-	j.FinishedAt = time.Now().UTC()
+	j.FinishedAt = s.clock.Now().UTC()
 	if cursor != nil {
 		j.Cursor = cursor
 	}
