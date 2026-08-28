@@ -37,7 +37,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In flight (PRs open)
 
-- 2026 08 28 E3 wave 3a: T3.1 vendor dira and T3.12 precept-immutability invariant test both shipped (see Shipped entries, PR #19 and PR #14). Owner: pool. (T3.2/T3.3, deps on T3.1, and T3.13, dep on T1.13, are now unblocked for a future wave; no PR open yet.)
+- 2026 08 28 Wave 3 dispatched via `/apply --pool` (kazi lane, claims WON), deliberately sized to 5 rather than the 10-agent cap given the previous wave's concurrent-load-contention findings (see docs/lore.md L-0004..L-0007): T1.3 file-watcher connector, T1.4 IMAP connector, T1.5 git-repo crawler connector (all three unblocked by T1.1+T1.2 landing), T3.2 applies_when parser, T3.3 precept ledger writer (both unblocked by T3.1 landing, both touching the new internal/direction/ package concurrently -- flagged to both agents). Owner: pool. (T1.8, T1.10, T1.14, T1.17, T1.20, T3.13 are also unblocked but deferred to a later wave to keep concurrency down.)
 
 ## Planned
 
