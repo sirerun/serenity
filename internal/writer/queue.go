@@ -8,7 +8,10 @@
 // is the only caller of the canonical writers.
 package writer
 
-import "sync"
+import (
+	"sort"
+	"sync"
+)
 
 // Job is one write submitted to the queue. Render performs the actual
 // I/O (e.g. FenceWriter.WriteEntity or ShardStore.Append) and returns the
@@ -37,6 +40,16 @@ type Queue struct {
 	jobs chan submitted
 	wg   sync.WaitGroup
 	hook func(Result)
+
+	// touchedMu guards touched independently of mu: Submit holds mu while
+	// blocked handing a job to the unbuffered jobs channel, and drain
+	// records the touched path from inside that same handoff (right after
+	// receiving, before it can loop back to receive the next one). Sharing
+	// mu between the two would deadlock -- a second Submit blocked
+	// sending, holding mu, would starve drain of the lock it needs before
+	// it can go back to receiving.
+	touchedMu sync.Mutex
+	touched   map[string]bool // paths written since the last Flush (§7.7 daemon commits)
 }
 
 type submitted struct {
@@ -52,9 +65,10 @@ type submitted struct {
 // same queue (it would deadlock the single drain goroutine).
 func NewQueue(hook func(Result)) *Queue {
 	q := &Queue{
-		seq:  map[string]uint64{},
-		jobs: make(chan submitted),
-		hook: hook,
+		seq:     map[string]uint64{},
+		touched: map[string]bool{},
+		jobs:    make(chan submitted),
+		hook:    hook,
 	}
 	q.wg.Add(1)
 	go q.drain()
@@ -66,6 +80,11 @@ func (q *Queue) drain() {
 	for s := range q.jobs {
 		b, err := s.job.Render()
 		res := Result{Job: s.job, Seq: s.seq, Bytes: b, Err: err}
+		if err == nil {
+			q.touchedMu.Lock()
+			q.touched[s.job.Path] = true
+			q.touchedMu.Unlock()
+		}
 		if q.hook != nil {
 			q.hook(res)
 		}
@@ -86,6 +105,25 @@ func (q *Queue) Submit(j Job) Result {
 	q.jobs <- submitted{job: j, seq: seq, reply: reply}
 	q.mu.Unlock()
 	return <-reply
+}
+
+// takeTouched returns every path successfully written since the last call
+// (or since the queue was created), and resets the set -- Flush uses this
+// to scope its `git add` to exactly what the queue wrote, never a human
+// edit sitting elsewhere in the working tree (§7.7).
+func (q *Queue) takeTouched() []string {
+	q.touchedMu.Lock()
+	defer q.touchedMu.Unlock()
+	if len(q.touched) == 0 {
+		return nil
+	}
+	paths := make([]string, 0, len(q.touched))
+	for p := range q.touched {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	q.touched = map[string]bool{}
+	return paths
 }
 
 // Close stops accepting new jobs and waits for the drain goroutine to
