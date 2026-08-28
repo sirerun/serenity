@@ -23,6 +23,10 @@ const FileName = "serenity.yml"
 type Models struct {
 	Embedding  string `yaml:"embedding"`
 	Extraction string `yaml:"extraction"`
+	// Composer is the judgment-tier model `serenity ask` (T1.12, RFC
+	// §11) routes TaskClassComposerSynthesis calls through. Same
+	// "<model>@<version>" / "none@v0" convention as the other two pins.
+	Composer string `yaml:"composer"`
 }
 
 // Family declares one predicate family: its storage tier and the
@@ -58,6 +62,7 @@ func Default() *Config {
 			// "none@v0" keeps the rebuild-identity assertion honest.
 			Embedding:  "none@v0",
 			Extraction: "none@v0",
+			Composer:   "none@v0",
 		},
 		Index: Index{Engine: "sqlite"},
 		Families: map[string]Family{

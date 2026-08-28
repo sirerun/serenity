@@ -133,3 +133,38 @@ func buildEmbeddingRouter(cfg *config.Config, ledger router.SpendLedger) (r *rou
 	p := &router.OpenAIEmbeddingsProvider{APIKey: key, BaseURL: baseURL, Model: model, Version: version}
 	return router.New(map[router.Tier]router.Provider{router.TierLocalCheap: p}, ledger), true, ""
 }
+
+// buildComposerRouter constructs a *router.Router whose judgment-tier
+// provider is serenity.yml's pinned composer model (T1.12, RFC §11) --
+// TaskClassComposerSynthesis resolves to router.TierJudgment (router.go's
+// closed task-class table), unlike extraction/embedding's local-cheap
+// pin, so this wires TierJudgment rather than reusing
+// buildExtractionRouter's tier. Same credential-from-env inference and
+// explicit-skip contract as buildExtractionRouter/buildEmbeddingRouter.
+func buildComposerRouter(cfg *config.Config, ledger router.SpendLedger) (r *router.Router, ok bool, note string) {
+	pin := cfg.Models.Composer
+	if unpinned(pin) {
+		return nil, false, "no composer model pinned (models.composer: none@v0); ask skipped"
+	}
+	model, version, split := splitPin(pin)
+	if !split {
+		return nil, false, fmt.Sprintf("models.composer %q is not shaped <model>@<version>; ask skipped", pin)
+	}
+
+	var p router.Provider
+	if strings.Contains(strings.ToLower(model), "claude") {
+		key := os.Getenv("ANTHROPIC_API_KEY")
+		if key == "" {
+			return nil, false, "models.composer is pinned to a Claude model but ANTHROPIC_API_KEY is not set; ask skipped"
+		}
+		p = &router.AnthropicProvider{APIKey: key, Model: model, Version: version}
+	} else {
+		key := os.Getenv("OPENAI_API_KEY")
+		baseURL := os.Getenv("OPENAI_BASE_URL")
+		if key == "" && baseURL == "" {
+			return nil, false, "models.composer is pinned but neither OPENAI_API_KEY nor OPENAI_BASE_URL (local server) is set; ask skipped"
+		}
+		p = &router.OpenAICompatibleProvider{APIKey: key, BaseURL: baseURL, Model: model, Version: version}
+	}
+	return router.New(map[router.Tier]router.Provider{router.TierJudgment: p}, ledger), true, ""
+}
