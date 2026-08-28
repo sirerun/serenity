@@ -3,8 +3,10 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -257,6 +259,82 @@ func TestTombstoneFindsCitingClaims(t *testing.T) {
 	for _, c := range got {
 		if c.Provenance.SourceSHA256 != sha {
 			t.Fatalf("Tombstone returned a claim not citing %s: %+v", sha, c)
+		}
+	}
+}
+
+// TestSourceStoreExists pins the "is this genuinely new" check T1.15's
+// `serenity sync` uses to scope its git commit to sources it actually just
+// wrote: false before Write, true after, for the same sha derived from the
+// same bytes -- and unaffected by unrelated shas already in the store.
+func TestSourceStoreExists(t *testing.T) {
+	root := t.TempDir()
+	s := NewSourceStore(root)
+	data := []byte("exists-check body")
+	sha := sha256Hex(data)
+
+	if s.Exists(sha) {
+		t.Fatal("Exists reported true before Write")
+	}
+	if _, err := s.Write(data, domain.Source{Kind: "file"}); err != nil {
+		t.Fatal(err)
+	}
+	if !s.Exists(sha) {
+		t.Fatal("Exists reported false after Write")
+	}
+	if s.Exists(sha256Hex([]byte("a completely different body"))) {
+		t.Fatal("Exists reported true for a sha that was never written")
+	}
+}
+
+// TestSourceStoreAll pins the full-store enumeration primitive `serenity
+// extract` uses to run over every source ever ingested: every written
+// source comes back exactly once, sorted by SHA256, with its recorded
+// metadata intact.
+func TestSourceStoreAll(t *testing.T) {
+	root := t.TempDir()
+	s := NewSourceStore(root)
+
+	if all, err := s.All(); err != nil || len(all) != 0 {
+		t.Fatalf("All() on an empty store = %+v, %v, want empty, nil", all, err)
+	}
+
+	written := make([]domain.Source, 0, 3)
+	kinds := []string{"file", "git_repo", "email"}
+	for i, body := range []string{"first source body", "second source body", "third source body"} {
+		src, err := s.Write([]byte(body), domain.Source{Kind: kinds[i], URI: fmt.Sprintf("file:///x%d", i)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		written = append(written, src)
+	}
+
+	all, err := s.All()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != len(written) {
+		t.Fatalf("All() returned %d sources, want %d: %+v", len(all), len(written), all)
+	}
+	shas := make([]string, len(all))
+	for i, s := range all {
+		shas[i] = s.SHA256
+	}
+	if !sort.StringsAreSorted(shas) {
+		t.Fatalf("All() is not sorted by SHA256: %+v", shas)
+	}
+
+	byKind := map[string]domain.Source{}
+	for _, src := range all {
+		byKind[src.Kind] = src
+	}
+	for _, w := range written {
+		got, ok := byKind[w.Kind]
+		if !ok {
+			t.Fatalf("All() missing a source of kind %q", w.Kind)
+		}
+		if got.SHA256 != w.SHA256 || got.URI != w.URI {
+			t.Fatalf("All() returned %+v for kind %q, want SHA256=%q URI=%q", got, w.Kind, w.SHA256, w.URI)
 		}
 	}
 }

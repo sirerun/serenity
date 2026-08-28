@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -83,6 +84,39 @@ func (s *SourceStore) Write(data []byte, src domain.Source) (domain.Source, erro
 		}
 	}
 	return src, nil
+}
+
+// Exists reports whether content-addressed bytes for sha are already
+// stored. Callers that need to know "is this genuinely new" before
+// calling Write -- for example `serenity sync` (T1.15), scoping its git
+// commit to sources it actually just wrote -- use this rather than
+// duplicating Write's own dedup check.
+func (s *SourceStore) Exists(sha string) bool {
+	_, err := s.readMeta(sha)
+	return err == nil
+}
+
+// All returns every source recorded in the store, sorted by SHA256 --
+// the enumeration primitive a full extract/index pass over "every source
+// ever ingested" needs (T1.15), as distinct from Tombstone's per-claim
+// shard scan. Reads only meta.yaml sidecars, not bytes; callers needing
+// raw content call Read(sha).
+func (s *SourceStore) All() ([]domain.Source, error) {
+	matches, err := filepath.Glob(filepath.Join(s.Root, "brain", "sources", "*", "*", "meta.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(matches) // sha is the parent dir name, fixed-width hex -- lexical sort is SHA order
+	out := make([]domain.Source, 0, len(matches))
+	for _, m := range matches {
+		sha := filepath.Base(filepath.Dir(m))
+		src, err := s.readMeta(sha)
+		if err != nil {
+			return nil, fmt.Errorf("store: read source %s: %w", sha, err)
+		}
+		out = append(out, src)
+	}
+	return out, nil
 }
 
 // Read returns the raw bytes and metadata for a stored source.
