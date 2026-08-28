@@ -56,7 +56,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In flight (PRs open)
 
-- 2026 08 28 Wave 5 closed 4/4 (see Shipped entries above). Wave 6 dispatched via `/apply --pool` (claims WON): T1.15 real `serenity extract`/`sync` end-to-end (the M1 critical-path integration task), T1.21 BrainBench adapter, T1.22 nightly eval workflow, T3.8 question precepts, T3.14 dira CLI conformance job. Owner: pool. Each task owns its own S6 docs entries. (T1.12 deferred to a later wave to avoid CLI-wiring collision risk with T1.15; T3.15 also deferred.) T3.6 closed, see Shipped entries above (PR #40). T3.14 shipped (see Shipped entries above, PR #39). T1.22 shipped (see Shipped entries above, PR #41). T1.15, T1.21, T3.8 remain in flight.
+- 2026 08 28 Wave 5 closed 4/4 (see Shipped entries above). Wave 6 dispatched via `/apply --pool` (claims WON): T1.15 real `serenity extract`/`sync` end-to-end (the M1 critical-path integration task), T1.21 BrainBench adapter, T1.22 nightly eval workflow, T3.8 question precepts, T3.14 dira CLI conformance job. Owner: pool. Each task owns its own S6 docs entries. (T1.12 deferred to a later wave to avoid CLI-wiring collision risk with T1.15; T3.15 also deferred.) T3.6 closed, see Shipped entries above (PR #40). T3.14 shipped (see Shipped entries above, PR #39). T1.22 shipped (see Shipped entries above, PR #41). T1.21, T3.8 remain in flight. T1.15 opened PR #44 (`cli: real serenity sync/extract, end to end`) -- CI running.
 
 ## Planned
 
