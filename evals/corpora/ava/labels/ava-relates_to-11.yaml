@@ -1,0 +1,7 @@
+span: Ava introduced her best friend, Theo Kim, at the team offsite.
+expected:
+    predicate: relates_to
+    object: theo-kim
+    valid_from: 2010-09
+labeler: model-b
+adjudicated: false

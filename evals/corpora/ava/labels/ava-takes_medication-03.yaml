@@ -1,0 +1,7 @@
+span: A pharmacy refill record shows Ava picked up Zyrtec daily.
+expected:
+    predicate: takes_medication
+    object: zyrtec
+    valid_from: 2016-01
+labeler: human-reviewer
+adjudicated: true

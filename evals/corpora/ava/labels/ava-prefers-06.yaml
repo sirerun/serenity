@@ -1,0 +1,6 @@
+span: Ava mentioned in a team survey that she prefers oat milk.
+expected:
+    predicate: prefers
+    object: oat-milk
+labeler: human-reviewer
+adjudicated: true

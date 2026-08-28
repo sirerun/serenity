@@ -1,0 +1,9 @@
+span: Ava told her therapist in February 2026 that she had stopped taking sertraline entirely.
+expected:
+    predicate: takes_medication
+    object: sertraline-discontinued
+    valid_from: 2026-02
+labeler: model-b
+adjudicated: true
+contradiction_pair_id: ava-takes_medication-conflict
+contradiction_role: b

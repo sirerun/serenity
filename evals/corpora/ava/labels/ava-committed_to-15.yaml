@@ -1,0 +1,7 @@
+span: Ava's task tracker shows a commitment to paying off her credit card balance this quarter.
+expected:
+    predicate: committed_to
+    object: pay-off-credit-card
+    valid_from: 2026-04
+labeler: human-reviewer
+adjudicated: true

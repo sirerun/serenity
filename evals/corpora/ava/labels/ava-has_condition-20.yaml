@@ -1,0 +1,7 @@
+span: Ava's wellness app tracks a lower back strain as a chronic condition.
+expected:
+    predicate: has_condition
+    object: lower-back-strain
+    valid_from: 2024-11
+labeler: model-b
+adjudicated: false

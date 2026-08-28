@@ -1,0 +1,8 @@
+span: According to her HR record, Ava Standardo is employed by Initech.
+expected:
+    predicate: works_at
+    object: initech
+    valid_from: 2021-01
+    valid_to: 2022-06
+labeler: human-reviewer
+adjudicated: true

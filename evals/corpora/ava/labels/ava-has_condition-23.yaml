@@ -1,0 +1,9 @@
+span: Ava's annual physical in February 2026 recorded her lower back strain as fully resolved with no ongoing symptoms.
+expected:
+    predicate: has_condition
+    object: lower-back-strain-resolved
+    valid_from: 2026-02
+labeler: model-b
+adjudicated: true
+contradiction_pair_id: ava-has_condition-conflict
+contradiction_role: b

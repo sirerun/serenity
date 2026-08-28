@@ -1,0 +1,9 @@
+span: As of February 2026, Ava's IDE settings sync still shows VS Code as her preferred editor.
+expected:
+    predicate: prefers
+    object: vs-code
+    valid_from: 2026-02
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-prefers-conflict
+contradiction_role: a

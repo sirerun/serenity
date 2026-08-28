@@ -1,0 +1,6 @@
+span: Ava mentioned in a team survey that she prefers a standing desk.
+expected:
+    predicate: prefers
+    object: standing-desk
+labeler: model-b
+adjudicated: false

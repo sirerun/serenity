@@ -1,0 +1,7 @@
+span: Ava's password manager lists a saved login for her Fidelity 401k account.
+expected:
+    predicate: owns_account
+    object: fidelity-401k
+    valid_from: 2019-05
+labeler: model-b
+adjudicated: false

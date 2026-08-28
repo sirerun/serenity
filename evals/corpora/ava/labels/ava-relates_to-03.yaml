@@ -1,0 +1,7 @@
+span: Ava introduced her spouse, Dan Standardo, at the team offsite.
+expected:
+    predicate: relates_to
+    object: dan-standardo
+    valid_from: 2015-06
+labeler: human-reviewer
+adjudicated: true

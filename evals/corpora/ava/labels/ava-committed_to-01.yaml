@@ -1,0 +1,7 @@
+span: Ava committed to shipping the Q3 report by the end of the month.
+expected:
+    predicate: committed_to
+    object: ship-q3-report
+    valid_from: 2026-07
+labeler: model-a
+adjudicated: false

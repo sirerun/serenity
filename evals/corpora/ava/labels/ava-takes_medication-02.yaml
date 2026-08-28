@@ -1,0 +1,7 @@
+span: Ava's medication list includes Zyrtec daily.
+expected:
+    predicate: takes_medication
+    object: zyrtec
+    valid_from: 2016-01
+labeler: model-b
+adjudicated: false

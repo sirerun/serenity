@@ -1,0 +1,8 @@
+span: Ava introduced herself on a customer call as a Backend Engineer.
+expected:
+    predicate: has_role
+    object: backend-engineer
+    valid_from: 2021-01
+    valid_to: 2022-06
+labeler: model-b
+adjudicated: false

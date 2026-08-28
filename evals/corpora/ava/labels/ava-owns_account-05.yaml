@@ -1,0 +1,7 @@
+span: Ava Standardo owns a Fidelity 401k account.
+expected:
+    predicate: owns_account
+    object: fidelity-401k
+    valid_from: 2019-05
+labeler: model-b
+adjudicated: false

@@ -1,0 +1,9 @@
+span: As of February 2026, Ava Standardo's HR record still lists Acme Corp as her employer.
+expected:
+    predicate: works_at
+    object: acme-corp
+    valid_from: 2026-02
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-works_at-conflict
+contradiction_role: a

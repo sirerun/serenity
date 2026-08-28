@@ -1,0 +1,9 @@
+span: A February 2026 pharmacy auto-refill notice went out for Ava's sertraline.
+expected:
+    predicate: takes_medication
+    object: sertraline-active
+    valid_from: 2026-02
+labeler: model-a
+adjudicated: true
+contradiction_pair_id: ava-takes_medication-conflict
+contradiction_role: a

@@ -1,0 +1,9 @@
+span: Ava's February 2026 therapy notes record that she discontinued sertraline on her own.
+expected:
+    predicate: takes_medication
+    object: sertraline-discontinued
+    valid_from: 2026-02
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-takes_medication-conflict
+contradiction_role: b

@@ -1,0 +1,6 @@
+span: According to her setup notes, Ava prefers oat milk.
+expected:
+    predicate: prefers
+    object: oat-milk
+labeler: model-b
+adjudicated: false

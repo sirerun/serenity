@@ -1,0 +1,7 @@
+span: Ava's medical intake form lists chronic migraine as an ongoing condition.
+expected:
+    predicate: has_condition
+    object: chronic-migraine
+    valid_from: 2020-06
+labeler: model-a
+adjudicated: false

@@ -1,0 +1,9 @@
+span: Ava's March 2026 message to the on-call channel commits to an April cutover for the Postgres migration instead.
+expected:
+    predicate: committed_to
+    object: migrate-postgres-delay-to-april
+    valid_from: 2026-03
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-committed_to-conflict
+contradiction_role: b

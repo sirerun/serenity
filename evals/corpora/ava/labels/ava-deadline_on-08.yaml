@@ -1,0 +1,7 @@
+span: Ava noted in her planner that her tax filing is due 2026-04-15.
+expected:
+    predicate: deadline_on
+    object: "2026-04-15"
+    valid_from: 2026-04
+labeler: model-b
+adjudicated: false

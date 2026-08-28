@@ -1,0 +1,7 @@
+span: Ava's banking app displays a current Chase checking balance of $4,230.18.
+expected:
+    predicate: has_balance
+    object: 4230.18-usd
+    valid_from: 2026-03
+labeler: human-reviewer
+adjudicated: true

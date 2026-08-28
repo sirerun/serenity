@@ -1,0 +1,9 @@
+span: Ava's bank records show her Chase checking account is still open and active as of February 2026.
+expected:
+    predicate: owns_account
+    object: chase-checking-active
+    valid_from: 2026-02
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-owns_account-conflict
+contradiction_role: a

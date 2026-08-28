@@ -1,0 +1,7 @@
+span: Ava's email after the on-call review stated the on-call rotation needs a fourth person.
+expected:
+    predicate: said
+    object: on-call-needs-fourth
+    valid_from: 2026-04
+labeler: model-b
+adjudicated: false

@@ -1,0 +1,7 @@
+span: Ava's best friend is Theo Kim.
+expected:
+    predicate: relates_to
+    object: theo-kim
+    valid_from: 2010-09
+labeler: human-reviewer
+adjudicated: true

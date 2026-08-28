@@ -1,0 +1,7 @@
+span: Ava Standardo has been diagnosed with generalized anxiety.
+expected:
+    predicate: has_condition
+    object: generalized-anxiety
+    valid_from: 2021-09
+labeler: model-a
+adjudicated: false

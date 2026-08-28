@@ -1,0 +1,7 @@
+span: Ava's medication list includes sumatriptan as needed for migraines.
+expected:
+    predicate: takes_medication
+    object: sumatriptan
+    valid_from: 2020-07
+labeler: model-a
+adjudicated: false

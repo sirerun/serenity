@@ -1,0 +1,7 @@
+span: The statement shows Ava's Chase checking at $4,230.18.
+expected:
+    predicate: has_balance
+    object: 4230.18-usd
+    valid_from: 2026-03
+labeler: model-b
+adjudicated: false

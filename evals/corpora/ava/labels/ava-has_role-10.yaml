@@ -1,0 +1,8 @@
+span: Per the org chart, Ava holds the role of Senior Backend Engineer.
+expected:
+    predicate: has_role
+    object: senior-backend-engineer
+    valid_from: 2022-07
+    valid_to: 2023-12
+labeler: model-a
+adjudicated: false

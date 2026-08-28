@@ -1,0 +1,7 @@
+span: Ava's emergency contact form names her therapist as Dr. Novak.
+expected:
+    predicate: relates_to
+    object: dr-novak
+    valid_from: 2021-10
+labeler: model-b
+adjudicated: false

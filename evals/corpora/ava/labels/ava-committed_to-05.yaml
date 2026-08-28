@@ -1,0 +1,7 @@
+span: Ava committed to mentoring a new hire through onboarding.
+expected:
+    predicate: committed_to
+    object: mentor-new-hire
+    valid_from: 2026-05
+labeler: model-b
+adjudicated: false

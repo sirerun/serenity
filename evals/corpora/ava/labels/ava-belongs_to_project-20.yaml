@@ -1,0 +1,7 @@
+span: Ava's calendar shows recurring standups for Operation Tidewater.
+expected:
+    predicate: belongs_to_project
+    object: operation-tidewater
+    valid_from: 2026-01
+labeler: model-b
+adjudicated: false

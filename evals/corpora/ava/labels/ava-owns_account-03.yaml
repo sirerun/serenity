@@ -1,0 +1,7 @@
+span: An onboarding email confirms Ava was granted a Chase checking account.
+expected:
+    predicate: owns_account
+    object: chase-checking
+    valid_from: 2018-03
+labeler: human-reviewer
+adjudicated: true

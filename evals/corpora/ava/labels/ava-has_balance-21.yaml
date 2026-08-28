@@ -1,0 +1,9 @@
+span: According to the March 2026 bank statement, Ava's Chase checking balance was $4,230.18.
+expected:
+    predicate: has_balance
+    object: 4230.18-usd
+    valid_from: 2026-03
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-has_balance-conflict
+contradiction_role: a

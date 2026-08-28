@@ -1,0 +1,8 @@
+span: Ava Standardo works at Contoso Systems.
+expected:
+    predicate: works_at
+    object: contoso-systems
+    valid_from: 2019-01
+    valid_to: 2020-12
+labeler: model-a
+adjudicated: false

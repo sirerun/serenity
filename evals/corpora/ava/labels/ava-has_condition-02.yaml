@@ -1,0 +1,7 @@
+span: Ava's medical intake form lists seasonal allergies as an ongoing condition.
+expected:
+    predicate: has_condition
+    object: seasonal-allergies
+    valid_from: 2015-04
+labeler: model-b
+adjudicated: false

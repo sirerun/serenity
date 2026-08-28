@@ -1,0 +1,9 @@
+span: In the March 2026 planning meeting, Ava said the Postgres migration would ship by end of March.
+expected:
+    predicate: said
+    object: migration-ships-end-of-march
+    valid_from: 2026-03
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-said-conflict
+contradiction_role: a

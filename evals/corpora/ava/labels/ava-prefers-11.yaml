@@ -1,0 +1,6 @@
+span: Ava's standing order confirms she prefers VS Code as her editor.
+expected:
+    predicate: prefers
+    object: vs-code
+labeler: model-b
+adjudicated: false

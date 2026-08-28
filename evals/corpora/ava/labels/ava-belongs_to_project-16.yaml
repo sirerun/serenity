@@ -1,0 +1,8 @@
+span: Ava's calendar shows recurring standups for the Beacon redesign.
+expected:
+    predicate: belongs_to_project
+    object: beacon-redesign
+    valid_from: 2026-01
+    valid_to: 2026-02
+labeler: model-a
+adjudicated: false

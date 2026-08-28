@@ -1,0 +1,8 @@
+span: Per the org chart, Ava holds the role of Staff Engineer.
+expected:
+    predicate: has_role
+    object: staff-engineer
+    valid_from: 2025-06
+    valid_to: 2026-01
+labeler: human-reviewer
+adjudicated: true

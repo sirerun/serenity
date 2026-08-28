@@ -1,0 +1,9 @@
+span: Ava's pharmacy record shows an active sertraline prescription refilled in February 2026.
+expected:
+    predicate: takes_medication
+    object: sertraline-active
+    valid_from: 2026-02
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-takes_medication-conflict
+contradiction_role: a

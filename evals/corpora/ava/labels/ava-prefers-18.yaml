@@ -1,0 +1,6 @@
+span: Ava mentioned in a team survey that she prefers remote work on Fridays.
+expected:
+    predicate: prefers
+    object: remote-fridays
+labeler: human-reviewer
+adjudicated: true

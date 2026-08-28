@@ -1,0 +1,7 @@
+span: Ava's medical intake form lists a lower back strain as an ongoing condition.
+expected:
+    predicate: has_condition
+    object: lower-back-strain
+    valid_from: 2024-11
+labeler: human-reviewer
+adjudicated: true

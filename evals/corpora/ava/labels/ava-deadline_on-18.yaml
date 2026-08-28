@@ -1,0 +1,7 @@
+span: A calendar reminder shows Ava's the security audit response due 2026-06-10.
+expected:
+    predicate: deadline_on
+    object: "2026-06-10"
+    valid_from: 2026-06
+labeler: human-reviewer
+adjudicated: true

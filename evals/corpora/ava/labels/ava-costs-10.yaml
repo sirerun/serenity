@@ -1,0 +1,7 @@
+span: Ava's expense report lists Ava's therapy session copay at $40.00.
+expected:
+    predicate: costs
+    object: 40.00-usd
+    valid_from: 2026-03
+labeler: model-a
+adjudicated: false

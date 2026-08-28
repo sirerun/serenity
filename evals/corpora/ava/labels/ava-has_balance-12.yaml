@@ -1,0 +1,7 @@
+span: A finance summary lists Ava's Coinbase wallet holding $2,015.67.
+expected:
+    predicate: has_balance
+    object: 2015.67-usd
+    valid_from: 2026-02
+labeler: human-reviewer
+adjudicated: true

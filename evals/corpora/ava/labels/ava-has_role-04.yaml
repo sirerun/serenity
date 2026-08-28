@@ -1,0 +1,8 @@
+span: Ava introduced herself on a customer call as a QA Analyst.
+expected:
+    predicate: has_role
+    object: qa-analyst
+    valid_from: 2019-01
+    valid_to: 2020-12
+labeler: model-a
+adjudicated: false

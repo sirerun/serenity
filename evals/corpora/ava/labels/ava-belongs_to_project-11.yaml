@@ -1,0 +1,8 @@
+span: In a project kickoff doc, Ava is named a contributor to the Aurora migration.
+expected:
+    predicate: belongs_to_project
+    object: aurora-migration
+    valid_from: 2025-07
+    valid_to: 2025-12
+labeler: model-b
+adjudicated: false

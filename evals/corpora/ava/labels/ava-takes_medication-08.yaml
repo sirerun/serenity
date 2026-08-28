@@ -1,0 +1,7 @@
+span: Ava mentioned to her doctor that she's been taking an albuterol inhaler as needed.
+expected:
+    predicate: takes_medication
+    object: albuterol-inhaler
+    valid_from: 2010-01
+labeler: model-b
+adjudicated: false

@@ -1,0 +1,7 @@
+span: Ava's banking app displays a current AWS billing account balance of $312.00 owed.
+expected:
+    predicate: has_balance
+    object: 312.00-usd-owed
+    valid_from: 2026-04
+labeler: human-reviewer
+adjudicated: true

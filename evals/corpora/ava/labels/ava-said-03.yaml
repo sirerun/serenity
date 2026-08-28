@@ -1,0 +1,7 @@
+span: Ava's email after the Tuesday standup stated the deploy window should move to Thursday.
+expected:
+    predicate: said
+    object: deploy-window-thursday
+    valid_from: 2026-05
+labeler: human-reviewer
+adjudicated: true

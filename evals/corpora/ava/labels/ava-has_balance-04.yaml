@@ -1,0 +1,7 @@
+span: A finance summary lists Ava's Chase checking holding $4,230.18.
+expected:
+    predicate: has_balance
+    object: 4230.18-usd
+    valid_from: 2026-03
+labeler: model-a
+adjudicated: false

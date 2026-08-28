@@ -1,0 +1,9 @@
+span: Ava's February 2026 calendar dropped the Beacon standup and added Project Anchorpoint's in its place.
+expected:
+    predicate: belongs_to_project
+    object: project-anchorpoint
+    valid_from: 2026-02
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-belongs_to_project-conflict
+contradiction_role: b

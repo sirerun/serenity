@@ -1,0 +1,7 @@
+span: Ava's deadline for the security audit response is 2026-06-10.
+expected:
+    predicate: deadline_on
+    object: "2026-06-10"
+    valid_from: 2026-06
+labeler: model-b
+adjudicated: false

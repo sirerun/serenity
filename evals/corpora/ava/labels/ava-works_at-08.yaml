@@ -1,0 +1,8 @@
+span: Ava's LinkedIn-style bio lists her current employer as Initech.
+expected:
+    predicate: works_at
+    object: initech
+    valid_from: 2021-01
+    valid_to: 2022-06
+labeler: model-b
+adjudicated: false

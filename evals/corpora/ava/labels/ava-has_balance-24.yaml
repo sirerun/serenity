@@ -1,0 +1,9 @@
+span: A March 2026 screenshot Ava sent her accountant shows Chase checking at $5,910.44.
+expected:
+    predicate: has_balance
+    object: 5910.44-usd
+    valid_from: 2026-03
+labeler: human-reviewer
+adjudicated: true
+contradiction_pair_id: ava-has_balance-conflict
+contradiction_role: b

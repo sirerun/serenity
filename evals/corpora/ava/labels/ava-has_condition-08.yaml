@@ -1,0 +1,7 @@
+span: Ava's wellness app tracks mild asthma as a chronic condition.
+expected:
+    predicate: has_condition
+    object: mild-asthma
+    valid_from: 2010-01
+labeler: model-b
+adjudicated: false

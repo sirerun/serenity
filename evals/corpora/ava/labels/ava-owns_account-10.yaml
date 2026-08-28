@@ -1,0 +1,7 @@
+span: Ava's records show she holds a GitHub organization account.
+expected:
+    predicate: owns_account
+    object: github-org-account
+    valid_from: 2020-09
+labeler: model-a
+adjudicated: false

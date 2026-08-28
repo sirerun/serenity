@@ -1,0 +1,7 @@
+span: Ava introduced her accountant, Renee Ortiz, at the team offsite.
+expected:
+    predicate: relates_to
+    object: renee-ortiz
+    valid_from: 2019-01
+labeler: human-reviewer
+adjudicated: true

@@ -1,0 +1,7 @@
+span: Ava's banking app displays a current Coinbase wallet balance of $2,015.67.
+expected:
+    predicate: has_balance
+    object: 2015.67-usd
+    valid_from: 2026-02
+labeler: model-b
+adjudicated: false

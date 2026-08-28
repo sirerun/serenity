@@ -1,0 +1,7 @@
+span: An onboarding email confirms Ava was granted a GitHub organization account.
+expected:
+    predicate: owns_account
+    object: github-org-account
+    valid_from: 2020-09
+labeler: model-b
+adjudicated: false

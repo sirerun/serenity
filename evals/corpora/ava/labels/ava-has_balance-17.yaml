@@ -1,0 +1,7 @@
+span: Ava's GitHub organization account balance is $0.00.
+expected:
+    predicate: has_balance
+    object: 0.00-usd
+    valid_from: 2026-04
+labeler: model-b
+adjudicated: false

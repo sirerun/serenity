@@ -1,0 +1,7 @@
+span: Ava's team roster lists her under Operation Tidewater.
+expected:
+    predicate: belongs_to_project
+    object: operation-tidewater
+    valid_from: 2026-01
+labeler: human-reviewer
+adjudicated: true

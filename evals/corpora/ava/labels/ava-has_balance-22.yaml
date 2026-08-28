@@ -1,0 +1,9 @@
+span: The PDF statement Ava's bank mailed for March 2026 lists her Chase checking balance at $4,230.18.
+expected:
+    predicate: has_balance
+    object: 4230.18-usd
+    valid_from: 2026-03
+labeler: model-a
+adjudicated: true
+contradiction_pair_id: ava-has_balance-conflict
+contradiction_role: a

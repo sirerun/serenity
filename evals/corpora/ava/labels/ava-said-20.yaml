@@ -1,0 +1,7 @@
+span: Ava was quoted in the quarterly review retro notes saying the Q2 roadmap review went well.
+expected:
+    predicate: said
+    object: q2-roadmap-review-went-well
+    valid_from: 2026-06
+labeler: model-b
+adjudicated: false

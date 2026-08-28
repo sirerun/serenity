@@ -1,0 +1,7 @@
+span: In a planning meeting, Ava committed to paying off her credit card balance this quarter.
+expected:
+    predicate: committed_to
+    object: pay-off-credit-card
+    valid_from: 2026-04
+labeler: model-b
+adjudicated: false

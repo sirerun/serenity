@@ -1,0 +1,7 @@
+span: Ava's deadline for the vendor contract renewal is 2026-05-20.
+expected:
+    predicate: deadline_on
+    object: "2026-05-20"
+    valid_from: 2026-05
+labeler: model-a
+adjudicated: false
