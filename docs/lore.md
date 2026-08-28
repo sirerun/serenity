@@ -147,3 +147,44 @@ package without also staging (or having already committed) every sibling
 file the new one depends on -- a near-certainty whenever a task adds one
 new `_test.go` file to a package like `internal/gate` that already has
 shared test helpers.
+
+## L-0005: The pre-commit hook's full `go test ./...` can commit fixture junk onto a task branch under concurrent pool load
+
+**Tags:** #git #hooks #writer #concurrency #critical
+**Date:** 2026-08-28
+**Repo:** sirerun/serenity
+
+**Rule:** After any `git commit` that ran the local pre-commit hook (it
+shells `go test ./...` for every staged `.go`/`go.mod` change), run
+`git log --oneline -5` on the resulting branch before pushing or opening a
+PR and check for commits you did not author -- especially any message that
+looks like a test fixture seed (e.g. "seed <entity> page/shard"). If found,
+do not try to hand-repair the tree: `git reset --hard` back to the branch's
+correct base inside the (isolated, disposable) task worktree, re-verify
+`go build`/`go vet`/`gofmt -l`/`go test -race ./...`/`golangci-lint run`
+clean, then recommit (`--no-verify` is justified here -- the hook itself is
+the corruption vector).
+**Why:** During T1.6's `git commit`, `internal/writer`'s git-fixture tests
+(`TestFenceEntryPoint`, `TestDirtyTreeGuardResumeAfterClear`,
+`TestQueueFlushCommitsWithSerenityPrefix`,
+`TestQueueFlushNoopWhenNothingTouched`,
+`TestQueueFlushScopesToTouchedPaths`) both failed AND, worse, landed three
+commits directly on the task branch that the task never authored ("seed
+alice-tan page", "seed checking-acct shard", "seed alice-tan page", same
+second). The first of those commits deleted `go.mod`, `cmd/`, `docs/`,
+`LICENSE`, `Makefile`, `README.md`, `.github/`, `.gitignore`,
+`.golangci.yml`, `.goreleaser.yaml` from git's tracked tree (the files
+stayed on disk, git just stopped tracking them) and added a
+`brain/entities/person/alice-tan.md` fixture -- i.e. some git-fixture test
+helper operated on the real worktree instead of an isolated `t.TempDir()`
+repo. Re-running the exact same `internal/writer` suite immediately
+afterward, in isolation with no concurrent sibling load, passed cleanly
+with zero corruption -- this points to load-contention (7+ concurrent
+kazi/test/lint processes hammering the same machine during a pool wave)
+rather than a bug that fires on every invocation. Root cause not yet
+isolated to a specific line in `internal/writer`.
+**Trigger:** Committing Go changes (which fires the hook's full
+`go test ./...`) while several other pool agents are concurrently running
+their own `git commit`/`kazi apply`/`golangci-lint` on the same host --
+the exact condition of an `/apply --pool` wave with many parallel kazi-lane
+tasks.
