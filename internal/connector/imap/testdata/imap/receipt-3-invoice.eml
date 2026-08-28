@@ -1,0 +1,10 @@
+From: billing@vendor.example
+To: alice@example.com
+Subject: Your invoice #4471
+Date: Tue, 04 Aug 2026 11:00:00 -0700
+Message-ID: <receipt-3-invoice@vendor.example>
+Content-Type: text/plain; charset=us-ascii
+
+Invoice #4471 for $128.00 is attached. Payment is due in 30 days.
+
+Thank you for your business.
