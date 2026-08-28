@@ -42,7 +42,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In flight (PRs open)
 
-- none
+- 2026 08 28 Wave 4 dispatched via `/apply --pool` (claims WON): T1.8 extraction to observations, T1.10 embeddings + vector store, T1.18 connector guide, T1.20 adversarial fixture corpus (the real corpus T3.12/T1.5 both shipped scoped-down substitutes ahead of), T3.5 check_plan stage 1 matcher, T3.13 direction eval corpus. Owner: pool. Each task owns its own S6 docs entries this wave. (T1.14, T1.17 also unblocked, deferred to a later wave.)
 
 ## Planned
 
