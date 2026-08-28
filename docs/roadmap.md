@@ -25,7 +25,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In flight (PRs open)
 
-- none
+- 2026 08 27 T0.13 wire writer queue into CLI tests + extend file-first gate (`internal/gate/filefirst_test.go`'s `writeCalls` now also tracks `WriteEntity`/`Append` under the same allowlist as the index writes, with two new red-check subtests; `internal/cli/cli_test.go` and `internal/cli/compact_test.go` seed via `writer.Fence`/`writer.Shard` instead of calling the store writers directly) -- PR #11 (task/t0-13-wire-writer-queue), CI running. No production callers exist yet outside `internal/writer` (M1 hasn't landed), so this closes the gate/test gap only. Owner: kazi lane (goal `t0-13-wire-writer-queue`). Note: predicate evaluation ran in the scheduler's `kazi-partition/p-a75bb28e31dfd1f9-*` worktree, not `task/t0-13-wire-writer-queue` (same landmine as T0.2, docs/lore.md L-0003) -- work was committed there, then ported via cherry-pick to the actual task worktree at `/Volumes/BuildOffload/sirerun-worktrees/serenity-wt-t0-13-wire-writer-queue` and independently re-verified (`go build`, `go vet`, `gofmt -l`, `go test -race`, `golangci-lint run` all green) before pushing/opening the PR.
 
 ## Planned
 
