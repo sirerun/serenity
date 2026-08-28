@@ -42,7 +42,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Blocked
 
-- T0.11 v0.1.0 release: needs the HOMEBREW_TAP_GITHUB_TOKEN repo secret and a tag push (founder). FOUNDER: David.
+- T0.11 v0.1.0 release: needs a tag push (founder). The `HOMEBREW_TAP_GITHUB_TOKEN` secret exists and is now visible to `sirerun/serenity` (org secret, was scoped to `sirerun/homebrew-tap` only — David created it, serenity-b added `serenity` to its selected-repos list via the GitHub API, verified 2026-08-28). Only the tag push remains. FOUNDER: David.
 
 ## Decisions
 
