@@ -25,13 +25,19 @@ import (
 const repoRoot = "../.."
 
 // writeCalls are the Engine methods that mutate the derived index (RFC
-// §7.5 BrainIndex). A call to one of these from outside the allowlist is a
-// file-first violation.
+// §7.5 BrainIndex) plus the store primitives that mutate canonical brain
+// files (FenceWriter.WriteEntity, ShardStore.Append -- RFC §7.7, ADR 004).
+// A call to one of these from outside the allowlist is a file-first
+// violation: canonical writes and index writes must both funnel through
+// the writer queue (or the allowlisted rebuild path for index writes) so
+// concurrent callers can never interleave writes to the same file (T0.13).
 var writeCalls = map[string]bool{
 	"UpsertEntity": true,
 	"UpsertClaim":  true,
 	"InsertChunk":  true,
 	"UpsertVector": true,
+	"WriteEntity":  true,
+	"Append":       true,
 }
 
 // allowlist holds repo-root-relative, forward-slash paths permitted to
@@ -160,6 +166,27 @@ func write(eng *engine) error {
 }
 `
 
+// disallowedStoreWriteSrc exercises the two canonical-file write
+// primitives (WriteEntity, Append) that T0.13 added to writeCalls -- a
+// direct caller outside internal/writer/ must trip both.
+const disallowedStoreWriteSrc = `package somepkg
+
+type fence struct{}
+
+func (f *fence) WriteEntity(x string) (string, error) { return "", nil }
+
+type shard struct{}
+
+func (s *shard) Append(x string) error { return nil }
+
+func write(f *fence, s *shard) error {
+	if _, err := f.WriteEntity("x"); err != nil {
+		return err
+	}
+	return s.Append("x")
+}
+`
+
 func joinViolations(vs []violation) string {
 	lines := make([]string, len(vs))
 	for i, v := range vs {
@@ -205,6 +232,39 @@ func TestFileFirstGate(t *testing.T) {
 		}
 		if len(violations) != 0 {
 			t.Fatalf("internal/writer/ is allowlisted, want 0 violations, got %d: %s", len(violations), joinViolations(violations))
+		}
+	})
+
+	t.Run("red_check_disallowed_store_write", func(t *testing.T) {
+		tmp := t.TempDir()
+		writeFixture(t, tmp, "internal/somepkg/store.go", disallowedStoreWriteSrc)
+
+		violations, err := scanForViolations(tmp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(violations) != 2 {
+			t.Fatalf("want exactly 2 violations (WriteEntity + Append) for a disallowed caller, got %d: %s", len(violations), joinViolations(violations))
+		}
+		seen := map[string]bool{}
+		for _, v := range violations {
+			seen[v.call] = true
+		}
+		if !seen["WriteEntity"] || !seen["Append"] {
+			t.Fatalf("want violations on both WriteEntity and Append, got: %s", joinViolations(violations))
+		}
+	})
+
+	t.Run("store_write_writer_prefix_allowed", func(t *testing.T) {
+		tmp := t.TempDir()
+		writeFixture(t, tmp, "internal/writer/apply.go", disallowedStoreWriteSrc)
+
+		violations, err := scanForViolations(tmp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(violations) != 0 {
+			t.Fatalf("internal/writer/ is allowlisted for store writes too, want 0 violations, got %d: %s", len(violations), joinViolations(violations))
 		}
 	})
 }
