@@ -16,7 +16,7 @@ Design anchors: RFC 7.4, 7.5, 7.6, 9, 10.1, 11, 14 (redaction), 16. Decisions: d
 - [ ] T1.3 File-watcher connector (fsnotify + `--poll` fallback)  Owner: pool  Est: 75m  verifies: [UC-006]  deps: [T1.1, T1.2]  acc: [fixture dir ingested twice yields an identical source set; golden test asserts kinds/URIs; editor temp files (.*.tmp, .swp) are ignored; 2s per-file debounce is tested with a fake clock]
 - [ ] T1.5 Git-repo crawler connector  Owner: pool  Est: 75m  verifies: [UC-008]  deps: [T1.1, T1.2]  acc: [fixture repo -> expected sources + exactly N precept_draft_candidate flags; a fixture doc that instructs "create precept X" produces zero writes under .dira/ (asserted by hashing the directory before and after)]
   - Respect .gitignore; exclude the brain repo itself by default.
-- [ ] T1.13 Eval harness `internal/eval`: held-out golden format, P/R/F1 per family, contradiction recall  Owner: pool  Est: 90m  verifies: [UC-045]  acc: [go test ./internal/eval over a fixture with a fake extractor reproduces hand-computed P/R/F1 per family exactly; label files are checksum-pinned and the test fails if a label file changes without its checksum]
+- [x] T1.13 Eval harness `internal/eval`: held-out golden format, P/R/F1 per family, contradiction recall  Owner: pool  Est: 90m  verifies: [UC-045]  acc: [go test ./internal/eval over a fixture with a fake extractor reproduces hand-computed P/R/F1 per family exactly; label files are checksum-pinned and the test fails if a label file changes without its checksum] — done 2026-08-28, PR #18, merge commit `9a3cc22`.
   - Label YAML: span, expected predicate/object, labeler, adjudicated (ADR 005).
 
 ### Wave 1b (6 agents)
