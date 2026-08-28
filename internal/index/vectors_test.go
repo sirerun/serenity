@@ -245,3 +245,102 @@ func TestVectorsParticipateInRebuildIdentity(t *testing.T) {
 		t.Fatalf("dump has no vectors rows -- test did not exercise the vectors table:\n%s", dump1)
 	}
 }
+
+// fakeEmbedder is a test double for the Embedder interface ReembedMissing
+// depends on (T1.15) -- deterministic and call-counted, per the zero-stub
+// policy this is test-file-only.
+type fakeEmbedder struct {
+	pin   string
+	calls int
+}
+
+func (e *fakeEmbedder) ModelVersion() string { return e.pin }
+
+func (e *fakeEmbedder) Embed(_ context.Context, text string) ([]float32, error) {
+	e.calls++
+	var v [2]float32
+	for i, r := range text {
+		v[i%2] += float32(r)
+	}
+	return v[:], nil
+}
+
+// TestAllChunksReturnsEverySorted pins AllChunks' full-enumeration
+// contract (as distinct from SearchFTS's keyword-matched subset): every
+// inserted chunk comes back, ordered by chunk_ref.
+func TestAllChunksReturnsEverySorted(t *testing.T) {
+	ctx := context.Background()
+	eng := openTestEngine(t)
+
+	for _, ref := range []string{"c-z", "c-a", "c-m"} {
+		if err := eng.InsertChunk(ctx, ref, "e", "text-"+ref, "sha-"+ref, "file"); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	chunks, err := eng.AllChunks(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunks) != 3 {
+		t.Fatalf("AllChunks returned %d chunks, want 3: %+v", len(chunks), chunks)
+	}
+	want := []string{"c-a", "c-m", "c-z"}
+	for i, w := range want {
+		if chunks[i].ChunkRef != w {
+			t.Fatalf("chunks[%d].ChunkRef = %q, want %q (order: %+v)", i, chunks[i].ChunkRef, w, chunks)
+		}
+	}
+}
+
+// TestReembedMissingSkipsAlreadyEmbedded proves ReembedMissing embeds every
+// chunk lacking a vector under the embedder's pin, and never re-embeds one
+// that already has it -- the "don't pay for a redundant provider call
+// within one run" half of its contract (T1.15).
+func TestReembedMissingSkipsAlreadyEmbedded(t *testing.T) {
+	ctx := context.Background()
+	eng := openTestEngine(t)
+
+	if err := eng.InsertChunk(ctx, "c1", "e", "hello", "sha-c1", "file"); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.InsertChunk(ctx, "c2", "e", "world", "sha-c2", "file"); err != nil {
+		t.Fatal(err)
+	}
+	// c2 already has a vector under this pin -- must not be re-embedded.
+	if err := eng.UpsertVector(ctx, "c2", "fake@v1", []float32{9, 9}); err != nil {
+		t.Fatal(err)
+	}
+
+	fe := &fakeEmbedder{pin: "fake@v1"}
+	embedded, err := ReembedMissing(ctx, eng, fe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if embedded != 1 {
+		t.Fatalf("ReembedMissing embedded %d chunk(s), want 1 (only c1)", embedded)
+	}
+	if fe.calls != 1 {
+		t.Fatalf("Embed called %d time(s), want 1 (c2 already had a vector under this pin)", fe.calls)
+	}
+
+	vec, ok, err := eng.VectorFor(ctx, "c1", "fake@v1")
+	if err != nil || !ok {
+		t.Fatalf("VectorFor(c1) = %v, %v, %v, want a vector", vec, ok, err)
+	}
+	preserved, _, err := eng.VectorFor(ctx, "c2", "fake@v1")
+	if err != nil || preserved[0] != 9 {
+		t.Fatalf("c2's pre-existing vector was overwritten: %v, %v", preserved, err)
+	}
+
+	// A second call embeds nothing more -- both chunks now have vectors.
+	if embedded, err = ReembedMissing(ctx, eng, fe); err != nil {
+		t.Fatal(err)
+	}
+	if embedded != 0 {
+		t.Fatalf("second ReembedMissing call embedded %d chunk(s), want 0", embedded)
+	}
+	if fe.calls != 1 {
+		t.Fatalf("Embed called %d time(s) total, want 1 (no redundant calls on the second pass)", fe.calls)
+	}
+}
