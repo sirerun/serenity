@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -48,7 +49,7 @@ func runSync(ctx context.Context, root string, out io.Writer) error {
 		return err
 	}
 	defer func() { _ = eng.Close() }()
-	if err := index.Rebuild(ctx, root, cfg, eng); err != nil {
+	if err := rebuildTimed(ctx, root, cfg, eng); err != nil {
 		return err
 	}
 	return printStats(ctx, eng, out)
@@ -74,11 +75,24 @@ func runExtract(ctx context.Context, root string, out io.Writer) error {
 		return err
 	}
 	defer func() { _ = eng.Close() }()
-	if err := index.Rebuild(ctx, root, cfg, eng); err != nil {
+	if err := rebuildTimed(ctx, root, cfg, eng); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintln(out, "re-derived claim index from canonical files")
 	return printStats(ctx, eng, out)
+}
+
+// rebuildTimed runs index.Rebuild and records its wall-clock duration via
+// eng.RecordRebuildTiming (RFC section 16 "rebuild timing", plan T1.17) --
+// `serenity status` reads this back. Timing lives outside Rebuild itself
+// so a bare Rebuild call (as internal/index's own invariant tests use)
+// never writes into the caches runtime table.
+func rebuildTimed(ctx context.Context, root string, cfg *config.Config, eng *index.SQLite) error {
+	start := time.Now()
+	if err := index.Rebuild(ctx, root, cfg, eng); err != nil {
+		return err
+	}
+	return eng.RecordRebuildTiming(ctx, time.Since(start), time.Now())
 }
 
 func openIndex(root string) (*index.SQLite, error) {
