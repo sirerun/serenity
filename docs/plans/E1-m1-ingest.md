@@ -36,7 +36,7 @@ Design anchors: RFC 7.4, 7.5, 7.6, 9, 10.1, 11, 14 (redaction), 16. Decisions: d
 - [ ] T1.17 `serenity status` v1: ingest lag, connector health, jobs depth, spend to date, rebuild timing  Owner: pool  Est: 45m  verifies: [UC-004]  deps: [T1.1, T1.7]  acc: [golden CLI output test on a fixture brain renders every field deterministically]
 - [ ] T1.21 BrainBench adapter + CI trend artifact  Owner: pool  Est: 90m  verifies: [UC-045]  deps: [T1.11]  acc: [ci runs the vendored gbrain BrainBench fixtures through serenity search on cached outputs and uploads evals/brainbench-trend.json with a per-run score row]
   - The gbrain corpus lives at evals/brainbench in dndungu/gbrain@d35c9c9e441e; vendor the fixture + gold files with their license.
-- [ ] T1.18 Connector guide (support matrix, Gmail app-password setup, re-auth path)  Owner: pool  Est: 45m  verifies: [UC-007, UC-039]  deps: [T1.3, T1.4, T1.5]  acc: [docs/connectors/README.md plus one page per connector exist and `serenity connectors status` prints each connector's doc path]
+- [x] T1.18 Connector guide (support matrix, Gmail app-password setup, re-auth path)  Owner: pool  Est: 45m  verifies: [UC-007, UC-039]  deps: [T1.3, T1.4, T1.5]  acc: [docs/connectors/README.md plus one page per connector exist and `serenity connectors status` prints each connector's doc path] — done 2026-08-28, PR #29, merge commit `76dc75e`. `docs/connectors/README.md` + `file.md`/`gitrepo.md`/`imap.md`, written from the connectors' actual source and tests; `imap.md` covers Gmail app-password setup and the re-auth path. `internal/cli/connectors.go`: `serenity connectors status` prints each connector's stable name and doc path.
 
 ### Wave 1d (4 agents)
 
