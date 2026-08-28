@@ -31,6 +31,15 @@ jobs:
         with:
           version: v2.11.4
 
+  dira-vendor-pin:
+    # T3.1: internal/dira/ must stay byte-identical to kazi-org/dira at the
+    # commit internal/dira/PIN records (no fork-and-edit, ADR 008). Separate
+    # from `test` because it needs network access to the real upstream repo.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: internal/dira/verify-pin.sh
+
   crossbuild:
     # M0 acceptance: single binary on macOS arm64 + Linux amd64/arm64.
     runs-on: ubuntu-latest
