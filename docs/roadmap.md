@@ -64,7 +64,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In flight (PRs open)
 
-- 2026 08 28 Wave 5 closed 4/4 (see Shipped entries above). Wave 6 dispatched via `/apply --pool` (claims WON): T1.15 real `serenity extract`/`sync` end-to-end (the M1 critical-path integration task), T1.21 BrainBench adapter, T1.22 nightly eval workflow, T3.8 question precepts, T3.14 dira CLI conformance job. Owner: pool. Each task owns its own S6 docs entries. (T1.12 deferred to a later wave to avoid CLI-wiring collision risk with T1.15; T3.15 also deferred.) Wave 6 now closed 5/5: T3.14 (PR #39), T1.22 (PR #41), T3.8 (PR #42), T1.21 (PR #43), T1.15 (PR #44) -- see Shipped entries above/below. (T3.6 closed separately, PR #40, not part of this wave's 5-task dispatch.)
+- 2026 08 28 Wave 6 closed 6/6 (T3.6's plan-file checkbox was found dropped during a concurrent-rebase conflict resolution and backfilled by the coordinator; roadmap Shipped entry was never affected). Wave 7 dispatched via `/apply --pool` (claims WON), overnight/quiet-hours sizing: T1.12 composer `serenity ask`, T1.16 `serenity migrate --models`, T3.7 `serenity check` CLI, T3.15 upstream dira PR (drafted for founder review before actual submission to kazi-org/dira -- see task brief). Owner: pool. Each task owns its own S6 docs entries.
 
 ## Planned
 
