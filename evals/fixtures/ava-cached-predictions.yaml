@@ -1,0 +1,61 @@
+# Frozen predictions fixture for plan T1.22's per-push cached eval gate
+# (ci.yml's eval-cached job, cmd/eval-runner -mode cached).
+#
+# This is NOT a real model's measured extraction quality -- it is a
+# hand-authored mix of correct, wrong-object, and missing predictions
+# against real evals/corpora/ava held-out spans (evals/corpora/ava/
+# split.yaml), deliberately built the same way internal/eval/score_test.go's
+# fixtureLabelsAndPredictions is: enough true positives, false positives,
+# and false negatives spread across enough families that a regression in
+# internal/eval.Score, internal/eval/runner.Run, or cmd/eval-runner's
+# report-generation code would change these numbers. Zero network calls
+# are made to produce or score this file, so it is safe and fast enough
+# to run on every push.
+#
+# The REAL per-family P/R/F1 against a live model -- what RFC 0001 SS16/
+# SS17 and plan T1.23 (M1 exit verification) actually require -- comes
+# from the nightly live workflow (.github/workflows/nightly-eval.yml)
+# instead, published as evals/report.json.
+#
+# Do not hand-tune this file to make the cached gate pass; it exists to
+# fail loudly when the scoring/report pipeline breaks, not to track any
+# extractor's real accuracy.
+predictions:
+    # works_at: correct.
+    - span: Ava Standardo works at Acme Corp.
+      predicate: works_at
+      object: acme-corp
+
+    # has_role: correct.
+    - span: Ava Standardo's job title is Staff Engineer.
+      predicate: has_role
+      object: staff-engineer
+
+    # owns_account: correct.
+    - span: Ava's records show she holds a Chase checking account.
+      predicate: owns_account
+      object: chase-checking
+
+    # takes_medication: correct (zyrtec).
+    - span: Ava's medication list includes Zyrtec daily.
+      predicate: takes_medication
+      object: zyrtec
+
+    # takes_medication: WRONG object for the melatonin span -- this span's
+    # golden label (object: melatonin) is never matched, so it counts as
+    # both a false positive (ibuprofen was never asserted by any label)
+    # and a false negative (melatonin was never predicted).
+    - span: Ava Standardo takes melatonin nightly.
+      predicate: takes_medication
+      object: ibuprofen
+
+    # has_role: a pure false positive -- this span does not exist in the
+    # corpus at all, standing in for a hallucinated fact no golden label
+    # supports.
+    - span: A hallway conversation implied Ava was promoted to CTO.
+      predicate: has_role
+      object: cto
+
+    # prefers: deliberately no prediction at all for
+    # "Ava prefers remote work on Fridays." (a real held-out span) -- a
+    # false negative.

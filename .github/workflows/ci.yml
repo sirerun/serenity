@@ -53,6 +53,25 @@ jobs:
           go-version-file: go.mod
       - run: scripts/verify-dira-cli.sh
 
+  eval-cached:
+    # T1.22: per-push cached eval gate. Scores a frozen fixture
+    # (evals/fixtures/ava-cached-predictions.yaml) against the T1.14 Ava
+    # corpus's held-out split through the real report-generation code
+    # path (cmd/eval-runner -mode cached, internal/eval/runner) -- zero
+    # network calls, so it stays fast and free on every push. It catches
+    # a regression in the scoring/report pipeline itself, not in
+    # extraction quality: real live-model measurement runs nightly
+    # instead (nightly-eval.yml) since that needs real API calls and a
+    # budget.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go run ./cmd/eval-runner -mode cached -corpus evals/corpora/ava -fixture evals/fixtures/ava-cached-predictions.yaml -out "$RUNNER_TEMP/report.json"
+      - run: cat "$RUNNER_TEMP/report.json"
+
   crossbuild:
     # M0 acceptance: single binary on macOS arm64 + Linux amd64/arm64.
     runs-on: ubuntu-latest

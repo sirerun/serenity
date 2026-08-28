@@ -1,0 +1,52 @@
+name: nightly-eval
+
+# T1.22: the live half of the eval gate. ci.yml's eval-cached job scores a
+# frozen fixture on every push at zero cost; this workflow runs a real
+# internal/router-backed extractor (cmd/eval-runner -mode live) against
+# the T1.14 Ava corpus's held-out split with actual model calls, bounded
+# by an aggregate USD cap (SERENITY_EVAL_BUDGET_USD -- see
+# internal/eval/runner.TrackingLedger), and publishes evals/report.json
+# as a workflow artifact for plan T1.23 (M1 exit verification) to read.
+#
+# KNOWN LIMITATION, disclosed: internal/router's AnthropicProvider and
+# OpenAICompatibleProvider (internal/router/anthropic.go,
+# openai_compatible.go) do not compute Usage.CostUSD yet, so the budget
+# cap below is correctly wired but does not actually bound spend today --
+# it starts enforcing the moment a provider reports a real cost. See
+# internal/eval/runner/ledger.go's doc comment.
+#
+# Requires an ANTHROPIC_API_KEY repository secret before a scheduled run
+# can succeed; SERENITY_EVAL_BUDGET_USD can be set as a repository/
+# environment variable to change the default cap without editing this
+# file.
+
+on:
+  schedule:
+    - cron: "13 7 * * *"
+  workflow_dispatch:
+    inputs:
+      budget_usd:
+        description: "Override SERENITY_EVAL_BUDGET_USD for this run"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  live-eval:
+    runs-on: ubuntu-latest
+    env:
+      SERENITY_EVAL_BUDGET_USD: ${{ github.event.inputs.budget_usd || vars.SERENITY_EVAL_BUDGET_USD || '2.00' }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go run ./cmd/eval-runner -mode live -corpus evals/corpora/ava -out evals/report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: evals/report.json
+          if-no-files-found: error
