@@ -8,6 +8,8 @@ Serenity is a claim-based personal memory and direction system: a Go single bina
 
 Problem: M0 is committed and green (fence and shard writers with round-trip property tests, the 10K-claim shard test, SQLite index with the wipe-and-rebuild invariant, init/sync/doctor/status, keychain token, CI cross-builds). Everything that makes the product a product (connectors, extraction, reconcile, the disposition queue and ladder, precepts and plan check, the protocol servers, gbrain import, docs) is absent, and several M0-scoped rules in RFC sections 7, 7.7, and 14 are stated but not enforced by any test.
 
+Status as of 2026 08 29 (see docs/roadmap.md for the live, evidence-cited breakdown -- this file is context/scope/procedure, not living status): M0 is fully shipped (E0 13/13; v0.1.1 is public with a verified working Homebrew tap formula, after the original v0.1.0 release shipped with a broken formula push, found and fixed the same day). M1's ingest spine is built and end-to-end verified except its one human-only exit task (E1 22/23; T1.23 needs David's real Gmail account and his own repos, genuinely not delegable). M3's direction/guardrail core is built (E3 12/17; remaining tasks are unclaimed, not blocked). M2, M4, and M5 have not been started -- M2 is correctly gated behind M1's exit task per the build-in-M-order rule below.
+
 Objectives:
 - Every RFC section 17 acceptance criterion for M0-M5 green on a laptop, each recorded in `docs/evals/m<N>-report.md` with the command run and the observed output.
 - Every invariant the RFC calls load-bearing enforced by a test or CI gate: file-first writes, byte-identical rebuild within the pinned model set, precepts unmintable by any machine path, every endpoint authenticated, no id-equality dedup across sources.
@@ -52,12 +54,12 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 
 ## 4. Checkable work breakdown
 
-### E0 -- M0 residuals: substrate invariants the RFC mandates but 13dc0d2 lacks  -> docs/plans/E0-m0-residuals.md  (0/13)
-### E1 -- M1: ingest spine + honest evals  -> docs/plans/E1-m1-ingest.md  (0/23)
-### E2 -- M2: reconcile + entities + disposition queue + ladder calibration  -> docs/plans/E2-m2-reconcile.md  (0/22)
-### E3 -- M3: direction (dira vendored, interview wizard, plan check, orphan detector)  -> docs/plans/E3-m3-direction.md  (0/17)
-### E4 -- M4: serve + protocols  -> docs/plans/E4-m4-serve-protocols.md  (0/17)
-### E5 -- M5: migration + launch  -> docs/plans/E5-m5-migration-launch.md  (0/15)
+### E0 -- M0 residuals: substrate invariants the RFC mandates but 13dc0d2 lacks  -> docs/plans/E0-m0-residuals.md  (13/13, SHIPPED 2026 08 29 -- trimmed from this file's wave breakdown per the plan skill's trim pass; full task detail lives in the epic file and docs/roadmap.md Shipped)
+### E1 -- M1: ingest spine + honest evals  -> docs/plans/E1-m1-ingest.md  (22/23, only T1.23 -- David's own Gmail/repo exit verification -- remains)
+### E2 -- M2: reconcile + entities + disposition queue + ladder calibration  -> docs/plans/E2-m2-reconcile.md  (0/22, gated behind T1.23 per build-in-M-order)
+### E3 -- M3: direction (dira vendored, interview wizard, plan check, orphan detector)  -> docs/plans/E3-m3-direction.md  (12/17, remaining: T3.4, T3.9, T3.10, T3.11, T3.17 -- all pool-dispatchable, unclaimed, not blocked)
+### E4 -- M4: serve + protocols  -> docs/plans/E4-m4-serve-protocols.md  (0/17, gated behind M2+M3)
+### E5 -- M5: migration + launch  -> docs/plans/E5-m5-migration-launch.md  (0/15, gated behind M1+M4)
 ### E6 -- M6: hardening soak (outline, post-code-complete)  -> docs/plans/E6-m6-hardening.md  (0/1)
 
 Decisions confirmed by David on 2026 08 27 (no open decisions remain):
@@ -72,7 +74,7 @@ Tracks are epic-internal waves; epics are sequential at their exit tasks but ove
 
 | Track | Tasks | Sync point |
 |---|---|---|
-| A: substrate hardening | E0 waves 0a-0b | T0.13 before any E1 write path |
+| A: substrate hardening | E0 waves 0a-0b (complete, trimmed from section 4 -- see docs/plans/E0-m0-residuals.md) | T0.13 before any E1 write path |
 | B: connectors + sources | T1.1, T1.2, T1.3, T1.4, T1.5, T2.16 | T1.15 (end-to-end extract) |
 | C: models + extraction | T1.6, T1.7, T1.19, T1.8, T1.9, T1.10, T1.16 | T1.15 |
 | D: retrieval + composer | T1.11, T1.12, T1.21 | T1.23 (M1 exit) |
@@ -89,52 +91,43 @@ Cross-epic overlap allowed: E1 wave 1a may start once E0 wave 0a merges (T0.3 an
 
 Each wave lists the exact agent count (one agent per task); the task lines here mirror the epic files (ids resolve there).
 
-### Wave 0a: E0 substrate, no deps (9 agents)
-- [ ] T0.1 Threat model document (`docs/threat-model.md`) with data-flow diagram and testable invariants
-- [ ] T0.2 File-first CI gate: AST allowlist test over `internal/` for Engine write calls
-- [ ] T0.3 Writer queue package `internal/writer`: single serialized queue with per-file ordering
-- [ ] T0.6 Fence concurrent-merge determinism property test
-- [ ] T0.7 Claim-id collision tripwire `store.ErrIDCollision`
-- [ ] T0.8 Controlled-vocabulary enforcement at the writers + seed assertion
-- [ ] T0.9 `serenity compact` verb (explicit, `--confirm` required until M2 disposition gating)
-- [ ] T0.10 Runtime-state allowlist in `internal/index`
-- [ ] T0.12 golangci-lint config + CI step + `make lint`
+### E0: SHIPPED 2026 08 29 (13/13) -- wave 0a/0b task list trimmed from this file
 
-### Wave 0b: E0 wiring (4 agents)
-- [ ] T0.4 Dirty-tree guard: pause writes to a human-dirty file and record a pending conflict
-- [x] T0.5 Daemon commits (`serenity:` prefix) + doctor last-push age
-- [ ] T0.11 Cut v0.1.0: verify goreleaser publishes darwin/arm64 + linux/amd64 + linux/arm64 archives and the brew tap formula (human)
-- [ ] T0.13 Wire T0.3 into existing callers + extend the CLI wipe-rebuild test through the queue
+Full per-task completion detail lives in docs/plans/E0-m0-residuals.md (still
+[x] there, never trimmed) and docs/roadmap.md's Shipped section. Notably,
+T0.11 (cut v0.1.0) shipped as v0.1.1 after the original v0.1.0 release was
+found to have a broken Homebrew tap formula publish step (a goreleaser config
+gap, fixed same day) -- v0.1.0 itself was left untouched, not retagged.
 
 ### Wave 1a: E1 interfaces and stores (8 agents)
-- [ ] T1.1 Connector interface + jobs table
-- [ ] T1.2 Source store: content-addressed bytes + meta.yaml + tombstone stub
-- [ ] T1.6 Chunker `internal/extract/chunk`
-- [ ] T1.7 Model router `internal/router` with tiers, confidence caps, spend rows, redaction hook
-- [ ] T1.19 Redaction pass v1 (patterns: account numbers, card numbers, API-key shapes, emails on request)
-- [ ] T1.3 File-watcher connector (fsnotify + `--poll` fallback)
-- [ ] T1.5 Git-repo crawler connector
-- [ ] T1.13 Eval harness `internal/eval`: held-out golden format, P/R/F1 per family, contradiction recall
+- [x] T1.1 Connector interface + jobs table
+- [x] T1.2 Source store: content-addressed bytes + meta.yaml + tombstone stub
+- [x] T1.6 Chunker `internal/extract/chunk`
+- [x] T1.7 Model router `internal/router` with tiers, confidence caps, spend rows, redaction hook
+- [x] T1.19 Redaction pass v1 (patterns: account numbers, card numbers, API-key shapes, emails on request)
+- [x] T1.3 File-watcher connector (fsnotify + `--poll` fallback)
+- [x] T1.5 Git-repo crawler connector
+- [x] T1.13 Eval harness `internal/eval`: held-out golden format, P/R/F1 per family, contradiction recall
 
 ### Wave 1b: E1 connectors and extraction (6 agents)
-- [ ] T1.4 IMAP connector, Gmail certified (go-imap/v2, app password in keychain, UIDVALIDITY cursor)
-- [ ] T1.8 Extraction to observations `internal/extract` (structured prompt, fixed predicate list, 0.6 distill threshold, output cache)
-- [ ] T1.9 Observation to claim write path (trust 0: append only, semantic dedup deferred to E2)
-- [ ] T1.10 Embeddings + vector store: per-row model pin, exact cosine scan, never mix pins
-- [ ] T1.14 Ava Standardo extraction corpus + held-out split + contradiction cases
-- [ ] T1.20 Prompt-injection and precept-fabrication fixture set (seed of the adversarial corpus)
+- [x] T1.4 IMAP connector, Gmail certified (go-imap/v2, app password in keychain, UIDVALIDITY cursor)
+- [x] T1.8 Extraction to observations `internal/extract` (structured prompt, fixed predicate list, 0.6 distill threshold, output cache)
+- [x] T1.9 Observation to claim write path (trust 0: append only, semantic dedup deferred to E2)
+- [x] T1.10 Embeddings + vector store: per-row model pin, exact cosine scan, never mix pins
+- [x] T1.14 Ava Standardo extraction corpus + held-out split + contradiction cases
+- [x] T1.20 Prompt-injection and precept-fabrication fixture set (seed of the adversarial corpus)
 
 ### Wave 1c: E1 retrieval and end to end (5 agents)
-- [ ] T1.11 Hybrid search + RRF + 4-layer dedup + `serenity search`
-- [ ] T1.15 Real `serenity extract` + `serenity sync` (poll connectors, chunk, extract, write, index) end to end
-- [ ] T1.17 `serenity status` v1: ingest lag, connector health, jobs depth, spend to date, rebuild timing
-- [ ] T1.21 BrainBench adapter + CI trend artifact
-- [ ] T1.18 Connector guide (support matrix, Gmail app-password setup, re-auth path)
+- [x] T1.11 Hybrid search + RRF + 4-layer dedup + `serenity search`
+- [x] T1.15 Real `serenity extract` + `serenity sync` (poll connectors, chunk, extract, write, index) end to end
+- [x] T1.17 `serenity status` v1: ingest lag, connector health, jobs depth, spend to date, rebuild timing
+- [x] T1.21 BrainBench adapter + CI trend artifact
+- [x] T1.18 Connector guide (support matrix, Gmail app-password setup, re-auth path)
 
 ### Wave 1d: E1 composer, migration, evals, exit (4 agents)
-- [ ] T1.12 Composer: `serenity ask` with citations, gap statement, supersession phrasing
-- [ ] T1.16 `serenity migrate --models`: re-extraction pass, staged re-embed, FTS fallback mid-migration
-- [ ] T1.22 Nightly real-model eval workflow with budget cap + per-push cached eval gate
+- [x] T1.12 Composer: `serenity ask` with citations, gap statement, supersession phrasing
+- [x] T1.16 `serenity migrate --models`: re-extraction pass, staged re-embed, FTS fallback mid-migration
+- [x] T1.22 Nightly real-model eval workflow with budget cap + per-push cached eval gate
 - [ ] T1.23 M1 exit verification: real Gmail 30 days + 5 repos on a laptop; publish per-family P/R/F1 and contradiction recall (human)
 
 ### Wave 2a: E2 queue, ladder, sweeps, capture (6 agents)
@@ -168,28 +161,28 @@ Each wave lists the exact agent count (one agent per task); the task lines here 
 - [ ] T2.22 M2 exit: run the RFC AC checklist end to end on a laptop and record it
 
 ### Wave 3a: E3 vendoring and invariants (5 agents)
-- [ ] T3.1 Vendor dira at pin 15686940aa08: `internal/dira/` with schema JSON, schema.go, ledger reader/writer, LICENSE, NOTICE, PIN file, update script
-- [ ] T3.2 `applies_when` body block parser + validator (`internal/direction/applies.go`)
-- [ ] T3.3 Precept ledger writer through the writer queue (`internal/direction/ledger.go`): create staged draft, confirm (staged -> accepted with >= 1 alternative), supersede (never edit)
-- [ ] T3.12 Precept-immutability invariant test: no package outside internal/direction can write under .dira/ (AST allowlist, same mechanism as T0.2)
-- [ ] T3.13 DIRECTION eval corpus: plan x constraint matrix with expected verdicts, adversarial "ignore your constraints" plans, near-miss paraphrases
+- [x] T3.1 Vendor dira at pin 15686940aa08: `internal/dira/` with schema JSON, schema.go, ledger reader/writer, LICENSE, NOTICE, PIN file, update script
+- [x] T3.2 `applies_when` body block parser + validator (`internal/direction/applies.go`)
+- [x] T3.3 Precept ledger writer through the writer queue (`internal/direction/ledger.go`): create staged draft, confirm (staged -> accepted with >= 1 alternative), supersede (never edit)
+- [x] T3.12 Precept-immutability invariant test: no package outside internal/direction can write under .dira/ (AST allowlist, same mechanism as T0.2)
+- [x] T3.13 DIRECTION eval corpus: plan x constraint matrix with expected verdicts, adversarial "ignore your constraints" plans, near-miss paraphrases
 
 ### Wave 3b: E3 matcher, interview, questions, revisit (5 agents)
-- [ ] T3.5 check_plan stage 1: deterministic matcher over structured actions (`internal/direction/check`)
-- [ ] T3.6 check_plan stage 2: free-text classifier into the closed action set via the local-cheap tier, cached, with matched_actions spans
+- [x] T3.5 check_plan stage 1: deterministic matcher over structured actions (`internal/direction/check`)
+- [x] T3.6 check_plan stage 2: free-text classifier into the closed action set via the local-cheap tier, cached, with matched_actions spans
 - [ ] T3.4 Interview wizard (~30 questions, drafts only, one disposition per precept)
-- [ ] T3.8 Question precepts block their targets
+- [x] T3.8 Question precepts block their targets
 - [ ] T3.10 revisit_if weekly sweep -> review cards (`internal/direction/revisit.go`, `serenity cron revisit`)
 
 ### Wave 3c: E3 CLI, orphans, decompose, conformance, upstream (5 agents)
-- [ ] T3.7 `serenity check` CLI: exit codes 0/2/1, `--json`, `--actions` structured input, why_not verbatim
+- [x] T3.7 `serenity check` CLI: exit codes 0/2/1, `--json`, `--actions` structured input, why_not verbatim
 - [ ] T3.9 Orphan detector: weekly activity (claims, sources, dispositions) with no derivation edge to an active intent -> briefing Drift
 - [ ] T3.11 Decompose: judgment tier proposes child intents with derives_from; one-keystroke confirmations in the inbox
-- [ ] T3.14 dira CLI conformance job: `dira check`, `dira why`, `dira brief` run unmodified against the fixture brain in CI
-- [ ] T3.15 Upstream PR to kazi-org/dira proposing an optional applies_when field (non-blocking)
+- [x] T3.14 dira CLI conformance job: `dira check`, `dira why`, `dira brief` run unmodified against the fixture brain in CI
+- [x] T3.15 Upstream PR to kazi-org/dira proposing an optional applies_when field (non-blocking)
 
 ### Wave 3d: E3 evals and exit (2 agents)
-- [ ] T3.16 Direction eval section: verdict P/R/F1 per action class, unverified rate, false-deny rate; adversarial rows must be caught
+- [x] T3.16 Direction eval section: verdict P/R/F1 per action class, unverified rate, false-deny rate; adversarial rows must be caught
 - [ ] T3.17 M3 exit: run the five RFC M3 ACs and record them
 
 ### Wave 4a: E4 daemon, transport, spend, schemas, events, fixtures (6 agents)
@@ -281,6 +274,7 @@ Rules: one worktree per task on `/Volumes/BuildOffload/wt/serenity-<task>`; smal
 ## 9. Progress log
 
 - 2026 08 27 Initial plan: E0-E6 created (108 tasks, 108 with acc:, 6 kind: human, 2 kind: any, 7 lane: agent), ADRs 001-010 written, use-case manifest (46) written, roadmap seeded. OD-1..OD-4 confirmed by David (recommended options); ADR 005 moved to Accepted.
+- 2026 08 29 Trim pass (no new scope): E0 is fully shipped (13/13) -- its wave 0a/0b task list removed from this file per the plan skill's trim step (full detail stays in docs/plans/E0-m0-residuals.md and docs/roadmap.md, never trimmed there). Synced this file's stale wave checkboxes to the epic files' real state: 22 E1 tasks and 12 E3 tasks flipped to [x] (34 total) -- only T1.23 (E1, David-only) and T3.4/T3.9/T3.10/T3.11/T3.17 (E3, pool-dispatchable, unclaimed) remain open on the frontier. No epic changed fidelity tier: E4/E5 were already decomposed to executable in the initial pass (a deliberate original choice, section 1) despite being beyond the current frontier -- left as-is rather than retroactively demoted, since that would discard already-verified planning work for no benefit. E2/E4/E5/E6 unchanged (0 done each).
 
 ## 10. Hand-off notes
 

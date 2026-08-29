@@ -74,12 +74,12 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Planned
 
-- E0 M0 residuals (threat model, file-first gate, writer queue, dirty-tree guard, daemon commits, fence merge test, id tripwire, vocabulary enforcement, compact verb, runtime allowlist, lint, v0.1.0 tag)
-- E1 M1 ingest spine + honest evals (watcher, Gmail IMAP, repo crawler, chunker, router, extraction, claims write path, embeddings, hybrid search, ask, eval harness, Ava corpus, BrainBench trend)
-- E2 M2 reconcile + entities + disposition queue + ladder calibration
-- E3 M3 direction (dira vendored, interview, check_plan, orphan detector)
-- E4 M4 serve + protocols (MCP/HTTP auth, MEMORY_VERBS conformance, DISPOSITION v1, DIRECTION v1, spend ceiling, connect claude)
-- E5 M5 migration + launch (gbrain import, docs site, adversarial gate, name decision, install-time AC)
+- E0 M0 residuals -- DONE, see Shipped (13/13, 2026 08 29)
+- E1 M1 ingest spine + honest evals -- 22/23, only T1.23 (David's Gmail/repo exit verification) remains
+- E2 M2 reconcile + entities + disposition queue + ladder calibration -- not started, gated behind T1.23
+- E3 M3 direction (dira vendored, interview, check_plan, orphan detector) -- 12/17, remaining tasks unclaimed not blocked (T3.4, T3.9, T3.10, T3.11, T3.17)
+- E4 M4 serve + protocols (MCP/HTTP auth, MEMORY_VERBS conformance, DISPOSITION v1, DIRECTION v1, spend ceiling, connect claude) -- not started, gated behind M2+M3
+- E5 M5 migration + launch (gbrain import, docs site, adversarial gate, name decision, install-time AC) -- not started, gated behind M1+M4
 - E6 M6 hardening soak (outline; starts after code complete, ADR 002)
 
 ## Blocked
