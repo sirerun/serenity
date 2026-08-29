@@ -165,8 +165,10 @@ gh pr create --repo kazi-org/dira \
   --body-file <the body above>
 ```
 
-Not run yet. Needs a go/no-go on the content above before it goes out
-against a repo we don't own, under David's real identity.
+Submitted 2026-08-29: https://github.com/kazi-org/dira/pull/34 -- David
+authorized submission directly; a second review pass (leak/quality check
+of the fork diff and PR body, run by a peer session) also cleared it with
+no findings before it went out. Status: open, awaiting maintainer response.
 
 ## Follow-up required once submitted
 
