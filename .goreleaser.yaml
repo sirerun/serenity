@@ -34,6 +34,7 @@ brews:
   - repository:
       owner: sirerun
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     directory: Formula
     homepage: https://github.com/sirerun/serenity
     description: Claim-based personal memory and direction system
