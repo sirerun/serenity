@@ -71,15 +71,16 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 ## In flight (PRs open)
 
 - 2026 08 28 Wave 6 closed 6/6 (T3.6's plan-file checkbox was found dropped during a concurrent-rebase conflict resolution and backfilled by the coordinator; roadmap Shipped entry was never affected). Wave 7 dispatched via `/apply --pool` (claims WON), overnight/quiet-hours sizing: T1.12 composer `serenity ask`, T1.16 `serenity migrate --models`, T3.7 `serenity check` CLI, T3.15 upstream dira PR. Owner: pool. Each task owns its own S6 docs entries. Wave 7 fully closed 2026-08-29 (T1.16, T1.12, T3.7 same day; T3.15 last, after its external-submission gate cleared -- see Shipped).
+- 2026 08 30 /apply --loop (linux session): plan refinement wave first per David's ruling -- M-order gates encoded mechanically (ADR 011); T4.3 (E4 HTTP transport, the one deps-met cross-epic task) dispatches immediately after that merges. Stale T4.3 claim from 2026-08-29 08:54Z (davids-mbp, no PR, no worktree) pruned past the 4h TTL via /claim --prune --force.
 
 ## Planned
 
 - E0 M0 residuals -- DONE, see Shipped (13/13, 2026 08 29)
 - E1 M1 ingest spine + honest evals -- 22/23, only T1.23 (David's Gmail/repo exit verification) remains
-- E2 M2 reconcile + entities + disposition queue + ladder calibration -- not started, gated behind T1.23
-- E3 M3 direction (dira vendored, interview, check_plan, orphan detector) -- 12/17, remaining tasks unclaimed not blocked (T3.4, T3.9, T3.10, T3.11, T3.17)
-- E4 M4 serve + protocols (MCP/HTTP auth, MEMORY_VERBS conformance, DISPOSITION v1, DIRECTION v1, spend ceiling, connect claude) -- not started, gated behind M2+M3
-- E5 M5 migration + launch (gbrain import, docs site, adversarial gate, name decision, install-time AC) -- not started, gated behind M1+M4
+- E2 M2 reconcile + entities + disposition queue + ladder calibration -- not started, gated behind T1.23 (mechanically: wave-2a tasks blocked-by [T1.23], ADR 011)
+- E3 M3 direction (dira vendored, interview, check_plan, orphan detector) -- 12/17, remaining tasks deps-blocked on E2 (T3.4, T3.9, T3.10, T3.11, T3.17; the 08-29 "not blocked" note was an error, ADR 011)
+- E4 M4 serve + protocols (MCP/HTTP auth, MEMORY_VERBS conformance, DISPOSITION v1, DIRECTION v1, spend ceiling, connect claude) -- not started, gated behind M2+M3; only T4.3 startable during E3 (ADR 011)
+- E5 M5 migration + launch (gbrain import, docs site, adversarial gate, name decision, install-time AC) -- not started, gated behind M1+M4 (T5.9 blocked-by T4.17, ADR 011)
 - E6 M6 hardening soak (outline; starts after code complete, ADR 002)
 
 ## Blocked
@@ -102,3 +103,4 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 - 2026 08 29 T3.15 upstream PR submitted to kazi-org/dira (https://github.com/kazi-org/dira/pull/34) after two independent clearances: David's direct authorization (this session) and a peer session's leak/quality review of the fork diff and PR body (zero findings). Content, commit hash (`57418d5`), and PR URL cross-verified directly against the GitHub API before submission, not taken on the peer's report alone.
 - 2026 08 29 v0.1.0 tag pushed and GitHub release published by the `macbook` peer session under David's direct "push and do not ask again" instruction (given to that session, not this one); this session independently verified the actual result rather than accepting the peer's initial framing, and found the release workflow had genuinely failed on the Homebrew tap publish step (see Shipped) -- a real gap, not a false alarm. Remediation (goreleaser token fix + v0.1.1) owned by this session, complete.
 - 2026 08 29 T0.11 remediation landed: PR #50 (merge commit `a27c43e5a5eff306e25420a0fdb7aad6a083f85a`) wires `HOMEBREW_TAP_GITHUB_TOKEN` into `.goreleaser.yaml`'s `brews[0].repository.token`, fixing the 403 that broke v0.1.0's Homebrew publish step. Shipped as `v0.1.1`, not by retagging v0.1.0 -- `v0.1.0`'s tag/release/assets are untouched. `v0.1.1` is the first Homebrew-installable Serenity release (`brew install sirerun/tap/serenity` now resolves once `sirerun/homebrew-tap` is added as a tap); see Shipped for full verification detail.
+- 2026 08 30 M-order milestone gates are mechanically encoded as blocked-by annotations (E2 wave 2a behind T1.23; T5.9 behind T4.17); E3-remainder and E4 cross-epic-overlap prose corrected to match task deps. Ruling context: the /apply --loop session surfaced the contradiction (mechanically-unblocked E2 wave 2a vs the recorded "gated behind T1.23") and offered early dispatch; David directed "refine the plan first" -- the recorded M-order gate stands. ADR 011.
