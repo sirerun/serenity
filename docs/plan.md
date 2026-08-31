@@ -8,7 +8,7 @@ Serenity is a claim-based personal memory and direction system: a Go single bina
 
 Problem: M0 is committed and green (fence and shard writers with round-trip property tests, the 10K-claim shard test, SQLite index with the wipe-and-rebuild invariant, init/sync/doctor/status, keychain token, CI cross-builds). Everything that makes the product a product (connectors, extraction, reconcile, the disposition queue and ladder, precepts and plan check, the protocol servers, gbrain import, docs) is absent, and several M0-scoped rules in RFC sections 7, 7.7, and 14 are stated but not enforced by any test.
 
-Status as of 2026 08 29 (see docs/roadmap.md for the live, evidence-cited breakdown -- this file is context/scope/procedure, not living status): M0 is fully shipped (E0 13/13; v0.1.1 is public with a verified working Homebrew tap formula, after the original v0.1.0 release shipped with a broken formula push, found and fixed the same day). M1's ingest spine is built and end-to-end verified except its one human-only exit task (E1 22/23; T1.23 needs David's real Gmail account and his own repos, genuinely not delegable). M3's direction/guardrail core is built (E3 12/17; remaining tasks are unclaimed, not blocked). M2, M4, and M5 have not been started -- M2 is correctly gated behind M1's exit task per the build-in-M-order rule below.
+Status as of 2026 08 29 (see docs/roadmap.md for the live, evidence-cited breakdown -- this file is context/scope/procedure, not living status): M0 is fully shipped (E0 13/13; v0.1.1 is public with a verified working Homebrew tap formula, after the original v0.1.0 release shipped with a broken formula push, found and fixed the same day). M1's ingest spine is built and end-to-end verified except its one human-only exit task (E1 22/23; T1.23 needs David's real Gmail account and his own repos, genuinely not delegable). M3's direction/guardrail core is built (E3 12/17; remaining tasks are unclaimed, not blocked). M2, M4, and M5 have not been started -- M2 is correctly gated behind M1's exit task per the build-in-M-order rule below. The gates are mechanically encoded as blocked-by annotations as of 2026-08-30 (ADR 011).
 
 Objectives:
 - Every RFC section 17 acceptance criterion for M0-M5 green on a laptop, each recorded in `docs/evals/m<N>-report.md` with the command run and the observed output.
@@ -56,10 +56,10 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 
 ### E0 -- M0 residuals: substrate invariants the RFC mandates but 13dc0d2 lacks  -> docs/plans/E0-m0-residuals.md  (13/13, SHIPPED 2026 08 29 -- trimmed from this file's wave breakdown per the plan skill's trim pass; full task detail lives in the epic file and docs/roadmap.md Shipped)
 ### E1 -- M1: ingest spine + honest evals  -> docs/plans/E1-m1-ingest.md  (22/23, only T1.23 -- David's own Gmail/repo exit verification -- remains)
-### E2 -- M2: reconcile + entities + disposition queue + ladder calibration  -> docs/plans/E2-m2-reconcile.md  (0/22, gated behind T1.23 per build-in-M-order)
-### E3 -- M3: direction (dira vendored, interview wizard, plan check, orphan detector)  -> docs/plans/E3-m3-direction.md  (12/17, remaining: T3.4, T3.9, T3.10, T3.11, T3.17 -- all pool-dispatchable, unclaimed, not blocked)
-### E4 -- M4: serve + protocols  -> docs/plans/E4-m4-serve-protocols.md  (0/17, gated behind M2+M3)
-### E5 -- M5: migration + launch  -> docs/plans/E5-m5-migration-launch.md  (0/15, gated behind M1+M4)
+### E2 -- M2: reconcile + entities + disposition queue + ladder calibration  -> docs/plans/E2-m2-reconcile.md  (0/22, gated behind T1.23 per build-in-M-order; wave-2a tasks carry blocked-by: [T1.23] mechanically -- ADR 011)
+### E3 -- M3: direction (dira vendored, interview wizard, plan check, orphan detector)  -> docs/plans/E3-m3-direction.md  (12/17, remaining: T3.4, T3.9, T3.10, T3.11, T3.17 -- deps-blocked on E2 tasks (T2.1, T2.5, T2.17, T2.19); the 2026-08-29 "not blocked" note was an error, corrected 2026-08-30 -- ADR 011)
+### E4 -- M4: serve + protocols  -> docs/plans/E4-m4-serve-protocols.md  (0/17, gated behind M2+M3; T4.3 is the one cross-epic-startable task during E3 -- ADR 011)
+### E5 -- M5: migration + launch  -> docs/plans/E5-m5-migration-launch.md  (0/15, gated behind M1+M4; T5.9 carries blocked-by: [T4.17] mechanically -- ADR 011)
 ### E6 -- M6: hardening soak (outline, post-code-complete)  -> docs/plans/E6-m6-hardening.md  (0/1)
 
 Decisions confirmed by David on 2026 08 27 (no open decisions remain):
@@ -85,7 +85,7 @@ Tracks are epic-internal waves; epics are sequential at their exit tasks but ove
 | I: server + protocols | E4 waves 4a-4c | T4.17 |
 | J: migration + launch | E5 waves 5a-5c | T5.20 |
 
-Cross-epic overlap allowed: E1 wave 1a may start once E0 wave 0a merges (T0.3 and T0.10 are its only deps); E3 wave 3a may start once E0 is done (T3.1, T3.2, T3.12, T3.13 need no M1/M2 code); E4 T4.3, T4.7, T4.12, T4.13 can start during E3.
+Cross-epic overlap allowed: E1 wave 1a may start once E0 wave 0a merges (T0.3 and T0.10 are its only deps); E3 wave 3a may start once E0 is done (T3.1, T3.2, T3.12, T3.13 need no M1/M2 code); E4 T4.3 can start during E3 (corrected 2026-08-30: T4.7, T4.12, T4.13 need E2's T2.1/T2.17, so they unblock only as E2 waves land -- task deps are the authority, ADR 011).
 
 ### Waves
 
@@ -275,6 +275,7 @@ Rules: one worktree per task on `/Volumes/BuildOffload/wt/serenity-<task>`; smal
 
 - 2026 08 27 Initial plan: E0-E6 created (108 tasks, 108 with acc:, 6 kind: human, 2 kind: any, 7 lane: agent), ADRs 001-010 written, use-case manifest (46) written, roadmap seeded. OD-1..OD-4 confirmed by David (recommended options); ADR 005 moved to Accepted.
 - 2026 08 29 Trim pass (no new scope): E0 is fully shipped (13/13) -- its wave 0a/0b task list removed from this file per the plan skill's trim step (full detail stays in docs/plans/E0-m0-residuals.md and docs/roadmap.md, never trimmed there). Synced this file's stale wave checkboxes to the epic files' real state: 22 E1 tasks and 12 E3 tasks flipped to [x] (34 total) -- only T1.23 (E1, David-only) and T3.4/T3.9/T3.10/T3.11/T3.17 (E3, pool-dispatchable, unclaimed) remain open on the frontier. No epic changed fidelity tier: E4/E5 were already decomposed to executable in the initial pass (a deliberate original choice, section 1) despite being beyond the current frontier -- left as-is rather than retroactively demoted, since that would discard already-verified planning work for no benefit. E2/E4/E5/E6 unchanged (0 done each).
+- 2026 08 30 Refinement pass (no new scope; David ruled "refine the plan first" when offered early E2 dispatch): milestone gates encoded mechanically -- E2 wave 2a (T2.1, T2.10, T2.12, T2.16, T2.19) now carry blocked-by: [T1.23], T5.9 carries blocked-by: [T4.17]; corrected the 2026-08-29 trim pass's wrong "not blocked" note on E3's remaining tasks (their deps reference unchecked E2 tasks) and this file's section 5 E4 cross-epic overlap line (T4.7/T4.12/T4.13 need E2 work; only T4.3 starts during E3). ADR 011 records the ruling. Roadmap synced.
 
 ## 10. Hand-off notes
 
