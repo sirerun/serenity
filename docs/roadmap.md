@@ -72,6 +72,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 - 2026 08 28 Wave 6 closed 6/6 (T3.6's plan-file checkbox was found dropped during a concurrent-rebase conflict resolution and backfilled by the coordinator; roadmap Shipped entry was never affected). Wave 7 dispatched via `/apply --pool` (claims WON), overnight/quiet-hours sizing: T1.12 composer `serenity ask`, T1.16 `serenity migrate --models`, T3.7 `serenity check` CLI, T3.15 upstream dira PR. Owner: pool. Each task owns its own S6 docs entries. Wave 7 fully closed 2026-08-29 (T1.16, T1.12, T3.7 same day; T3.15 last, after its external-submission gate cleared -- see Shipped).
 - 2026 08 30 /apply --loop (linux session): plan refinement wave first per David's ruling -- M-order gates encoded mechanically (ADR 011); T4.3 (E4 HTTP transport, the one deps-met cross-epic task) dispatches immediately after that merges. Stale T4.3 claim from 2026-08-29 08:54Z (davids-mbp, no PR, no worktree) pruned past the 4h TTL via /claim --prune --force.
+- 2026 08 31 /apply --loop (linux session): merged the ADR 011 plan PR (#51, main `bbad712`). Candidate scan found T5.1 deps-met-but-milestone-gated (ADR 011 rule 5 gap) -- annotation fix PR `plan/t5-1-milestone-gate`. T4.3 dispatch queued: the 08-30 prune of its stale claim (2026-08-29 08:54Z, still no PR/branch/worktree) never actually deleted the ref -- releasing via claim CAS and re-dispatching this session.
 
 ## Planned
 
