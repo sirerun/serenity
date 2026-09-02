@@ -9,6 +9,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/sirerun/serenity/internal/providers"
+
 	"github.com/spf13/cobra"
 
 	"github.com/sirerun/serenity/internal/config"
@@ -42,7 +44,7 @@ func runStatus(ctx context.Context, root string, out io.Writer, now time.Time) e
 	_, _ = fmt.Fprintf(out, "models    embedding=%s extraction=%s\n", cfg.Models.Embedding, cfg.Models.Extraction)
 	_, _ = fmt.Fprintf(out, "engine    %s\n", cfg.Index.Engine)
 
-	eng, err := openIndex(root)
+	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		return err
 	}

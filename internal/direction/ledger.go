@@ -30,13 +30,34 @@ type Store struct {
 	queue *writer.Queue
 }
 
+// ErrReadOnly is returned by every mutator of a Store built with a nil
+// writer queue (ADR 012 §3): the read-only ledger handle pkg/serenity's
+// facade opens. Callers branch on it with errors.Is.
+var ErrReadOnly = errors.New("direction: store is read-only (opened with no writer queue)")
+
 // NewStore returns a Store rooted at root (a brain repo root; entries live
-// under root/.dira/entries). queue is required: every write this type
-// performs is submitted through it, never issued directly, so a caller
-// sharing one Queue across subsystems gets the same per-path ordering
-// guarantee RFC 0001 §7.7 asks of every canonical writer.
+// under root/.dira/entries). Every write this type performs is submitted
+// through queue, never issued directly, so a caller sharing one Queue
+// across subsystems gets the same per-path ordering guarantee RFC 0001
+// §7.7 asks of every canonical writer. A nil queue yields a read-only
+// Store: Get, List and PathFor work, and every mutator (Create, Put,
+// Delete, CreateDraft, Confirm, Supersede, Answer) returns an error
+// wrapping ErrReadOnly instead of dereferencing nil -- the handle an
+// embedding consumer holds (ADR 012: one brain-writer process per brain,
+// readers everywhere else).
 func NewStore(root string, queue *writer.Queue) *Store {
 	return &Store{root: root, queue: queue}
+}
+
+// writable returns ErrReadOnly when the Store has no writer queue. Every
+// mutator calls it first, before any read or Submit, so a read-only
+// handle never reaches the queue and never partially applies a
+// multi-step lifecycle transition (Confirm, Supersede, Answer).
+func (s *Store) writable(op string) error {
+	if s.queue == nil {
+		return fmt.Errorf("direction: %s: %w", op, ErrReadOnly)
+	}
+	return nil
 }
 
 // PathFor returns the canonical file path for an entry id.
@@ -98,6 +119,9 @@ func (s *Store) List(_ context.Context) ([]ledger.EntryInfo, error) {
 // own local backend uses -- which is what lets ledger.Add (write.go) retry
 // the next candidate id on a losing race instead of clobbering the winner.
 func (s *Store) Create(_ context.Context, e *ledger.Entry) error {
+	if err := s.writable("create"); err != nil {
+		return err
+	}
 	path := s.PathFor(e.ID)
 	res := s.queue.Submit(writer.Job{Path: path, Render: func() ([]byte, error) {
 		data, err := ledger.Encode(e)
@@ -132,6 +156,9 @@ func (s *Store) Create(_ context.Context, e *ledger.Entry) error {
 // returned, so no caller reachable from this package edits an entry's
 // title, body, alternatives or edges once it exists.
 func (s *Store) Put(_ context.Context, e *ledger.Entry) error {
+	if err := s.writable("put"); err != nil {
+		return err
+	}
 	path := s.PathFor(e.ID)
 	res := s.queue.Submit(writer.Job{Path: path, Render: func() ([]byte, error) {
 		data, err := ledger.Encode(e)
@@ -151,6 +178,9 @@ func (s *Store) Put(_ context.Context, e *ledger.Entry) error {
 // (CreateDraft/Confirm/Supersede) ever calls it: precepts are
 // supersede-only and never deleted (RFC 0001 §7.3).
 func (s *Store) Delete(_ context.Context, id string) error {
+	if err := s.writable("delete"); err != nil {
+		return err
+	}
 	path := s.PathFor(id)
 	res := s.queue.Submit(writer.Job{Path: path, Render: func() ([]byte, error) {
 		if _, err := os.Stat(path); err != nil {
@@ -178,6 +208,9 @@ func versionOf(info os.FileInfo) string {
 // doc in write.go). Only ledger.KindDecision supports StateStaged, so a
 // draft of any other kind is rejected here before it ever reaches Add.
 func (s *Store) CreateDraft(ctx context.Context, e *ledger.Entry) error {
+	if err := s.writable("create draft"); err != nil {
+		return err
+	}
 	if e.State != ledger.StateStaged {
 		return fmt.Errorf("direction: create draft: state must be %q, got %q", ledger.StateStaged, e.State)
 	}
@@ -194,6 +227,9 @@ func (s *Store) CreateDraft(ctx context.Context, e *ledger.Entry) error {
 // updated and confirmed_by change; title, body, tags, edges and
 // alternatives are carried through unmodified from what Get returned.
 func (s *Store) Confirm(ctx context.Context, id, confirmedBy string, now time.Time) (*ledger.Entry, error) {
+	if err := s.writable("confirm"); err != nil {
+		return nil, err
+	}
 	e, err := s.Get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("direction: confirm %s: %w", id, err)
@@ -225,6 +261,9 @@ func (s *Store) Confirm(ctx context.Context, id, confirmedBy string, now time.Ti
 // alternatives are the same bytes Get returned, which is what "never
 // edited, only superseded" means in code rather than in a comment.
 func (s *Store) Supersede(ctx context.Context, oldID string, next *ledger.Entry, now time.Time) (old, created *ledger.Entry, err error) {
+	if err := s.writable("supersede"); err != nil {
+		return nil, nil, err
+	}
 	old, err = s.Get(ctx, oldID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("direction: supersede %s: %w", oldID, err)

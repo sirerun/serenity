@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sirerun/serenity/internal/providers"
+
 	"github.com/spf13/cobra"
 
 	"github.com/sirerun/serenity/internal/config"
@@ -40,7 +42,7 @@ func runSearch(ctx context.Context, root, query string, limit int, out io.Writer
 	if err != nil {
 		return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
 	}
-	eng, err := openIndex(root)
+	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		return err
 	}

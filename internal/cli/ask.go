@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sirerun/serenity/internal/providers"
+
 	"github.com/spf13/cobra"
 
 	"github.com/sirerun/serenity/internal/compose"
@@ -35,15 +37,15 @@ func runAsk(ctx context.Context, root, question string, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
 	}
-	eng, err := openIndex(root)
+	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = eng.Close() }()
 
-	ledger := &spendLedgerAdapter{eng: eng}
+	ledger := &providers.IndexSpendLedger{Eng: eng}
 
-	r, ok, note := buildComposerRouter(cfg, ledger)
+	r, ok, note := providers.BuildComposerRouter(cfg, ledger)
 	if !ok {
 		_, _ = fmt.Fprintln(out, note)
 		return nil
@@ -55,7 +57,7 @@ func runAsk(ctx context.Context, root, question string, out io.Writer) error {
 	// runSearch documents for search itself -- never an error, never a
 	// silent skip.
 	var embedder embed.Embedder
-	if er, eok, enote := buildEmbeddingRouter(cfg, ledger); eok {
+	if er, eok, enote := providers.BuildEmbeddingRouter(cfg, ledger); eok {
 		embedder = &embed.RouterEmbedder{Router: er, Pin: cfg.Models.Embedding}
 	} else {
 		_, _ = fmt.Fprintf(out, "%s -- widening query relevance to full-text/lexical matching only\n", enote)
