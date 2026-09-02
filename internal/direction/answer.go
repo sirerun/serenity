@@ -22,6 +22,9 @@ import (
 // decision's disposition path is Confirm, and neither method accepts the
 // other kind.
 func (s *Store) Answer(ctx context.Context, id, answeredBy string, now time.Time) (*ledger.Entry, error) {
+	if err := s.writable("answer"); err != nil {
+		return nil, err
+	}
 	e, err := s.Get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("direction: answer %s: %w", id, err)

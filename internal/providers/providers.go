@@ -1,9 +1,10 @@
-package cli
+package providers
 
 import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/sirerun/serenity/internal/config"
@@ -11,6 +12,15 @@ import (
 	"github.com/sirerun/serenity/internal/router"
 )
 
+// Package providers is the one place a brain repo's serenity.yml pins are
+// turned into live handles: the derived SQLite index (OpenIndex), the spend
+// ledger over it (IndexSpendLedger), and a *router.Router per pinned model
+// (BuildExtractionRouter, BuildEmbeddingRouter, BuildComposerRouter). It
+// was internal/cli/providers.go until T4.18 moved it here unchanged so the
+// read-only facade (pkg/serenity, ADR 012) can call exactly the wiring the
+// CLI calls without importing the CLI package and its cobra dependency;
+// internal/cli is its other consumer.
+//
 // This file closes the "construct a real router.Provider from serenity.yml"
 // gap T1.15 found open: internal/router (T1.7) never grew a production
 // wiring path from a pinned "<model>@<version>" string to a live provider
@@ -41,19 +51,20 @@ import (
 // *router.Router values rather than trying to cram two models under one
 // tier key. Nothing about router.Router itself changes.
 
-// spendLedgerAdapter satisfies router.SpendLedger by writing through
+// IndexSpendLedger satisfies router.SpendLedger by writing through
 // index.SQLite.RecordSpend -- the concrete backing ledger.go's own doc
 // comment calls for ("wired by whichever subsystem first holds a live
 // index.Engine handle in production"). That subsystem is this one:
 // T1.17 shipped RecordSpend/SpendRows with spend-to-date always reading
 // back zero because nothing yet called Router.Complete for real; this is
 // the first production call site.
-type spendLedgerAdapter struct {
-	eng *index.SQLite
+type IndexSpendLedger struct {
+	Eng *index.SQLite
 }
 
-func (a *spendLedgerAdapter) Record(ctx context.Context, e router.SpendEntry) error {
-	return a.eng.RecordSpend(ctx, index.SpendRow{
+// Record implements router.SpendLedger.
+func (a *IndexSpendLedger) Record(ctx context.Context, e router.SpendEntry) error {
+	return a.Eng.RecordSpend(ctx, index.SpendRow{
 		ID:           e.ID,
 		TaskClass:    string(e.TaskClass),
 		Tier:         string(e.Tier),
@@ -79,11 +90,11 @@ func unpinned(pin string) bool {
 	return pin == "" || pin == "none@v0"
 }
 
-// buildExtractionRouter constructs a *router.Router whose local-cheap
+// BuildExtractionRouter constructs a *router.Router whose local-cheap
 // provider is serenity.yml's pinned extraction model. ok is false --
 // extraction must be explicitly skipped, never silently no-op'd -- when no
 // model is pinned or its credential is not configured; note explains why.
-func buildExtractionRouter(cfg *config.Config, ledger router.SpendLedger) (r *router.Router, ok bool, note string) {
+func BuildExtractionRouter(cfg *config.Config, ledger router.SpendLedger) (r *router.Router, ok bool, note string) {
 	pin := cfg.Models.Extraction
 	if unpinned(pin) {
 		return nil, false, "no extraction model pinned (models.extraction: none@v0); extraction skipped"
@@ -111,11 +122,11 @@ func buildExtractionRouter(cfg *config.Config, ledger router.SpendLedger) (r *ro
 	return router.New(map[router.Tier]router.Provider{router.TierLocalCheap: p}, ledger), true, ""
 }
 
-// buildEmbeddingRouter constructs a *router.Router whose local-cheap
+// BuildEmbeddingRouter constructs a *router.Router whose local-cheap
 // provider is serenity.yml's pinned embedding model, via the real
 // OpenAIEmbeddingsProvider adapter. ok is false under the same
-// explicit-skip contract as buildExtractionRouter.
-func buildEmbeddingRouter(cfg *config.Config, ledger router.SpendLedger) (r *router.Router, ok bool, note string) {
+// explicit-skip contract as BuildExtractionRouter.
+func BuildEmbeddingRouter(cfg *config.Config, ledger router.SpendLedger) (r *router.Router, ok bool, note string) {
 	pin := cfg.Models.Embedding
 	if unpinned(pin) {
 		return nil, false, "no embedding model pinned (models.embedding: none@v0); embedding skipped"
@@ -134,14 +145,14 @@ func buildEmbeddingRouter(cfg *config.Config, ledger router.SpendLedger) (r *rou
 	return router.New(map[router.Tier]router.Provider{router.TierLocalCheap: p}, ledger), true, ""
 }
 
-// buildComposerRouter constructs a *router.Router whose judgment-tier
+// BuildComposerRouter constructs a *router.Router whose judgment-tier
 // provider is serenity.yml's pinned composer model (T1.12, RFC §11) --
 // TaskClassComposerSynthesis resolves to router.TierJudgment (router.go's
 // closed task-class table), unlike extraction/embedding's local-cheap
 // pin, so this wires TierJudgment rather than reusing
-// buildExtractionRouter's tier. Same credential-from-env inference and
-// explicit-skip contract as buildExtractionRouter/buildEmbeddingRouter.
-func buildComposerRouter(cfg *config.Config, ledger router.SpendLedger) (r *router.Router, ok bool, note string) {
+// BuildExtractionRouter's tier. Same credential-from-env inference and
+// explicit-skip contract as BuildExtractionRouter/BuildEmbeddingRouter.
+func BuildComposerRouter(cfg *config.Config, ledger router.SpendLedger) (r *router.Router, ok bool, note string) {
 	pin := cfg.Models.Composer
 	if unpinned(pin) {
 		return nil, false, "no composer model pinned (models.composer: none@v0); ask skipped"
@@ -167,4 +178,15 @@ func buildComposerRouter(cfg *config.Config, ledger router.SpendLedger) (r *rout
 		p = &router.OpenAICompatibleProvider{APIKey: key, BaseURL: baseURL, Model: model, Version: version}
 	}
 	return router.New(map[router.Tier]router.Provider{router.TierJudgment: p}, ledger), true, ""
+}
+
+// OpenIndex opens (creating if needed) root's derived SQLite index at
+// root/.serenity/index.db -- derived state, never canonical (RFC §7.5),
+// so creating the directory is not a brain write.
+func OpenIndex(root string) (*index.SQLite, error) {
+	dir := filepath.Join(root, ".serenity")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	return index.Open(filepath.Join(dir, "index.db"))
 }

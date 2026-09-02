@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/providers"
+
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/index"
 )
@@ -133,7 +135,7 @@ func TestMigrateModelsEndToEnd(t *testing.T) {
 
 	readEngine := func() (*index.SQLite, map[string]int64, string) {
 		t.Helper()
-		eng, err := openIndex(root)
+		eng, err := providers.OpenIndex(root)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -270,7 +272,7 @@ func TestMigrateModelsExtractionOnlyDoesNotTouchVectors(t *testing.T) {
 		t.Fatalf("serenity.yml models.extraction = %q, want test-extract@v2", cfgAfter.Models.Extraction)
 	}
 
-	eng, err := openIndex(root)
+	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		t.Fatal(err)
 	}

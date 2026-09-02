@@ -13,13 +13,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/providers"
+
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/index"
 )
 
 // fakeExtractionServer stands a real net/http server in for an
 // OpenAI-compatible chat-completions API (no real API key, no real network
-// egress -- see buildExtractionRouter's local-server path). Every request
+// egress -- see providers.BuildExtractionRouter's local-server path). Every request
 // gets back one fixed, vocabulary-valid extraction candidate: a pure
 // function of nothing but the fixture text this test seeds, so repeated
 // calls over an unchanged source always produce the exact same candidate,
@@ -141,7 +143,7 @@ func TestSyncExtractEndToEnd(t *testing.T) {
 	}
 	readStats := func() (map[string]int64, string) {
 		t.Helper()
-		eng, err := openIndex(root)
+		eng, err := providers.OpenIndex(root)
 		if err != nil {
 			t.Fatal(err)
 		}

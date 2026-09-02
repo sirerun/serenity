@@ -6,11 +6,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"sort"
 	"time"
 	"unicode/utf8"
+
+	"github.com/sirerun/serenity/internal/providers"
 
 	"github.com/spf13/cobra"
 
@@ -68,7 +69,7 @@ func runSync(ctx context.Context, root string, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
 	}
-	eng, err := openIndex(root)
+	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		return err
 	}
@@ -209,13 +210,13 @@ func runExtract(ctx context.Context, root string, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
 	}
-	eng, err := openIndex(root)
+	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = eng.Close() }()
 
-	ledger := &spendLedgerAdapter{eng: eng}
+	ledger := &providers.IndexSpendLedger{Eng: eng}
 
 	if err := extractClaims(ctx, root, cfg, ledger, out); err != nil {
 		return err
@@ -232,7 +233,7 @@ func runExtract(ctx context.Context, root string, out io.Writer) error {
 // extractClaims runs chunk -> extract candidate observations -> write
 // claims (RFC §10.1) over every stored source. A source with no
 // extraction model pinned, or a pinned model with no credential
-// configured (buildExtractionRouter), is reported once and the whole call
+// configured (providers.BuildExtractionRouter), is reported once and the whole call
 // is a documented no-op -- the same explicit-skip contract the pre-T1.15
 // stub used for "models.extraction: none@v0", extended to a real-but-
 // uncredentialed pin. Below-distill-threshold observations
@@ -242,7 +243,7 @@ func runExtract(ctx context.Context, root string, out io.Writer) error {
 // shard, so v1's honest behavior is "counted, not silently lost, not
 // silently promoted."
 func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger router.SpendLedger, out io.Writer) error {
-	r, ok, note := buildExtractionRouter(cfg, ledger)
+	r, ok, note := providers.BuildExtractionRouter(cfg, ledger)
 	if !ok {
 		_, _ = fmt.Fprintln(out, note)
 		return nil
@@ -318,7 +319,7 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 // byte-identity contract working as intended, not an inefficiency this
 // task introduced.
 func reembedChunks(ctx context.Context, cfg *config.Config, ledger router.SpendLedger, eng *index.SQLite, out io.Writer) error {
-	r, ok, note := buildEmbeddingRouter(cfg, ledger)
+	r, ok, note := providers.BuildEmbeddingRouter(cfg, ledger)
 	if !ok {
 		_, _ = fmt.Fprintln(out, note)
 		return nil
@@ -348,14 +349,6 @@ func rebuildTimed(ctx context.Context, root string, cfg *config.Config, eng *ind
 		return err
 	}
 	return eng.RecordRebuildTiming(ctx, time.Since(start), time.Now())
-}
-
-func openIndex(root string) (*index.SQLite, error) {
-	dir := filepath.Join(root, ".serenity")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, err
-	}
-	return index.Open(filepath.Join(dir, "index.db"))
 }
 
 func printStats(ctx context.Context, eng index.Engine, out io.Writer) error {

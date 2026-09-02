@@ -6,6 +6,8 @@ import (
 	"io"
 	"path/filepath"
 
+	"github.com/sirerun/serenity/internal/providers"
+
 	"github.com/spf13/cobra"
 
 	"github.com/sirerun/serenity/internal/config"
@@ -78,7 +80,7 @@ func runMigrateModels(ctx context.Context, root, embeddingPin, extractionPin str
 	if err != nil {
 		return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
 	}
-	eng, err := openIndex(root)
+	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		return err
 	}
@@ -116,7 +118,7 @@ func runMigrateModels(ctx context.Context, root, embeddingPin, extractionPin str
 	if err := rebuildTimed(ctx, root, cfg, eng); err != nil {
 		return err
 	}
-	ledger := &spendLedgerAdapter{eng: eng}
+	ledger := &providers.IndexSpendLedger{Eng: eng}
 	if err := reembedChunks(ctx, cfg, ledger, eng, out); err != nil {
 		return err
 	}
