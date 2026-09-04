@@ -42,10 +42,32 @@ type Index struct {
 	Engine string `yaml:"engine"`
 }
 
+// Server configures the daemon's HTTP transport (RFC §14: "binds
+// localhost with a bearer token required by default; LAN/Tailscale
+// exposure is explicit config with token + optional mTLS"). The zero
+// value is the secure default: loopback only, no mTLS.
+type Server struct {
+	// Bind is the listen address ("host:port"). Empty selects the
+	// transport's own loopback default.
+	Bind string `yaml:"bind,omitempty"`
+	// AllowLAN is the explicit, separately-named opt-in RFC §14 requires
+	// before Bind may resolve to anything but a loopback address.
+	AllowLAN bool `yaml:"allow_lan,omitempty"`
+	// ClientCAFile, set together with ServerCertFile/ServerKeyFile, turns
+	// on mTLS: connections must present a certificate signed by this CA.
+	// Only meaningful when AllowLAN is true.
+	ClientCAFile string `yaml:"client_ca_file,omitempty"`
+	// ServerCertFile and ServerKeyFile are the daemon's own TLS identity,
+	// required alongside ClientCAFile for mTLS.
+	ServerCertFile string `yaml:"server_cert_file,omitempty"`
+	ServerKeyFile  string `yaml:"server_key_file,omitempty"`
+}
+
 type Config struct {
 	Version    int               `yaml:"version"`
 	Models     Models            `yaml:"models"`
 	Index      Index             `yaml:"index"`
+	Server     Server            `yaml:"server,omitempty"`
 	Families   map[string]Family `yaml:"families"`
 	Connectors map[string]any    `yaml:"connectors,omitempty"`
 }

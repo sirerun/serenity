@@ -167,7 +167,9 @@ not automatically trusted just because it can reach `127.0.0.1`. LAN or
 Tailscale exposure is explicit, opt-in configuration, and requires a token
 plus optionally mTLS. Every protocol endpoint authenticates the caller;
 `DISPOSITION` and `DIRECTION` are never served anonymously, on loopback or
-otherwise.
+otherwise. See [docs/operator/server.md](operator/server.md) for the
+configuration surface (`server.bind`, `server.allow_lan`, mTLS files) and
+`serenity connect --rotate-token`.
 
 ## Precept integrity
 
