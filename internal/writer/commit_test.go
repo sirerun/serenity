@@ -1,6 +1,7 @@
 package writer
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -136,5 +137,45 @@ func TestQueueFlushScopesToTouchedPaths(t *testing.T) {
 	status := run("status", "--porcelain")
 	if !strings.Contains(status, "human-edit-untouched.md") {
 		t.Fatalf("expected the human's uncommitted edit to remain dirty and untouched, status:\n%s", status)
+	}
+}
+
+// TestQueueFlushHandlesFarMoreFilesThanFitOnArgv reproduces the real
+// failure T1.23's Gmail exit-verification run hit: 11,087 new sources in
+// one sync (2 paths each, ~150 bytes apiece with a real brain root) blew
+// past the OS's ARG_MAX with `git add: fork/exec /usr/bin/git: argument
+// list too long`, the whole sync aborting -- sources already safely on
+// disk (SourceStore.Write already wrote them) but never committed. This
+// test's file count x path length comfortably exceeds this machine's own
+// ARG_MAX (getconf ARG_MAX; 1048576 bytes when this test was written) --
+// Flush must still succeed, because git add now reads paths from stdin
+// (`--pathspec-from-file=-`), which has no argv-length ceiling.
+func TestQueueFlushHandlesFarMoreFilesThanFitOnArgv(t *testing.T) {
+	root, run := gitRepoFixture(t)
+	q := NewQueue(nil)
+	defer q.Close()
+
+	const fileCount = 50_000
+	for i := 0; i < fileCount; i++ {
+		path := filepath.Join(root, fmt.Sprintf("source-%05d.txt", i))
+		writeJob(t, q, path, []byte("x"))
+	}
+
+	committed, err := Flush(q, root)
+	if err != nil {
+		t.Fatalf("Flush with %d touched paths: %v", fileCount, err)
+	}
+	if !committed {
+		t.Fatal("expected Flush to report a commit was made")
+	}
+
+	subject := strings.TrimSpace(run("log", "-1", "--format=%s"))
+	if subject != fmt.Sprintf("serenity: sync %d file(s)", fileCount) {
+		t.Fatalf("unexpected commit subject: %q", subject)
+	}
+
+	tracked := strings.TrimSpace(run("ls-files"))
+	if got := len(strings.Split(tracked, "\n")); got != fileCount+1 { // +1 for gitRepoFixture's seed.txt
+		t.Fatalf("git ls-files reports %d tracked file(s), want %d", got, fileCount+1)
 	}
 }
