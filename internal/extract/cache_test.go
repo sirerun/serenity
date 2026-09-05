@@ -60,10 +60,10 @@ func TestExtractChunkWorksWithFileCache(t *testing.T) {
 	ex := New(newTestRouter(fp), "fake-extractor@v1", nil, cache)
 
 	ch := chunk.Chunk{Span: chunk.Span{Start: 0, End: 20}, Text: "Jane works at Acme."}
-	if _, err := ex.ExtractChunk(context.Background(), "src-a", ch, router.Budget{}); err != nil {
+	if _, err := ex.ExtractChunk(context.Background(), "src-a", false, ch, router.Budget{}); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
-	if _, err := ex.ExtractChunk(context.Background(), "src-a", ch, router.Budget{}); err != nil {
+	if _, err := ex.ExtractChunk(context.Background(), "src-a", false, ch, router.Budget{}); err != nil {
 		t.Fatalf("second call: %v", err)
 	}
 	if fp.calls != 1 {

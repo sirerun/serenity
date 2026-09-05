@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -260,7 +261,7 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 	defer q.Close()
 	iw := ingest.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg)
 
-	var written, skipped, distilled, rejected int
+	var written, skipped, distilled, rejected, indexOnlySkipped int
 	for _, src := range sources {
 		data, _, err := ss.Read(src.SHA256)
 		if err != nil {
@@ -274,8 +275,19 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 			continue
 		}
 
-		result, err := extractor.Extract(ctx, src.SHA256, chunks, router.Budget{})
+		result, err := extractor.Extract(ctx, src.SHA256, src.IndexOnly, chunks, router.Budget{})
 		if err != nil {
+			// An index_only source is an explicit skip, not a failure:
+			// extraction has no local-only path for it yet (§14 says its
+			// bytes never leave the machine; extraction only knows how
+			// to ask an external router), so it is counted and reported
+			// exactly like the pre-existing binary/empty-chunk skips
+			// above, never silently dropped and never aborting the rest
+			// of the run.
+			if errors.Is(err, router.ErrIndexOnlyEgress) {
+				indexOnlySkipped++
+				continue
+			}
 			return fmt.Errorf("extract: source %s: %w", src.SHA256, err)
 		}
 		rejected += result.Rejected
@@ -296,8 +308,8 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 	if err != nil {
 		return fmt.Errorf("extract: commit new claims: %w", err)
 	}
-	_, _ = fmt.Fprintf(out, "extraction: %d claim(s) written, %d skipped (already present), %d rejected, %d below distill threshold\n",
-		written, skipped, rejected, distilled)
+	_, _ = fmt.Fprintf(out, "extraction: %d claim(s) written, %d skipped (already present), %d rejected, %d below distill threshold, %d source(s) skipped (index_only)\n",
+		written, skipped, rejected, distilled, indexOnlySkipped)
 	if committed {
 		_, _ = fmt.Fprintln(out, "committed new claims")
 	}
