@@ -77,6 +77,60 @@ func (a *IndexSpendLedger) Record(ctx context.Context, e router.SpendEntry) erro
 	})
 }
 
+// openRouterBaseURL is OpenRouter's OpenAI-compatible chat-completions
+// endpoint (ADR 013). Reused via the existing OpenAICompatibleProvider
+// unchanged -- OpenRouter's endpoint IS the OpenAI chat-completions
+// shape, so no new adapter type exists for it.
+const openRouterBaseURL = "https://openrouter.ai/api/v1"
+
+// buildChatProvider resolves the router.Provider for a chat-capable pin
+// (extraction or composer): cfg.Models.Provider is checked first (ADR
+// 013's explicit selection), falling back to the pre-existing "claude"
+// substring inference only when the field is empty -- exactly today's
+// behavior for every brain created before ADR 013. purpose names the
+// pin ("extraction"/"composer") for the field-inferred error message;
+// skipSuffix is the caller's own skip-note tail ("extraction skipped" /
+// "ask skipped", preserved verbatim from each caller's pre-existing text).
+func buildChatProvider(cfg *config.Config, purpose, model, version, skipSuffix string) (p router.Provider, ok bool, note string) {
+	switch cfg.Models.Provider {
+	case "openrouter":
+		key := os.Getenv("OPENROUTER_API_KEY")
+		if key == "" {
+			return nil, false, fmt.Sprintf("models.provider is openrouter but OPENROUTER_API_KEY is not set; %s", skipSuffix)
+		}
+		return &router.OpenAICompatibleProvider{BaseURL: openRouterBaseURL, APIKey: key, Model: model, Version: version}, true, ""
+	case "anthropic":
+		key := os.Getenv("ANTHROPIC_API_KEY")
+		if key == "" {
+			return nil, false, fmt.Sprintf("models.provider is anthropic but ANTHROPIC_API_KEY is not set; %s", skipSuffix)
+		}
+		return &router.AnthropicProvider{APIKey: key, Model: model, Version: version}, true, ""
+	case "openai":
+		key := os.Getenv("OPENAI_API_KEY")
+		baseURL := os.Getenv("OPENAI_BASE_URL")
+		if key == "" && baseURL == "" {
+			return nil, false, fmt.Sprintf("models.provider is openai but neither OPENAI_API_KEY nor OPENAI_BASE_URL (local server) is set; %s", skipSuffix)
+		}
+		return &router.OpenAICompatibleProvider{APIKey: key, BaseURL: baseURL, Model: model, Version: version}, true, ""
+	case "":
+		if strings.Contains(strings.ToLower(model), "claude") {
+			key := os.Getenv("ANTHROPIC_API_KEY")
+			if key == "" {
+				return nil, false, fmt.Sprintf("models.%s is pinned to a Claude model but ANTHROPIC_API_KEY is not set; %s", purpose, skipSuffix)
+			}
+			return &router.AnthropicProvider{APIKey: key, Model: model, Version: version}, true, ""
+		}
+		key := os.Getenv("OPENAI_API_KEY")
+		baseURL := os.Getenv("OPENAI_BASE_URL")
+		if key == "" && baseURL == "" {
+			return nil, false, fmt.Sprintf("models.%s is pinned but neither OPENAI_API_KEY nor OPENAI_BASE_URL (local server) is set; %s", purpose, skipSuffix)
+		}
+		return &router.OpenAICompatibleProvider{APIKey: key, BaseURL: baseURL, Model: model, Version: version}, true, ""
+	default:
+		return nil, false, fmt.Sprintf("models.provider %q is not one of openrouter, anthropic, openai; %s", cfg.Models.Provider, skipSuffix)
+	}
+}
+
 // splitPin splits a serenity.yml "<model>@<version>" pin into its two
 // parts. ok is false when pin carries no "@" at all.
 func splitPin(pin string) (model, version string, ok bool) {
@@ -104,20 +158,9 @@ func BuildExtractionRouter(cfg *config.Config, ledger router.SpendLedger) (r *ro
 		return nil, false, fmt.Sprintf("models.extraction %q is not shaped <model>@<version>; extraction skipped", pin)
 	}
 
-	var p router.Provider
-	if strings.Contains(strings.ToLower(model), "claude") {
-		key := os.Getenv("ANTHROPIC_API_KEY")
-		if key == "" {
-			return nil, false, "models.extraction is pinned to a Claude model but ANTHROPIC_API_KEY is not set; extraction skipped"
-		}
-		p = &router.AnthropicProvider{APIKey: key, Model: model, Version: version}
-	} else {
-		key := os.Getenv("OPENAI_API_KEY")
-		baseURL := os.Getenv("OPENAI_BASE_URL")
-		if key == "" && baseURL == "" {
-			return nil, false, "models.extraction is pinned but neither OPENAI_API_KEY nor OPENAI_BASE_URL (local server) is set; extraction skipped"
-		}
-		p = &router.OpenAICompatibleProvider{APIKey: key, BaseURL: baseURL, Model: model, Version: version}
+	p, ok, note := buildChatProvider(cfg, "extraction", model, version, "extraction skipped")
+	if !ok {
+		return nil, false, note
 	}
 	return router.New(map[router.Tier]router.Provider{router.TierLocalCheap: p}, ledger), true, ""
 }
