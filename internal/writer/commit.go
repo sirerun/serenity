@@ -3,10 +3,11 @@ package writer
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 // Flush commits every path the queue has written since the last Flush,
-// scoped to exactly those paths (`git add --` with the touched-path list,
+// scoped to exactly those paths (`git add` with the touched-path list,
 // never `-A` or `.`) so a human edit sitting dirty elsewhere in the
 // working tree is never swept into a daemon commit -- "the human's file
 // state is truth" (RFC 0001 §7.7). The commit subject carries the
@@ -24,7 +25,21 @@ func Flush(q *Queue, root string) (committed bool, err error) {
 		return false, nil
 	}
 
-	if out, err := runGit(root, append([]string{"add", "--"}, paths...)...); err != nil {
+	// Paths are fed to `git add --pathspec-from-file=-` over stdin, one
+	// per line, rather than appended to argv (`git add -- path1 path2
+	// ...`): argv has an OS-enforced ceiling (ARG_MAX) that a single
+	// sync of a real mailbox blows straight through -- reproduced during
+	// T1.23's real Gmail ingest (11,087 new sources in one sync => 2
+	// paths each => "fork/exec /usr/bin/git: argument list too long",
+	// the whole sync aborting with every new source's bytes already
+	// safely written to disk by SourceStore.Write but never committed).
+	// Reading pathspecs from stdin has no such limit regardless of how
+	// many paths one Flush touches. Every path this package ever queues
+	// is a plain content-addressed store path (sha256 dirs, "meta.yaml",
+	// "bytes", brain/ fence and shard files) -- none can contain a
+	// newline, so newline-delimited is safe without the NUL-delimited
+	// (`--pathspec-file-nul`) variant.
+	if out, err := runGitStdin(root, strings.Join(paths, "\n"), "add", "--pathspec-from-file=-"); err != nil {
 		return false, fmt.Errorf("git add: %w: %s", err, out)
 	}
 
@@ -49,5 +64,15 @@ func Flush(q *Queue, root string) (committed bool, err error) {
 func runGit(root string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = root
+	return cmd.CombinedOutput()
+}
+
+// runGitStdin is runGit plus a stdin pipe, for the one git invocation
+// (`add --pathspec-from-file=-`) that takes its argument list over stdin
+// instead of argv.
+func runGitStdin(root, stdin string, args ...string) ([]byte, error) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = root
+	cmd.Stdin = strings.NewReader(stdin)
 	return cmd.CombinedOutput()
 }
