@@ -205,20 +205,9 @@ func BuildComposerRouter(cfg *config.Config, ledger router.SpendLedger) (r *rout
 		return nil, false, fmt.Sprintf("models.composer %q is not shaped <model>@<version>; ask skipped", pin)
 	}
 
-	var p router.Provider
-	if strings.Contains(strings.ToLower(model), "claude") {
-		key := os.Getenv("ANTHROPIC_API_KEY")
-		if key == "" {
-			return nil, false, "models.composer is pinned to a Claude model but ANTHROPIC_API_KEY is not set; ask skipped"
-		}
-		p = &router.AnthropicProvider{APIKey: key, Model: model, Version: version}
-	} else {
-		key := os.Getenv("OPENAI_API_KEY")
-		baseURL := os.Getenv("OPENAI_BASE_URL")
-		if key == "" && baseURL == "" {
-			return nil, false, "models.composer is pinned but neither OPENAI_API_KEY nor OPENAI_BASE_URL (local server) is set; ask skipped"
-		}
-		p = &router.OpenAICompatibleProvider{APIKey: key, BaseURL: baseURL, Model: model, Version: version}
+	p, ok, note := buildChatProvider(cfg, "composer", model, version, "ask skipped")
+	if !ok {
+		return nil, false, note
 	}
 	return router.New(map[router.Tier]router.Provider{router.TierJudgment: p}, ledger), true, ""
 }
