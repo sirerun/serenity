@@ -40,3 +40,14 @@ func TestDefaultSeedsControlledVocabulary(t *testing.T) {
 		}
 	}
 }
+
+// TestDefaultSeedsOpenRouterProvider pins ADR 013's install-time default:
+// a brand new brain's serenity.yml selects OpenRouter as the explicit
+// models.provider once a model is pinned (this does not un-skip the "no
+// model pinned" none@v0 default -- see TestDefaultSeedsControlledVocabulary
+// and internal/providers' explicit-skip contract).
+func TestDefaultSeedsOpenRouterProvider(t *testing.T) {
+	if got := Default().Models.Provider; got != "openrouter" {
+		t.Fatalf("Default().Models.Provider = %q, want %q", got, "openrouter")
+	}
+}
