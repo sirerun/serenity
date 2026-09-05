@@ -288,7 +288,9 @@ func runLive(ctx context.Context, cfg Config, heldOut []eval.Label) ([]eval.Pred
 		}
 
 		c := chunk.Chunk{Span: chunk.Span{Start: 0, End: len(lbl.Span)}, Text: lbl.Span}
-		res, err := cfg.Extractor.ExtractChunk(ctx, spanSourceID(lbl.Span), c, budget)
+		// false: golden-set spans are synthetic eval fixtures, never a
+		// real index_only source.
+		res, err := cfg.Extractor.ExtractChunk(ctx, spanSourceID(lbl.Span), false, c, budget)
 		if err != nil {
 			return nil, skipped, fmt.Errorf("runner: live extraction on span %q: %w", lbl.Span, err)
 		}

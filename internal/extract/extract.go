@@ -121,11 +121,15 @@ func New(r Completer, modelVersion string, vocabulary []string, cache Cache) *Ex
 // Extract runs extraction over every chunk of one source, in order,
 // merging each chunk's Result. A failure on any chunk aborts the whole
 // call -- partial extraction of a source is never silently reported as
-// complete.
-func (e *Extractor) Extract(ctx context.Context, sourceSHA256 string, chunks []chunk.Chunk, budget router.Budget) (Result, error) {
+// complete. indexOnly is the source's domain.Source.IndexOnly value
+// (RFC §7.4, §14): a caller must thread it through from the source it
+// read, never hardcode false, or an index_only source can still egress
+// via extraction (see ExtractChunk's own doc comment for the class of
+// bug this closes).
+func (e *Extractor) Extract(ctx context.Context, sourceSHA256 string, indexOnly bool, chunks []chunk.Chunk, budget router.Budget) (Result, error) {
 	var out Result
 	for _, c := range chunks {
-		r, err := e.ExtractChunk(ctx, sourceSHA256, c, budget)
+		r, err := e.ExtractChunk(ctx, sourceSHA256, indexOnly, c, budget)
 		if err != nil {
 			return Result{}, fmt.Errorf("extract: source %s span %s: %w", sourceSHA256, spanString(c.Span), err)
 		}
@@ -143,7 +147,25 @@ func (e *Extractor) Extract(ctx context.Context, sourceSHA256 string, chunks []c
 // content-only result is cached before this call returns. Provenance
 // (SourceSHA256, Span, CreatedAt, each observation's ID) is stamped
 // fresh from this call's own arguments every time, hit or miss.
-func (e *Extractor) ExtractChunk(ctx context.Context, sourceSHA256 string, c chunk.Chunk, budget router.Budget) (Result, error) {
+//
+// indexOnly gates before the cache lookup, not after: router.Complete
+// already refuses egress for an index_only Prompt (internal/router,
+// §14), but that guard only fires on a call this package actually makes.
+// Two different sources can chunk into byte-identical text (a repeated
+// signature or boilerplate paragraph), and the output cache is keyed on
+// chunk content alone -- so if this check lived after the cache lookup,
+// an index_only source could still get a cache hit seeded by an earlier
+// non-index_only source's identical chunk and return that result without
+// ever reaching router.Complete's own check. Refusing here first makes
+// that structurally impossible rather than relying on it being unlikely.
+// This was a real, if previously latent, gap: no production connector
+// ever set IndexOnly true (found auditing the extraction path against
+// T1.23's real Gmail ingest), so nothing had exercised this path before.
+func (e *Extractor) ExtractChunk(ctx context.Context, sourceSHA256 string, indexOnly bool, c chunk.Chunk, budget router.Budget) (Result, error) {
+	if indexOnly {
+		return Result{}, fmt.Errorf("extract: source %s: %w", sourceSHA256, router.ErrIndexOnlyEgress)
+	}
+
 	key := CacheKey{ChunkSHA256: chunkSHA256(c.Text), ModelVersion: e.modelVersion, PromptVersion: PromptVersion}
 
 	cached, hit, err := e.cache.Get(ctx, key)

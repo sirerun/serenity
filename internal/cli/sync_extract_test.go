@@ -16,7 +16,9 @@ import (
 	"github.com/sirerun/serenity/internal/providers"
 
 	"github.com/sirerun/serenity/internal/config"
+	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/index"
+	"github.com/sirerun/serenity/internal/store"
 )
 
 // fakeExtractionServer stands a real net/http server in for an
@@ -210,5 +212,88 @@ func TestSyncExtractEndToEnd(t *testing.T) {
 	}
 	if !strings.Contains(dump1, "vectors\t") {
 		t.Fatalf("dump has no vectors rows -- test did not exercise the vectors table:\n%s", dump1)
+	}
+}
+
+// TestExtractSkipsIndexOnlySourceWithoutAborting is the CLI-level proof
+// for the index_only egress gap found auditing T1.23's real Gmail run:
+// no shipped connector sets Source.IndexOnly today (extract.go's own doc
+// comment explains why the check still belongs in the extractor, not
+// just at whichever connector eventually sets it), so this test writes
+// one directly to the source store to stand in for that still-unbuilt
+// producer. `serenity extract` must skip it (report the count, never
+// error the whole run) while still extracting every ordinary source
+// alongside it.
+func TestExtractSkipsIndexOnlySourceWithoutAborting(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+
+	extServer := fakeExtractionServer(t)
+	t.Setenv("OPENAI_BASE_URL", extServer.URL)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENROUTER_API_KEY", "")
+
+	root := t.TempDir()
+	var initOut bytes.Buffer
+	if err := runInit(root, &initOut); err != nil {
+		t.Fatal(err)
+	}
+	configureGitIdentity(t, root)
+
+	cfgPath := filepath.Join(root, config.FileName)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Models.Provider = "" // see TestSyncExtractEndToEnd's identical ADR 013 note
+	cfg.Models.Extraction = "test-extract@v1"
+	if err := cfg.Save(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+
+	ss := store.NewSourceStore(root)
+	ordinary, err := ss.Write([]byte("Alice works at Acme Corp."), domain.Source{Kind: "file", URI: "ordinary.txt", OccurredAt: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sensitive, err := ss.Write([]byte("Bob's private medical note."), domain.Source{Kind: "file", URI: "sensitive.txt", OccurredAt: time.Now(), IndexOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sensitive.IndexOnly {
+		t.Fatal("fixture setup: expected the written source to carry IndexOnly")
+	}
+
+	var extractOut bytes.Buffer
+	if err := runExtract(ctx, root, &extractOut); err != nil {
+		t.Fatalf("extract must not abort the whole run over one index_only source: %v\noutput:\n%s", err, extractOut.String())
+	}
+	if !strings.Contains(extractOut.String(), "1 source(s) skipped (index_only)") {
+		t.Fatalf("expected the index_only skip to be reported, got:\n%s", extractOut.String())
+	}
+
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = eng.Close() }()
+	stats, err := eng.Stats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats["claims"] == 0 {
+		t.Fatalf("expected the ordinary source (%s) to still be extracted, stats: %+v", ordinary.SHA256, stats)
+	}
+	// fakeExtractionServer returns the same one fixed candidate regardless
+	// of input text, so if the index_only source (sensitive.SHA256) were
+	// ever sent for extraction too, claims would double. Exactly one
+	// proves the second source never reached ExtractChunk's router call --
+	// this is the egress invariant; the derived full-text chunks table
+	// legitimately still contains an index_only source's raw text for
+	// local search (RFC §7.4 constrains network egress, not local
+	// indexing), so this test does not assert on that table.
+	if stats["claims"] != 1 {
+		t.Fatalf("claims = %d, want exactly 1 -- the index_only source must never be extracted", stats["claims"])
 	}
 }
