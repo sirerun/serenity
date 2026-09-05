@@ -27,6 +27,14 @@ type Models struct {
 	// §11) routes TaskClassComposerSynthesis calls through. Same
 	// "<model>@<version>" / "none@v0" convention as the other two pins.
 	Composer string `yaml:"composer"`
+	// Provider explicitly selects which adapter internal/providers'
+	// Build*Router functions build for the Extraction and Composer pins:
+	// "openrouter" | "anthropic" | "openai" (ADR 013). Empty -- the zero
+	// value for every brain created before ADR 013 -- falls back to the
+	// pre-existing "claude" substring inference on the model name, so
+	// existing brains are unaffected. BuildEmbeddingRouter never reads
+	// this field: OpenRouter has no embeddings endpoint.
+	Provider string `yaml:"provider,omitempty"`
 }
 
 // Family declares one predicate family: its storage tier and the
@@ -85,6 +93,10 @@ func Default() *Config {
 			Embedding:  "none@v0",
 			Extraction: "none@v0",
 			Composer:   "none@v0",
+			// ADR 013: new brains default to OpenRouter for extraction/
+			// composer once a model is pinned; this does not un-skip the
+			// "no model pinned" default above.
+			Provider: "openrouter",
 		},
 		Index: Index{Engine: "sqlite"},
 		Families: map[string]Family{

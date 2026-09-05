@@ -149,6 +149,15 @@ func New(providers map[Tier]Provider, ledger SpendLedger) *Router {
 	}
 }
 
+// Provider returns the provider registered for tier -- for callers that
+// need to inspect which concrete adapter a wiring path built (e.g.
+// internal/providers' provider-selection tests, ADR 013) rather than
+// route a call through it. ok is false when tier has no provider.
+func (r *Router) Provider(tier Tier) (Provider, bool) {
+	p, ok := r.providers[tier]
+	return p, ok
+}
+
 func newSpendID() string {
 	var b [16]byte
 	// crypto/rand.Read on the package-level Reader never returns a
