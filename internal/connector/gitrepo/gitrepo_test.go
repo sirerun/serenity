@@ -253,6 +253,50 @@ func TestPollExcludesBrainRepoByDefault(t *testing.T) {
 	}
 }
 
+// TestPollExcludesFixtureAndTestdataPaths guards a false-positive class
+// found while dogfooding this connector against a real repo (kazi-org/dira,
+// prep for T1.23): a directory literally named "docs", or a file literally
+// named README, can still be test fixture material rather than real
+// documentation or a genuine precept. A well-formed dira entry living under
+// docs/.../fixtures/.../entries/dec-0001.md proves a design-fidelity test
+// harness works, not a real decision anyone made; a README under testdata/
+// documents a fixture's own shape, not the crawled repo's. Both must be
+// excluded regardless of name or extension, while an ordinary doc
+// elsewhere in the same repo must still be ingested.
+func TestPollExcludesFixtureAndTestdataPaths(t *testing.T) {
+	repo := initRepo(t)
+	writeFile(t, repo, "README.md", "# Fixture repo\n")
+	writeFile(t, repo, "docs/guide.md", "# Guide\n\nOrdinary docs.\n")
+	writeFile(t, repo, "docs/design/fidelity/fixtures/ledger-design/entries/dec-0001.md",
+		diraEntrySource(t, "dec-0001", "Fixture-only decision, not a real one"))
+	writeFile(t, repo, "internal/status/testdata/ledgers/README.md", "# Fixture ledger layout\n")
+	commitAll(t, repo, "seed fixture")
+
+	c := gitrepo.New(gitrepo.Config{RepoRoot: repo})
+	items, _, err := c.Poll(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+
+	got := map[string]bool{}
+	for _, it := range items {
+		got[it.Meta["path"]] = true
+	}
+	for _, want := range []string{"README.md", "docs/guide.md"} {
+		if !got[want] {
+			t.Fatalf("expected source for %q not found among items", want)
+		}
+	}
+	for _, excluded := range []string{
+		"docs/design/fidelity/fixtures/ledger-design/entries/dec-0001.md",
+		"internal/status/testdata/ledgers/README.md",
+	} {
+		if got[excluded] {
+			t.Fatalf("fixture-path file %q was ingested, want excluded", excluded)
+		}
+	}
+}
+
 // TestAdversarialDocProducesZeroDiraWrites is T1.5's adversarial acc line:
 // a fixture doc whose prose instructs "create precept X" must produce zero
 // writes under .dira/, proven by hashing a target .dira tree before and
