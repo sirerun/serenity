@@ -56,7 +56,7 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 ## 4. Checkable work breakdown
 
 ### E0 -- M0 residuals: substrate invariants the RFC mandates but 13dc0d2 lacks  -> docs/plans/E0-m0-residuals.md  (13/13, SHIPPED 2026 08 29 -- trimmed from this file's wave breakdown per the plan skill's trim pass; full task detail lives in the epic file and docs/roadmap.md Shipped)
-### E1 -- M1: ingest spine + honest evals  -> docs/plans/E1-m1-ingest.md  (23/25, T1.23 -- David's own Gmail/repo exit verification -- remains for the RFC M1 AC; T1.24 shipped 2026-09-05 (PR #63); T1.25 (wave 1e, OpenRouter provider configurability, ADR 013) is additional, not part of the RFC AC, cross-epic-startable now that T1.24 is done, added 2026-09-04)
+### E1 -- M1: ingest spine + honest evals  -> docs/plans/E1-m1-ingest.md  (24/25, T1.23 -- David's own Gmail/repo exit verification -- remains for the RFC M1 AC; T1.24/T1.25 (wave 1e, OpenRouter provider configurability, ADR 013) both shipped 2026-09-05 (PR #63, PR #66), additional, not part of the RFC AC)
 ### E2 -- M2: reconcile + entities + disposition queue + ladder calibration  -> docs/plans/E2-m2-reconcile.md  (0/22, gated behind T1.23 per build-in-M-order; wave-2a tasks carry blocked-by: [T1.23] mechanically -- ADR 011)
 ### E3 -- M3: direction (dira vendored, interview wizard, plan check, orphan detector)  -> docs/plans/E3-m3-direction.md  (12/17, remaining: T3.4, T3.9, T3.10, T3.11, T3.17 -- deps-blocked on E2 tasks (T2.1, T2.5, T2.17, T2.19); the 2026-08-29 "not blocked" note was an error, corrected 2026-08-30 -- ADR 011)
 ### E4 -- M4: serve + protocols  -> docs/plans/E4-m4-serve-protocols.md  (2/19, gated behind M2+M3; T4.3 and T4.18 were the cross-epic-startable tasks during E3 and both have now shipped -- ADR 011; T4.10 and T4.12 become cross-epic-startable the moment T2.1 lands, needing no other E2 wave-2a task -- see section 5; T4.18/T4.19 added 2026-09-02, ADR 012)
@@ -151,7 +151,7 @@ gap, fixed same day) -- v0.1.0 itself was left untouched, not retagged.
 
 ### Wave 1e: model provider configurability (added 2026-09-04, not part of the RFC M1 AC, ADR 013; 2 agents)
 - [x] T1.24 OpenRouter as an explicit, selectable provider (2026-09-05, PR #63) (`models.provider` field, checked before the model-name substring inference; `config.Default()` seeds openrouter)
-- [ ] T1.25 `serenity config set-model <purpose> <model>` CLI + provider docs
+- [x] T1.25 (2026-09-05, PR #66) `serenity config set-model <purpose> <model>` CLI + provider docs
 
 ### Wave 2a: E2 queue, ladder, sweeps, capture (6 agents)
 - [ ] T2.1 DISPOSITION store `internal/disposition`: items, append-only history, idempotency, already_disposed
