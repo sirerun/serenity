@@ -218,8 +218,12 @@ func isDiraPattern(data []byte) bool {
 // isDoc reports whether rel (a repo-relative, forward-slash path) is in
 // this connector's scope: RFC §10.1's "docs/READMEs" -- a README file at any
 // depth, by name, regardless of extension; or a documentation-extensioned
-// file under any directory named "docs".
+// file under any directory named "docs". isFixturePath excludes both cases
+// first, so a README or dira-shaped file planted for a test never counts.
 func isDoc(rel string) bool {
+	if isFixturePath(rel) {
+		return false
+	}
 	dir, base := path.Split(rel)
 	if isReadmeName(base) {
 		return true
@@ -231,6 +235,28 @@ func isDoc(rel string) bool {
 	for _, seg := range strings.Split(dir, "/") {
 		if seg == "docs" {
 			return docExts[strings.ToLower(path.Ext(base))]
+		}
+	}
+	return false
+}
+
+// isFixturePath reports whether rel sits under a directory conventionally
+// reserved for test fixtures, at any depth: "testdata" (the Go convention)
+// or "fixtures" (the convention this repo's own tests and dira's both use).
+// These trees exist to feed tests, not to document the crawled project --
+// found dogfooding against a real repo (kazi-org/dira), whose own
+// design-fidelity test harness nests well-formed dira ledger entries under
+// docs/design/fidelity/fixtures/.../entries/*.md purely to prove a renderer
+// works, and whose Go packages carry stray READMEs under testdata/
+// describing a fixture's own shape. Both matched isDoc's plain "under a
+// docs dir" / "named README" rules before this exclusion existed, surfacing
+// fixture data as if it were the repo's real documentation or, worse, a
+// genuine precept-draft candidate.
+func isFixturePath(rel string) bool {
+	dir, _ := path.Split(rel)
+	for _, seg := range strings.Split(strings.TrimSuffix(dir, "/"), "/") {
+		if seg == "testdata" || seg == "fixtures" {
+			return true
 		}
 	}
 	return false
