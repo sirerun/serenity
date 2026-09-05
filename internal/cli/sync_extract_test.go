@@ -90,6 +90,7 @@ func TestSyncExtractEndToEnd(t *testing.T) {
 	t.Setenv("OPENAI_EMBEDDINGS_BASE_URL", embServer.URL)
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENROUTER_API_KEY", "")
 
 	root := t.TempDir()
 	var initOut bytes.Buffer
@@ -122,6 +123,14 @@ func TestSyncExtractEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// ADR 013: config.Default() seeds Models.Provider: "openrouter" for a
+	// new brain (runInit above), which would otherwise route this
+	// fixture's extraction call through the real OpenRouter API instead
+	// of the local fakeExtractionServer this test stands up -- clear it
+	// so buildChatProvider's substring-inference fallback (this test's
+	// pre-ADR-013 behavior) governs, exactly as OPENAI_BASE_URL above
+	// expects.
+	cfg.Models.Provider = ""
 	cfg.Models.Extraction = "test-extract@v1"
 	cfg.Models.Embedding = "test-embed@v1"
 	cfg.Connectors = map[string]any{
