@@ -316,3 +316,49 @@ which were concurrently touched by T1.15 this wave. Whoever next touches
 `internal/cli/search.go` or `internal/search.Search` should apply the same
 sanitization at that shared boundary instead of leaving every future
 caller to rediscover this.
+
+## L-0010: L-0005/L-0006's shared-`.git/config` corruption has a variant that sets `[core] bare = true`, breaking every git command run from the PRIMARY checkout
+
+**Tags:** #git #hooks #worktree #critical #unconfirmed
+
+**Date:** 2026-09-05
+
+**Repo:** sirerun/serenity
+
+**Rule:** If `git status`/`git log`/`git rev-parse --show-toplevel` run
+from the PRIMARY checkout (`/Users/dndungu/Code/sirerun/serenity`) fails
+with `fatal: this operation must be run in a work tree`, do not assume the
+checkout's tracked files are damaged -- first `cat .git/config` there
+(read-only) and check the `[core]` stanza for `bare = true`. That flag is
+wrong for this checkout (it has real working-tree files, confirmed by an
+earlier-session `git status` there reporting a clean, non-bare tree on
+`main`) and makes every plain git command from that directory refuse to
+run at all, not just misbehave. Per hard rule 3 (destructive ops /
+"do not touch the primary checkout" boundaries), a task session working
+out of a linked worktree must NOT edit the primary's `.git/config` itself
+-- surface this to the operator/orchestrator for a one-line
+`git config --local core.bare false` fix run directly against the
+primary's own `.git/config`, the same class of safe metadata-only fix
+L-0006 documents for its `core.worktree` variant.
+**Why:** Observed 2026-09-05 during a `wt-src2-t1-24-openrouter-provider`
+task session, in the same timeframe (`.git/config` mtime 03:08,
+`COMMIT_EDITMSG` mtime 02:53) as this session's own encounter with
+L-0005's corruption on its OWN task branch (13 spurious "seed
+fixture"/"serenity: sync" commits landed on `src/t1-24-openrouter-provider`
+after a `git commit` there triggered the shared pre-commit hook's
+`go test ./...`). `.git/config` is the COMMON config (shared by the
+primary checkout and every linked worktree via `.git/worktrees/*/gitdir`),
+so a write into it from any one worktree's corrupted git operation can
+corrupt every other checkout sharing that same `.git` directory --
+consistent with L-0006's documented blast radius, just a different
+corrupted key (`core.bare` here vs. `core.worktree` there). The task
+worktree itself was unaffected (its own `git status`/`git log` continued
+to work normally throughout), only the shared config/primary checkout was
+hit. Left UNFIXED as of this entry -- flagged to the orchestrator rather
+than fixed in-session, per this repo's own worktree-boundary rule.
+**Trigger:** Same as L-0005/L-0007: a `git commit` that fires the shared
+pre-commit hook's `go test ./...` step, most likely under concurrent
+pool/session load hammering the same host's `.git/objects`/`.git/config`.
+Root cause (which specific test or git invocation writes `core.bare`) not
+isolated; see L-0007's caution about unconfirmed root-cause theories
+before attempting a code fix.
