@@ -85,12 +85,23 @@ const openRouterBaseURL = "https://openrouter.ai/api/v1"
 
 // buildChatProvider resolves the router.Provider for a chat-capable pin
 // (extraction or composer): cfg.Models.Provider is checked first (ADR
-// 013's explicit selection), falling back to the pre-existing "claude"
-// substring inference only when the field is empty -- exactly today's
-// behavior for every brain created before ADR 013. purpose names the
-// pin ("extraction"/"composer") for the field-inferred error message;
-// skipSuffix is the caller's own skip-note tail ("extraction skipped" /
-// "ask skipped", preserved verbatim from each caller's pre-existing text).
+// 013's explicit selection), but only "openrouter" actually short-circuits
+// the pre-existing "claude" substring inference -- that is the one value
+// that needs to override it, because OpenRouter's own vendor-prefixed
+// model ids (e.g. "anthropic/claude-3-5-sonnet") would otherwise trip the
+// substring check and misroute to the native AnthropicProvider (this is
+// the whole bug ADR 013 exists to fix). "anthropic" and "openai" are
+// accepted enum values but are NOT forcing overrides: they fall through to
+// the exact same substring inference as the empty/omitted case, so they
+// behave identically to today's pre-ADR-013 behavior for every brain that
+// sets them (or leaves the field empty) -- verified by
+// TestBuildExtractionRouterSubstringInferenceUnchanged's row proving an
+// explicit "anthropic" provider on a non-claude-named pin still resolves
+// via substring inference to OpenAICompatibleProvider, not forced
+// AnthropicProvider. purpose names the pin ("extraction"/"composer") for
+// the substring-inferred error message; skipSuffix is the caller's own
+// skip-note tail ("extraction skipped" / "ask skipped", preserved verbatim
+// from each caller's pre-existing text).
 func buildChatProvider(cfg *config.Config, purpose, model, version, skipSuffix string) (p router.Provider, ok bool, note string) {
 	switch cfg.Models.Provider {
 	case "openrouter":
@@ -99,20 +110,7 @@ func buildChatProvider(cfg *config.Config, purpose, model, version, skipSuffix s
 			return nil, false, fmt.Sprintf("models.provider is openrouter but OPENROUTER_API_KEY is not set; %s", skipSuffix)
 		}
 		return &router.OpenAICompatibleProvider{BaseURL: openRouterBaseURL, APIKey: key, Model: model, Version: version}, true, ""
-	case "anthropic":
-		key := os.Getenv("ANTHROPIC_API_KEY")
-		if key == "" {
-			return nil, false, fmt.Sprintf("models.provider is anthropic but ANTHROPIC_API_KEY is not set; %s", skipSuffix)
-		}
-		return &router.AnthropicProvider{APIKey: key, Model: model, Version: version}, true, ""
-	case "openai":
-		key := os.Getenv("OPENAI_API_KEY")
-		baseURL := os.Getenv("OPENAI_BASE_URL")
-		if key == "" && baseURL == "" {
-			return nil, false, fmt.Sprintf("models.provider is openai but neither OPENAI_API_KEY nor OPENAI_BASE_URL (local server) is set; %s", skipSuffix)
-		}
-		return &router.OpenAICompatibleProvider{APIKey: key, BaseURL: baseURL, Model: model, Version: version}, true, ""
-	case "":
+	case "", "anthropic", "openai":
 		if strings.Contains(strings.ToLower(model), "claude") {
 			key := os.Getenv("ANTHROPIC_API_KEY")
 			if key == "" {
