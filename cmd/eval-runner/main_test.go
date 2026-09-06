@@ -35,7 +35,9 @@ func TestBuildProviderOpenAIHonorsBaseURLEnv(t *testing.T) {
 // OpenAICompatibleProvider's own default (the real OpenAI API) still
 // applies -- this fix must not force a BaseURL where none was configured.
 func TestBuildProviderOpenAIDefaultsBaseURLWhenUnset(t *testing.T) {
-	os.Unsetenv("OPENAI_BASE_URL")
+	if err := os.Unsetenv("OPENAI_BASE_URL"); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("OPENAI_API_KEY", "sk-test")
 
 	p, _, err := buildProvider("openai", "gpt-x", "v1")
