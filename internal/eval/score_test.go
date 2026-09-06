@@ -116,6 +116,48 @@ func TestScorePrecisionRecallConventionsAtZero(t *testing.T) {
 	}
 }
 
+// TestScoreMatchesSlugObjectAgainstProseObject is the regression test for
+// the real scoring gap found running T1.23's first-ever live eval: the ava
+// corpus's golden objects are hand-authored slugs ("contoso-systems") but a
+// real model emits natural-language prose ("Contoso Systems"), and neither
+// buildPrompt nor store.NormalizeKey ever makes those spellings equal. A
+// correct live prediction was scoring as a false-positive/false-negative
+// pair instead of a true positive across every family using this
+// convention -- 11 of 13 ava families scored P=0/R=0 even though the model
+// was often getting the fact right (docs/evals/m1-report.md records the
+// diagnosis). This must resolve as a true positive now.
+func TestScoreMatchesSlugObjectAgainstProseObject(t *testing.T) {
+	labels := []Label{
+		{Span: "s1", Expected: ExpectedFact{Predicate: "works_at", Object: "contoso-systems"}},
+	}
+	predictions := []Prediction{
+		{Span: "s1", Predicate: "works_at", Object: "Contoso Systems"},
+	}
+	got := Score(labels, predictions)
+	want := PRF1{TP: 1, FP: 0, FN: 0, Precision: 1, Recall: 1, F1: 1}
+	if got["works_at"] != want {
+		t.Errorf("got %+v, want %+v", got["works_at"], want)
+	}
+}
+
+// TestScoreObjectNormalizationStillRejectsAGenuineMismatch guards against
+// over-correcting: normalization must fold spelling/casing/hyphenation
+// differences, but a prediction naming a genuinely different object must
+// still fail to match.
+func TestScoreObjectNormalizationStillRejectsAGenuineMismatch(t *testing.T) {
+	labels := []Label{
+		{Span: "s1", Expected: ExpectedFact{Predicate: "works_at", Object: "contoso-systems"}},
+	}
+	predictions := []Prediction{
+		{Span: "s1", Predicate: "works_at", Object: "Acme Corp"},
+	}
+	got := Score(labels, predictions)
+	want := PRF1{TP: 0, FP: 1, FN: 1, Precision: 0, Recall: 0, F1: 0}
+	if got["works_at"] != want {
+		t.Errorf("got %+v, want %+v", got["works_at"], want)
+	}
+}
+
 func TestScorePerfectMatch(t *testing.T) {
 	labels := []Label{
 		{Span: "s1", Expected: ExpectedFact{Predicate: "owns_account", Object: "acct-1"}},
