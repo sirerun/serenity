@@ -125,7 +125,15 @@ func buildProvider(name, model, versionTag string) (router.Provider, string, err
 		p := &router.AnthropicProvider{APIKey: key, Model: model, Version: versionTag}
 		return p, p.ModelVersion(), nil
 	case "openai":
-		p := &router.OpenAICompatibleProvider{APIKey: os.Getenv("OPENAI_API_KEY"), Model: model, Version: versionTag}
+		// BaseURL follows internal/providers.go's own convention: empty
+		// OPENAI_BASE_URL leaves the provider's own production-API
+		// default in place; setting it points -mode live at a local
+		// server (e.g. the DGX Qwen endpoint) instead. Previously
+		// unread here, so a live eval-runner run against -provider
+		// openai always went to the real OpenAI API regardless of any
+		// local server configured elsewhere -- found running T1.23's
+		// live eval against the DGX Qwen endpoint.
+		p := &router.OpenAICompatibleProvider{APIKey: os.Getenv("OPENAI_API_KEY"), BaseURL: os.Getenv("OPENAI_BASE_URL"), Model: model, Version: versionTag}
 		return p, p.ModelVersion(), nil
 	default:
 		return nil, "", fmt.Errorf("unknown -provider %q (want anthropic or openai)", name)
