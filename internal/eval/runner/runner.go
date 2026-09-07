@@ -470,6 +470,7 @@ func runLive(ctx context.Context, cfg Config, heldOut []eval.Label) ([]eval.Pred
 
 		if cfg.Ledger.OverBudget() {
 			skipped++
+			alreadyDone[lbl.Span] = true
 			if ckpt != nil {
 				if err := ckpt.writeSkipped(lbl.Span); err != nil {
 					return nil, 0, 0, nil, fmt.Errorf("runner: checkpoint %s: write: %w", cfg.CheckpointPath, err)
@@ -487,6 +488,7 @@ func runLive(ctx context.Context, cfg Config, heldOut []eval.Label) ([]eval.Pred
 		res, err := cfg.Extractor.ExtractChunk(ctx, spanSourceID(lbl.Span), false, c, budget)
 		if err != nil {
 			errored++
+			alreadyDone[lbl.Span] = true
 			if len(errorSamples) < maxErrorSamples {
 				errorSamples = append(errorSamples, fmt.Sprintf("%q: %v", lbl.Span, err))
 			}
@@ -509,6 +511,7 @@ func runLive(ctx context.Context, cfg Config, heldOut []eval.Label) ([]eval.Pred
 			spanPredictions = append(spanPredictions, eval.Prediction{Span: lbl.Span, Predicate: obs.Predicate, Object: obs.Object})
 		}
 		predictions = append(predictions, spanPredictions...)
+		alreadyDone[lbl.Span] = true
 		if ckpt != nil {
 			if err := ckpt.writeScored(lbl.Span, spanPredictions); err != nil {
 				return nil, 0, 0, nil, fmt.Errorf("runner: checkpoint %s: write: %w", cfg.CheckpointPath, err)
