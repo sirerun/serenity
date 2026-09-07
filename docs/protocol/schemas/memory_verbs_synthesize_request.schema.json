@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_verbs_synthesize_request.schema.json",
+  "title": "MEMORY_VERBS v1 synthesize request",
+  "description": "internal/server/memory.SynthesizeRequest.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["question"],
+  "additionalProperties": false,
+  "properties": {
+    "question": { "type": "string", "description": "The question to answer." },
+    "since": { "type": "string", "description": "Optional temporal window start (ISO 8601 date or datetime)." },
+    "until": { "type": "string", "description": "Optional temporal window end (ISO 8601 date or datetime)." }
+  }
+}

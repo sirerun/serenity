@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/direction_check_plan_request.schema.json",
+  "title": "DIRECTION v1 check_plan request",
+  "description": "internal/server/direction.CheckPlanRequest (RFC 0001 section 8.3: check_plan(plan_text, actions?)). Exactly one of plan_text/actions is required at the protocol-semantics level -- the same mutual-exclusivity rule `serenity check` enforces for its own two input forms -- not expressible as a flat json-schema required list here.",
+  "protocol_version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "plan_text": { "type": "string" },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action"],
+        "additionalProperties": false,
+        "description": "internal/server/direction.CheckPlanAction -- one structured action against the closed action set.",
+        "properties": {
+          "action": { "type": "string" },
+          "params": { "type": "object" }
+        }
+      }
+    }
+  }
+}

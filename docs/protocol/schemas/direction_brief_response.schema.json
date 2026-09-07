@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/direction_brief_response.schema.json",
+  "title": "DIRECTION v1 brief response",
+  "description": "internal/server/direction.BriefResponse (RFC 0001 section 12): the four fixed sections in priority order (precepts, intents, entities, questions), each included whole or dropped whole, plus the estimator name every caller needs to interpret token_budget correctly.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["budget_estimator", "sections"],
+  "additionalProperties": false,
+  "properties": {
+    "budget_estimator": {
+      "type": "string",
+      "description": "Names the unit governing packing, e.g. \"words\" -- never left for a caller to guess."
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "items", "omitted"],
+        "additionalProperties": false,
+        "description": "internal/server/direction.BriefSectionWire. omitted > 0 implies items is empty, and vice versa -- a section is included whole or dropped whole, never truncated.",
+        "properties": {
+          "name": { "type": "string", "enum": ["precepts", "intents", "entities", "questions"] },
+          "items": { "type": "array", "items": { "type": "string" } },
+          "omitted": { "type": "integer" }
+        }
+      }
+    }
+  }
+}

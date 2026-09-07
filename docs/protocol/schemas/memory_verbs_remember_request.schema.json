@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_verbs_remember_request.schema.json",
+  "title": "MEMORY_VERBS v1 remember request",
+  "description": "internal/server/memory.RememberRequest.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["fact", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "fact": { "type": "string", "description": "The fact to remember, one claim per call." },
+    "provenance": { "type": "string", "description": "Where this fact came from (required, free text, max 500 chars)." },
+    "ttl": { "type": "string", "description": "Duration shorthand (\"30d\", \"12h\", \"45m\") or absolute ISO 8601 timestamp. Omit = never expires." },
+    "entity": { "type": "string", "description": "Person/company/project this fact is about." },
+    "kind": { "type": "string", "enum": ["event", "preference", "commitment", "belief", "fact"] },
+    "visibility": { "type": "string", "enum": ["world", "private"] }
+  }
+}

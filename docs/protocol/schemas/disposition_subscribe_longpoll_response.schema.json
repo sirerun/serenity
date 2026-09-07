@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/disposition_subscribe_longpoll_response.schema.json",
+  "title": "DISPOSITION v1 subscribe long-poll response",
+  "description": "internal/server/disposition.LongPollResponse -- subscribe's long-poll fallback (no Accept: text/event-stream header). The SSE arm frames the identical disposition_event.schema.json payload one event per wire frame instead of batching them into this envelope; this schema describes the JSON shape carried, not the text/event-stream framing itself.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["events"],
+  "additionalProperties": false,
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": { "$ref": "disposition_event.schema.json" }
+    }
+  }
+}

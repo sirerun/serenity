@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_verbs_forget_request.schema.json",
+  "title": "MEMORY_VERBS v1 forget request",
+  "description": "internal/server/memory.ForgetRequest.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["id"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "description": "Opaque fact id from remember/recall (facts[].fact_id). Never a page slug." },
+    "reason": { "type": "string", "description": "Optional reason, written to the fact's audit trail." }
+  }
+}

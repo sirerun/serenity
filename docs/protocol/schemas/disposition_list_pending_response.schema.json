@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/disposition_list_pending_response.schema.json",
+  "title": "DISPOSITION v1 list_pending response",
+  "description": "internal/server/disposition.ListPendingResponse.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["items"],
+  "additionalProperties": false,
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["item"],
+        "additionalProperties": false,
+        "description": "internal/server/disposition.ListedItem. members is set only when group was requested and this row represents a non-empty group_id.",
+        "properties": {
+          "item": { "$ref": "disposition_item.schema.json" },
+          "members": {
+            "type": "array",
+            "items": { "$ref": "disposition_item.schema.json" }
+          }
+        }
+      }
+    },
+    "next_cursor": { "type": "string" }
+  }
+}

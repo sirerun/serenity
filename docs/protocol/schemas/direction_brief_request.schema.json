@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/direction_brief_request.schema.json",
+  "title": "DIRECTION v1 brief request",
+  "description": "internal/server/direction.BriefRequest (RFC 0001 section 8.3: brief(task_hint?, token_budget)).",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["token_budget"],
+  "additionalProperties": false,
+  "properties": {
+    "task_hint": { "type": "string" },
+    "token_budget": {
+      "type": "integer",
+      "description": "The caller's token budget always governs -- per-section caps are maxima within it."
+    }
+  }
+}

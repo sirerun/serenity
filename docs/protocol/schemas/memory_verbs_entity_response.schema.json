@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_verbs_entity_response.schema.json",
+  "title": "MEMORY_VERBS v1 entity response",
+  "description": "internal/server/memory.EntityResponse. Never errors on a miss -- found:false with suggestions instead.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["protocol_version", "found", "latency_ms", "suggestions"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 1 },
+    "found": { "type": "boolean" },
+    "latency_ms": { "type": "integer" },
+    "card": { "$ref": "#/$defs/card" },
+    "suggestions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/suggestion" }
+    }
+  },
+  "$defs": {
+    "card": {
+      "type": "object",
+      "required": ["entity", "aka", "summary", "last_touched", "open_threads", "edges", "backlink_count", "active_fact_count"],
+      "additionalProperties": false,
+      "properties": {
+        "entity": {
+          "type": "object",
+          "required": ["slug", "title", "type"],
+          "additionalProperties": false,
+          "properties": {
+            "slug": { "type": "string" },
+            "title": { "type": "string" },
+            "type": { "type": ["string", "null"] }
+          }
+        },
+        "aka": { "type": "array", "items": { "type": "string" } },
+        "summary": { "type": "string" },
+        "last_touched": {
+          "type": "object",
+          "required": ["updated_at", "last_retrieved_at", "last_timeline_date"],
+          "additionalProperties": false,
+          "properties": {
+            "updated_at": { "type": ["string", "null"] },
+            "last_retrieved_at": { "type": ["string", "null"] },
+            "last_timeline_date": { "type": ["string", "null"] }
+          }
+        },
+        "open_threads": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["kind", "text", "date"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": { "type": "string", "enum": ["commitment", "recent_event"] },
+              "text": { "type": "string" },
+              "date": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "direction", "slug"],
+            "additionalProperties": false,
+            "properties": {
+              "type": { "type": "string" },
+              "direction": { "type": "string", "enum": ["out", "in"] },
+              "slug": { "type": "string" },
+              "context": { "type": "string" }
+            }
+          }
+        },
+        "backlink_count": { "type": "integer" },
+        "active_fact_count": { "type": "integer" }
+      }
+    },
+    "suggestion": {
+      "type": "object",
+      "required": ["slug", "title", "create_safety"],
+      "additionalProperties": false,
+      "properties": {
+        "slug": { "type": "string" },
+        "title": { "type": "string" },
+        "create_safety": { "type": "string", "enum": ["exists", "probable", "unknown"] }
+      }
+    }
+  }
+}

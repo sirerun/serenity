@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_verbs_recall_response.schema.json",
+  "title": "MEMORY_VERBS v1 recall response",
+  "description": "internal/server/memory.RecallResponse (pinned gbrain contract, upstream-verbs.ts). facts-first budget packing: facts pack first, then the search arm packs into whatever budget remains.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["protocol_version", "facts", "total"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 1 },
+    "facts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fact" }
+    },
+    "total": { "type": "integer" },
+    "results": {
+      "type": "array",
+      "description": "Search arm -- present only when query was passed.",
+      "items": { "$ref": "#/$defs/result" }
+    },
+    "search_degraded": {
+      "type": "string",
+      "description": "Present when the search arm fell back to keyword-only (no embedding provider)."
+    },
+    "budget_tokens": { "type": "integer", "description": "Present when budget_tokens was passed." },
+    "budget_used": { "type": "integer" },
+    "dropped_count": { "type": "integer" }
+  },
+  "$defs": {
+    "fact": {
+      "type": "object",
+      "required": ["id", "fact_id", "fact", "kind", "entity_slug", "provenance", "valid_until", "visibility"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "integer", "description": "LEGACY numeric id (pre-v1 consumers). Use fact_id." },
+        "fact_id": { "type": "string", "description": "Opaque protocol id -- the value forget accepts." },
+        "fact": { "type": "string" },
+        "kind": { "type": "string", "enum": ["event", "preference", "commitment", "belief", "fact"] },
+        "entity_slug": { "type": ["string", "null"] },
+        "provenance": { "type": "string" },
+        "valid_until": { "type": ["string", "null"] },
+        "visibility": { "type": "string", "enum": ["world", "private"] }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": ["slug", "title", "chunk", "evidence", "create_safety", "provenance"],
+      "additionalProperties": false,
+      "properties": {
+        "slug": { "type": "string" },
+        "title": { "type": ["string", "null"] },
+        "chunk": { "type": ["string", "null"] },
+        "evidence": {
+          "type": "string",
+          "enum": ["alias_hit", "exact_title_match", "high_vector_match", "keyword_exact", "weak_semantic"]
+        },
+        "create_safety": { "type": "string", "enum": ["exists", "probable", "unknown"] },
+        "provenance": { "type": "string", "description": "Origin page slug." }
+      }
+    }
+  }
+}

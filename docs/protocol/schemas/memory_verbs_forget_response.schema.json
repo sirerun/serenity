@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_verbs_forget_response.schema.json",
+  "title": "MEMORY_VERBS v1 forget response",
+  "description": "internal/server/memory.ForgetResponse. Idempotent: re-forgetting an already-expired fact succeeds with expired:false.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["protocol_version", "id", "expired", "reason"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 1 },
+    "id": { "type": "string" },
+    "expired": {
+      "type": "boolean",
+      "description": "true = this call expired the fact; false = it was ALREADY expired (idempotent re-forget)."
+    },
+    "reason": { "type": ["string", "null"] }
+  }
+}

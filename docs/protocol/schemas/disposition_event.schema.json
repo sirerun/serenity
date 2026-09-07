@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/disposition_event.schema.json",
+  "title": "DISPOSITION v1 subscribe event",
+  "description": "internal/events.Event -- one row replayed by subscribe (SSE or long-poll), shared with every other event.Store producer in this codebase. cursor is monotonic and is what a resuming client passes back.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["cursor", "kind", "occurred_at"],
+  "additionalProperties": false,
+  "properties": {
+    "cursor": { "type": "integer" },
+    "kind": {
+      "type": "string",
+      "description": "e.g. disposition.item_disposed, disposition.item_created."
+    },
+    "payload": {
+      "description": "Opaque per-kind JSON payload -- not constrained here."
+    },
+    "occurred_at": { "type": "string", "format": "date-time" }
+  }
+}

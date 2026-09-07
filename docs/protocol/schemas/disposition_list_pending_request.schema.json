@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/disposition_list_pending_request.schema.json",
+  "title": "DISPOSITION v1 list_pending request",
+  "description": "internal/server/disposition.ListPendingRequest. Every field is optional -- an empty object lists every pending/deferred item, ungrouped, from the start.",
+  "protocol_version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "kinds": { "type": "array", "items": { "type": "string" } },
+    "expiring_before": { "type": "string", "format": "date-time", "description": "RFC3339." },
+    "group": {
+      "type": "boolean",
+      "description": "Collapse items sharing a non-empty group_id into one row carrying every member."
+    },
+    "parked": {
+      "type": "boolean",
+      "description": "List parked items instead of the default pending/deferred view -- the two are mutually exclusive."
+    },
+    "cursor": { "type": "string", "description": "Opaque page cursor from a prior response's next_cursor." },
+    "limit": { "type": "integer", "minimum": 0 }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/direction_check_plan_response.schema.json",
+  "title": "DIRECTION v1 check_plan response",
+  "description": "internal/direction/check.WireResult (RFC 0001 section 8.3) -- the schema verdict is primary. Produced by check.ToWire, the single converter both `serenity check --json` and this HTTP handler call, so the two surfaces can never drift on field names or omission rules.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["status", "considered_count"],
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["pass", "violated", "unverified", "no_applicable_constraints"],
+      "description": "A plan matching zero active constraints returns no_applicable_constraints, never a bare pass."
+    },
+    "considered_count": { "type": "integer" },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["precept_id", "outcome"],
+        "additionalProperties": false,
+        "properties": {
+          "precept_id": { "type": "string" },
+          "outcome": { "type": "string", "enum": ["pass", "violated"] },
+          "why_not": { "type": "string" },
+          "revisit_if": { "type": "string" }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["precept_id", "title", "action"],
+        "additionalProperties": false,
+        "properties": {
+          "precept_id": { "type": "string" },
+          "title": { "type": "string" },
+          "action": { "type": "string" }
+        }
+      }
+    },
+    "matched_actions": {
+      "type": "array",
+      "description": "Present only when the caller supplied free-text plan_text (stage 2 classification ran).",
+      "items": {
+        "type": "object",
+        "required": ["action", "span"],
+        "additionalProperties": false,
+        "properties": {
+          "action": { "type": "string" },
+          "params": { "type": "object" },
+          "span": {
+            "type": "object",
+            "required": ["start", "end", "text"],
+            "additionalProperties": false,
+            "properties": {
+              "start": { "type": "integer" },
+              "end": { "type": "integer" },
+              "text": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "confidence": {
+      "type": "number",
+      "description": "Present only alongside matched_actions -- a structured --actions call never classifies, so it never has one."
+    }
+  }
+}

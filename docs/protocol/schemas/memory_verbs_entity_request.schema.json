@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_verbs_entity_request.schema.json",
+  "title": "MEMORY_VERBS v1 entity request",
+  "description": "internal/server/memory.EntityRequest.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["name"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "type": "string", "description": "Free-text name, alias, or slug (e.g. \"Alice Example\", \"people/alice-example\")." }
+  }
+}
