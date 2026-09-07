@@ -127,6 +127,13 @@ type Item struct {
 	Actor          string          `json:"actor,omitempty"`
 	DisposedAt     time.Time       `json:"disposed_at,omitzero"`
 	IdempotencyKey string          `json:"idempotency_key,omitempty"`
+
+	// Route is set only for a KindDistill item disposed through
+	// RouteDistill (capture.go, UC-034) -- empty for every item disposed
+	// through the generic Dispose path directly. It distinguishes routes
+	// that share the same underlying verdict (note and claim-batch both
+	// accept) so the recorded outcome stays observable after the fact.
+	Route DistillRoute `json:"route,omitempty"`
 }
 
 // HistoryEntry is one append-only disposition_history row (RFC 0001 §8.2:
