@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirerun/serenity/internal/writer"
@@ -168,6 +169,18 @@ type Backend interface {
 // Store is the DISPOSITION queue (RFC 0001 §8.2) over a Backend.
 type Store struct {
 	backend Backend
+
+	// mu serializes Dispose's read-check-write sequence (RFC 0001 §8.2's
+	// cross-client conflict rule, "first successful dispose wins" -- T2.8).
+	// The Backend gives no transactional guarantee across its own separate
+	// Get/Put/Append calls (internal/index's *SQLite opens with the
+	// database/sql default pool, no single-connection serialization), so
+	// without this mutex two goroutines racing Dispose against the same
+	// item could both observe State != disposed before either writes back,
+	// and both would return a fresh (non-conflict) Result -- silently
+	// double-applying a verdict and appending two history rows for one
+	// item, instead of exactly one winner and one already_disposed loser.
+	mu sync.Mutex
 }
 
 // NewStore returns a Store over backend (normally a live *index.SQLite).
@@ -328,6 +341,12 @@ func (s *Store) Dispose(ctx context.Context, id string, verdict Verdict, editedP
 	if verdict == VerdictReject && note == "" {
 		return Result{}, ErrRejectRequiresNote
 	}
+
+	// Everything from here on reads then writes the same item -- hold the
+	// lock across the whole check-and-set so a concurrent Dispose against
+	// the same id cannot interleave between this call's Get and its Put.
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	item, err := s.Get(ctx, id)
 	if err != nil {

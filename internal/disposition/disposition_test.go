@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -342,6 +344,79 @@ func TestImportPendingIsIdempotentAcrossRepeatedRuns(t *testing.T) {
 	}
 	if len(items) != 1 {
 		t.Fatalf("List returned %d items after two import runs, want 1 (no duplicate)", len(items))
+	}
+}
+
+// TestTwoClientDisposeRaceExactlyOneWins is T2.8's acc line: "go test -race
+// with two goroutine clients over 100 iterations: exactly one wins per item
+// and the loser receives already_disposed carrying the winner's verdict."
+// Each iteration races two goroutines -- simulating two clients disposing
+// the same item concurrently -- against a fresh item over a real *index.SQLite
+// backend (openTestStore), each with its own idempotency_key so neither call
+// can take the replay path (TestDisposeRetriedWithSameIdempotencyKeyReturnsOriginalResult
+// covers that path separately); this exercises the genuine cross-client
+// conflict rule instead.
+func TestTwoClientDisposeRaceExactlyOneWins(t *testing.T) {
+	ctx := context.Background()
+	s := openTestStore(t)
+
+	const iterations = 100
+	verdicts := [2]Verdict{VerdictAccept, VerdictReject}
+	notes := [2]string{"", "client-b lost the race"} // reject requires a note
+	actors := [2]string{"human:client-a", "human:client-b"}
+
+	for i := range iterations {
+		item, err := s.Create(ctx, KindReconcile, nil, "", fixedNow)
+		if err != nil {
+			t.Fatalf("iteration %d: Create: %v", i, err)
+		}
+
+		var results [2]Result
+		var errs [2]error
+		var wg sync.WaitGroup
+		wg.Add(2)
+		for c := range 2 {
+			go func() {
+				defer wg.Done()
+				key := fmt.Sprintf("iter-%d-client-%d", i, c)
+				results[c], errs[c] = s.Dispose(ctx, item.ID, verdicts[c], nil, notes[c], actors[c], key, fixedNow)
+			}()
+		}
+		wg.Wait()
+
+		for c := range 2 {
+			if errs[c] != nil {
+				t.Fatalf("iteration %d client %d: Dispose: %v", i, c, errs[c])
+			}
+		}
+
+		winners, losers := 0, 0
+		var winnerVerdict Verdict
+		for c := range 2 {
+			if results[c].AlreadyDisposed {
+				losers++
+			} else {
+				winners++
+				winnerVerdict = results[c].Item.Verdict
+			}
+		}
+		if winners != 1 || losers != 1 {
+			t.Fatalf("iteration %d: winners=%d losers=%d, want exactly 1 each (results=%+v)", i, winners, losers, results)
+		}
+
+		for c := range 2 {
+			if results[c].AlreadyDisposed && results[c].Item.Verdict != winnerVerdict {
+				t.Fatalf("iteration %d: loser's returned Verdict = %q, want the WINNER's verdict %q", i, results[c].Item.Verdict, winnerVerdict)
+			}
+		}
+
+		history, err := s.HistoryFor(ctx, item.ID)
+		if err != nil {
+			t.Fatalf("iteration %d: HistoryFor: %v", i, err)
+		}
+		if len(history) != 1 {
+			t.Fatalf("iteration %d: HistoryFor returned %d rows, want exactly 1 (the loser must not append)", i, len(history))
+		}
 	}
 }
 
