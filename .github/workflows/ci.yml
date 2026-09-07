@@ -153,3 +153,20 @@ jobs:
         with:
           go-version-file: go.mod
       - run: CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build ./cmd/serenity
+
+  install-verify:
+    # T5.7: scripts/install-verify.sh drives a fresh clone through the
+    # full documented walkthrough (init -> connect a connector -> sync ->
+    # extract -> search -> ask -> inbox -> check) against the canned Ava
+    # corpus (T1.14) on a clean runner, timed under the acc line's 15 min
+    # budget. `timeout-minutes` is a hard backstop; the script enforces
+    # its own budget too so a slow step fails loudly with a real reason
+    # instead of a bare CI timeout.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: scripts/install-verify.sh
