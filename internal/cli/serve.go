@@ -6,12 +6,21 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
 
+	"github.com/sirerun/serenity/internal/compose"
+	"github.com/sirerun/serenity/internal/config"
+	"github.com/sirerun/serenity/internal/disposition"
+	"github.com/sirerun/serenity/internal/embed"
+	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/server/mcp"
+	"github.com/sirerun/serenity/internal/server/memory"
+	"github.com/sirerun/serenity/internal/store"
+	"github.com/sirerun/serenity/internal/writer"
 )
 
 func newServeCmd() *cobra.Command {
@@ -23,7 +32,14 @@ func newServeCmd() *cobra.Command {
 		if !stdio {
 			return fmt.Errorf("choose --stdio to serve MCP")
 		}
-		server, err := mcp.New(Version, nil)
+		tools, closeDeps, err := memoryTools(flagRoot, cmd.ErrOrStderr())
+		if err != nil {
+			return err
+		}
+		if closeDeps != nil {
+			defer func() { runErr = errors.Join(runErr, closeDeps()) }()
+		}
+		server, err := mcp.New(Version, tools)
 		if err != nil {
 			return err
 		}
@@ -60,6 +76,69 @@ func newServeCmd() *cobra.Command {
 	}}
 	cmd.Flags().Bool("stdio", false, "read and write newline-delimited MCP JSON-RPC")
 	return cmd
+}
+
+// memoryTools builds MEMORY_VERBS v1's five tool registrations
+// (internal/server/memory, T4.5) over root, the exact gap this task fills
+// in what was previously an unconditional mcp.New(Version, nil).
+//
+// root not naming a brain repo (config.Load fails) is not a serve-time
+// error: unlike ask/capture/compact, whose entire purpose is a brain
+// operation, serve's own accepted scope (T4.1) is the daemon/transport
+// core with no CLI-level dependency on a live brain -- protocol
+// negotiation, ping, and shutdown must keep working even when --stdio is
+// invoked outside a brain repo (a real posture for a bare transport
+// smoke-test). This falls back to zero tools, the same shape mcp.New(Version,
+// nil) already had before this task, noting the fallback on stderr (stdout
+// is reserved for JSON-RPC frames) rather than silently changing nothing
+// about serve's prior behavior. Once root does name a brain repo, opening
+// its derived index for real (providers.OpenIndex) is no longer optional:
+// a failure there is a genuine infra problem and is returned as a hard
+// error, the same posture internal/cli/ask.go's own runAsk takes.
+func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, error) {
+	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "serve: %s is not a brain repo -- serving MCP transport with no MEMORY_VERBS tools\n", root)
+		return nil, nil, nil
+	}
+
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		return nil, nil, fmt.Errorf("serve: open index: %w", err)
+	}
+	closeDeps := func() error { return eng.Close() }
+
+	ledger := &providers.IndexSpendLedger{Eng: eng}
+
+	var embedder embed.Embedder
+	if er, ok, note := providers.BuildEmbeddingRouter(cfg, ledger); ok {
+		embedder = &embed.RouterEmbedder{Router: er, Pin: cfg.Models.Embedding}
+	} else {
+		_, _ = fmt.Fprintf(stderr, "serve: %s -- recall/synthesize widen to full-text/lexical matching only\n", note)
+	}
+
+	var composer compose.Completer
+	var composerNote string
+	if cr, ok, note := providers.BuildComposerRouter(cfg, ledger); ok {
+		composer = cr
+	} else {
+		composerNote = note
+	}
+
+	deps := memory.Deps{
+		Root:                    root,
+		Config:                  cfg,
+		Index:                   eng,
+		Embedder:                embedder,
+		Composer:                composer,
+		ComposerModelVersion:    cfg.Models.Composer,
+		ComposerUnavailableNote: composerNote,
+		Disposition:             disposition.NewStore(eng),
+		Queue:                   writer.NewQueue(nil),
+		Fence:                   store.NewFenceWriter(root),
+		Shard:                   store.NewShardStore(root),
+	}
+	return memory.New(deps).Tools(), closeDeps, nil
 }
 
 // Inherited stdin/stdout may be blocking descriptors outside Go's runtime poller.
