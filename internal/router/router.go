@@ -134,6 +134,16 @@ type Router struct {
 	ledger    SpendLedger
 	now       func() time.Time
 	newID     func() string
+
+	// Retry policy for a failed provider.Send call (retry.go). Exported
+	// only via New's defaults -- tests in this package override sleep
+	// directly (unexported-field access, same package) to avoid real
+	// waiting rather than through a public option, since no production
+	// caller needs a different policy today.
+	retryAttempts  int
+	retryBaseDelay time.Duration
+	retryMaxDelay  time.Duration
+	sleep          func(time.Duration)
 }
 
 // New builds a Router over the given per-tier providers and spend
@@ -142,10 +152,14 @@ type Router struct {
 // substitutes another tier).
 func New(providers map[Tier]Provider, ledger SpendLedger) *Router {
 	return &Router{
-		providers: providers,
-		ledger:    ledger,
-		now:       time.Now,
-		newID:     newSpendID,
+		providers:      providers,
+		ledger:         ledger,
+		now:            time.Now,
+		newID:          newSpendID,
+		retryAttempts:  defaultRetryAttempts,
+		retryBaseDelay: defaultRetryBaseDelay,
+		retryMaxDelay:  defaultRetryMaxDelay,
+		sleep:          time.Sleep,
 	}
 }
 
@@ -195,7 +209,7 @@ func (r *Router) Complete(ctx context.Context, tc TaskClass, p Prompt, b Budget)
 		return Result{}, fmt.Errorf("%w: task class %q requires %s tier", ErrTierUnavailable, tc, tier)
 	}
 
-	resp, err := provider.Send(ctx, p.Text)
+	resp, err := r.sendWithRetry(ctx, provider, p.Text)
 	if err != nil {
 		return Result{}, fmt.Errorf("router: %s provider: %w", provider.Name(), err)
 	}
@@ -229,4 +243,28 @@ func (r *Router) Complete(ctx context.Context, tc TaskClass, p Prompt, b Budget)
 		Tier:           tier,
 		BudgetExceeded: exceeded,
 	}, nil
+}
+
+// sendWithRetry calls provider.Send, retrying up to r.retryAttempts total
+// attempts (the first call plus bounded retries -- never an unbounded
+// loop) when the failure is a transient, connection-level error
+// (isTransientNetworkError, retry.go). An application-level failure (a
+// non-2xx status, a malformed response body) returns immediately on the
+// first attempt -- retrying cannot fix those. Found running T1.23's live
+// eval, which hit real dropped-connection failures under DGX host CPU
+// contention with no retry anywhere in this call chain.
+func (r *Router) sendWithRetry(ctx context.Context, provider Provider, prompt string) (Response, error) {
+	var resp Response
+	var err error
+	for attempt := 0; attempt < r.retryAttempts; attempt++ {
+		resp, err = provider.Send(ctx, prompt)
+		if err == nil {
+			return resp, nil
+		}
+		if attempt == r.retryAttempts-1 || !isTransientNetworkError(err) {
+			return Response{}, err
+		}
+		r.sleep(retryBackoff(attempt, r.retryBaseDelay, r.retryMaxDelay))
+	}
+	return Response{}, err
 }
