@@ -140,9 +140,12 @@ for details.
 
 - `serenity search` currently uses full-text search, even with an embedding model
   pinned. Answer composition can use query embeddings when configured.
-- There is no CLI command to launch a daemon. `serenity connect` reports token
-  status; automatic MCP configuration and hook installation are not implemented.
-  Token rotation is available through `serenity connect --rotate-token`.
+- `serenity serve --stdio` starts the [MCP transport](docs/operator/mcp.md), with
+  initialization, tool discovery, and protocol error handling. Its tool registry
+  is currently empty; memory and direction tools are not exposed yet.
+  `serenity connect` reports token status; automatic MCP configuration and hook
+  installation are not implemented. Token rotation is available through
+  `serenity connect --rotate-token`.
 - `serenity migrate --models` handles model-pin changes; it does not import a
   gbrain repository. Re-extraction through reconciliation remains unfinished.
 - The full human-review queue and earned-automation workflow described in the
