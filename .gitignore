@@ -20,3 +20,4 @@ testdata/brain-fixture/.dira/cache/
 # (evals/brainbench/gen_trend.go, T1.21) and uploaded as a workflow
 # artifact, never committed. T5.10 is what persists a trend across runs.
 evals/brainbench-trend.json
+ajent.social
