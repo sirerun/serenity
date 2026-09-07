@@ -48,6 +48,7 @@ func run(args []string) error {
 	model := fs.String("model", "claude-haiku-4-5-20251001", "ModeLive: model identifier")
 	modelVersionTag := fs.String("model-version", "v1", "ModeLive: pinned-model-set version tag (RFC 0001 SS7.5)")
 	budgetFlag := fs.Float64("budget-usd", -1, "aggregate USD cap for this run; -1 reads SERENITY_EVAL_BUDGET_USD, unset/0 means unlimited")
+	liveCheckpoint := fs.String("live-checkpoint", "", "ModeLive: path to an incremental per-span checkpoint file (JSONL) enabling resume after an interrupted run; empty (default) disables checkpointing")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -81,6 +82,7 @@ func run(args []string) error {
 		cfg.Extractor = extract.New(rt, modelVersion, nil, extract.NewMemoryCache())
 		cfg.Ledger = ledger
 		cfg.ModelVersion = modelVersion
+		cfg.CheckpointPath = *liveCheckpoint
 		// T1.32: a live run over the expanded ~312-span held-out corpus
 		// runs several hours; without this, a background-redirected log
 		// stayed empty until the run either finished or died, which is

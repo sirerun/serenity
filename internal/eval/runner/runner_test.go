@@ -539,3 +539,118 @@ func TestRunLiveReportsAllErroredWhenEveryCallFails(t *testing.T) {
 		t.Fatalf("SpansErrored = %d, want 3 (all held-out spans, endpoint fully down)", report.SpansErrored)
 	}
 }
+
+// TestRunLiveResumesFromCheckpointAfterInterruption is T1.32's real
+// red->green target for the resume mechanism: two live-eval runs against
+// the real expanded corpus were killed mid-run by the host's own OOM
+// protection (not an extraction error), losing every already-completed
+// span both times. A checkpoint file records each span's outcome as it
+// happens, so a resumed run skips already-attempted spans instead of
+// re-paying for (and re-scoring) them.
+//
+// This simulates the interruption faithfully rather than approximately:
+// it pre-seeds a checkpoint file via the exact same
+// openCheckpointWriter/writeScored calls runLive itself makes, left in
+// the state a real process would leave on disk after completing 2 of 3
+// held-out spans and then being killed -- a kill runs no deferred
+// cleanup, but an already-written, already-flushed line survives it
+// (openCheckpointWriter uses plain unbuffered os.File.Write for exactly
+// this reason).
+func TestRunLiveResumesFromCheckpointAfterInterruption(t *testing.T) {
+	corpus := buildTinyCorpus(t)
+	checkpointPath := filepath.Join(t.TempDir(), "live-checkpoint.jsonl")
+
+	// buildTinyCorpus's 3 labels, all held out (see its own doc comment);
+	// the 3rd ("Ava prefers tea.") is deliberately left un-checkpointed --
+	// it's the one span this test expects the provider to actually be
+	// called for.
+	span1, span2 := "Ava works at Acme.", "Ava is a Staff Engineer."
+
+	w, err := openCheckpointWriter(checkpointPath, false, corpus, "fake-model@v1", 3)
+	if err != nil {
+		t.Fatalf("openCheckpointWriter: %v", err)
+	}
+	if err := w.writeScored(span1, []eval.Prediction{{Span: span1, Predicate: "works_at", Object: "acme"}}); err != nil {
+		t.Fatalf("writeScored: %v", err)
+	}
+	if err := w.writeScored(span2, []eval.Prediction{{Span: span2, Predicate: "has_role", Object: "staff-engineer"}}); err != nil {
+		t.Fatalf("writeScored: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	// No cleanup/removal here -- this stands in for what a real kill
+	// leaves behind: an un-removed checkpoint recording 2 of 3 spans done.
+
+	provider := &fakeProvider{response: router.Response{
+		Text: `{"observations":[{"subject":"ava","predicate":"prefers","object":"tea","confidence":0.9}]}`,
+	}}
+	ledger := NewTrackingLedger(0)
+	rt := router.New(map[router.Tier]router.Provider{router.TierLocalCheap: provider}, ledger)
+	ex := extract.New(rt, "fake-model@v1", nil, extract.NewMemoryCache())
+
+	report, err := Run(context.Background(), Config{
+		CorpusDir:      corpus,
+		Mode:           ModeLive,
+		Extractor:      ex,
+		Ledger:         ledger,
+		ModelVersion:   "fake-model@v1",
+		CheckpointPath: checkpointPath,
+	})
+	if err != nil {
+		t.Fatalf("Run (resumed): %v", err)
+	}
+
+	if provider.callCount != 1 {
+		t.Errorf("provider called %d times, want 1 -- the 2 checkpointed spans must not be re-extracted", provider.callCount)
+	}
+	if report.SpansScored != 3 {
+		t.Errorf("SpansScored = %d, want 3 (2 resumed + 1 newly extracted)", report.SpansScored)
+	}
+	for _, family := range []string{"works_at", "has_role", "prefers"} {
+		if tp := report.Families[family].TP; tp != 1 {
+			t.Errorf("Families[%q].TP = %d, want 1", family, tp)
+		}
+		if fn := report.Families[family].FN; fn != 0 {
+			t.Errorf("Families[%q].FN = %d, want 0", family, fn)
+		}
+	}
+
+	if _, err := os.Stat(checkpointPath); !os.IsNotExist(err) {
+		t.Errorf("checkpoint file still exists after a fully completed (resumed) run, want it removed; stat err = %v", err)
+	}
+}
+
+// TestRunLiveRefusesToResumeMismatchedCheckpoint guards the safety net in
+// loadCheckpoint: resuming against a checkpoint written for a different
+// corpus, model version, or held-out span count must fail loudly rather
+// than silently mixing incompatible data into this run's numbers.
+func TestRunLiveRefusesToResumeMismatchedCheckpoint(t *testing.T) {
+	corpus := buildTinyCorpus(t)
+	checkpointPath := filepath.Join(t.TempDir(), "live-checkpoint.jsonl")
+
+	w, err := openCheckpointWriter(checkpointPath, false, corpus, "a-different-model@v1", 3)
+	if err != nil {
+		t.Fatalf("openCheckpointWriter: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	provider := &fakeProvider{response: router.Response{Text: `{"observations":[]}`}}
+	ledger := NewTrackingLedger(0)
+	rt := router.New(map[router.Tier]router.Provider{router.TierLocalCheap: provider}, ledger)
+	ex := extract.New(rt, "fake-model@v1", nil, extract.NewMemoryCache())
+
+	_, err = Run(context.Background(), Config{
+		CorpusDir:      corpus,
+		Mode:           ModeLive,
+		Extractor:      ex,
+		Ledger:         ledger,
+		ModelVersion:   "fake-model@v1", // deliberately mismatches the checkpoint's model_version
+		CheckpointPath: checkpointPath,
+	})
+	if err == nil {
+		t.Fatal("Run must refuse a mismatched checkpoint, got nil error")
+	}
+}
