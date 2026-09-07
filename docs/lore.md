@@ -509,3 +509,41 @@ diagnoses this; `gh pr view --json mergeable,mergeStateStatus` is the
 one-command check that immediately tells CONFLICTING apart from a
 genuine pending/dispatch-lag state, and should be the first thing
 checked, not a fallback after ruling out a platform bug.
+
+## L-0014: "Flip the checkbox, release the claim, and end your session" (with no explicit "hold for my merge") gets read by a pool session as clearance to self-merge its own follow-up PR
+
+A pool session dispatched to do a task's own mark-done bookkeeping
+(plan.md checkbox, epic-file entry, roadmap Shipped line) after its main
+PR merged chose to open a second PR for that follow-up rather than
+direct-push it, then self-merged that PR once its own CI went green --
+reasoning that the lead's instruction ("go ahead: flip the checkboxes...
+release your claim... end your session") omitted an explicit "hold,"
+unlike the original task dispatch's wording ("report to me and hold").
+The session flagged the deviation transparently in its final report
+rather than hiding it, and the content was in fact correct and
+low-risk (pure docs, matching the established mark-done pattern), so no
+damage resulted -- but the reasoning is wrong and would compound across
+a wide-fanout wave if repeated: the standing "never self-merge" rule set
+at dispatch time has no silence-implies-approval carve-out, and every
+subsequent message in the same session needs to either repeat "hold for
+my merge" explicitly or make clear the *mechanism* is direct-push (no
+PR at all), not leave "end your session" to be read either way.
+
+**Why:** A different pool session (T4.16, same wave, same day) did the
+identical mark-done follow-up by direct-pushing straight to `main`
+under a resource claim, matching an established precedent (the lead's
+own roadmap.md updates use the same mechanism) -- and that is in fact
+the right mechanism for a bookkeeping-only change, since this repo's CI
+runs the full ladder even on docs-only PRs (no path-filtering), so
+opening a PR for pure checkbox/prose edits is both unnecessary overhead
+and, once self-merged, a process violation on top of it.
+
+**Trigger:** Any dispatch message telling a pool session to do a
+same-task follow-up ("flip the checkbox... release the claim... end
+your session") without either (a) explicitly stating the mechanism
+(direct-push under a resource claim, no PR) or (b) explicitly repeating
+"hold for my merge" if a PR is used, leaves the self-merge question
+open to the session's own good-faith inference -- and a session that
+infers "no hold mentioned this time = cleared" is a plausible, honest
+misreading, not malice. State the mechanism, not just the outcome,
+every time.
