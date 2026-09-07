@@ -197,7 +197,7 @@ gap, fixed same day) -- v0.1.0 itself was left untouched, not retagged.
 - [x] T3.6 check_plan stage 2: free-text classifier into the closed action set via the local-cheap tier, cached, with matched_actions spans
 - [ ] T3.4 Interview wizard (~30 questions, drafts only, one disposition per precept)
 - [x] T3.8 Question precepts block their targets
-- [ ] T3.10 revisit_if weekly sweep -> review cards (`internal/direction/revisit.go`, `serenity cron revisit`)
+- [x] T3.10 revisit_if weekly sweep -> review cards (`internal/direction/revisit.go`, `serenity cron revisit`) (merged PR #112, 2026-09-07)
 
 ### Wave 3c: E3 CLI, orphans, decompose, conformance, upstream (5 agents)
 - [x] T3.7 `serenity check` CLI: exit codes 0/2/1, `--json`, `--actions` structured input, why_not verbatim
