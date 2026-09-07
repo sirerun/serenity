@@ -2,6 +2,8 @@ package cron
 
 import (
 	"context"
+	"github.com/sirerun/serenity/internal/config"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -56,6 +58,9 @@ func TestEachJobExitsCleanAndIsIdempotentWithFakeClock(t *testing.T) {
 	for _, name := range Names() {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
+			if err := config.Default().Save(filepath.Join(root, config.FileName)); err != nil {
+				t.Fatal(err)
+			}
 			ctx := context.Background()
 
 			if err := Run(ctx, name, root, clock); err != nil {
