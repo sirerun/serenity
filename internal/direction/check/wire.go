@@ -68,7 +68,7 @@ func ToWire(result Result, matched []MatchedAction, confidence float64, haveConf
 		})
 	}
 	for _, warn := range result.Warnings {
-		w.Warnings = append(w.Warnings, WireWarning{PreceptID: warn.PreceptID, Title: warn.Title, Action: warn.Action})
+		w.Warnings = append(w.Warnings, WireWarning(warn))
 	}
 	if haveConfidence {
 		w.Confidence = &confidence
