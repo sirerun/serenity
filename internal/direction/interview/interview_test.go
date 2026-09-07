@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/dira/ledger"
 	"github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/router"
+	"github.com/sirerun/serenity/internal/writer"
 )
 
 var testNow = time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
@@ -270,6 +272,71 @@ func TestRunReturnsErrorWhenModelResponseFailsToParse(t *testing.T) {
 	}
 	if len(items) != 0 {
 		t.Fatalf("len(items) = %d, want 0 -- a failed synthesis must stage nothing", len(items))
+	}
+}
+
+// TestInterviewSeedsAtLeastTenActivePrecepts is RFC 0001 §17's own M3
+// acceptance clause (T3.17, docs/evals/m3-report.md AC1), verbatim: "the
+// interview seeds >= 10 active precepts". This is a stronger claim than
+// this task's own acc line (staged drafts only, zero accepted until
+// disposed): it drives the full accept path a real `serenity inbox`
+// session takes for a KindPreceptDraft item -- disposition.Store.Dispose
+// then direction.Store.ApplyDisposedPreceptDraft, the same two calls
+// internal/cli/inbox.go's plain space/accept key makes -- over every draft
+// the fixture transcript stages, and counts how many actually reach
+// ledger.StateAccepted in a real writer-queue-backed ledger (this test's
+// own "demo brain": a fresh temp directory, built and inspected in this
+// run, not a fixture checked into the repo).
+func TestInterviewSeedsAtLeastTenActivePrecepts(t *testing.T) {
+	qs, err := DefaultQuestions()
+	if err != nil {
+		t.Fatalf("DefaultQuestions: %v", err)
+	}
+	transcript, err := os.Open(filepath.Join("testdata", "transcript.txt"))
+	if err != nil {
+		t.Fatalf("open fixture transcript: %v", err)
+	}
+	defer func() { _ = transcript.Close() }()
+
+	fc := &fakeCompleter{respond: func(prompt string) string {
+		return canned("Adopt a rule from this interview", "Synthesized from an interview answer.", "The answer explicitly asked for this rule.", "")
+	}}
+	dispStore := openTestDispositionStore(t)
+
+	staged, err := Run(context.Background(), fc, dispStore, qs, transcript, &strings.Builder{}, testNow)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if staged < 10 {
+		t.Fatalf("staged = %d, want >= 10", staged)
+	}
+
+	items, err := dispStore.List(context.Background())
+	if err != nil {
+		t.Fatalf("dispStore.List: %v", err)
+	}
+
+	q := writer.NewQueue(nil)
+	t.Cleanup(q.Close)
+	dirStore := direction.NewStore(t.TempDir(), q)
+
+	active := 0
+	for _, it := range items {
+		res, err := dispStore.Dispose(context.Background(), it.ID, disposition.VerdictAccept, nil, "", "human:test", "seed-"+it.ID, testNow)
+		if err != nil {
+			t.Fatalf("Dispose %s: %v", it.ID, err)
+		}
+		entry, err := dirStore.ApplyDisposedPreceptDraft(context.Background(), res.Item, testNow)
+		if err != nil {
+			t.Fatalf("ApplyDisposedPreceptDraft %s: %v", it.ID, err)
+		}
+		if entry.State == ledger.StateAccepted {
+			active++
+		}
+	}
+	t.Logf("active precepts in the demo brain: %d (staged: %d)", active, staged)
+	if active < 10 {
+		t.Fatalf("active precepts = %d, want >= 10", active)
 	}
 }
 
