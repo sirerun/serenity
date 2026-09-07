@@ -37,6 +37,18 @@ class ChatTests(unittest.TestCase):
     def test_no_key_is_honest_search(self):
         with patch.object(m,'get_key',return_value=None):
             answer,mode=m.compose('install',m.retrieve('install'),[]);self.assertEqual(mode,'search');self.assertIn('search result',answer)
+    def test_model_bare_citation_becomes_clickable(self):
+        from io import BytesIO
+        response=BytesIO(json.dumps({'choices':[{'message':{'content':'Install from source. https://serenity.sire.run/get-started/#source'}}]}).encode())
+        with patch.object(m,'get_key',return_value='test-key'),patch.object(m.urllib.request,'urlopen',return_value=response):
+            answer,mode=m.compose('install',m.retrieve('install'),[])
+            self.assertEqual(mode,'answer');self.assertIn('](https://serenity.sire.run/get-started/#source)',answer)
+    def test_hallucinated_citation_falls_back(self):
+        from io import BytesIO
+        response=BytesIO(json.dumps({'choices':[{'message':{'content':'See [guide](https://serenity.sire.run/invented/).'}}]}).encode())
+        with patch.object(m,'get_key',return_value='test-key'),patch.object(m.urllib.request,'urlopen',return_value=response):
+            answer,mode=m.compose('install',m.retrieve('install'),[])
+            self.assertEqual(mode,'search');self.assertNotIn('/invented/',answer)
     def test_generated_template_compiles_and_corpus_matches(self):
         template=json.loads(Path(__file__).with_name('stack.json').read_text())
         ns={};exec(compile(template['Resources']['Function']['Properties']['Code']['ZipFile'],'index.py','exec'),ns)

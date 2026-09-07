@@ -9,7 +9,12 @@ try:
  stack=json.loads(aws('cloudformation','describe-stacks','--stack-name','serenity-adoption-chat'))['Stacks'][0]
  update=True
 except subprocess.CalledProcessError:update=False
-parameters=[{'ParameterKey':'ModelApiKey','ParameterValue':os.environ.get('OPENROUTER_API_KEY','')}]
+if os.environ.get('OPENROUTER_API_KEY'):
+ parameters=[{'ParameterKey':'ModelApiKey','ParameterValue':os.environ['OPENROUTER_API_KEY']}]
+elif update and any(p['ParameterKey']=='ModelApiKey' for p in stack.get('Parameters',[])):
+ parameters=[{'ParameterKey':'ModelApiKey','UsePreviousValue':True}]
+else:
+ parameters=[{'ParameterKey':'ModelApiKey','ParameterValue':''}]
 parameters.append({'ParameterKey':'RateSalt','UsePreviousValue':True} if update else {'ParameterKey':'RateSalt','ParameterValue':secrets.token_hex(32)})
 with tempfile.TemporaryDirectory(prefix='serenity-chat-deploy-') as temp:
  path=Path(temp)/'parameters.json';path.write_text(json.dumps(parameters));path.chmod(0o600)

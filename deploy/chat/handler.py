@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import json
+import math
 import os
 import re
 import time
@@ -15,32 +16,43 @@ SECRET = None
 
 
 def terms(text):
-    return [x for x in re.findall(r'[a-z0-9]+', text.lower()) if x not in STOP and len(x) > 1]
+    words = [x for x in re.findall(r'[a-z0-9]+', text.lower()) if x not in STOP and len(x) > 1]
+    return [('install' if x.startswith('install') else x[:-1] if x.endswith('s') and len(x) > 4 else x) for x in words]
 
 
 def sections():
     result = []
     for page in CORPUS:
+        if page['url'].rstrip('/') == BASE + '/docs':
+            continue
         for chunk in re.split(r'(?=<h2)', page['html']):
             plain = unescape(re.sub('<[^>]+>', ' ', chunk))
-            plain = re.sub(r'\s+', ' ', plain).strip()
+            plain = re.sub(r'[^\S\n]+', ' ', plain).strip()
             if not plain:
                 continue
             anchor = re.search(r'<h2 id="([^"]+)"', chunk)
-            result.append({'title': re.sub('<[^>]+>', ' ', page['title']), 'url': page['url'] + ('#' + anchor[1] if anchor else ''), 'text': plain})
+            heading = re.search(r'<h[23][^>]*>(.*?)</h[23]>', chunk)
+            title = re.sub('<[^>]+>', ' ', page['title']) + (' — ' + re.sub('<[^>]+>', '', heading[1]) if heading else '')
+            result.append({'title': title, 'url': page['url'] + ('#' + anchor[1] if anchor else ''), 'text': plain})
     return result
 
 
 def retrieve(question):
     query = set(terms(question))
+    corpus = sections()
+    words = [terms(item['text']) for item in corpus]
+    average = sum(map(len, words)) / max(len(words), 1)
+    idf = {term: math.log(1 + (len(words) - sum(term in w for w in words) + .5) / (sum(term in w for w in words) + .5)) for term in query}
     scored = []
-    for section in sections():
-        words = terms(section['text'])
-        present = set(words)
-        score = sum(1 + min(words.count(t), 4) * .15 for t in query if t in present)
-        score += sum(2 for t in query if t in terms(section['title']))
+    for section, tokens in zip(corpus, words):
+        score = 0
+        for term in query:
+            frequency = tokens.count(term)
+            score += idf[term] * frequency * 2.2 / (frequency + 1.2 * (.25 + .75 * len(tokens) / max(average, 1)))
+            if term in terms(section['title']):
+                score += idf[term] * 2
         if score:
-            scored.append((score / (1 + len(words) / 600), section))
+            scored.append((score, section))
     scored.sort(key=lambda s: s[0], reverse=True)
     return [s for _, s in scored[:5]]
 
@@ -89,10 +101,17 @@ def compose(question, matches, history):
         answer = json.load(response)['choices'][0]['message']['content']
     if not isinstance(answer, str) or not answer.strip():
         return fallback(matches), 'search'
-    allowed = {m['url'] for m in matches} | {BASE + '/docs/', BASE + '/get-started/', 'https://ndungu.dev'}
-    urls = re.findall(r'\]\(([^)\s]+)\)', answer)
+    allowed = {m['url'] for m in sections()} | {p['url'] for p in CORPUS} | {BASE + '/docs/', BASE + '/get-started/', 'https://ndungu.dev'}
+    for p in CORPUS:
+        allowed.update(p['url'] + '#' + anchor for anchor in re.findall(r'id="([^"]+)"', p['html']))
+    urls = [url.rstrip('.,;:') for url in re.findall(r'https://[^\s<>()]+', answer)]
     if not urls or any(url not in allowed for url in urls):
         return fallback(matches), 'search'
+    def linked(match):
+        raw = match[0]
+        url = raw.rstrip('.,;:')
+        return '[Read the guide](' + url + ')' + raw[len(url):]
+    answer = re.sub(r'(?<!\]\()(https://[^\s<>()]+)', linked, answer)
     return answer[:6000], 'answer'
 
 

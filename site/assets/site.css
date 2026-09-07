@@ -6,3 +6,5 @@
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 @media(max-width:767px){.brand-showcase{gap:16px!important}.brand-showcase img{width:60px;height:60px}.brand-showcase span{font-size:42px!important}}
+
+.ask-link{position:static;width:max-content;max-width:calc(100% - 40px);margin:20px auto 28px}

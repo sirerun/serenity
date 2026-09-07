@@ -7,15 +7,18 @@ const history=[];let asking=false;
 // Deployment writes the public API URL here; no credential belongs in this file.
 const endpoint=window.SERENITY_CHAT_ENDPOINT;
 function render(text){
- const fragment=document.createDocumentFragment(),pattern=/\[([^\]]+)\]\(([^)\s]+)\)/g;
+ const fragment=document.createDocumentFragment();
+ const pattern=/```(?:[a-z]+\n)?([\s\S]*?)```|`([^`\n]+)`|\[([^\]]+)\]\(([^)\s]+)\)/g;
  let offset=0,match;
- function plain(value){value.split('\n').forEach((line,i)=>{if(i)fragment.append(document.createElement('br'));fragment.append(document.createTextNode(line))})}
- while((match=pattern.exec(text))){plain(text.slice(offset,match.index));
-  let url;try{url=new URL(match[2])}catch{}
-  if(url&&url.protocol==='https:'&&['serenity.sire.run','ndungu.dev','github.com'].includes(url.hostname)){
-   const link=document.createElement('a');link.href=url.href;link.textContent=match[1];link.target='_blank';link.rel='noopener noreferrer';fragment.append(link);
-  }else plain(match[1]);offset=pattern.lastIndex;
- }plain(text.slice(offset));return fragment;
+ while((match=pattern.exec(text))){fragment.append(document.createTextNode(text.slice(offset,match.index)));
+  if(match[1]!==undefined){const pre=document.createElement('pre'),code=document.createElement('code');code.textContent=match[1].trim();pre.append(code);fragment.append(pre)}
+  else if(match[2]!==undefined){const code=document.createElement('code');code.textContent=match[2];fragment.append(code)}
+  else {let url;try{url=new URL(match[4])}catch{}
+   if(url&&url.protocol==='https:'&&['serenity.sire.run','ndungu.dev','github.com'].includes(url.hostname)){
+    const link=document.createElement('a');link.href=url.href;link.textContent=match[3];link.target='_blank';link.rel='noopener noreferrer';fragment.append(link);
+   }else fragment.append(document.createTextNode(match[3]));
+  }offset=pattern.lastIndex;
+ }fragment.append(document.createTextNode(text.slice(offset)));return fragment;
 }
 function bubble(role,text){const row=document.createElement('div');row.className='msg '+role;const body=document.createElement('div');body.className='bubble';body.append(render(text));row.append(body);thread.append(row);thread.scrollTop=thread.scrollHeight;return body}
 function error(body,message,q){body.textContent=message+' ';const retry=document.createElement('button');retry.type='button';retry.className='retry';retry.textContent='Try again';retry.onclick=()=>{if(!asking){body.parentElement.remove();ask(q,false)}};body.append(retry)}
