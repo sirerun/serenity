@@ -209,9 +209,16 @@ output.
   (`docs/protocol/schemas/schemas_test.go`) fails CI if a schema and its
   struct drift apart.
 - **Conformance fixtures:** RFC 0001 §3 names `testdata/conformance/` as
-  the fixture location for all three protocols. That directory does not
-  exist yet — T4.13 (in flight as of this writing) is building the
-  fixture set there. Until it lands, DIRECTION v1 is exercised by
+  the fixture location for all three protocols; `testdata/conformance/direction/`
+  (T4.13) holds real HTTP-recorded transcripts for `brief`, `check_plan`,
+  and `propose`, checksum-pinned by a `MANIFEST`. `serenity protocol
+  conformance --target <url>` (T4.15) replays them against a live server.
+  Unlike DISPOSITION's item ids, DIRECTION's ledger entry ids
+  (`cst-0001`, `qst-0001`, …) are caller-chosen literals, not
+  server-random, so a target seeded with the same fixture entries
+  reproduces byte-identical responses; `internal/conformance.CompareBodies`'s
+  dynamic-field normalization exists for the other two protocols, not
+  because DIRECTION needs it. DIRECTION v1 is also exercised by
   `internal/server/direction`'s own test suite (nineteen tests over a
   real HTTP listener, including a CLI-binary comparison proving
   `check_plan` deep-equals `serenity check --json` and a `.dira/`

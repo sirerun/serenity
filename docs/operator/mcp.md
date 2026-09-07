@@ -184,3 +184,7 @@ curl -i -X POST http://127.0.0.1:<port>/mcp \
 curl -i http://127.0.0.1:<port>/mcp
 # 405 -- GET is not implemented.
 ```
+
+For a fuller check against the frozen conformance transcripts (MEMORY_VERBS
+plus DISPOSITION/DIRECTION, if also registered on this target), see
+[Protocol conformance](conformance.md).
