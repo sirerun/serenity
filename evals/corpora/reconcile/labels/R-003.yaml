@@ -1,0 +1,17 @@
+id: R-003
+new_claim:
+  id: claim-a
+  subject: carol-diaz
+  predicate: owns_account
+  object: chase-checking
+active:
+  - id: claim-b
+    subject: carol-diaz
+    predicate: owns_account
+    object: wells-fargo-savings
+expected_verdict: conflict
+rationale: >
+  owns_account is modeled as a single current fact in this corpus (matching
+  T1.28's own corpus convention for this family) -- two different account
+  objects for the same subject with no distinguishing scope/window is a
+  genuine conflict.

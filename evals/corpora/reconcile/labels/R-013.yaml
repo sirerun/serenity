@@ -1,0 +1,15 @@
+id: R-013
+new_claim:
+  id: claim-a
+  subject: liam-cruz
+  predicate: has_role
+  object: staff-engineer
+  valid_from: "2026-04-01"
+active:
+  - id: claim-b
+    subject: liam-cruz
+    predicate: has_role
+    object: senior-engineer
+    valid_from: "2024-09-01"
+expected_verdict: window_close
+rationale: A promotion, correctly recognized as temporal supersession.

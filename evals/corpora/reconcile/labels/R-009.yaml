@@ -1,0 +1,16 @@
+id: R-009
+new_claim:
+  id: claim-a
+  subject: iris-webb
+  predicate: committed_to
+  object: security review for project atlas
+active:
+  - id: claim-b
+    subject: iris-webb
+    predicate: committed_to
+    object: security review for project phoenix
+expected_verdict: scoped
+rationale: >
+  Both claims carry a distinct explicit "for project X" scope qualifier
+  (RFC 0001 section 10.2's own example phrasing) -- both true, no
+  DISPOSITION item.

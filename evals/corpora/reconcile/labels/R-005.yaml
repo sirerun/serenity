@@ -1,0 +1,13 @@
+id: R-005
+new_claim:
+  id: claim-a
+  subject: erin-fox
+  predicate: prefers
+  object: tea
+active:
+  - id: claim-b
+    subject: erin-fox
+    predicate: prefers
+    object: tea
+expected_verdict: agree
+rationale: Identical normalized object -- straightforward corroboration.

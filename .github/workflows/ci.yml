@@ -68,13 +68,17 @@ jobs:
     # own cached fixture (evals/fixtures/direction-cached-predictions.yaml)
     # rather than adding a second job: same zero-network-call cached-mode
     # property, same report.json output, one gate.
+    #
+    # T2.18 extends it again with the reconcile corpus (evals/corpora/
+    # reconcile): no fixture flag needed, since internal/reconcile.Detect
+    # is a pure function scored directly, not a cached model prediction.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go run ./cmd/eval-runner -mode cached -corpus evals/corpora/ava -fixture evals/fixtures/ava-cached-predictions.yaml -direction-corpus evals/corpora/direction -direction-fixture evals/fixtures/direction-cached-predictions.yaml -out "$RUNNER_TEMP/report.json"
+      - run: go run ./cmd/eval-runner -mode cached -corpus evals/corpora/ava -fixture evals/fixtures/ava-cached-predictions.yaml -direction-corpus evals/corpora/direction -direction-fixture evals/fixtures/direction-cached-predictions.yaml -reconcile-corpus evals/corpora/reconcile -out "$RUNNER_TEMP/report.json"
       - run: cat "$RUNNER_TEMP/report.json"
 
   brainbench-trend:

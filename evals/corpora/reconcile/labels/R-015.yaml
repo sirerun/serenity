@@ -1,0 +1,13 @@
+id: R-015
+new_claim:
+  id: claim-a
+  subject: maya-chen
+  predicate: has_balance
+  object: "$1200"
+active:
+  - id: claim-b
+    subject: maya-chen
+    predicate: has_balance
+    object: "$900"
+expected_verdict: conflict
+rationale: A second independent conflict fixture, distinct subject from R-001/R-002/R-003.

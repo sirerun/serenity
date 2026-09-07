@@ -298,6 +298,88 @@ func TestRunDirectionRejectsLiveMode(t *testing.T) {
 	}
 }
 
+// TestRunScoresReconcileSectionAlongsidePrimaryCorpus is T2.18's wiring
+// test: Config.ReconcileCorpusDir layers the real evals/corpora/reconcile
+// corpus onto the same Run call that scores the primary (ava-shaped)
+// corpus, producing both sections in one Report. No fixture path is
+// needed (unlike Direction): internal/reconcile.Detect is called directly.
+func TestRunScoresReconcileSectionAlongsidePrimaryCorpus(t *testing.T) {
+	corpus := buildTinyCorpus(t)
+
+	fixture := struct {
+		Predictions []eval.Prediction `yaml:"predictions"`
+	}{Predictions: []eval.Prediction{
+		{Span: "Ava works at Acme.", Predicate: "works_at", Object: "acme"},
+	}}
+	fb, err := yaml.Marshal(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixturePath := filepath.Join(t.TempDir(), "predictions.yaml")
+	if err := os.WriteFile(fixturePath, fb, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	root := repoRoot(t)
+	report, err := Run(context.Background(), Config{
+		CorpusDir:          corpus,
+		Mode:               ModeCached,
+		FixturePath:        fixturePath,
+		ReconcileCorpusDir: filepath.Join(root, "evals", "corpora", "reconcile"),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if report.Reconcile == nil {
+		t.Fatal("Reconcile section is nil, want populated")
+	}
+	if report.Reconcile.RowsScored == 0 {
+		t.Error("Reconcile.RowsScored = 0, want > 0")
+	}
+	if len(report.Reconcile.VerdictConfusion) == 0 {
+		t.Error("Reconcile.VerdictConfusion is empty, want per-verdict P/R/F1")
+	}
+	// The corpus's own R-014 fixture (RFC3339 valid_from) is a real,
+	// deliberately-included false negative on window_close -- this must
+	// survive the full Run wiring, not just internal/eval/reconcile's own
+	// package-level test.
+	if got := report.Reconcile.VerdictConfusion["window_close"].FN; got < 1 {
+		t.Errorf("Reconcile.VerdictConfusion[window_close].FN = %d, want >= 1", got)
+	}
+}
+
+// TestRunReconcileWorksInLiveMode confirms the reconcile section, unlike
+// Direction, is not restricted to ModeCached: internal/reconcile.Detect
+// needs no model call, so a live primary-corpus run must still score and
+// attach a Reconcile section rather than erroring the way
+// TestRunDirectionRejectsLiveMode expects Direction to.
+func TestRunReconcileWorksInLiveMode(t *testing.T) {
+	corpus := buildTinyCorpus(t)
+	provider := &fakeProvider{response: router.Response{
+		Text: `{"observations":[{"subject":"ava","predicate":"works_at","object":"acme","confidence":0.9}]}`,
+	}}
+	ledger := NewTrackingLedger(0)
+	rt := router.New(map[router.Tier]router.Provider{router.TierLocalCheap: provider}, ledger)
+	ex := extract.New(rt, "fake-model@v1", nil, extract.NewMemoryCache())
+
+	root := repoRoot(t)
+	report, err := Run(context.Background(), Config{
+		CorpusDir:          corpus,
+		Mode:               ModeLive,
+		Extractor:          ex,
+		Ledger:             ledger,
+		ModelVersion:       "fake-model@v1",
+		ReconcileCorpusDir: filepath.Join(root, "evals", "corpora", "reconcile"),
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if report.Reconcile == nil {
+		t.Fatal("Reconcile section is nil, want populated even in ModeLive")
+	}
+}
+
 func TestRunLivePropagatesExtractorError(t *testing.T) {
 	corpus := buildTinyCorpus(t)
 	provider := &fakeProvider{err: errors.New("boom")}

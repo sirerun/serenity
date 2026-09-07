@@ -1,0 +1,9 @@
+id: R-016
+new_claim:
+  id: claim-a
+  subject: noah-ibrahim
+  predicate: said
+  object: deploy-window-thursday
+active: []
+expected_verdict: neutral_additive
+rationale: A brand-new fact with no prior claims on this (subject, predicate) at all.

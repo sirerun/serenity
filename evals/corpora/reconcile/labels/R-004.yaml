@@ -1,0 +1,13 @@
+id: R-004
+new_claim:
+  id: claim-a
+  subject: dana-osei
+  predicate: works_at
+  object: globex
+active:
+  - id: claim-b
+    subject: dana-osei
+    predicate: works_at
+    object: globex
+expected_verdict: agree
+rationale: Identical normalized object -- straightforward corroboration.
