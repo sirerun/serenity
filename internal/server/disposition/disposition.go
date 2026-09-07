@@ -128,17 +128,17 @@ func (h *Handlers) Register(s Registrar) {
 	s.Handle("/disposition/subscribe", http.HandlerFunc(h.handleSubscribe))
 }
 
-// protoError is DISPOSITION v1's error envelope: a stable machine-checkable
+// ProtoError is DISPOSITION v1's error envelope: a stable machine-checkable
 // code plus a human message, returned for every 4xx/5xx this package
 // emits -- "reject without note -> protocol error" (T4.4's acc line)
 // means exactly this shape at 400, code "reject_requires_note".
-type protoError struct {
+type ProtoError struct {
 	Code    string `json:"error"`
 	Message string `json:"message"`
 }
 
 func writeError(w http.ResponseWriter, status int, code, msg string) {
-	writeJSON(w, status, protoError{Code: code, Message: msg})
+	writeJSON(w, status, ProtoError{Code: code, Message: msg})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -154,7 +154,7 @@ func decodeJSON(r *http.Request, v any) error {
 
 // --- list_pending -----------------------------------------------------
 
-// listPendingRequest is list_pending's request body (RFC 0001 §8.2:
+// ListPendingRequest is list_pending's request body (RFC 0001 §8.2:
 // "list_pending(kinds?, expiring_before?, group?)"). Parked and Cursor/
 // Limit are this package's own additions, not named in the RFC prose:
 // Parked is the wire equivalent of `serenity inbox --parked` (RFC 0001
@@ -162,7 +162,7 @@ func decodeJSON(r *http.Request, v any) error {
 // that explicit filter), and Cursor/Limit implement the pagination the
 // acc line itself requires ("cursor walk of 120 items in pages of 50
 // terminates") without which list_pending could not page at all.
-type listPendingRequest struct {
+type ListPendingRequest struct {
 	Kinds          []string `json:"kinds,omitempty"`
 	ExpiringBefore string   `json:"expiring_before,omitempty"` // RFC3339
 	Group          bool     `json:"group,omitempty"`
@@ -171,16 +171,16 @@ type listPendingRequest struct {
 	Limit          int      `json:"limit,omitempty"`
 }
 
-// listedItem is one row of list_pending's response. Members is set only
+// ListedItem is one row of list_pending's response. Members is set only
 // when Group was requested and the row represents a non-empty GroupID --
 // see groupItems.
-type listedItem struct {
+type ListedItem struct {
 	Item    coredisp.Item   `json:"item"`
 	Members []coredisp.Item `json:"members,omitempty"`
 }
 
-type listPendingResponse struct {
-	Items      []listedItem `json:"items"`
+type ListPendingResponse struct {
+	Items      []ListedItem `json:"items"`
 	NextCursor string       `json:"next_cursor,omitempty"`
 }
 
@@ -189,7 +189,7 @@ func (h *Handlers) handleListPending(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "list_pending requires POST")
 		return
 	}
-	var req listPendingRequest
+	var req ListPendingRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "decode request: "+err.Error())
 		return
@@ -275,10 +275,10 @@ func (h *Handlers) handleListPending(w http.ResponseWriter, r *http.Request) {
 	}
 	page := rows[start:end]
 	if page == nil {
-		page = []listedItem{}
+		page = []ListedItem{}
 	}
 
-	resp := listPendingResponse{Items: page}
+	resp := ListPendingResponse{Items: page}
 	if end < len(rows) {
 		resp.NextCursor = strconv.Itoa(end)
 	}
@@ -297,11 +297,11 @@ func (h *Handlers) handleListPending(w http.ResponseWriter, r *http.Request) {
 // whether or not group was requested; disposing a group's members
 // individually (dispose's own group_id path, "each recorded individually
 // for the ladder") is unaffected by how this function presents them.
-func groupItems(items []coredisp.Item, group bool) []listedItem {
-	rows := make([]listedItem, 0, len(items))
+func groupItems(items []coredisp.Item, group bool) []ListedItem {
+	rows := make([]ListedItem, 0, len(items))
 	if !group {
 		for _, it := range items {
-			rows = append(rows, listedItem{Item: it})
+			rows = append(rows, ListedItem{Item: it})
 		}
 		return rows
 	}
@@ -309,14 +309,14 @@ func groupItems(items []coredisp.Item, group bool) []listedItem {
 	rowIndex := make(map[string]int, len(items)) // GroupID -> index into rows
 	for _, it := range items {
 		if it.GroupID == "" {
-			rows = append(rows, listedItem{Item: it})
+			rows = append(rows, ListedItem{Item: it})
 			continue
 		}
 		if i, ok := rowIndex[it.GroupID]; ok {
 			rows[i].Members = append(rows[i].Members, it)
 			continue
 		}
-		rows = append(rows, listedItem{Item: it, Members: []coredisp.Item{it}})
+		rows = append(rows, ListedItem{Item: it, Members: []coredisp.Item{it}})
 		rowIndex[it.GroupID] = len(rows) - 1
 	}
 	return rows
@@ -324,13 +324,13 @@ func groupItems(items []coredisp.Item, group bool) []listedItem {
 
 // --- dispose ------------------------------------------------------------
 
-// disposeRequest is dispose's request body (RFC 0001 §8.2: "dispose(item_id
+// DisposeRequest is dispose's request body (RFC 0001 §8.2: "dispose(item_id
 // | group_id, verdict, edited_payload?, note?, idempotency_key)"). Exactly
 // one of ItemID/GroupID is required; idempotency_key is required at this
 // wire layer (the RFC's own parameter list gives it no `?`, unlike
 // edited_payload/note) even though internal/disposition.Store.Dispose
 // itself treats an empty idempotency key as "no idempotency check."
-type disposeRequest struct {
+type DisposeRequest struct {
 	ItemID         string          `json:"item_id,omitempty"`
 	GroupID        string          `json:"group_id,omitempty"`
 	Verdict        string          `json:"verdict"`
@@ -340,14 +340,14 @@ type disposeRequest struct {
 	Actor          string          `json:"actor,omitempty"`
 }
 
-type disposeResultWire struct {
+type DisposeResultWire struct {
 	Item            coredisp.Item `json:"item"`
 	AlreadyDisposed bool          `json:"already_disposed,omitempty"`
 	Replayed        bool          `json:"replayed,omitempty"`
 }
 
-type disposeResponse struct {
-	Results []disposeResultWire `json:"results"`
+type DisposeResponse struct {
+	Results []DisposeResultWire `json:"results"`
 }
 
 // handleDispose applies verdict to one item (ItemID) or every item
@@ -370,7 +370,7 @@ func (h *Handlers) handleDispose(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "dispose requires POST")
 		return
 	}
-	var req disposeRequest
+	var req DisposeRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "decode request: "+err.Error())
 		return
@@ -405,14 +405,14 @@ func (h *Handlers) handleDispose(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := h.clock.Now()
-	results := make([]disposeResultWire, 0, len(ids))
+	results := make([]DisposeResultWire, 0, len(ids))
 	for _, id := range ids {
 		res, err := h.store.Dispose(r.Context(), id, verdict, req.EditedPayload, req.Note, req.Actor, req.IdempotencyKey, now)
 		if err != nil {
 			writeDisposeError(w, err)
 			return
 		}
-		results = append(results, disposeResultWire{
+		results = append(results, DisposeResultWire{
 			Item:            res.Item,
 			AlreadyDisposed: res.AlreadyDisposed,
 			Replayed:        res.Replayed,
@@ -425,7 +425,7 @@ func (h *Handlers) handleDispose(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, disposeResponse{Results: results})
+	writeJSON(w, http.StatusOK, DisposeResponse{Results: results})
 }
 
 func writeDisposeError(w http.ResponseWriter, err error) {
@@ -443,13 +443,13 @@ func writeDisposeError(w http.ResponseWriter, err error) {
 
 // --- capture --------------------------------------------------------------
 
-type captureRequest struct {
+type CaptureRequest struct {
 	Text     string `json:"text,omitempty"`
 	AudioRef string `json:"audio_ref,omitempty"`
 	Hint     string `json:"hint,omitempty"`
 }
 
-type captureResponse struct {
+type CaptureResponse struct {
 	ItemID string `json:"item_id"`
 }
 
@@ -458,7 +458,7 @@ func (h *Handlers) handleCapture(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "capture requires POST")
 		return
 	}
-	var req captureRequest
+	var req CaptureRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "decode request: "+err.Error())
 		return
@@ -477,7 +477,7 @@ func (h *Handlers) handleCapture(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal_error", "capture recorded but event publish failed: "+err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, captureResponse{ItemID: item.ID})
+	writeJSON(w, http.StatusOK, CaptureResponse{ItemID: item.ID})
 }
 
 // --- shared event publishing ----------------------------------------------
@@ -597,7 +597,7 @@ func writeSSEEvent(w http.ResponseWriter, ev events.Event) error {
 	return err
 }
 
-type longPollResponse struct {
+type LongPollResponse struct {
 	Events []events.Event `json:"events"`
 }
 
@@ -617,7 +617,7 @@ func (h *Handlers) serveLongPoll(w http.ResponseWriter, r *http.Request, cursor 
 			if evs == nil {
 				evs = []events.Event{}
 			}
-			writeJSON(w, http.StatusOK, longPollResponse{Events: evs})
+			writeJSON(w, http.StatusOK, LongPollResponse{Events: evs})
 			return
 		}
 		select {

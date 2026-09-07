@@ -150,12 +150,12 @@ func TestListPendingCursorWalkTerminates(t *testing.T) {
 		if calls > 10 {
 			t.Fatalf("cursor walk did not terminate within 10 calls, saw %d items", len(seen))
 		}
-		resp := postJSON(t, base, token, "/disposition/list_pending", listPendingRequest{Limit: 50, Cursor: cursor})
+		resp := postJSON(t, base, token, "/disposition/list_pending", ListPendingRequest{Limit: 50, Cursor: cursor})
 		body := readBody(t, resp)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
 		}
-		var out listPendingResponse
+		var out ListPendingResponse
 		if err := json.Unmarshal(body, &out); err != nil {
 			t.Fatalf("decode response: %v", err)
 		}
@@ -196,13 +196,13 @@ func TestDisposeReplayReturnsByteIdenticalResponse(t *testing.T) {
 	items := seedItems(t, ctx, env.dispStore, 1, fixedNow)
 	base, token := startTestServer(t, env)
 
-	req := disposeRequest{ItemID: items[0].ID, Verdict: string(coredisp.VerdictAccept), IdempotencyKey: "replay-key-1", Actor: "tester"}
+	req := DisposeRequest{ItemID: items[0].ID, Verdict: string(coredisp.VerdictAccept), IdempotencyKey: "replay-key-1", Actor: "tester"}
 
 	original := readBody(t, postJSON(t, base, token, "/disposition/dispose", req))
 	replay1 := readBody(t, postJSON(t, base, token, "/disposition/dispose", req))
 	replay2 := readBody(t, postJSON(t, base, token, "/disposition/dispose", req))
 
-	var out disposeResponse
+	var out DisposeResponse
 	if err := json.Unmarshal(original, &out); err != nil {
 		t.Fatalf("decode original response: %v", err)
 	}
@@ -231,13 +231,13 @@ func TestDisposeRejectWithoutNoteReturnsProtocolError(t *testing.T) {
 	items := seedItems(t, ctx, env.dispStore, 1, fixedNow)
 	base, token := startTestServer(t, env)
 
-	req := disposeRequest{ItemID: items[0].ID, Verdict: string(coredisp.VerdictReject), IdempotencyKey: "reject-key-1"}
+	req := DisposeRequest{ItemID: items[0].ID, Verdict: string(coredisp.VerdictReject), IdempotencyKey: "reject-key-1"}
 	resp := postJSON(t, base, token, "/disposition/dispose", req)
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body = %s", resp.StatusCode, body)
 	}
-	var perr protoError
+	var perr ProtoError
 	if err := json.Unmarshal(body, &perr); err != nil {
 		t.Fatalf("decode protocol error: %v", err)
 	}
@@ -293,8 +293,8 @@ func TestListPendingParkedFilter(t *testing.T) {
 	base, token := startTestServer(t, env)
 
 	// Default (non-parked) view.
-	resp := postJSON(t, base, token, "/disposition/list_pending", listPendingRequest{})
-	var out listPendingResponse
+	resp := postJSON(t, base, token, "/disposition/list_pending", ListPendingRequest{})
+	var out ListPendingResponse
 	if err := json.Unmarshal(readBody(t, resp), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -303,7 +303,7 @@ func TestListPendingParkedFilter(t *testing.T) {
 	}
 
 	// Parked view.
-	resp = postJSON(t, base, token, "/disposition/list_pending", listPendingRequest{Parked: true})
+	resp = postJSON(t, base, token, "/disposition/list_pending", ListPendingRequest{Parked: true})
 	if err := json.Unmarshal(readBody(t, resp), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -324,7 +324,7 @@ func TestSubscribeSSEDropAndResumeReplaysExactlyMissedEvents(t *testing.T) {
 
 	publish := func(n int) {
 		for i := 0; i < n; i++ {
-			resp := postJSON(t, base, token, "/disposition/capture", captureRequest{Text: fmt.Sprintf("note %d", i)})
+			resp := postJSON(t, base, token, "/disposition/capture", CaptureRequest{Text: fmt.Sprintf("note %d", i)})
 			body := readBody(t, resp)
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("capture status = %d, body = %s", resp.StatusCode, body)
@@ -480,12 +480,12 @@ func TestCaptureStagesDistillItemAndPublishesEvent(t *testing.T) {
 	ctx := context.Background()
 	base, token := startTestServer(t, env)
 
-	resp := postJSON(t, base, token, "/disposition/capture", captureRequest{Text: "buy milk"})
+	resp := postJSON(t, base, token, "/disposition/capture", CaptureRequest{Text: "buy milk"})
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
 	}
-	var out captureResponse
+	var out CaptureResponse
 	if err := json.Unmarshal(body, &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -513,12 +513,12 @@ func TestCaptureEmptyReturnsProtocolError(t *testing.T) {
 	env := newTestEnv(t)
 	base, token := startTestServer(t, env)
 
-	resp := postJSON(t, base, token, "/disposition/capture", captureRequest{})
+	resp := postJSON(t, base, token, "/disposition/capture", CaptureRequest{})
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body = %s", resp.StatusCode, body)
 	}
-	var perr protoError
+	var perr ProtoError
 	if err := json.Unmarshal(body, &perr); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -545,13 +545,13 @@ func TestDisposeGroupDisposesEveryMemberIndividually(t *testing.T) {
 	}
 	base, token := startTestServer(t, env)
 
-	req := disposeRequest{GroupID: group, Verdict: string(coredisp.VerdictAccept), IdempotencyKey: "group-key-1"}
+	req := DisposeRequest{GroupID: group, Verdict: string(coredisp.VerdictAccept), IdempotencyKey: "group-key-1"}
 	resp := postJSON(t, base, token, "/disposition/dispose", req)
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
 	}
-	var out disposeResponse
+	var out DisposeResponse
 	if err := json.Unmarshal(body, &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -585,7 +585,7 @@ func TestDisposeGroupIDWithNoMembersReturnsNotFound(t *testing.T) {
 	env := newTestEnv(t)
 	base, token := startTestServer(t, env)
 
-	req := disposeRequest{GroupID: "does-not-exist", Verdict: string(coredisp.VerdictAccept), IdempotencyKey: "k"}
+	req := DisposeRequest{GroupID: "does-not-exist", Verdict: string(coredisp.VerdictAccept), IdempotencyKey: "k"}
 	resp := postJSON(t, base, token, "/disposition/dispose", req)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", resp.StatusCode)
@@ -601,7 +601,7 @@ func TestDisposeMissingIdempotencyKeyReturnsProtocolError(t *testing.T) {
 	items := seedItems(t, ctx, env.dispStore, 1, fixedNow)
 	base, token := startTestServer(t, env)
 
-	req := disposeRequest{ItemID: items[0].ID, Verdict: string(coredisp.VerdictAccept)}
+	req := DisposeRequest{ItemID: items[0].ID, Verdict: string(coredisp.VerdictAccept)}
 	resp := postJSON(t, base, token, "/disposition/dispose", req)
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", resp.StatusCode)
@@ -622,8 +622,8 @@ func TestListPendingKindFilter(t *testing.T) {
 	}
 	base, token := startTestServer(t, env)
 
-	resp := postJSON(t, base, token, "/disposition/list_pending", listPendingRequest{Kinds: []string{string(coredisp.KindReconcile)}})
-	var out listPendingResponse
+	resp := postJSON(t, base, token, "/disposition/list_pending", ListPendingRequest{Kinds: []string{string(coredisp.KindReconcile)}})
+	var out ListPendingResponse
 	if err := json.Unmarshal(readBody(t, resp), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -671,7 +671,7 @@ func TestSubscribeLongPollReturnsImmediatelyWhenEventsAlreadyExist(t *testing.T)
 	if elapsed > 1*time.Second {
 		t.Fatalf("long-poll took %s, want well under the 2s timeout since an event already existed", elapsed)
 	}
-	var out longPollResponse
+	var out LongPollResponse
 	if err := json.Unmarshal(body, &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -718,8 +718,8 @@ func TestListPendingGroupCollapsesSharedGroupIDIntoOneRow(t *testing.T) {
 	}
 	base, token := startTestServer(t, env)
 
-	resp := postJSON(t, base, token, "/disposition/list_pending", listPendingRequest{Group: true})
-	var out listPendingResponse
+	resp := postJSON(t, base, token, "/disposition/list_pending", ListPendingRequest{Group: true})
+	var out ListPendingResponse
 	if err := json.Unmarshal(readBody(t, resp), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}

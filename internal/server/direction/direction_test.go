@@ -197,7 +197,7 @@ func TestBriefFreshLedgerReturnsAllFourSectionsEmpty(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("brief: status %d, body %s", resp.StatusCode, readBody(t, resp))
 	}
-	var out briefResponse
+	var out BriefResponse
 	if err := json.Unmarshal(readBody(t, resp), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestBriefZeroBudgetReturnsMinimalValidObject(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("brief: status %d, body %s", resp.StatusCode, readBody(t, resp))
 	}
-	var out briefResponse
+	var out BriefResponse
 	if err := json.Unmarshal(readBody(t, resp), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -300,12 +300,12 @@ func TestBriefBudget800DropsOverflowingSectionWhole(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("brief: status %d, body %s", resp.StatusCode, readBody(t, resp))
 	}
-	var out briefResponse
+	var out BriefResponse
 	if err := json.Unmarshal(readBody(t, resp), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 
-	var precepts, questions briefSectionWire
+	var precepts, questions BriefSectionWire
 	for _, sec := range out.Sections {
 		switch sec.Name {
 		case "precepts":
@@ -332,11 +332,11 @@ func TestBriefIntentItemRendersDerivesFromEdges(t *testing.T) {
 
 	base, token := startTestServer(t, env.handlers)
 	resp := postJSON(t, base, token, "/direction/brief", map[string]any{"token_budget": 800})
-	var out briefResponse
+	var out BriefResponse
 	if err := json.Unmarshal(readBody(t, resp), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	var intents briefSectionWire
+	var intents BriefSectionWire
 	for _, sec := range out.Sections {
 		if sec.Name == "intents" {
 			intents = sec
@@ -386,11 +386,11 @@ func TestBriefEntitiesRankedByLexicalOverlapWithTaskHint(t *testing.T) {
 	resp := postJSON(t, base, token, "/direction/brief", map[string]any{
 		"task_hint": "who works at Acme Rocket Corp?", "token_budget": 800,
 	})
-	var out briefResponse
+	var out BriefResponse
 	if err := json.Unmarshal(readBody(t, resp), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	var entities briefSectionWire
+	var entities BriefSectionWire
 	for _, sec := range out.Sections {
 		if sec.Name == "entities" {
 			entities = sec
@@ -420,11 +420,11 @@ func TestBriefEntitiesFallBackToRecencyWithNoTaskHint(t *testing.T) {
 
 	base, token := startTestServer(t, env.handlers)
 	resp := postJSON(t, base, token, "/direction/brief", map[string]any{"token_budget": 800})
-	var out briefResponse
+	var out BriefResponse
 	if err := json.Unmarshal(readBody(t, resp), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	var entities briefSectionWire
+	var entities BriefSectionWire
 	for _, sec := range out.Sections {
 		if sec.Name == "entities" {
 			entities = sec
@@ -697,7 +697,7 @@ func TestProposePreceptDraftCreatesItemAndDiraHashUnchanged(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("propose: status %d, body %s", resp.StatusCode, readBody(t, resp))
 	}
-	var out proposeResponse
+	var out ProposeResponse
 	if err := json.Unmarshal(readBody(t, resp), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -736,7 +736,7 @@ func TestProposeEffectCreatesItem(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("propose: status %d, body %s", resp.StatusCode, readBody(t, resp))
 	}
-	var out proposeResponse
+	var out ProposeResponse
 	if err := json.Unmarshal(readBody(t, resp), &out); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
