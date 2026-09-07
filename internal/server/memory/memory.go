@@ -42,6 +42,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/sirerun/serenity/internal/compose"
@@ -173,6 +174,35 @@ func newEnvelope() Envelope { return Envelope{ProtocolVersion: ProtocolVersion} 
 // entity() and forget() to mean "no fence-tier page for this subject".
 func globEntityPage(root, slug string) ([]string, error) {
 	return filepath.Glob(filepath.Join(root, "brain", "entities", "*", slug+".md"))
+}
+
+// validSlug reports whether slug is safe to use as the single path segment
+// every MEMORY_VERBS write/read path builds from it: store.FenceWriter.
+// PathFor joins it straight into brain/entities/<type>/<slug>.md and
+// store.ShardStore.PathFor into brain/claims/<slug>/<family>.jsonl, neither
+// with any sanitization of its own (confirmed by reading both -- plain
+// filepath.Join calls); globEntityPage globs the former pattern directly.
+// A subject/slug in a MEMORY_VERBS request is an attacker-controlled MCP
+// tool argument (RFC §14 adversary 2: a malicious or compromised MCP
+// client), so this task (T4.11's "path traversal" acc-line clause) is
+// where that boundary gets enforced, once, for every verb that turns a
+// slug into a path -- entity's Slug, forget's Subject, remember's Subject.
+// Unvalidated, a crafted subject is not merely a traversal-adjacent read
+// (globEntityPage matching a file outside brain/entities/) but a genuine
+// arbitrary-file-write: remember's writeClaim calls
+// store.FenceWriter.PathFor(type, claim.SubjectSlug) and then writes the
+// rendered page to whatever path that produces.
+//
+// The rule is deliberately narrow and easy to reason about: slug must be a
+// single path component, so any '/' or '\' (Windows-style separator, in
+// case this ever runs there), or the exact traversal segments "." or ".."
+// on their own, are rejected -- there is no legitimate slug that needs a
+// path separator or resolves to "stay here"/"go up one".
+func validSlug(slug string) bool {
+	if slug == "" || slug == "." || slug == ".." {
+		return false
+	}
+	return !strings.ContainsAny(slug, "/\\")
 }
 
 // Deps is everything Handlers needs, built once by the caller (production:

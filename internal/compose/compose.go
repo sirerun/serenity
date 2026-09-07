@@ -15,6 +15,16 @@
 //   - A question with no matching claim always returns a non-empty gap
 //     statement naming how stale the brain's newest evidence is, instead
 //     of a fabricated answer or a silent empty result.
+//   - RFC §14's redaction pass runs on the composed prompt before it ever
+//     reaches Completer.Complete, unconditionally (T4.11): internal/redact.
+//     Apply strips account-number, card-number, and API-key-shaped spans
+//     from buildPrompt's output before it is wrapped in a router.Prompt.
+//     This is in addition to, not instead of, router.Router.Complete's own
+//     existing IndexOnly refusal (ErrIndexOnlyEgress) -- that check stops
+//     an index_only-sourced prompt from reaching a cloud provider at all;
+//     redaction protects everything else that IS allowed to egress, since
+//     a live claim's own Object text can still carry a sensitive-shaped
+//     value a source never marked index_only.
 //
 // Retrieval has two layers, mirroring internal/search's own division of
 // labor. internal/search.Search (T1.11) ranks raw source/entity-page TEXT
@@ -40,6 +50,7 @@ import (
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/embed"
+	"github.com/sirerun/serenity/internal/redact"
 	"github.com/sirerun/serenity/internal/router"
 	"github.com/sirerun/serenity/internal/search"
 	"github.com/sirerun/serenity/internal/store"
@@ -170,7 +181,7 @@ func (c *Composer) Ask(ctx context.Context, query string) (Answer, error) {
 	}
 
 	result, err := c.Router.Complete(ctx, router.TaskClassComposerSynthesis,
-		router.Prompt{Text: buildPrompt(query, candidates), IndexOnly: indexOnly}, router.Budget{})
+		router.Prompt{Text: redact.Apply(buildPrompt(query, candidates), redact.Options{}), IndexOnly: indexOnly}, router.Budget{})
 	if err != nil {
 		return Answer{}, fmt.Errorf("compose: synthesis: %w", err)
 	}

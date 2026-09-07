@@ -27,11 +27,20 @@ type fakeProvider struct {
 	modelVersion string
 	resp         router.Response
 	err          error
+	// sentPrompt, when non-nil, captures the exact prompt string this
+	// provider actually received -- T4.11's redaction snapshot test uses
+	// this to prove what crosses the router.Provider boundary (the real
+	// cloud-egress point), not just what buildPrompt produced before
+	// redaction ran.
+	sentPrompt *string
 }
 
 func (f *fakeProvider) Name() string         { return "fake" }
 func (f *fakeProvider) ModelVersion() string { return f.modelVersion }
-func (f *fakeProvider) Send(_ context.Context, _ string) (router.Response, error) {
+func (f *fakeProvider) Send(_ context.Context, prompt string) (router.Response, error) {
+	if f.sentPrompt != nil {
+		*f.sentPrompt = prompt
+	}
 	return f.resp, f.err
 }
 
