@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/config"
+	"github.com/sirerun/serenity/internal/dira/ledger"
+	"github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/providers"
@@ -54,6 +56,20 @@ func newTestSupersedeWriter(t *testing.T, root string) *supersede.Writer {
 	return supersede.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg)
 }
 
+// newTestDirectionStore returns a *direction.Store rooted at root with
+// its own writer queue -- production wiring (runInbox's default case)
+// shares one queue between sw and this store so a session's edit_accept
+// and decompose-accept writes commit together, but none of these
+// existing tests exercise KindDecompose, so a separate queue here is
+// harmless and keeps this helper independent of newTestSupersedeWriter's
+// own private queue.
+func newTestDirectionStore(t *testing.T, root string) *direction.Store {
+	t.Helper()
+	q := writer.NewQueue(nil)
+	t.Cleanup(q.Close)
+	return direction.NewStore(root, q)
+}
+
 // seedReconcileItem stages one KindReconcile item shaped exactly like
 // internal/reconcile.Engine.Process's own output (T2.2): both claims
 // share (subject, predicate), and Family carries the value inbox.go's
@@ -89,6 +105,7 @@ func seedReconcileItem(t *testing.T, dispStore *disposition.Store, ctx context.C
 func TestInboxInteractiveDrivesJKSpaceRecordsOneDispositionPerGroupMember(t *testing.T) {
 	dispStore, root := openInboxTestStore(t)
 	sw := newTestSupersedeWriter(t, root)
+	dirStore := newTestDirectionStore(t, root)
 	ctx := context.Background()
 
 	untouchedBefore := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "alice-tan", "works_at", "acme-corp", "initech", "")
@@ -98,7 +115,7 @@ func TestInboxInteractiveDrivesJKSpaceRecordsOneDispositionPerGroupMember(t *tes
 
 	var out bytes.Buffer
 	in := strings.NewReader("jjk ") // down to group row, down to last row, back up to group row, dispose
-	if err := runInteractive(ctx, dispStore, sw, in, &out, "human:test", inboxFixedNow); err != nil {
+	if err := runInteractive(ctx, dispStore, sw, dirStore, in, &out, "human:test", inboxFixedNow); err != nil {
 		t.Fatalf("runInteractive: %v", err)
 	}
 
@@ -143,12 +160,13 @@ func TestInboxInteractiveDrivesJKSpaceRecordsOneDispositionPerGroupMember(t *tes
 func TestInboxInteractiveGroupOfOneRecordsExactlyOneDisposition(t *testing.T) {
 	dispStore, root := openInboxTestStore(t)
 	sw := newTestSupersedeWriter(t, root)
+	dirStore := newTestDirectionStore(t, root)
 	ctx := context.Background()
 
 	item := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "carol-diaz", "works_at", "umbrella", "oscorp", "")
 
 	var out bytes.Buffer
-	if err := runInteractive(ctx, dispStore, sw, strings.NewReader(" "), &out, "human:test", inboxFixedNow); err != nil {
+	if err := runInteractive(ctx, dispStore, sw, dirStore, strings.NewReader(" "), &out, "human:test", inboxFixedNow); err != nil {
 		t.Fatalf("runInteractive: %v", err)
 	}
 	got, err := dispStore.Get(ctx, item.ID)
@@ -280,6 +298,7 @@ func TestListParkedReportsNoneWhenEmpty(t *testing.T) {
 func TestInboxInteractiveEKeyEditAcceptWritesThroughToBrainRepo(t *testing.T) {
 	dispStore, root := openInboxTestStore(t)
 	sw := newTestSupersedeWriter(t, root)
+	dirStore := newTestDirectionStore(t, root)
 	ctx := context.Background()
 
 	// Seed B on disk exactly as it must already exist for a fence-tier
@@ -303,7 +322,7 @@ func TestInboxInteractiveEKeyEditAcceptWritesThroughToBrainRepo(t *testing.T) {
 	// 'e', then the replacement object, then Enter -- runInteractive's
 	// own 'e' case reads exactly this shape (see its doc comment).
 	in := strings.NewReader("eglobex-corp\n")
-	if err := runInteractive(ctx, dispStore, sw, in, &out, "human:test", inboxFixedNow); err != nil {
+	if err := runInteractive(ctx, dispStore, sw, dirStore, in, &out, "human:test", inboxFixedNow); err != nil {
 		t.Fatalf("runInteractive: %v", err)
 	}
 
@@ -337,5 +356,93 @@ func TestInboxInteractiveEKeyEditAcceptWritesThroughToBrainRepo(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("edited object %q not found as the active row referenced by AppliedClaimID on the fence page: %+v", "globex-corp", p.Claims)
+	}
+}
+
+// seedDecomposeItem stages one KindDecompose item shaped exactly like
+// direction.Decompose's own output (T3.11): payload carries the parent
+// id plus one proposed child.
+func seedDecomposeItem(t *testing.T, dispStore *disposition.Store, ctx context.Context, now time.Time, parentID, title, rationale, groupID string) disposition.Item {
+	t.Helper()
+	payload, err := json.Marshal(direction.DecomposePayload{
+		ParentID: parentID,
+		Child:    direction.ChildIntentDraft{Title: title, Rationale: rationale},
+	})
+	if err != nil {
+		t.Fatalf("marshal DecomposePayload: %v", err)
+	}
+	item, err := dispStore.Create(ctx, disposition.KindDecompose, payload, groupID, now)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	return item
+}
+
+// TestInboxInteractiveSpaceAcceptWritesDecomposedChildIntoLedger is
+// T3.11's own acc-line clause, exercised through the real CLI review
+// surface: "confirming writes valid dira entries with the edge." Two
+// KindDecompose children share one GroupID (the batch a real Decompose
+// call would have staged) -- a single space keystroke on the grouped row
+// disposes both AND writes both, proving "one-keystroke confirmations in
+// the inbox" for a kind whose whole batch needs exactly one press.
+func TestInboxInteractiveSpaceAcceptWritesDecomposedChildIntoLedger(t *testing.T) {
+	dispStore, root := openInboxTestStore(t)
+	sw := newTestSupersedeWriter(t, root)
+	dirStore := newTestDirectionStore(t, root)
+	ctx := context.Background()
+
+	parent := &ledger.Entry{
+		Kind: ledger.KindIntent, Title: "Ship the Q3 launch",
+		State: ledger.StateActive, Created: inboxFixedNow.UTC().Format(time.RFC3339),
+	}
+	if err := ledger.Add(ctx, dirStore, parent); err != nil {
+		t.Fatalf("seed parent intent: %v", err)
+	}
+
+	itemA := seedDecomposeItem(t, dispStore, ctx, inboxFixedNow, parent.ID, "Write the launch doc", "needed first", "g-decompose")
+	itemB := seedDecomposeItem(t, dispStore, ctx, inboxFixedNow, parent.ID, "Line up the demo env", "referenced by the doc", "g-decompose")
+
+	var out bytes.Buffer
+	if err := runInteractive(ctx, dispStore, sw, dirStore, strings.NewReader(" "), &out, "human:test", inboxFixedNow); err != nil {
+		t.Fatalf("runInteractive: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "-> ") || !strings.Contains(out.String(), "written to ledger") {
+		t.Fatalf("expected an applied/written-to-ledger line for each child, got: %q", out.String())
+	}
+
+	var newTitles []string
+	for _, id := range []string{itemA.ID, itemB.ID} {
+		got, err := dispStore.Get(ctx, id)
+		if err != nil {
+			t.Fatalf("Get %s: %v", id, err)
+		}
+		if got.State != disposition.StateDisposed || got.Verdict != disposition.VerdictAccept {
+			t.Fatalf("item %s State=%q Verdict=%q, want disposed/accept", id, got.State, got.Verdict)
+		}
+	}
+
+	entries, err := dirStore.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, info := range entries {
+		if info.ID == parent.ID {
+			continue
+		}
+		e, err := dirStore.Get(ctx, info.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		newTitles = append(newTitles, e.Title)
+		if e.Kind != ledger.KindIntent || e.State != ledger.StateActive {
+			t.Fatalf("entry %s: Kind=%q State=%q, want intent/active", info.ID, e.Kind, e.State)
+		}
+		if len(e.Edges) != 1 || e.Edges[0].Type != ledger.EdgeDerivesFrom || e.Edges[0].To != parent.ID {
+			t.Fatalf("entry %s Edges=%+v, want one derives_from edge to %s", info.ID, e.Edges, parent.ID)
+		}
+	}
+	if len(newTitles) != 2 {
+		t.Fatalf("ledger has %d new child entries, want 2 (got titles: %v)", len(newTitles), newTitles)
 	}
 }
