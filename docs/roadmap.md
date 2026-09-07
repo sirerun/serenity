@@ -181,6 +181,9 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In flight (PRs open)
 
+- 2026-09-07 T4.2 MCP stdio transport claimed; implementing initialization, JSON-RPC framing/error handling, tool registration and a real `serenity serve --stdio` entry point. T4.1 prerequisite merged in PR #140. Memory verbs remain the separate T4.5 task.
+
+
 
 - 2026 08 28 Wave 6 closed 6/6 (T3.6's plan-file checkbox was found dropped during a concurrent-rebase conflict resolution and backfilled by the coordinator; roadmap Shipped entry was never affected). Wave 7 dispatched via `/apply --pool` (claims WON), overnight/quiet-hours sizing: T1.12 composer `serenity ask`, T1.16 `serenity migrate --models`, T3.7 `serenity check` CLI, T3.15 upstream dira PR. Owner: pool. Each task owns its own S6 docs entries. Wave 7 fully closed 2026-08-29 (T1.16, T1.12, T3.7 same day; T3.15 last, after its external-submission gate cleared -- see Shipped).
 - 2026 08 30 /apply --loop (linux session): plan refinement wave first per David's ruling -- M-order gates encoded mechanically (ADR 011); T4.3 (E4 HTTP transport, the one deps-met cross-epic task) dispatches immediately after that merges. Stale T4.3 claim from 2026-08-29 08:54Z (davids-mbp, no PR, no worktree) pruned past the 4h TTL via /claim --prune --force.
