@@ -1,0 +1,134 @@
+# The interview wizard's question bank (T3.4, RFC 0001 section 10.4: "First-run
+# interview wizard (~30 questions -> draft precepts, each confirmed by one
+# disposition)"). Three categories:
+#
+#   intent      -- what the human is trying to achieve at all, seeding
+#                  candidate KindIntent-shaped direction rather than a
+#                  guarded action.
+#   constraint  -- one or more per domain.ActionSet member (the closed
+#                  five-action set constraints may guard, RFC section 7.3),
+#                  so every guardable action has interview coverage.
+#   standing    -- evergreen questions about defaults and posture that
+#                  don't name a specific structured action.
+#
+# action_class is set only on constraint questions and, when set, must be one
+# of domain.ActionSet's five values (questions.go's LoadQuestions checks
+# this against the same list ParseAppliesWhen's validAction reads, so the
+# bank can never silently drift from the action vocabulary a real
+# applies_when clause is allowed to name).
+#
+# Editing this file changes what `serenity interview` asks; it does not
+# change how any answer becomes a draft (internal/direction/interview.go).
+
+questions:
+  - id: primary-goal
+    category: intent
+    text: "What is the single most important outcome you want this brain to help you achieve in the next 90 days?"
+  - id: current-focus
+    category: intent
+    text: "What project or area of your life are you actively working on right now that you want tracked here?"
+  - id: success-looks-like
+    category: intent
+    text: "If this system is working perfectly a year from now, what has changed?"
+  - id: recurring-theme
+    category: intent
+    text: "Is there a recurring theme or goal you keep returning to that hasn't been written down anywhere?"
+  - id: abandoned-direction
+    category: intent
+    text: "Is there a direction you've deliberately abandoned that you don't want re-proposed later?"
+  - id: who-for
+    category: intent
+    text: "Besides you, does anyone else's outcomes depend on the decisions this system will help you make?"
+
+  - id: start-project-approval
+    category: constraint
+    action_class: start_project
+    text: "Before starting a brand-new project, is there anything you always want checked first (budget, existing commitments, capacity)?"
+  - id: start-project-scope
+    category: constraint
+    action_class: start_project
+    text: "Is there a type of project you never want to start, regardless of how good it looks on paper?"
+  - id: start-project-threshold
+    category: constraint
+    action_class: start_project
+    text: "Is there a minimum bar (time, money, conviction) a new project must clear before you commit to it?"
+
+  - id: deploy-prod-review
+    category: constraint
+    action_class: deploy_to_prod
+    text: "Before anything goes to production, what has to be true first (tests passing, a second reviewer, a rollback plan)?"
+  - id: deploy-prod-timing
+    category: constraint
+    action_class: deploy_to_prod
+    text: "Are there times you never want a production deploy to happen (Fridays, holidays, during an active incident)?"
+  - id: deploy-prod-scope
+    category: constraint
+    action_class: deploy_to_prod
+    text: "Is there a class of change (schema migration, auth, billing) that always needs extra scrutiny before it ships?"
+
+  - id: spend-threshold
+    category: constraint
+    action_class: spend_over
+    text: "Above what dollar amount do you want to be asked before money is spent on your behalf?"
+  - id: spend-recurring
+    category: constraint
+    action_class: spend_over
+    text: "Are recurring subscriptions treated differently from one-time purchases for approval purposes?"
+  - id: spend-category
+    category: constraint
+    action_class: spend_over
+    text: "Is there a spending category (ads, travel, tools) that needs a lower threshold than everything else?"
+
+  - id: contact-new-approval
+    category: constraint
+    action_class: contact_new_party
+    text: "Before reaching out to someone you haven't contacted before, what do you want confirmed first?"
+  - id: contact-new-tone
+    category: constraint
+    action_class: contact_new_party
+    text: "Is there a category of outreach (cold sales, press, legal) you never want sent without your review?"
+  - id: contact-new-channel
+    category: constraint
+    action_class: contact_new_party
+    text: "Are some channels (a client's personal number, an investor's inbox) off-limits for a first, unprompted contact?"
+
+  - id: outside-hours-window
+    category: constraint
+    action_class: schedule_outside_hours
+    text: "What counts as 'outside hours' for you, and is there a hard cutoff you don't want anything scheduled past?"
+  - id: outside-hours-exception
+    category: constraint
+    action_class: schedule_outside_hours
+    text: "Is there a kind of event (a family commitment, on-call, travel) that should never be double-booked, even outside normal hours?"
+  - id: outside-hours-notice
+    category: constraint
+    action_class: schedule_outside_hours
+    text: "If something needs to be scheduled outside your normal hours, how much notice do you want before it's confirmed?"
+
+  - id: default-verbosity
+    category: standing
+    text: "When you're not around to ask, should this system default to doing less and waiting, or doing more and reporting back?"
+  - id: privacy-default
+    category: standing
+    text: "Is there any category of information you want marked private by default rather than shared downstream?"
+  - id: conflicting-evidence
+    category: standing
+    text: "When two pieces of evidence disagree, do you want to be asked immediately or have it queued for your next review?"
+  - id: automation-ceiling
+    category: standing
+    text: "Is there a class of action you never want fully automated, no matter how much trust the system earns?"
+  - id: budget-ceiling
+    category: standing
+    text: "Is there a standing monthly ceiling on judgment-tier model spend you want enforced before further calls queue for approval?"
+  - id: silence-default
+    category: standing
+    text: "If a question sits unanswered past its deadline, should the default action be the cautious one or the one you most recently favored?"
+  - id: escalation-contact
+    category: standing
+    text: "Is there someone else who should be looped in when a decision is significant enough to escalate?"
+  - id: data-retention
+    category: standing
+    text: "Is there anything you want actively forgotten or excluded rather than retained indefinitely?"
+  - id: review-cadence
+    category: standing
+    text: "How often do you want a standing review of everything this system has decided on your behalf?"

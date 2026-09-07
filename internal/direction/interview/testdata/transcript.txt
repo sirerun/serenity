@@ -1,0 +1,36 @@
+My main goal is to launch the direction layer and stop losing decisions to memory.
+I'm actively building Serenity's M3 milestone right now.
+
+I keep coming back to wanting a system that never silently forgets a rejected idea.
+I already abandoned the idea of a browser extension; don't resurface it.
+
+Nobody else's outcomes depend on this yet, it's just me.
+Never start a project without checking it against my current top three intents first.
+
+I don't want to start anything that requires hiring someone before it has revenue.
+
+Always run the full test suite and get a second reviewer before any prod deploy.
+Never deploy on a Friday afternoon or during an active incident.
+
+Ask me before spending more than 200 dollars on anything not already budgeted.
+
+Recurring subscriptions over 20 dollars a month need my explicit approval too.
+
+Before contacting anyone new, confirm I actually want a relationship with them, not just a reply.
+
+Never send cold outreach to press or legal contacts without me reading it first.
+
+Outside hours means after 7pm or before 8am my local time; nothing gets scheduled past 9pm.
+
+Anything that needs to be scheduled outside normal hours needs at least 24 hours notice.
+
+Default to doing less and reporting back rather than acting further without me.
+
+Mark anything about my health or finances private by default.
+
+Never fully automate anything that spends money or contacts someone on my behalf.
+
+If a question goes unanswered past its deadline, default to the cautious option, not the last one I picked.
+Loop in my co-founder when a decision is big enough to affect the roadmap.
+
+I want a monthly review of everything the system decided without me in the room.

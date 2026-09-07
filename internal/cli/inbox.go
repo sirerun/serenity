@@ -176,9 +176,9 @@ func itemFamily(item disposition.Item) (string, bool) {
 
 // itemSummary renders one human-readable line for an item, decoding its
 // kind-specific payload where this package knows the shape (reconcile,
-// distill, dirty_edit -- the three kinds anything in this repo actually
-// stages today) and falling back to a bare kind+id line for any other
-// kind (precept_draft, effect, tombstone -- staged by no shipped code yet).
+// distill, dirty_edit, precept_draft -- the kinds anything in this repo
+// actually stages today) and falling back to a bare kind+id line for any
+// other kind (effect, tombstone -- staged by no shipped code yet).
 func itemSummary(item disposition.Item) string {
 	switch item.Kind {
 	case disposition.KindReconcile:
@@ -203,6 +203,11 @@ func itemSummary(item disposition.Item) string {
 		var rec writer.PendingRecord
 		if err := json.Unmarshal(item.Payload, &rec); err == nil {
 			return fmt.Sprintf("%s %s", item.Kind, rec.Path)
+		}
+	case disposition.KindPreceptDraft:
+		var p direction.PreceptDraftPayload
+		if err := json.Unmarshal(item.Payload, &p); err == nil {
+			return fmt.Sprintf("%s %q (from %s)", item.Kind, p.Title, p.QuestionID)
 		}
 	}
 	return fmt.Sprintf("%s id=%s", item.Kind, item.ID)
@@ -292,19 +297,24 @@ func reviewableItems(ctx context.Context, dispStore *disposition.Store) ([]dispo
 // line and this session's established practice of disclosing rather than
 // silently absorbing adjacent gaps.
 //
-// KindDecompose (T3.11) is the one deliberate exception: a plain accept
-// on a decompose child ALSO writes through dirStore to .dira
-// (direction.Store.ApplyDisposedDecompose) -- not e, plain space. This is
-// not the same gap as the others, and closing it here is not scope creep:
-// a decompose proposal has no meaningful "accepted but not yet written"
-// state the way a reconcile item does (space there stops short of a write
-// on purpose, since a human may still want to edit first via e). A
-// decompose child is already the complete proposed content -- title plus
-// rationale -- with nothing left to edit, so accepting it and writing it
-// are the same human decision; deferring the write to some other,
-// not-yet-built keystroke would leave "confirming writes valid dira
-// entries with the edge" (T3.11's own acc line) permanently unmet by
-// design, not merely unwired yet.
+// KindDecompose (T3.11) and KindPreceptDraft (T3.4) are the two
+// deliberate exceptions: a plain accept on either ALSO writes through
+// dirStore to .dira (direction.Store.ApplyDisposedDecompose /
+// ApplyDisposedPreceptDraft) -- not e, plain space. This is not the same
+// gap as the others, and closing it here is not scope creep: neither
+// proposal has a meaningful "accepted but not yet written" state the way
+// a reconcile item does (space there stops short of a write on purpose,
+// since a human may still want to edit first via e). A decompose child is
+// already the complete proposed content -- title plus rationale -- with
+// nothing left to edit, so accepting it and writing it are the same human
+// decision; deferring the write to some other, not-yet-built keystroke
+// would leave "confirming writes valid dira entries with the edge"
+// (T3.11's own acc line) permanently unmet by design, not merely unwired
+// yet. A precept draft is the same shape: title, body, and its "do not
+// adopt this" floor alternative are already the complete proposed
+// content (T3.4's own interview.Run synthesized all of it before
+// staging), so there is nothing an edit_accept would let a human change
+// that a plain accept does not already carry.
 func runInteractive(ctx context.Context, dispStore *disposition.Store, sw *supersede.Writer, dirStore *direction.Store, in io.Reader, out io.Writer, actor string, now time.Time) error {
 	items, err := reviewableItems(ctx, dispStore)
 	if err != nil {
@@ -406,14 +416,22 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw *super
 					return fmt.Errorf("inbox: dispose %s: %w", it.ID, err)
 				}
 				_, _ = fmt.Fprintf(out, "disposed %s verdict=%s\n", it.ID, res.Item.Verdict)
-				// KindDecompose (T3.11): a plain accept also writes
-				// through -- see runInteractive's own doc comment for why
-				// this Kind is the deliberate exception to "space never
+				// KindDecompose (T3.11) and KindPreceptDraft (T3.4): a
+				// plain accept also writes through -- see
+				// runInteractive's own doc comment for why these two
+				// Kinds are the deliberate exception to "space never
 				// touches the brain repo". defer/reject never reach here.
-				if verdict == disposition.VerdictAccept && it.Kind == disposition.KindDecompose {
+				switch {
+				case verdict == disposition.VerdictAccept && it.Kind == disposition.KindDecompose:
 					entry, aerr := dirStore.ApplyDisposedDecompose(ctx, res.Item, now)
 					if aerr != nil {
 						return fmt.Errorf("inbox: apply decompose %s: %w", it.ID, aerr)
+					}
+					_, _ = fmt.Fprintf(out, "applied %s -> %s written to ledger (%s)\n", it.ID, entry.ID, entry.Title)
+				case verdict == disposition.VerdictAccept && it.Kind == disposition.KindPreceptDraft:
+					entry, aerr := dirStore.ApplyDisposedPreceptDraft(ctx, res.Item, now)
+					if aerr != nil {
+						return fmt.Errorf("inbox: apply precept draft %s: %w", it.ID, aerr)
 					}
 					_, _ = fmt.Fprintf(out, "applied %s -> %s written to ledger (%s)\n", it.ID, entry.ID, entry.Title)
 				}
