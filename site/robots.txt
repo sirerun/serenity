@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://serenity.sire.run/sitemap.xml

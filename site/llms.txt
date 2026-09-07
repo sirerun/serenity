@@ -1,0 +1,17 @@
+# Serenity
+
+Personal memory in a Git repository you own. Current-source documentation; packaged release v0.1.1 differs.
+
+- [A little setup. A lasting memory.](https://serenity.sire.run/get-started/): Install Serenity, connect a small folder of notes, and make your first search. No account is needed for local full-text search.
+- [Your first local memory.](https://serenity.sire.run/docs/quickstart/): Start with files you already have. Search them before adding models or connecting a mailbox.
+- [Less rebuilding context. More moving forward.](https://serenity.sire.run/product/): Serenity turns your notes, repository documentation, and email into searchable personal memory.
+- [A clear path from install to useful.](https://serenity.sire.run/docs/): Practical guides for building a personal memory, finding answers, and understanding what Serenity does with your data.
+- [Bring your sources.](https://serenity.sire.run/docs/connectors/): Start narrow, verify what was imported, then expand your memory one source at a time.
+- [Find the source. Then ask the question.](https://serenity.sire.run/docs/models/): Local search is useful on its own. Add model-assisted extraction and composition when you want cited answers.
+- [Make memory a habit.](https://serenity.sire.run/docs/workflows/): A few deliberate commands keep your context searchable without turning setup into another project.
+- [Your memory. Your repository.](https://serenity.sire.run/docs/ownership/): Know what stays on disk, what can leave your machine, and what you need to back up.
+- [Context for your tools.](https://serenity.sire.run/docs/agents/): Use Serenity’s verified interfaces deliberately while agent integrations continue to develop.
+- [Get back to the useful part.](https://serenity.sire.run/docs/troubleshooting/): Start with the smallest reproducible setup: one brain, one folder, and one known phrase.
+- [Good questions. Plain answers.](https://serenity.sire.run/docs/faq/): The practical details before you add Serenity to your workflow.
+- [Website and chat privacy.](https://serenity.sire.run/docs/privacy/): This public website helps you understand and install Serenity. It is separate from any personal brain you create.
+- [Collected calm.](https://serenity.sire.run/brand/): A quiet identity for context that stays with its owner.
