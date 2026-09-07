@@ -119,6 +119,9 @@ func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, boo
 	if req.Subject == "" || req.Predicate == "" || req.Object == "" {
 		return rememberResponse{Envelope: errorEnvelope("invalid_argument", "remember: subject, predicate, and object are all required", "pass non-empty subject, predicate, and object strings")}, true, nil
 	}
+	if !validSlug(req.Subject) {
+		return rememberResponse{Envelope: errorEnvelope("invalid_argument", "remember: subject must be a single path segment", "pass a subject slug with no \"/\", \"\\\\\", \".\", or \"..\" -- e.g. \"acme-corp\", not a path")}, true, nil
+	}
 	if req.Provenance == nil || req.Provenance.Actor == "" {
 		return rememberResponse{Envelope: errorEnvelope("provenance_required", "remember: provenance is required", "pass provenance.actor (e.g. \"human:you\" or \"machine\"), and provenance.source_sha256/span/model when the fact came from a known source")}, true, nil
 	}

@@ -72,6 +72,9 @@ func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool,
 	if req.Subject == "" || req.ClaimID == "" {
 		return forgetResponse{Envelope: errorEnvelope("invalid_argument", "forget: subject and claim_id are both required", "pass the claim's subject slug and its claim_id")}, true, nil
 	}
+	if !validSlug(req.Subject) {
+		return forgetResponse{Envelope: errorEnvelope("invalid_argument", "forget: subject must be a single path segment", "pass a subject slug with no \"/\", \"\\\\\", \".\", or \"..\" -- e.g. \"acme-corp\", not a path")}, true, nil
+	}
 	actor := req.Actor
 	if actor == "" {
 		actor = "mcp"

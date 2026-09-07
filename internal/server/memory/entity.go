@@ -67,6 +67,9 @@ func (h *Handlers) entity(ctx context.Context, args json.RawMessage) (any, bool,
 	if req.Slug == "" {
 		return entityResponse{Envelope: errorEnvelope("invalid_argument", "entity: slug is required", "pass a non-empty \"slug\" string")}, true, nil
 	}
+	if !validSlug(req.Slug) {
+		return entityResponse{Envelope: errorEnvelope("invalid_argument", "entity: slug must be a single path segment", "pass a slug with no \"/\", \"\\\\\", \".\", or \"..\" -- e.g. \"acme-corp\", not a path")}, true, nil
+	}
 
 	matches, err := globEntityPage(h.deps.Root, req.Slug)
 	if err != nil {
