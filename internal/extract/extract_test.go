@@ -399,3 +399,34 @@ func TestExtractDefaultVocabularyMatchesConfigDefault(t *testing.T) {
 		t.Fatal("default vocabulary must not contain a predicate outside the seed list")
 	}
 }
+
+// TestBuildPromptIncludesFamilyGuidanceForRootCausedFamilies is T1.28's
+// acc-line-adjacent unit test: buildPrompt must render each of the four
+// TP=0 families' worked example (docs/evals/m1-report.md; docs/plans/
+// E1-m1-ingest.md T1.28) inline with its vocabulary bullet, and must not
+// silently drop or misplace the guidance for any of them.
+func TestBuildPromptIncludesFamilyGuidanceForRootCausedFamilies(t *testing.T) {
+	vocab := []string{"committed_to", "costs", "owns_account", "said", "works_at"}
+	prompt := buildPrompt(vocab, "irrelevant chunk text")
+
+	for family, guidance := range familyGuidance {
+		if !strings.Contains(prompt, guidance) {
+			t.Errorf("prompt missing guidance for family %q", family)
+		}
+		line := "- " + family + " -- " + guidance
+		if !strings.Contains(prompt, line) {
+			t.Errorf("guidance for %q is not attached to its own vocabulary bullet; want line %q", family, line)
+		}
+	}
+}
+
+// TestBuildPromptOmitsGuidanceForFamiliesWithoutIt proves a family with no
+// familyGuidance entry (every family besides T1.28's four) renders as a
+// bare bullet, matching pre-T1.28 behavior -- guidance is additive, not a
+// wholesale prompt rewrite.
+func TestBuildPromptOmitsGuidanceForFamiliesWithoutIt(t *testing.T) {
+	prompt := buildPrompt([]string{"works_at"}, "irrelevant chunk text")
+	if !strings.Contains(prompt, "- works_at\n") {
+		t.Fatalf("expected a bare \"- works_at\" bullet with no guidance suffix, got:\n%s", prompt)
+	}
+}
