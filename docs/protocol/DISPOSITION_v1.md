@@ -268,8 +268,9 @@ Error codes:
   items via an internal `Store.Create` call the generator makes before its
   transcript's own steps run, so their happy-path cases only pass against
   a `--target` independently seeded with matching items — replayed against
-  a bare/fresh target, this command reports that plainly as a failed case
-  rather than skipping it silently; and `subscribe`'s SSE mode has no
+  a bare/fresh target, this command reports the specific cases that need
+  that seeded state as skip rather than a false-alarm fail (it has no way
+  to tell "not seeded to match" from "the target regressed"); and `subscribe`'s SSE mode has no
   transcript at all, only its long-poll fallback — `disposition_test.go`'s own
   `TestSubscribeSSEDropAndResumeReplaysExactlyMissedEvents` remains SSE's
   authoritative coverage. DISPOSITION v1 is also exercised by

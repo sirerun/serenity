@@ -70,6 +70,18 @@ var bootFixedNow = time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
 // protocol Handlers registration -- the same env shape
 // gen_transcripts.go's own disposition/direction generators use, adapted
 // to close over *testing.T instead of log.Fatal.
+//
+// This is each package's real, sole, production registration path, not a
+// parallel test-only one: newBootDispositionServer/newBootDirectionServer
+// call h.Register(s) below, the exact same *serverdisposition.Handlers /
+// *serverdirection.Handlers method a future `serve.go` wiring would call
+// once these two protocols are mounted onto a live daemon -- both packages'
+// own doc comments confirm that wiring doesn't exist in production yet
+// (only `serve --http`'s MEMORY_VERBS mount does today). So this test boots
+// the real thing disposition/direction ship, on a real TCP loopback listener
+// (*internal/server.Server, bearer-token authenticated per RFC 0001 section
+// 14), ahead of that wiring landing -- it is not simulating or mocking the
+// registration Register itself performs.
 type bootServer struct {
 	base   string
 	token  string
