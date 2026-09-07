@@ -363,43 +363,53 @@ Root cause (which specific test or git invocation writes `core.bare`) not
 isolated; see L-0007's caution about unconfirmed root-cause theories
 before attempting a code fix.
 
-## L-0011: `eval-runner -mode live`'s pass/fail verdict against the P>=0.90/R>=0.80 bar is not reproducible run-to-run unless temperature is pinned
+## L-0011: `eval-runner -mode live` has real run-to-run sampling variance against a 4-span-per-family held-out split; a temperature=0 pin was added on principle but does NOT reliably fix it -- correcting this entry's own first draft
 
-**Tags:** #eval #router #model #gotcha
+**Tags:** #eval #router #model #gotcha #self-correction
 **Date:** 2026-09-07
 **Repo:** sirerun/serenity
 
 **Rule:** Never treat one `eval-runner -mode live` run's per-family P/R as
-the final word on whether a prompt/guidance change closed a gap, unless
-the provider pins `temperature` (or the run is repeated and stable).
-`cmd/eval-runner`'s own `buildProvider("openai", ...)` now pins
-`ExtraBody: {"temperature": 0}` (T1.29) specifically to close this for
-eval-runner's own scoring; a caller building a raw `OpenAICompatibleProvider`
-directly (a diagnostic script, a different corpus runner) still needs to
-set this itself.
+the final word on whether a prompt/guidance change closed a gap -- rerun
+before concluding a family still fails, and don't assume pinning
+`temperature=0` (`cmd/eval-runner`'s `buildProvider("openai", ...)` does
+this now, T1.29) makes results reproducible: it did not, in a controlled
+same-conditions comparison (below). Kept anyway as sound eval-scoring
+practice (a standard, harmless field, and it can only reduce variance
+from this specific source), not as a proven fix.
 **Why:** `internal/router.OpenAICompatibleProvider.Send` never sent a
-`temperature` field before T1.29, so the request left it to the server's
-own default -- non-zero on the DGX SGLang `qwen3.8-27b` endpoint. Found
-running T1.29's own acc-line re-verification: two live runs against the
-identical 52 held-out ava spans, identical prompt/code, differed only in
-whether `temperature=0` was set, and the P>=0.90/R>=0.80 pass count swung
-from 5/12 to 7/12 target families -- with individual spans flipping
-outcome between runs (one span's predicate misclassified as `prefers`
-instead of `said` in one run, correctly `said` in the next, no code
-change between them). With only 4 held-out spans per family, the bar's
-own math (R>=0.80 requires 4/4 correct; P>=0.90 tolerates near-zero false
-positives) makes this corpus especially sensitive to any residual sampling
-noise -- a single flipped span can move a family from clearing the bar to
-missing it. `"temperature"` is a standard OpenAI chat-completions field
-(unlike `disable_thinking`'s SGLang/vLLM-specific
-`chat_template_kwargs`, T1.31), so it is safe to send unconditionally to
-a real OpenAI/OpenRouter endpoint too -- no opt-in flag needed the way
-T1.31's flag needed one.
-**Trigger:** Any live-eval or diagnostic run against `evals/corpora/ava`
-(or a similarly small held-out split) that reports a family's P/R as
-"still failing" or "now passing" based on a single run without checking
-whether temperature was pinned. Flagged, not fixed: whether pinning
-`temperature=0` for real production extraction (`internal/providers`,
-outside eval-runner) would help or hurt has NOT been measured -- that
-needs its own task, this entry documents the eval-scoring-specific gap
-T1.29 closed for `eval-runner` only.
+`temperature` field before T1.29, leaving it to the server's own
+(non-zero) default on the DGX SGLang `qwen3.8-27b` endpoint. This
+entry's own first draft (now corrected) claimed pinning `temperature=0`
+raised the P>=0.90/R>=0.80 pass count from 5/12 to 7/12 target families,
+based on comparing two ad hoc diagnostic runs -- but those two runs also
+differed in `disable_thinking` (T1.31's separate flag: one had thinking
+off, the other had it unset), confounding the comparison. Rerunning the
+REAL `eval-runner -mode live` command twice -- identical code, identical
+production-matching settings (thinking on, i.e. `disable_thinking` never
+set, since `eval-runner` doesn't wire that flag), differing only in the
+temperature pin -- both runs passed the exact same 5 of 12 families
+(`deadline_on`, `has_balance`, `has_role`, `relates_to`, `works_at`);
+individual family P/R shifted a little in both directions
+(`belongs_to_project` R 0.500->0.750, `owns_account` P 0.571->0.500) but
+the pass/fail verdict didn't move for a single family. So under the
+condition that actually matters (production-matching thinking-on calls),
+`temperature=0` measurably changed nothing. The real, uncontested
+finding is just that this corpus's bar is unstable: with only 4 held-out
+spans per family, R>=0.80 requires 4/4 correct and P>=0.90 tolerates
+near-zero false positives, so a single span flipping outcome between
+otherwise-identical runs (observed directly: one predicate
+misclassified as `prefers` instead of `said` in one run, correctly
+`said` in another) can move a family across the bar either direction,
+independent of temperature.
+**Trigger:** Any live-eval run against `evals/corpora/ava` (or a
+similarly small held-out split) reporting a family's P/R as "still
+failing" or "newly passing" based on a single run. Also a caution about
+this entry's own writing process: a two-variable diagnostic comparison
+(here, temperature AND thinking-mode both differed) can look like clean
+evidence for the variable you were testing when it wasn't controlled --
+verified against the real command under matched conditions before this
+was committed, not left as the original (wrong) draft. Whether
+`temperature=0` helps real production extraction (`internal/providers`,
+outside eval-runner, where `disable_thinking` legitimately does vary) is
+separately unmeasured and would need its own task.
