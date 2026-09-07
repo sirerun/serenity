@@ -2,15 +2,16 @@ package cron
 
 import (
 	"context"
-	"github.com/sirerun/serenity/internal/config"
-	"github.com/sirerun/serenity/internal/domain"
-	"github.com/sirerun/serenity/internal/store"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sirerun/serenity/internal/config"
+	"github.com/sirerun/serenity/internal/domain"
+	"github.com/sirerun/serenity/internal/store"
 )
 
 func TestConsolidateRealSweep(t *testing.T) {

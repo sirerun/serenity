@@ -2,12 +2,12 @@ package cron
 
 import (
 	"context"
-	"github.com/sirerun/serenity/internal/config"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/providers"
 )
