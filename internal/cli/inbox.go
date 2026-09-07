@@ -18,6 +18,8 @@ import (
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/reconcile"
+	"github.com/sirerun/serenity/internal/store"
+	"github.com/sirerun/serenity/internal/supersede"
 	"github.com/sirerun/serenity/internal/writer"
 )
 
@@ -87,7 +89,8 @@ type inboxOptions struct {
 // T2.6 built operates on day-granularity thresholds), not a new gap this
 // task introduces.
 func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opts inboxOptions, now time.Time) error {
-	if _, err := config.Load(filepath.Join(root, config.FileName)); err != nil {
+	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	if err != nil {
 		return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
 	}
 	eng, err := providers.OpenIndex(root)
@@ -95,15 +98,33 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 		return err
 	}
 	defer func() { _ = eng.Close() }()
-	store := disposition.NewStore(eng)
+	dispStore := disposition.NewStore(eng)
 
 	switch {
 	case opts.BulkDefer != "":
-		return runBulkDefer(ctx, store, opts.BulkDefer, currentActor(), out, now)
+		return runBulkDefer(ctx, dispStore, opts.BulkDefer, currentActor(), out, now)
 	case opts.Parked:
-		return runListParked(ctx, store, out)
+		return runListParked(ctx, dispStore, out)
 	default:
-		return runInteractive(ctx, store, in, out, currentActor(), now)
+		q := writer.NewQueue(nil)
+		defer q.Close()
+		sw := supersede.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg)
+		if err := runInteractive(ctx, dispStore, sw, in, out, currentActor(), now); err != nil {
+			return err
+		}
+		// One commit per review session (RFC 0001 section 7.7's Flush --
+		// "commits every path the queue has written since the last
+		// Flush"), not one per edit_accept: batching every write-through
+		// this session made into a single commit is Flush's own intended
+		// shape, the same one internal/writer's own tests exercise.
+		committed, ferr := writer.Flush(q, root)
+		if ferr != nil {
+			return fmt.Errorf("inbox: flush: %w", ferr)
+		}
+		if committed {
+			_, _ = fmt.Fprintln(out, "inbox: committed this session's edit_accept write-through(s)")
+		}
+		return nil
 	}
 }
 
@@ -227,8 +248,8 @@ func describeRow(row inboxRow) string {
 // reviewableItems returns every pending or deferred item, oldest first --
 // parked and disposed items are excluded (parked review is --parked's own
 // read-only mode; disposed items are terminal, nothing left to review).
-func reviewableItems(ctx context.Context, store *disposition.Store) ([]disposition.Item, error) {
-	items, err := store.List(ctx)
+func reviewableItems(ctx context.Context, dispStore *disposition.Store) ([]disposition.Item, error) {
+	items, err := dispStore.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("inbox: list items: %w", err)
 	}
@@ -241,14 +262,27 @@ func reviewableItems(ctx context.Context, store *disposition.Store) ([]dispositi
 	return out, nil
 }
 
-// runInteractive drives the j/k/space(/d/r) review loop, reading one raw
+// runInteractive drives the j/k/space(/d/r/e) review loop, reading one raw
 // byte at a time from in so a scripted test can supply exactly the bytes
 // it wants to exercise with no line buffering in between (see newInboxCmd's
 // doc comment for the real-terminal raw-mode disclosure). Unrecognized
 // bytes (a stray newline from a hand-written test script, an unmapped
 // key) are silently ignored rather than erroring.
-func runInteractive(ctx context.Context, store *disposition.Store, in io.Reader, out io.Writer, actor string, now time.Time) error {
-	items, err := reviewableItems(ctx, store)
+//
+// space/d/r dispose the whole current row (accept/defer/reject) without
+// ever touching the brain repo -- exactly T2.5's original behavior,
+// unchanged here. e (edit_accept, T2.7) is the one key that also writes
+// through sw to the canonical brain repo (internal/supersede's tier-
+// dispatching Apply, T2.3), because unlike a plain accept an edited value
+// has no earlier write anywhere to fall back on. Wiring space's own
+// accept to also write through sw is a disclosed, deliberately separate
+// gap this task does not close: internal/supersede's Apply has had no
+// real caller at all until this task, and folding that wiring into T2.7
+// silently would go beyond edit_accept, this task's own acc line, and
+// this session's established practice of disclosing rather than
+// silently absorbing adjacent gaps.
+func runInteractive(ctx context.Context, dispStore *disposition.Store, sw *supersede.Writer, in io.Reader, out io.Writer, actor string, now time.Time) error {
+	items, err := reviewableItems(ctx, dispStore)
 	if err != nil {
 		return err
 	}
@@ -281,6 +315,23 @@ func runInteractive(ctx context.Context, store *disposition.Store, in io.Reader,
 		_, _ = fmt.Fprintf(out, "[%d/%d] %s\n", i+1, len(rows), describeRow(row))
 	}
 	printRow(cursor)
+
+	// advance removes the just-disposed row under the cursor, moves the
+	// cursor onto a still-valid row (or reports done and signals the
+	// caller to return), and reprints -- the one piece of bookkeeping
+	// every disposing key (space/d/r/e) shares.
+	advance := func() (done bool) {
+		rows = append(rows[:cursor], rows[cursor+1:]...)
+		if len(rows) == 0 {
+			_, _ = fmt.Fprintln(out, "inbox: done")
+			return true
+		}
+		if cursor >= len(rows) {
+			cursor = len(rows) - 1
+		}
+		printRow(cursor)
+		return false
+	}
 
 	for {
 		b, err := r.ReadByte()
@@ -326,21 +377,64 @@ func runInteractive(ctx context.Context, store *disposition.Store, in io.Reader,
 			}
 			row := rows[cursor]
 			for _, it := range row.Items {
-				res, err := store.Dispose(ctx, it.ID, verdict, nil, note, actor, "", now)
+				res, err := dispStore.Dispose(ctx, it.ID, verdict, nil, note, actor, "", now)
 				if err != nil {
 					return fmt.Errorf("inbox: dispose %s: %w", it.ID, err)
 				}
 				_, _ = fmt.Fprintf(out, "disposed %s verdict=%s\n", it.ID, res.Item.Verdict)
 			}
-			rows = append(rows[:cursor], rows[cursor+1:]...)
-			if len(rows) == 0 {
-				_, _ = fmt.Fprintln(out, "inbox: done")
+			if advance() {
 				return nil
 			}
-			if cursor >= len(rows) {
-				cursor = len(rows) - 1
+
+		case 'e':
+			// edit_accept (T2.7): only defined for a single ungrouped
+			// KindReconcile row -- "which edited value" is per-item
+			// information a human supplies one item at a time, and no
+			// current producer groups reconcile items in the first place
+			// (internal/reconcile.Engine.Process always stages with an
+			// empty GroupID), so fanning one edit across several group
+			// members has no real caller to motivate guessing at it.
+			row := rows[cursor]
+			if len(row.Items) != 1 || row.Items[0].Kind != disposition.KindReconcile {
+				_, _ = fmt.Fprintln(out, "inbox: e (edit_accept) only works on a single ungrouped reconcile item")
+				continue
 			}
-			printRow(cursor)
+			it := row.Items[0]
+			var payload reconcile.ReconcilePayload
+			if err := json.Unmarshal(it.Payload, &payload); err != nil {
+				return fmt.Errorf("inbox: decode reconcile payload for edit: %w", err)
+			}
+			_, _ = fmt.Fprintf(out, "edit object (was %q), type the replacement then Enter: ", payload.A.Object)
+			line, rerr := r.ReadString('\n')
+			if rerr != nil && rerr != io.EOF {
+				return fmt.Errorf("inbox: read edit value: %w", rerr)
+			}
+			newObject := strings.TrimSpace(line)
+			if newObject == "" {
+				_, _ = fmt.Fprintln(out, "inbox: empty edit, item left pending")
+				continue
+			}
+			edited := payload.A
+			edited.Object = newObject
+			edited.Confidence = 1.0 // a direct human assertion, maximally trusted
+			editedRaw, err := json.Marshal(edited)
+			if err != nil {
+				return fmt.Errorf("inbox: marshal edited claim: %w", err)
+			}
+			res, err := dispStore.Dispose(ctx, it.ID, disposition.VerdictEditAccept, editedRaw, "", actor, "", now)
+			if err != nil {
+				return fmt.Errorf("inbox: dispose %s: %w", it.ID, err)
+			}
+			_, _ = fmt.Fprintf(out, "disposed %s verdict=%s\n", it.ID, res.Item.Verdict)
+			applyRes, err := sw.ApplyDisposedReconcile(ctx, dispStore, res.Item, now)
+			if err != nil {
+				return fmt.Errorf("inbox: apply %s: %w", it.ID, err)
+			}
+			_, _ = fmt.Fprintf(out, "applied %s -> claim written to brain repo (tier=%s)\n", it.ID, applyRes.Tier)
+			if advance() {
+				return nil
+			}
 		}
 	}
 }
@@ -356,12 +450,12 @@ var errUnsupportedBulkDeferFilter = errors.New("inbox: unsupported bulk-defer fi
 // line, verbatim): grouping plays no role here, unlike the interactive
 // loop -- a group with only one member matching the filter defers only
 // that member, not its groupmates.
-func runBulkDefer(ctx context.Context, store *disposition.Store, filter, actor string, out io.Writer, now time.Time) error {
+func runBulkDefer(ctx context.Context, dispStore *disposition.Store, filter, actor string, out io.Writer, now time.Time) error {
 	key, value, ok := strings.Cut(filter, "=")
 	if !ok || key != "family" || value == "" {
 		return fmt.Errorf(`%w: %q (only "family=<value>" is supported)`, errUnsupportedBulkDeferFilter, filter)
 	}
-	items, err := reviewableItems(ctx, store)
+	items, err := reviewableItems(ctx, dispStore)
 	if err != nil {
 		return err
 	}
@@ -371,7 +465,7 @@ func runBulkDefer(ctx context.Context, store *disposition.Store, filter, actor s
 		if !hasFam || fam != value {
 			continue
 		}
-		if _, err := store.Dispose(ctx, it.ID, disposition.VerdictDefer, nil, "", actor, "", now); err != nil {
+		if _, err := dispStore.Dispose(ctx, it.ID, disposition.VerdictDefer, nil, "", actor, "", now); err != nil {
 			return fmt.Errorf("inbox: bulk-defer: dispose %s: %w", it.ID, err)
 		}
 		n++
@@ -387,8 +481,8 @@ func runBulkDefer(ctx context.Context, store *disposition.Store, filter, actor s
 // this listing is not required by this task's acc line ("--parked lists
 // parked items only") and is left to a caller invoking Resurface directly,
 // or a later task.
-func runListParked(ctx context.Context, store *disposition.Store, out io.Writer) error {
-	items, err := store.List(ctx)
+func runListParked(ctx context.Context, dispStore *disposition.Store, out io.Writer) error {
+	items, err := dispStore.List(ctx)
 	if err != nil {
 		return fmt.Errorf("inbox: list parked: %w", err)
 	}

@@ -5,22 +5,30 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/reconcile"
+	"github.com/sirerun/serenity/internal/store"
+	"github.com/sirerun/serenity/internal/supersede"
+	"github.com/sirerun/serenity/internal/writer"
 )
 
 var inboxFixedNow = time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
 
 // openInboxTestStore opens a real disposition.Store over a real brain
 // repo's derived index (initBrainRepo/providers.OpenIndex -- the same
-// path runInbox itself takes), not a synthetic double.
-func openInboxTestStore(t *testing.T) *disposition.Store {
+// path runInbox itself takes), not a synthetic double. It also returns
+// root -- callers that need to build a *supersede.Writer (T2.7's 'e' key)
+// or seed real fence/shard fixtures use it; callers that don't may
+// discard it with `_`.
+func openInboxTestStore(t *testing.T) (*disposition.Store, string) {
 	t.Helper()
 	root := initBrainRepo(t)
 	eng, err := providers.OpenIndex(root)
@@ -28,14 +36,29 @@ func openInboxTestStore(t *testing.T) *disposition.Store {
 		t.Fatalf("OpenIndex: %v", err)
 	}
 	t.Cleanup(func() { _ = eng.Close() })
-	return disposition.NewStore(eng)
+	return disposition.NewStore(eng), root
+}
+
+// newTestSupersedeWriter builds a *supersede.Writer over root the same
+// way runInbox itself does (T2.7): a fresh writer.Queue, a FenceWriter
+// and ShardStore rooted at root, and root's own loaded serenity.yml for
+// tier assignment.
+func newTestSupersedeWriter(t *testing.T, root string) *supersede.Writer {
+	t.Helper()
+	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	if err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	q := writer.NewQueue(nil)
+	t.Cleanup(q.Close)
+	return supersede.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg)
 }
 
 // seedReconcileItem stages one KindReconcile item shaped exactly like
 // internal/reconcile.Engine.Process's own output (T2.2): both claims
 // share (subject, predicate), and Family carries the value inbox.go's
 // itemFamily/bulk-defer filtering reads.
-func seedReconcileItem(t *testing.T, store *disposition.Store, ctx context.Context, now time.Time, subject, predicate, aObject, bObject, groupID string) disposition.Item {
+func seedReconcileItem(t *testing.T, dispStore *disposition.Store, ctx context.Context, now time.Time, subject, predicate, aObject, bObject, groupID string) disposition.Item {
 	t.Helper()
 	a := domain.Claim{
 		ID: "a-" + subject + "-" + predicate + "-" + aObject, SubjectSlug: subject,
@@ -49,7 +72,7 @@ func seedReconcileItem(t *testing.T, store *disposition.Store, ctx context.Conte
 	if err != nil {
 		t.Fatalf("marshal ReconcilePayload: %v", err)
 	}
-	item, err := store.Create(ctx, disposition.KindReconcile, payload, groupID, now)
+	item, err := dispStore.Create(ctx, disposition.KindReconcile, payload, groupID, now)
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -64,22 +87,23 @@ func seedReconcileItem(t *testing.T, store *disposition.Store, ctx context.Conte
 // once (landing back on the group row) before disposing with space, so
 // j, k, and space are all genuinely exercised, not just j+space.
 func TestInboxInteractiveDrivesJKSpaceRecordsOneDispositionPerGroupMember(t *testing.T) {
-	store := openInboxTestStore(t)
+	dispStore, root := openInboxTestStore(t)
+	sw := newTestSupersedeWriter(t, root)
 	ctx := context.Background()
 
-	untouchedBefore := seedReconcileItem(t, store, ctx, inboxFixedNow, "alice-tan", "works_at", "acme-corp", "initech", "")
-	groupA := seedReconcileItem(t, store, ctx, inboxFixedNow, "acme-corp", "has_balance", "$700", "$500", "g1")
-	groupB := seedReconcileItem(t, store, ctx, inboxFixedNow, "acme-corp", "has_balance", "$900", "$500", "g1")
-	untouchedAfter := seedReconcileItem(t, store, ctx, inboxFixedNow, "bob-lee", "works_at", "globex", "initrode", "")
+	untouchedBefore := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "alice-tan", "works_at", "acme-corp", "initech", "")
+	groupA := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "acme-corp", "has_balance", "$700", "$500", "g1")
+	groupB := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "acme-corp", "has_balance", "$900", "$500", "g1")
+	untouchedAfter := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "bob-lee", "works_at", "globex", "initrode", "")
 
 	var out bytes.Buffer
 	in := strings.NewReader("jjk ") // down to group row, down to last row, back up to group row, dispose
-	if err := runInteractive(ctx, store, in, &out, "human:test", inboxFixedNow); err != nil {
+	if err := runInteractive(ctx, dispStore, sw, in, &out, "human:test", inboxFixedNow); err != nil {
 		t.Fatalf("runInteractive: %v", err)
 	}
 
 	for _, id := range []string{groupA.ID, groupB.ID} {
-		got, err := store.Get(ctx, id)
+		got, err := dispStore.Get(ctx, id)
 		if err != nil {
 			t.Fatalf("Get %s: %v", id, err)
 		}
@@ -89,7 +113,7 @@ func TestInboxInteractiveDrivesJKSpaceRecordsOneDispositionPerGroupMember(t *tes
 		if got.Verdict != disposition.VerdictAccept {
 			t.Errorf("group member %s Verdict = %q, want accept", id, got.Verdict)
 		}
-		hist, err := store.HistoryFor(ctx, id)
+		hist, err := dispStore.HistoryFor(ctx, id)
 		if err != nil {
 			t.Fatalf("HistoryFor %s: %v", id, err)
 		}
@@ -99,7 +123,7 @@ func TestInboxInteractiveDrivesJKSpaceRecordsOneDispositionPerGroupMember(t *tes
 	}
 
 	for _, id := range []string{untouchedBefore.ID, untouchedAfter.ID} {
-		got, err := store.Get(ctx, id)
+		got, err := dispStore.Get(ctx, id)
 		if err != nil {
 			t.Fatalf("Get %s: %v", id, err)
 		}
@@ -117,16 +141,17 @@ func TestInboxInteractiveDrivesJKSpaceRecordsOneDispositionPerGroupMember(t *tes
 // degenerate "group" case (GroupID == "", a singleton) -- "one disposition
 // per group member" trivially holding for a group of one.
 func TestInboxInteractiveGroupOfOneRecordsExactlyOneDisposition(t *testing.T) {
-	store := openInboxTestStore(t)
+	dispStore, root := openInboxTestStore(t)
+	sw := newTestSupersedeWriter(t, root)
 	ctx := context.Background()
 
-	item := seedReconcileItem(t, store, ctx, inboxFixedNow, "carol-diaz", "works_at", "umbrella", "oscorp", "")
+	item := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "carol-diaz", "works_at", "umbrella", "oscorp", "")
 
 	var out bytes.Buffer
-	if err := runInteractive(ctx, store, strings.NewReader(" "), &out, "human:test", inboxFixedNow); err != nil {
+	if err := runInteractive(ctx, dispStore, sw, strings.NewReader(" "), &out, "human:test", inboxFixedNow); err != nil {
 		t.Fatalf("runInteractive: %v", err)
 	}
-	got, err := store.Get(ctx, item.ID)
+	got, err := dispStore.Get(ctx, item.ID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -144,20 +169,20 @@ func TestInboxInteractiveGroupOfOneRecordsExactlyOneDisposition(t *testing.T) {
 // loop): two ungrouped has_balance items are seeded alongside an
 // unrelated works_at item, and only the two matching items move.
 func TestBulkDeferDefersExactlyMatchingItems(t *testing.T) {
-	store := openInboxTestStore(t)
+	dispStore, _ := openInboxTestStore(t)
 	ctx := context.Background()
 
-	match1 := seedReconcileItem(t, store, ctx, inboxFixedNow, "acme-corp", "has_balance", "$700", "$500", "")
-	match2 := seedReconcileItem(t, store, ctx, inboxFixedNow, "globex", "has_balance", "$300", "$200", "")
-	other := seedReconcileItem(t, store, ctx, inboxFixedNow, "alice-tan", "works_at", "acme-corp", "initech", "")
+	match1 := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "acme-corp", "has_balance", "$700", "$500", "")
+	match2 := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "globex", "has_balance", "$300", "$200", "")
+	other := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "alice-tan", "works_at", "acme-corp", "initech", "")
 
 	var out bytes.Buffer
-	if err := runBulkDefer(ctx, store, "family=has_balance", "human:test", &out, inboxFixedNow); err != nil {
+	if err := runBulkDefer(ctx, dispStore, "family=has_balance", "human:test", &out, inboxFixedNow); err != nil {
 		t.Fatalf("runBulkDefer: %v", err)
 	}
 
 	for _, id := range []string{match1.ID, match2.ID} {
-		got, err := store.Get(ctx, id)
+		got, err := dispStore.Get(ctx, id)
 		if err != nil {
 			t.Fatalf("Get %s: %v", id, err)
 		}
@@ -166,7 +191,7 @@ func TestBulkDeferDefersExactlyMatchingItems(t *testing.T) {
 		}
 	}
 
-	gotOther, err := store.Get(ctx, other.ID)
+	gotOther, err := dispStore.Get(ctx, other.ID)
 	if err != nil {
 		t.Fatalf("Get other: %v", err)
 	}
@@ -180,11 +205,11 @@ func TestBulkDeferDefersExactlyMatchingItems(t *testing.T) {
 }
 
 func TestBulkDeferRejectsUnsupportedFilterKey(t *testing.T) {
-	store := openInboxTestStore(t)
+	dispStore, _ := openInboxTestStore(t)
 	ctx := context.Background()
 
 	var out bytes.Buffer
-	err := runBulkDefer(ctx, store, "kind=reconcile", "human:test", &out, inboxFixedNow)
+	err := runBulkDefer(ctx, dispStore, "kind=reconcile", "human:test", &out, inboxFixedNow)
 	if !errors.Is(err, errUnsupportedBulkDeferFilter) {
 		t.Fatalf("err = %v, want errUnsupportedBulkDeferFilter", err)
 	}
@@ -196,20 +221,20 @@ func TestBulkDeferRejectsUnsupportedFilterKey(t *testing.T) {
 // pending->deferred->deferred->parked), exactly how a real item would get
 // there; a second, freshly-created item stays pending and must not appear.
 func TestListParkedListsParkedItemsOnly(t *testing.T) {
-	store := openInboxTestStore(t)
+	dispStore, _ := openInboxTestStore(t)
 	ctx := context.Background()
 
-	toPark := seedReconcileItem(t, store, ctx, inboxFixedNow, "dave-kim", "has_balance", "$100", "$50", "")
+	toPark := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "dave-kim", "has_balance", "$100", "$50", "")
 
 	thresholds := disposition.Thresholds{disposition.KindReconcile: time.Minute}
 	now := inboxFixedNow
 	for i := 0; i < disposition.MaxDeferCycles; i++ {
 		now = now.Add(2 * time.Minute)
-		if _, err := disposition.Sweep(ctx, store, thresholds, now); err != nil {
+		if _, err := disposition.Sweep(ctx, dispStore, thresholds, now); err != nil {
 			t.Fatalf("Sweep: %v", err)
 		}
 	}
-	gotParked, err := store.Get(ctx, toPark.ID)
+	gotParked, err := dispStore.Get(ctx, toPark.ID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
@@ -219,10 +244,10 @@ func TestListParkedListsParkedItemsOnly(t *testing.T) {
 
 	// Freshly created at the sweep's own final "now" -- not yet threshold-old,
 	// so it stays pending and must never show up in a parked-only listing.
-	stillPending := seedReconcileItem(t, store, ctx, now, "carol-diaz", "works_at", "umbrella", "oscorp", "")
+	stillPending := seedReconcileItem(t, dispStore, ctx, now, "carol-diaz", "works_at", "umbrella", "oscorp", "")
 
 	var out bytes.Buffer
-	if err := runListParked(ctx, store, &out); err != nil {
+	if err := runListParked(ctx, dispStore, &out); err != nil {
 		t.Fatalf("runListParked: %v", err)
 	}
 	if !strings.Contains(out.String(), "has_balance") {
@@ -234,14 +259,83 @@ func TestListParkedListsParkedItemsOnly(t *testing.T) {
 }
 
 func TestListParkedReportsNoneWhenEmpty(t *testing.T) {
-	store := openInboxTestStore(t)
+	dispStore, _ := openInboxTestStore(t)
 	ctx := context.Background()
 
 	var out bytes.Buffer
-	if err := runListParked(ctx, store, &out); err != nil {
+	if err := runListParked(ctx, dispStore, &out); err != nil {
 		t.Fatalf("runListParked: %v", err)
 	}
 	if !strings.Contains(out.String(), "no parked items") {
 		t.Fatalf("expected an explicit empty-state message, got: %q", out.String())
+	}
+}
+
+// TestInboxInteractiveEKeyEditAcceptWritesThroughToBrainRepo is T2.7's
+// CLI-level acc-line check: the new 'e' key drives edit_accept through
+// runInteractive's own scripted-TTY loop exactly like T2.5's j/k/space
+// test does for accept/defer/reject, and the resulting write-through
+// lands on disk via internal/supersede -- not just recorded in the
+// disposition queue.
+func TestInboxInteractiveEKeyEditAcceptWritesThroughToBrainRepo(t *testing.T) {
+	dispStore, root := openInboxTestStore(t)
+	sw := newTestSupersedeWriter(t, root)
+	ctx := context.Background()
+
+	// Seed B on disk exactly as it must already exist for a fence-tier
+	// apply (internal/supersede.Writer's own applyFence precondition) --
+	// same subject/predicate/object seedReconcileItem below uses, so its
+	// derived b.ID lands on the very row Apply looks for.
+	b := domain.Claim{
+		ID: "b-alice-tan-works_at-initech", SubjectSlug: "alice-tan",
+		Predicate: "works_at", Object: "initech", Family: "works_at", State: domain.StateActive,
+	}
+	fw := store.NewFenceWriter(root)
+	page := store.NewEntityPage(domain.Entity{Type: "topic", Slug: "alice-tan"})
+	page.Claims = []domain.Claim{b}
+	if _, err := fw.WriteEntity(page); err != nil {
+		t.Fatalf("seed entity page: %v", err)
+	}
+
+	item := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "alice-tan", "works_at", "acme-corp", "initech", "")
+
+	var out bytes.Buffer
+	// 'e', then the replacement object, then Enter -- runInteractive's
+	// own 'e' case reads exactly this shape (see its doc comment).
+	in := strings.NewReader("eglobex-corp\n")
+	if err := runInteractive(ctx, dispStore, sw, in, &out, "human:test", inboxFixedNow); err != nil {
+		t.Fatalf("runInteractive: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "verdict=edit_accept") {
+		t.Fatalf("expected a disposed/edit_accept line, got: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "-> claim written to brain repo") {
+		t.Fatalf("expected an applied/write-through line, got: %q", out.String())
+	}
+
+	got, err := dispStore.Get(ctx, item.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.State != disposition.StateDisposed || got.Verdict != disposition.VerdictEditAccept {
+		t.Fatalf("item State=%q Verdict=%q, want disposed/edit_accept", got.State, got.Verdict)
+	}
+	if got.AppliedClaimID == "" {
+		t.Fatal("AppliedClaimID empty after a successful 'e' apply -- the disposition row must reference the new claim id")
+	}
+
+	p, err := fw.ParseEntity(fw.PathFor("topic", "alice-tan"))
+	if err != nil {
+		t.Fatalf("ParseEntity: %v", err)
+	}
+	var found bool
+	for _, c := range p.Claims {
+		if c.ID == got.AppliedClaimID && c.State == domain.StateActive && c.Object == "globex-corp" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("edited object %q not found as the active row referenced by AppliedClaimID on the fence page: %+v", "globex-corp", p.Claims)
 	}
 }
