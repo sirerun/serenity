@@ -133,7 +133,7 @@ func TestStatusGoldenOutput(t *testing.T) {
 		"connector  git-repo:demo status=running lag=never\n" +
 		"connector  imap:jane@example.com status=failed lag=45m0s\n" +
 		"jobs       total=4 running=1 succeeded=2 failed=1 interrupted=0\n" +
-		"spend      calls=2 cost_usd=$0.1255\n" +
+		"spend      calls=2 cost_usd=$0.1255 month_to_date=$0.1255 projected_month=$0.1389 ceiling=$50.00\n" +
 		"rebuild    last=10m0s ago took=250ms\n"
 
 	if out.String() != want {
@@ -164,7 +164,7 @@ func TestStatusFreshBrainNoJobsNoRebuild(t *testing.T) {
 	for _, want := range []string{
 		"connector  none configured (no jobs recorded yet)\n",
 		"jobs       total=0 running=0 succeeded=0 failed=0 interrupted=0\n",
-		"spend      calls=0 cost_usd=$0.0000\n",
+		"spend      calls=0 cost_usd=$0.0000 month_to_date=$0.0000 projected_month=$0.0000 ceiling=$50.00\n",
 		"rebuild    never (run `serenity sync`)\n",
 	} {
 		if !bytes.Contains(out.Bytes(), []byte(want)) {

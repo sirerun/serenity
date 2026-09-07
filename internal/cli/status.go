@@ -15,6 +15,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/index"
+	"github.com/sirerun/serenity/internal/spend"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -61,11 +62,11 @@ func runStatus(ctx context.Context, root string, out io.Writer, now time.Time) e
 	printConnectorHealth(out, jobs, now)
 	printJobsDepth(out, jobs)
 
-	spend, err := eng.SpendRows(ctx)
+	spendRows, err := eng.SpendRows(ctx)
 	if err != nil {
 		return fmt.Errorf("status: read spend: %w", err)
 	}
-	printSpend(out, spend)
+	printSpend(out, spendRows, now)
 
 	if err := printRebuildTiming(ctx, out, eng, now); err != nil {
 		return err
@@ -155,15 +156,21 @@ func printJobsDepth(out io.Writer, jobs []index.Job) {
 		len(jobs), running, succeeded, failed, interrupted)
 }
 
-// printSpend reports spend to date (RFC section 16 "spend/day and
-// projected month" -- T1.17 scopes this to the running total the spend
-// ledger holds; per-day/projected-month rollups are a later milestone).
-func printSpend(out io.Writer, rows []index.SpendRow) {
+// printSpend reports spend to date plus RFC section 16's "spend/day and
+// projected month" (T4.10, internal/spend.ProjectMonth): month-to-date
+// spend and a linear projection of the current calendar month's total
+// against the (currently un-YAML-configurable, see internal/spend's own
+// doc) default monthly ceiling. all-time cost_usd/calls is preserved
+// unchanged from T1.17's original scope; month_to_date/projected_month
+// are the new fields this task adds.
+func printSpend(out io.Writer, rows []index.SpendRow, now time.Time) {
 	var totalCost float64
 	for _, r := range rows {
 		totalCost += r.CostUSD
 	}
-	_, _ = fmt.Fprintf(out, "spend      calls=%d cost_usd=$%.4f\n", len(rows), totalCost)
+	proj := spend.ProjectMonth(rows, spend.DefaultConfig().MonthlyCeilingUSD, now)
+	_, _ = fmt.Fprintf(out, "spend      calls=%d cost_usd=$%.4f month_to_date=$%.4f projected_month=$%.4f ceiling=$%.2f\n",
+		len(rows), totalCost, proj.MonthToDateUSD, proj.ProjectedUSD, proj.CeilingUSD)
 }
 
 // printRebuildTiming reports the most recent Rebuild's duration and age
