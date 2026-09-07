@@ -133,6 +133,15 @@ type Config struct {
 	Now func() time.Time
 }
 
+// RecallFloor is T1.32's pass/fail rule (chief's disposition ruling on
+// T1.29, statistical floor set by chief-architect): a family counts as
+// passing when its bootstrap recall confidence interval's LOWER bound
+// clears this floor, not when a single-draw point estimate clears the
+// old 0.80 bar. Precision is still reported (Report.Families,
+// Report.PrecisionCI) but no longer gates pass/fail under this rule --
+// see docs/plans/E1-m1-ingest.md T1.29's disposition note and T1.32.
+const RecallFloor = 0.70
+
 // ContradictionSection reports contradiction-detection recall, or
 // explains why it isn't reported (see package doc).
 type ContradictionSection struct {
@@ -159,6 +168,17 @@ type Report struct {
 	Spend         *SpendSection         `json:"spend,omitempty"`
 	SpansScored   int                   `json:"spans_scored"`
 	SpansSkipped  int                   `json:"spans_skipped_on_budget,omitempty"`
+	// RecallCI and PrecisionCI are T1.32's bootstrap confidence intervals
+	// per family, built from the same per-unit matching that produced
+	// Families -- Families itself is unchanged (still the plain point
+	// estimate) so any existing consumer of the old shape keeps working.
+	RecallCI    map[string]eval.BootstrapCI `json:"recall_ci,omitempty"`
+	PrecisionCI map[string]eval.BootstrapCI `json:"precision_ci,omitempty"`
+	// RecallFloorPassed is T1.32's literal pass/fail rule per family:
+	// true only when RecallCI[family].Lower >= RecallFloor. A family
+	// absent from this map had zero held-out scored units (an empty
+	// bootstrap, no floor to clear).
+	RecallFloorPassed map[string]bool `json:"recall_floor_passed,omitempty"`
 	// Direction is plan T3.16's DIRECTION eval section, present whenever
 	// Config.DirectionCorpusDir was set.
 	Direction *direction.Report `json:"direction,omitempty"`
@@ -247,7 +267,17 @@ func Run(ctx context.Context, cfg Config) (Report, error) {
 		return Report{}, fmt.Errorf("runner: unknown mode %q", cfg.Mode)
 	}
 
-	report.Families = eval.Score(heldOut, predictions)
+	scored := eval.ScoreWithCI(heldOut, predictions, eval.DefaultBootstrapOptions())
+	report.Families = make(map[string]eval.PRF1, len(scored))
+	report.RecallCI = make(map[string]eval.BootstrapCI, len(scored))
+	report.PrecisionCI = make(map[string]eval.BootstrapCI, len(scored))
+	report.RecallFloorPassed = make(map[string]bool, len(scored))
+	for family, fs := range scored {
+		report.Families[family] = fs.PRF1
+		report.RecallCI[family] = fs.RecallCI
+		report.PrecisionCI[family] = fs.PrecisionCI
+		report.RecallFloorPassed[family] = fs.RecallCI.N > 0 && fs.RecallCI.Lower >= RecallFloor
+	}
 
 	if cfg.DirectionCorpusDir != "" {
 		if cfg.Mode != ModeCached {

@@ -140,6 +140,79 @@ func TestRunCachedScoresFixtureAgainstHeldOut(t *testing.T) {
 	}
 }
 
+// TestRunCachedReportsBootstrapCIAndRecallFloor is T1.32's own acc line
+// wired end to end through Run: RecallCI/PrecisionCI/RecallFloorPassed
+// are populated alongside the unchanged Families point estimates, and
+// RecallFloorPassed reads exactly "RecallCI[family].Lower >= RecallFloor"
+// -- reusing TestRunCachedScoresFixtureAgainstHeldOut's exact fixture (1
+// TP, 1 wrong-object miss, 1 total miss) so the two tests' Families
+// assertions stay in sync by construction.
+func TestRunCachedReportsBootstrapCIAndRecallFloor(t *testing.T) {
+	corpus := buildTinyCorpus(t)
+
+	fixture := struct {
+		Predictions []eval.Prediction `yaml:"predictions"`
+	}{Predictions: []eval.Prediction{
+		{Span: "Ava works at Acme.", Predicate: "works_at", Object: "acme"},          // TP -- recall outcome [true], n=1
+		{Span: "Ava is a Staff Engineer.", Predicate: "has_role", Object: "manager"}, // FN has_role -- recall outcome [false], n=1
+		// "Ava prefers tea." gets no prediction: FN prefers -- recall outcome [false], n=1.
+	}}
+	fb, err := yaml.Marshal(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixturePath := filepath.Join(t.TempDir(), "predictions.yaml")
+	if err := os.WriteFile(fixturePath, fb, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(context.Background(), Config{
+		CorpusDir:   corpus,
+		Mode:        ModeCached,
+		FixturePath: fixturePath,
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	for _, family := range []string{"works_at", "has_role", "prefers"} {
+		ci, ok := report.RecallCI[family]
+		if !ok {
+			t.Fatalf("RecallCI missing family %q", family)
+		}
+		if ci.N != 1 {
+			t.Errorf("RecallCI[%q].N = %d, want 1 (one held-out label)", family, ci.N)
+		}
+		wantPoint := report.Families[family].Recall
+		if ci.Point != wantPoint {
+			t.Errorf("RecallCI[%q].Point = %v, want %v (must match Families' plain recall)", family, ci.Point, wantPoint)
+		}
+		wantPassed := ci.Lower >= RecallFloor
+		if got := report.RecallFloorPassed[family]; got != wantPassed {
+			t.Errorf("RecallFloorPassed[%q] = %v, want %v (RecallCI.Lower=%v RecallFloor=%v)", family, got, wantPassed, ci.Lower, RecallFloor)
+		}
+	}
+
+	// works_at recalled its one held-out label (n=1, always-true outcome
+	// vector): every bootstrap resample is also all-true, so Lower==1,
+	// clearing the floor.
+	if !report.RecallFloorPassed["works_at"] {
+		t.Errorf("RecallFloorPassed[works_at] = false, want true (single held-out label, recalled)")
+	}
+	// has_role and prefers each missed their one held-out label (n=1,
+	// always-false outcome vector): Lower==0, missing the floor.
+	if report.RecallFloorPassed["has_role"] {
+		t.Errorf("RecallFloorPassed[has_role] = true, want false (single held-out label, missed)")
+	}
+	if report.RecallFloorPassed["prefers"] {
+		t.Errorf("RecallFloorPassed[prefers] = true, want false (single held-out label, missed)")
+	}
+
+	if _, ok := report.PrecisionCI["works_at"]; !ok {
+		t.Error("PrecisionCI missing family \"works_at\"")
+	}
+}
+
 func TestRunCachedFailsOnTamperedCorpus(t *testing.T) {
 	corpus := buildTinyCorpus(t)
 	// Tamper with a label file without updating the manifest.

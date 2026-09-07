@@ -187,6 +187,20 @@ func printSummary(r runner.Report) {
 	for _, f := range families {
 		s := r.Families[f]
 		fmt.Printf("  %-24s P=%.3f R=%.3f F1=%.3f (tp=%d fp=%d fn=%d)\n", f, s.Precision, s.Recall, s.F1, s.TP, s.FP, s.FN)
+		// T1.32: the bootstrap recall CI and its pass/fail verdict against
+		// runner.RecallFloor -- the point estimate line above is kept
+		// exactly as before (T1.29 and earlier tooling still read it), this
+		// is an additive second line, printed only when Run computed a CI
+		// (always true for a real corpus scoring run; a caller building a
+		// bare runner.Report by hand, e.g. in a test, may leave it nil).
+		if ci, ok := r.RecallCI[f]; ok {
+			verdict := "FAIL"
+			if r.RecallFloorPassed[f] {
+				verdict = "PASS"
+			}
+			fmt.Printf("      recall_ci=[%.3f,%.3f] n=%d (%.0f%% CI) floor=%.2f %s\n",
+				ci.Lower, ci.Upper, ci.N, ci.Level*100, runner.RecallFloor, verdict)
+		}
 	}
 
 	if r.Spend != nil {
