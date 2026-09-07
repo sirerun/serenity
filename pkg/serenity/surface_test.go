@@ -114,12 +114,15 @@ func TestGoDocListsExactlyTheReadSurface(t *testing.T) {
 	sort.Strings(got)
 
 	want := []string{
+		"func (b *Brain) Brief(ctx context.Context, budget Budget) (Brief, error)",
 		"func (b *Brain) CheckPlan(ctx context.Context, actions []Action) (Verdict, error)",
 		"func (b *Brain) Recall(ctx context.Context, q string, budget Budget) (RecallResult, error)",
 		"func Open(brainPath string, opts ...Option) (*Brain, error)",
 		"type Action struct",
 		"type Answer struct",
 		"type Brain struct",
+		"type Brief struct",
+		"type BriefSection struct",
 		"type Budget struct",
 		"type Citation struct",
 		"type Constraint struct",

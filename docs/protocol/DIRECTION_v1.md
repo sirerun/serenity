@@ -164,6 +164,26 @@ Error codes:
 | `invalid_payload` | 400 | `propose`'s `payload` is missing, empty, or fails kind-specific validation. |
 | `internal_error` | 500 | An unclassified internal failure (e.g. a ledger read failure, a malformed `applies_when` clause on an active constraint). |
 
+## Consumer surfaces
+
+`pkg/serenity` (T4.18/T4.19) is a read-only, in-process embedding of this
+protocol for consumers that run Serenity's read paths without going over
+the wire — `docs/adr/012-embedded-read-facade-single-writer.md`.
+`(*Brain).CheckPlan` and `(*Brain).Brief` are thin wrappers that call
+exactly the functions this document's `check_plan` and `brief` handlers
+call (`internal/direction/check.ToWire`, the same converter `serenity
+check --json` uses; `internal/server/direction.Handlers.BuildBrief`, the
+same function `handleBrief` calls) — no separate implementation exists
+for either operation to drift from. `pkg/serenity` is a consumer surface
+bound by ADR 012 §5's protocol_version policy: it may only track this
+document's own additive-forever evolution, never diverge from it or move
+ahead of it. `pkg/serenity/drift_test.go` proves the binding directly: it
+replays every case in `testdata/conformance/direction/brief.json` and
+`check_plan.json` (the frozen T4.13 transcript corpus this document's own
+Governance section names below) through the facade and asserts a
+byte-for-byte match, on normalized JSON, against this wire's own recorded
+output.
+
 ## Governance
 
 - **Who arbitrates changes:** the maintainer, via a public RFC in this
@@ -211,6 +231,6 @@ Error codes:
   contract this document elaborates.
 - `docs/protocol/MEMORY_VERBS_v1.md`, `docs/protocol/DISPOSITION_v1.md` —
   Serenity's other two protocols, under the same governance model.
-- `docs/adr/012-embedded-read-facade-single-writer.md` — how Sire consumes
-  `check_plan` and `brief` in-process through `pkg/serenity`, bound by the
-  same protocol_version policy as this wire.
+- `docs/adr/012-embedded-read-facade-single-writer.md` — the decision
+  behind `pkg/serenity`, this document's "Consumer surfaces" section
+  above.

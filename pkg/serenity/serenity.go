@@ -3,23 +3,29 @@
 // over the wire (ADR 012, docs/adr/012-embedded-read-facade-single-writer.md).
 //
 // The facade adds no logic. Each method calls exactly the internal function
-// the corresponding CLI verb calls, with the same arguments, and a drift
-// test (drift_test.go) deep-equals CheckPlan against `serenity check --json
-// --actions` so the two surfaces cannot diverge silently (RFC 0001 §13.1:
-// no privileged internal path). Every handle is read-only: Open builds its
-// ledger with no writer queue, so every ledger mutator errors
-// (direction.ErrReadOnly) rather than writing, and no writer entry point is
-// exported -- writes to a brain stay with the one brain-writer process
-// (the Serenity daemon or CLI, ADR 004), reached over the wire.
+// the corresponding CLI verb (or, for Brief, the DIRECTION v1 HTTP handler
+// itself) calls, with the same arguments, and a drift test (drift_test.go)
+// deep-equals CheckPlan against `serenity check --json --actions` and Brief
+// against DIRECTION v1's own `/direction/brief` wire object -- over every
+// case in testdata/conformance/direction/, T4.13's frozen transcript corpus
+// -- so the surfaces cannot diverge silently (RFC 0001 §13.1: no privileged
+// internal path). Every handle is read-only: Open builds its ledger with no
+// writer queue, so every ledger mutator errors (direction.ErrReadOnly)
+// rather than writing, and no writer entry point is exported -- writes to a
+// brain stay with the one brain-writer process (the Serenity daemon or CLI,
+// ADR 004), reached over the wire.
 //
 // This package is a consumer surface bound by the protocol_version policy
 // of ADR 012 §5 and RFC 0001 §8: field names and semantics are frozen once
 // shipped, changes are additive and optional, and a breaking change is a
-// new package path. Brief lands in T4.19 (docs/plans/E4-m4-serve-protocols.md).
+// new package path. See also docs/protocol/DIRECTION_v1.md's own
+// "Consumer surfaces" note, which records this same binding from the wire
+// document's side.
 package serenity
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -31,6 +37,7 @@ import (
 	"github.com/sirerun/serenity/internal/embed"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/search"
+	serverdirection "github.com/sirerun/serenity/internal/server/direction"
 )
 
 // Option configures Open. No Option values ship at T4.18; the parameter
@@ -131,13 +138,68 @@ func (b *Brain) CheckPlan(ctx context.Context, actions []Action) (Verdict, error
 	return v, nil
 }
 
+// Brief builds DIRECTION v1's brief object exactly as `POST
+// /direction/brief` does: internal/server/direction.Handlers.BuildBrief
+// over the read-only ledger handle Open built and the brain repo root,
+// with no separate implementation and no logic of its own -- Brief calls
+// the identical function the HTTP handler calls (T4.9's own "CLI and
+// protocol surfaces are thin wrappers over one engine" precedent,
+// extended here to a third, in-process surface). The disposition store
+// BuildBrief's constructor accepts is never touched by brief (only
+// propose writes to it), so a nil store is passed -- Brief never
+// proposes anything.
+func (b *Brain) Brief(ctx context.Context, budget Budget) (Brief, error) {
+	h := serverdirection.New(b.store, nil, b.root)
+	data, err := h.BuildBrief(ctx, budget.TaskHint, budget.TokenBudget)
+	if err != nil {
+		return Brief{}, fmt.Errorf("serenity: brief: %w", err)
+	}
+	var out Brief
+	if err := json.Unmarshal(data, &out); err != nil {
+		return Brief{}, fmt.Errorf("serenity: brief: decode: %w", err)
+	}
+	return out, nil
+}
+
+// BriefSection is one packed section of a Brief (RFC 0001 §12's four
+// fixed sections, in priority order: precepts, intents, entities,
+// questions): its rendered items when the section fit within the
+// caller's TokenBudget, or Omitted > 0 when the whole section was
+// dropped instead. Items and Omitted are mutually exclusive -- a section
+// is never both partly included and marked omitted -- mirroring
+// internal/server/direction.BriefSectionWire's own invariant, which this
+// type is a byte-identical copy of.
+type BriefSection struct {
+	Name    string   `json:"name"`
+	Items   []string `json:"items"`
+	Omitted int      `json:"omitted"`
+}
+
+// Brief is DIRECTION v1's brief wire object (RFC 0001 §12), byte-for-byte
+// what `POST /direction/brief` returns: the four fixed sections plus the
+// name of the estimator that governed how TokenBudget was spent.
+// BudgetEstimator is always "words" today (internal/briefing.WordEstimator,
+// a disclosed word-count approximation of tokens, not a real tokenizer).
+type Brief struct {
+	BudgetEstimator string         `json:"budget_estimator"`
+	Sections        []BriefSection `json:"sections"`
+}
+
 // defaultMaxResults is `serenity search`'s --limit default.
 const defaultMaxResults = 10
 
-// Budget bounds one Recall. MaxResults caps the ranked hits (the
-// `serenity search --limit` value); zero means the CLI default, 10.
+// Budget bounds one Recall or Brief call. MaxResults caps Recall's ranked
+// hits (the `serenity search --limit` value); zero means the CLI
+// default, 10. TaskHint and TokenBudget are Brief's own DIRECTION v1 §12
+// parameters ("brief(task_hint?, token_budget)"): TaskHint optionally
+// steers Brief's entities-section ranking (empty falls back to
+// most-recent-claim recency), and TokenBudget bounds how much of each
+// section Brief packs before dropping the rest whole (Brief's own
+// BudgetEstimator field names the unit that governs it).
 type Budget struct {
-	MaxResults int `json:"max_results"`
+	MaxResults  int    `json:"max_results"`
+	TaskHint    string `json:"task_hint,omitempty"`
+	TokenBudget int    `json:"token_budget,omitempty"`
 }
 
 // Hit is one ranked, deduplicated search result: internal/search.Result's
