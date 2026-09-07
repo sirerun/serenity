@@ -7,13 +7,19 @@
 // asks for: per-family precision/recall/F1 on the corpus's held-out
 // split, plus a contradiction-detection section.
 //
-// Contradiction detection has no production implementation yet: T1.9's
-// acc line explicitly deferred semantic reconciliation (including
-// contradiction detection) to E2. Report.Contradiction therefore always
-// carries a "not_implemented" status rather than a fabricated recall
-// number -- there is no detector anywhere in this codebase for Run to
-// call, and reporting a manufactured 0 or 1 here would misrepresent a
-// capability gap as a measurement.
+// Contradiction detection against THIS package's primary corpus (ava, an
+// extraction-accuracy corpus of golden (span, predicate, object) facts)
+// has no golden claim-pair fixtures to score a detector against, so
+// Report.Contradiction always carries a "not_implemented" status rather
+// than a fabricated recall number here -- T1.9's acc line deferred
+// semantic reconciliation to E2, and even now that E2 has landed a real
+// detector (internal/reconcile.Detect, T2.2), nothing in the ava corpus's
+// own (span, predicate, object) label shape represents a pair of claims
+// that should or shouldn't contradict. Plan T2.18 measures that detector
+// for real, but against its own dedicated corpus (evals/corpora/reconcile)
+// with its own golden verdict labels -- see Report.Reconcile below, which
+// carries a genuine (not placeholder) contradiction-detection recall
+// number, populated whenever Config.ReconcileCorpusDir is set.
 //
 // Plan T3.16 layers a second, independent corpus onto the same Run/Report
 // shape: Config.DirectionCorpusDir scores the DIRECTION plan-check corpus
@@ -21,6 +27,14 @@
 // Report.Direction alongside the primary corpus's Families -- one
 // evals/report.json, two corpora, reusing the ModeCached fixture
 // convention rather than a second reporting pipeline.
+//
+// Plan T2.18 layers a third, independent corpus the same way:
+// Config.ReconcileCorpusDir scores the reconcile eval corpus
+// (evals/corpora/reconcile) via internal/eval/reconcile.Score, attaching
+// the result as Report.Reconcile. Unlike Direction, this corpus needs no
+// cached predictions fixture and no ModeCached restriction: internal/
+// reconcile.Detect is a pure deterministic function (T2.2's own doc), so
+// Score calls the real production function directly in every mode.
 package runner
 
 import (
@@ -31,6 +45,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/eval"
 	"github.com/sirerun/serenity/internal/eval/direction"
+	reconcileeval "github.com/sirerun/serenity/internal/eval/reconcile"
 	"github.com/sirerun/serenity/internal/extract"
 	"github.com/sirerun/serenity/internal/extract/chunk"
 	"github.com/sirerun/serenity/internal/router"
@@ -106,6 +121,14 @@ type Config struct {
 	// fixture, required whenever DirectionCorpusDir is set.
 	DirectionFixturePath string
 
+	// ReconcileCorpusDir, when set, additionally scores plan T2.18's
+	// reconcile eval corpus (evals/corpora/reconcile) and attaches the
+	// result as Report.Reconcile -- independent of the primary corpus and
+	// of DirectionCorpusDir. No fixture path is needed (see the package
+	// doc): internal/reconcile.Detect is called directly, in every Mode,
+	// since it needs no model and produces no cost.
+	ReconcileCorpusDir string
+
 	// Now stubs time.Now for deterministic tests; nil means time.Now.
 	Now func() time.Time
 }
@@ -139,6 +162,10 @@ type Report struct {
 	// Direction is plan T3.16's DIRECTION eval section, present whenever
 	// Config.DirectionCorpusDir was set.
 	Direction *direction.Report `json:"direction,omitempty"`
+	// Reconcile is plan T2.18's reconcile eval section (verdict confusion
+	// matrix + a real, non-placeholder contradiction-detection recall),
+	// present whenever Config.ReconcileCorpusDir was set.
+	Reconcile *reconcileeval.Report `json:"reconcile,omitempty"`
 }
 
 // notImplementedContradiction is the honest placeholder every Report
@@ -233,6 +260,14 @@ func Run(ctx context.Context, cfg Config) (Report, error) {
 		report.Direction = &dirReport
 	}
 
+	if cfg.ReconcileCorpusDir != "" {
+		reconcileReport, err := scoreReconcile(cfg.ReconcileCorpusDir)
+		if err != nil {
+			return Report{}, err
+		}
+		report.Reconcile = &reconcileReport
+	}
+
 	return report, nil
 }
 
@@ -264,6 +299,29 @@ func scoreDirection(corpusDir, fixturePath string) (direction.Report, error) {
 	}
 
 	return direction.Score(rows, predictions)
+}
+
+// scoreReconcile loads plan T2.18's reconcile eval corpus and scores it
+// directly against the real production internal/reconcile.Detect. Its
+// checksum manifest lives inside labels/ itself
+// (reconcileeval.ManifestName), the same convention scoreDirection's own
+// comment names for the DIRECTION corpus.
+func scoreReconcile(corpusDir string) (reconcileeval.Report, error) {
+	labelsDir := filepath.Join(corpusDir, labelsSubdir)
+	manifestPath := filepath.Join(labelsDir, reconcileeval.ManifestName)
+	if err := eval.VerifyManifest(labelsDir, manifestPath); err != nil {
+		return reconcileeval.Report{}, fmt.Errorf("runner: reconcile corpus %s failed manifest verification: %w", corpusDir, err)
+	}
+
+	rows, err := reconcileeval.LoadRows(labelsDir)
+	if err != nil {
+		return reconcileeval.Report{}, err
+	}
+	if len(rows) == 0 {
+		return reconcileeval.Report{}, fmt.Errorf("runner: reconcile corpus %s has zero rows", corpusDir)
+	}
+
+	return reconcileeval.Score(rows)
 }
 
 // runLive extracts one Prediction set per held-out label by calling

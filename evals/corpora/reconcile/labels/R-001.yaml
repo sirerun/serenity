@@ -1,0 +1,16 @@
+id: R-001
+new_claim:
+  id: claim-a
+  subject: acme-corp
+  predicate: has_balance
+  object: "$700"
+active:
+  - id: claim-b
+    subject: acme-corp
+    predicate: has_balance
+    object: "$500"
+expected_verdict: conflict
+rationale: >
+  Same (subject, predicate), differing objects, no scope or determinable
+  validity window on either side -- the textbook contradiction RFC 0001
+  section 10.2 names, matching T2.2's own acc-line fixture.

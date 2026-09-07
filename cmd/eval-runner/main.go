@@ -42,6 +42,7 @@ func run(args []string) error {
 	fixture := fs.String("fixture", "evals/fixtures/ava-cached-predictions.yaml", "ModeCached: predictions fixture path")
 	directionCorpus := fs.String("direction-corpus", "", "plan T3.16: additionally score this DIRECTION corpus (e.g. evals/corpora/direction), attaching a Direction section; empty skips it")
 	directionFixture := fs.String("direction-fixture", "evals/fixtures/direction-cached-predictions.yaml", "-direction-corpus: cached direction.Prediction fixture path (mode cached only, no live DIRECTION classifier exists yet)")
+	reconcileCorpus := fs.String("reconcile-corpus", "", "plan T2.18: additionally score this reconcile corpus (e.g. evals/corpora/reconcile) against the real internal/reconcile.Detect, attaching a Reconcile section; empty skips it")
 	out := fs.String("out", "evals/report.json", "report output path")
 	providerName := fs.String("provider", "anthropic", "ModeLive: anthropic | openai")
 	model := fs.String("model", "claude-haiku-4-5-20251001", "ModeLive: model identifier")
@@ -65,6 +66,9 @@ func run(args []string) error {
 	if *directionCorpus != "" {
 		cfg.DirectionCorpusDir = *directionCorpus
 		cfg.DirectionFixturePath = *directionFixture
+	}
+	if *reconcileCorpus != "" {
+		cfg.ReconcileCorpusDir = *reconcileCorpus
 	}
 
 	if cfg.Mode == runner.ModeLive {
@@ -216,6 +220,23 @@ func printSummary(r runner.Report) {
 				fmt.Printf("    %-24s %-26s P=%.3f R=%.3f F1=%.3f (tp=%d fp=%d fn=%d)\n",
 					domain, v, s.Precision, s.Recall, s.F1, s.TP, s.FP, s.FN)
 			}
+		}
+	}
+
+	if rc := r.Reconcile; rc != nil {
+		fmt.Printf("  reconcile: rows_scored=%d contradiction P=%.3f R=%.3f F1=%.3f (tp=%d fp=%d fn=%d)\n",
+			rc.RowsScored, rc.Contradiction.Precision, rc.Contradiction.Recall, rc.Contradiction.F1,
+			rc.Contradiction.TP, rc.Contradiction.FP, rc.Contradiction.FN)
+
+		verdicts := make([]string, 0, len(rc.VerdictConfusion))
+		for v := range rc.VerdictConfusion {
+			verdicts = append(verdicts, v)
+		}
+		sort.Strings(verdicts)
+		for _, v := range verdicts {
+			s := rc.VerdictConfusion[v]
+			fmt.Printf("    %-24s P=%.3f R=%.3f F1=%.3f (tp=%d fp=%d fn=%d)\n",
+				v, s.Precision, s.Recall, s.F1, s.TP, s.FP, s.FN)
 		}
 	}
 }

@@ -1,0 +1,15 @@
+id: R-012
+new_claim:
+  id: claim-a
+  subject: kim-santos
+  predicate: deadline_on
+  object: "2026-03-15"
+  valid_from: "2026-01-10"
+active:
+  - id: claim-b
+    subject: kim-santos
+    predicate: deadline_on
+    object: "2026-02-01"
+    valid_from: "2025-11-01"
+expected_verdict: window_close
+rationale: A revised deadline with two determinable, distinct valid_from dates.

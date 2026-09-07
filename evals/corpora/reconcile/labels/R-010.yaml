@@ -1,0 +1,15 @@
+id: R-010
+new_claim:
+  id: claim-a
+  subject: jack-nolan
+  predicate: committed_to
+  object: "budget sign-off (project: apollo)"
+active:
+  - id: claim-b
+    subject: jack-nolan
+    predicate: committed_to
+    object: "budget sign-off (project: zeus)"
+expected_verdict: scoped
+rationale: >
+  Same scope qualifier convention, parenthetical form -- both project
+  identifiers are distinct and explicit.

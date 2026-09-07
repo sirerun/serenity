@@ -1,0 +1,16 @@
+id: R-008
+new_claim:
+  id: claim-a
+  subject: henry-park
+  predicate: prefers
+  object: coffee
+active:
+  - id: claim-b
+    subject: henry-park
+    predicate: has_role
+    object: designer
+expected_verdict: neutral_additive
+rationale: >
+  An active claim exists for this subject, but on a different predicate --
+  Candidates only matches on (subject, predicate), so this is neutral, not
+  a candidate pair at all.

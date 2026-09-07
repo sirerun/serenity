@@ -1,0 +1,18 @@
+id: R-011
+new_claim:
+  id: claim-a
+  subject: alice-tan
+  predicate: works_at
+  object: acme-corp
+  valid_from: "2025-06-01"
+active:
+  - id: claim-b
+    subject: alice-tan
+    predicate: works_at
+    object: initech
+    valid_from: "2023-01-01"
+expected_verdict: window_close
+rationale: >
+  Both claims carry a determinable, distinct validity window in the
+  canonical YYYY-MM-DD layout Detect's parseValidFrom actually parses --
+  a temporal-supersession proposal, not a flat contradiction.

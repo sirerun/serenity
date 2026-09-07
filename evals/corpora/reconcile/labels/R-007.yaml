@@ -1,0 +1,9 @@
+id: R-007
+new_claim:
+  id: claim-a
+  subject: grace-lin
+  predicate: prefers
+  object: coffee
+active: []
+expected_verdict: neutral_additive
+rationale: No active claims at all for this subject -- nothing to agree or conflict with.

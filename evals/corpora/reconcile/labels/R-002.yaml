@@ -1,0 +1,15 @@
+id: R-002
+new_claim:
+  id: claim-a
+  subject: bob-lee
+  predicate: has_role
+  object: manager
+active:
+  - id: claim-b
+    subject: bob-lee
+    predicate: has_role
+    object: engineer
+expected_verdict: conflict
+rationale: >
+  A role change with no valid_from on either claim -- nothing distinguishes
+  a temporal supersession from a flat contradiction, so conflict is correct.

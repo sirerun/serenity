@@ -1,0 +1,15 @@
+id: R-006
+new_claim:
+  id: claim-a
+  subject: frank-nu
+  predicate: works_at
+  object: "Acme  Corp"
+active:
+  - id: claim-b
+    subject: frank-nu
+    predicate: works_at
+    object: acme corp
+expected_verdict: agree
+rationale: >
+  Casing and whitespace differ but store.NormalizeKey folds both to the
+  same ObjectKey -- corroboration must not depend on exact string casing.

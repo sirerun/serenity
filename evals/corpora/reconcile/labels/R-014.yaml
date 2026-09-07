@@ -1,0 +1,30 @@
+id: R-014
+new_claim:
+  id: claim-a
+  subject: alice-tan
+  predicate: works_at
+  object: acme-corp
+  valid_from: "2025-06-01T00:00:00Z"
+active:
+  - id: claim-b
+    subject: alice-tan
+    predicate: works_at
+    object: initech
+    valid_from: "2023-01-01T00:00:00Z"
+expected_verdict: window_close
+rationale: >
+  DELIBERATELY MISCLASSIFIED (T2.18's own acc-line fixture, not a labeling
+  mistake): this is the same job-change scenario as R-011, but valid_from
+  is written in RFC3339 (with a time-of-day and "Z" suffix) rather than
+  internal/reconcile's own validDateLayout ("2006-01-02", calendar-day
+  only). parseValidFrom's time.Parse call rejects this format outright, so
+  Detect never reaches the temporal branch and falls through to
+  VerdictConflict instead of VerdictWindowClose -- a real, currently-
+  existing gap: nothing upstream of internal/reconcile normalizes
+  ValidFrom to one canonical layout before Detect sees it, and no
+  production writer in this codebase currently populates ValidFrom with a
+  time component (internal/ingest's ClaimFromObservation leaves it empty
+  entirely), so this exact failure mode has not yet been observed against
+  real data -- but it is real, reproducible, and this eval reports it
+  honestly as report.VerdictConfusion["window_close"].FN == 1 rather than
+  omitting or working around it.
