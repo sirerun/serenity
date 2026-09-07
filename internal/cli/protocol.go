@@ -39,6 +39,7 @@ func newProtocolCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "machine-readable JSON output (every object's full schema)")
+	cmd.AddCommand(newProtocolConformanceCmd())
 	return cmd
 }
 
