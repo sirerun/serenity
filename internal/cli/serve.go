@@ -14,7 +14,6 @@ import (
 
 	"github.com/sirerun/serenity/internal/compose"
 	"github.com/sirerun/serenity/internal/config"
-	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/embed"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/server/mcp"
@@ -106,7 +105,16 @@ func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, error
 	if err != nil {
 		return nil, nil, fmt.Errorf("serve: open index: %w", err)
 	}
-	closeDeps := func() error { return eng.Close() }
+	// The writer queue is this daemon's own owned resource (memory-compat-
+	// mapping.md coordinator refinement #2: "stdio serve must close its
+	// owned queue") -- closed alongside the index on shutdown, never left
+	// running past Serve's own return.
+	q := writer.NewQueue(nil)
+	closeDeps := func() error {
+		q.Close()
+		_, flushErr := writer.Flush(q, root)
+		return errors.Join(flushErr, eng.Close())
+	}
 
 	ledger := &providers.IndexSpendLedger{Eng: eng}
 
@@ -133,8 +141,8 @@ func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, error
 		Composer:                composer,
 		ComposerModelVersion:    cfg.Models.Composer,
 		ComposerUnavailableNote: composerNote,
-		Disposition:             disposition.NewStore(eng),
-		Queue:                   writer.NewQueue(nil),
+		Queue:                   q,
+		Sources:                 store.NewSourceStore(root),
 		Fence:                   store.NewFenceWriter(root),
 		Shard:                   store.NewShardStore(root),
 	}

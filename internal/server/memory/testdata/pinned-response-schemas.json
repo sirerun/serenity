@@ -1,0 +1,512 @@
+{
+  "responses": {
+    "recall": {
+      "type": "object",
+      "required": [
+        "facts",
+        "total",
+        "protocol_version"
+      ],
+      "properties": {
+        "protocol_version": {
+          "type": "integer",
+          "const": 1
+        },
+        "total": {
+          "type": "integer"
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "fact",
+              "kind",
+              "fact_id",
+              "provenance"
+            ],
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "LEGACY numeric id (pre-v1 consumers). Use fact_id."
+              },
+              "fact_id": {
+                "type": "string",
+                "description": "Opaque protocol id — the value forget accepts."
+              },
+              "fact": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "event",
+                  "preference",
+                  "commitment",
+                  "belief",
+                  "fact"
+                ]
+              },
+              "entity_slug": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "provenance": {
+                "type": "string"
+              },
+              "valid_until": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "visibility": {
+                "type": "string",
+                "enum": [
+                  "private",
+                  "world"
+                ]
+              }
+            }
+          }
+        },
+        "results": {
+          "type": "array",
+          "description": "Search arm — present only when `query` was passed.",
+          "items": {
+            "type": "object",
+            "required": [
+              "slug",
+              "title",
+              "evidence",
+              "create_safety",
+              "provenance"
+            ],
+            "properties": {
+              "slug": {
+                "type": "string"
+              },
+              "title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "chunk": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "evidence": {
+                "type": "string",
+                "enum": [
+                  "alias_hit",
+                  "exact_title_match",
+                  "high_vector_match",
+                  "keyword_exact",
+                  "weak_semantic"
+                ]
+              },
+              "create_safety": {
+                "type": "string",
+                "enum": [
+                  "exists",
+                  "probable",
+                  "unknown"
+                ]
+              },
+              "provenance": {
+                "type": "string",
+                "description": "Origin page slug."
+              }
+            }
+          }
+        },
+        "search_degraded": {
+          "type": "string",
+          "description": "Present when the search arm fell back to keyword-only (no embedding provider)."
+        },
+        "budget_tokens": {
+          "type": "integer",
+          "description": "Present when budget_tokens was passed."
+        },
+        "budget_used": {
+          "type": "integer"
+        },
+        "dropped_count": {
+          "type": "integer"
+        }
+      }
+    },
+    "remember": {
+      "type": "object",
+      "required": [
+        "id",
+        "status",
+        "status_text",
+        "entity_slug",
+        "valid_until",
+        "protocol_version"
+      ],
+      "properties": {
+        "protocol_version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "description": "Opaque fact id. On status=duplicate this is the EXISTING fact's id."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "inserted",
+            "duplicate",
+            "superseded"
+          ],
+          "description": "Branch on THIS, never on status_text."
+        },
+        "status_text": {
+          "type": "string",
+          "description": "Human rendering of status. Display only — never branch on it."
+        },
+        "entity_slug": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "valid_until": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "ISO 8601 or null (never expires)."
+        },
+        "degraded_dedup": {
+          "type": "boolean",
+          "description": "Present (true) when no embedding provider — near-duplicates may insert."
+        }
+      }
+    },
+    "entity": {
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "found",
+        "latency_ms"
+      ],
+      "properties": {
+        "protocol_version": {
+          "type": "integer",
+          "const": 1
+        },
+        "found": {
+          "type": "boolean"
+        },
+        "latency_ms": {
+          "type": "integer"
+        },
+        "card": {
+          "type": "object",
+          "required": [
+            "entity",
+            "aka",
+            "summary",
+            "last_touched",
+            "open_threads",
+            "edges",
+            "backlink_count",
+            "active_fact_count"
+          ],
+          "properties": {
+            "entity": {
+              "type": "object",
+              "required": [
+                "slug",
+                "title",
+                "type"
+              ],
+              "properties": {
+                "slug": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "aka": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "summary": {
+              "type": "string"
+            },
+            "last_touched": {
+              "type": "object",
+              "required": [
+                "updated_at",
+                "last_retrieved_at",
+                "last_timeline_date"
+              ],
+              "properties": {
+                "updated_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "last_retrieved_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "last_timeline_date": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            "open_threads": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "text",
+                  "date"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "commitment",
+                      "recent_event"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "edges": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "direction",
+                  "slug"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string"
+                  },
+                  "direction": {
+                    "type": "string",
+                    "enum": [
+                      "out",
+                      "in"
+                    ]
+                  },
+                  "slug": {
+                    "type": "string"
+                  },
+                  "context": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            },
+            "backlink_count": {
+              "type": "integer"
+            },
+            "active_fact_count": {
+              "type": "integer"
+            }
+          }
+        },
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "slug",
+              "title",
+              "create_safety"
+            ],
+            "properties": {
+              "slug": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "create_safety": {
+                "type": "string",
+                "enum": [
+                  "exists",
+                  "probable",
+                  "unknown"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "synthesize": {
+      "type": "object",
+      "required": [
+        "answer",
+        "sources",
+        "cost",
+        "protocol_version"
+      ],
+      "properties": {
+        "protocol_version": {
+          "type": "integer",
+          "const": 1
+        },
+        "answer": {
+          "type": "string"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cost": {
+          "type": "object",
+          "required": [
+            "model",
+            "input_tokens",
+            "output_tokens",
+            "usd_estimate"
+          ],
+          "description": "Best-effort aggregate (retries/multi-call flows sum; cache hits may undercount). Honest signal, not an invoice.",
+          "properties": {
+            "model": {
+              "type": "string"
+            },
+            "input_tokens": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "output_tokens": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "usd_estimate": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "forget": {
+      "type": "object",
+      "required": [
+        "id",
+        "expired",
+        "reason",
+        "protocol_version"
+      ],
+      "properties": {
+        "protocol_version": {
+          "type": "integer",
+          "const": 1
+        },
+        "id": {
+          "type": "string"
+        },
+        "expired": {
+          "type": "boolean",
+          "description": "true = this call expired the fact; false = it was ALREADY expired (idempotent re-forget)."
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "error": {
+    "type": "object",
+    "required": [
+      "error",
+      "message"
+    ],
+    "properties": {
+      "error": {
+        "type": "string",
+        "enum": [
+          "invalid_params",
+          "provenance_required",
+          "not_found",
+          "scope_denied",
+          "unavailable",
+          "budget_unsatisfiable",
+          "internal"
+        ]
+      },
+      "message": {
+        "type": "string"
+      },
+      "suggestion": {
+        "type": "string",
+        "description": "Populated on every verb error: problem + cause + fix."
+      },
+      "detail": {
+        "type": "string",
+        "description": "Freeform specifics (e.g. which dependency failed)."
+      },
+      "protocol_version": {
+        "type": "integer",
+        "const": 1
+      }
+    }
+  }
+}

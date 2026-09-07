@@ -1,8 +1,12 @@
 package writer
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -20,42 +24,80 @@ import (
 // writes, but a resubmitted identical write still marks the path
 // touched).
 func Flush(q *Queue, root string) (committed bool, err error) {
+	q.runMu.Lock()
+	defer q.runMu.Unlock()
 	paths := q.takeTouched()
 	if len(paths) == 0 {
 		return false, nil
 	}
+	defer func() {
+		if err != nil {
+			for _, path := range paths {
+				q.MarkTouched(path)
+			}
+		}
+	}()
+	return commitPaths(root, paths, fmt.Sprintf("serenity: sync %d file(s)", len(paths)))
+}
 
-	// Paths are fed to `git add --pathspec-from-file=-` over stdin, one
-	// per line, rather than appended to argv (`git add -- path1 path2
-	// ...`): argv has an OS-enforced ceiling (ARG_MAX) that a single
-	// sync of a real mailbox blows straight through -- reproduced during
-	// T1.23's real Gmail ingest (11,087 new sources in one sync => 2
-	// paths each => "fork/exec /usr/bin/git: argument list too long",
-	// the whole sync aborting with every new source's bytes already
-	// safely written to disk by SourceStore.Write but never committed).
-	// Reading pathspecs from stdin has no such limit regardless of how
-	// many paths one Flush touches. Every path this package ever queues
-	// is a plain content-addressed store path (sha256 dirs, "meta.yaml",
-	// "bytes", brain/ fence and shard files) -- none can contain a
-	// newline, so newline-delimited is safe without the NUL-delimited
-	// (`--pathspec-file-nul`) variant.
-	if out, err := runGitStdin(root, strings.Join(paths, "\n"), "add", "--pathspec-from-file=-"); err != nil {
+// commitPaths commits only the queue's exact files, preserving unrelated staged
+// changes as well as unstaged edits. NUL pathspecs avoid argv limits and quoting.
+func commitPaths(root string, paths []string, message string) (bool, error) {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false, err
+	}
+	owned := make(map[string]bool, len(paths))
+	rels := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if !filepath.IsAbs(path) {
+			// Writers may return paths prefixed with a relative brain root;
+			// callers may also supply paths relative to the brain itself.
+			fromCWD, err := filepath.Abs(path)
+			if err != nil {
+				return false, err
+			}
+			within, err := filepath.Rel(absRoot, fromCWD)
+			if err == nil && within != ".." && !strings.HasPrefix(within, ".."+string(filepath.Separator)) {
+				path = fromCWD
+			} else {
+				path = filepath.Join(absRoot, path)
+			}
+		}
+		rel, err := filepath.Rel(absRoot, path)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return false, fmt.Errorf("writer: touched path outside brain: %q", path)
+		}
+		info, statErr := os.Lstat(path)
+		if statErr != nil && !errors.Is(statErr, fs.ErrNotExist) {
+			return false, statErr
+		}
+		if statErr == nil && info.IsDir() {
+			return false, fmt.Errorf("writer: touched path must name an exact file: %q", path)
+		}
+		rel = filepath.ToSlash(rel)
+		owned[rel] = true
+		rels = append(rels, rel)
+	}
+	pathspec := strings.Join(rels, "\x00") + "\x00"
+	if out, err := runGitStdin(root, pathspec, "--literal-pathspecs", "add", "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
 		return false, fmt.Errorf("git add: %w: %s", err, out)
 	}
-
-	// git diff --cached --quiet exits 0 when nothing is staged (e.g. the
-	// touched paths ended up unchanged) and 1 when something is -- a
-	// clean way to tell "nothing to commit" from a real command failure.
-	cmd := exec.Command("git", "diff", "--cached", "--quiet")
-	cmd.Dir = root
-	if err := cmd.Run(); err == nil {
-		return false, nil
-	} else if _, isExit := err.(*exec.ExitError); !isExit {
-		return false, fmt.Errorf("git diff --cached: %w", err)
+	staged, err := runGit(root, "diff", "--cached", "--name-only", "-z", "--no-renames")
+	if err != nil {
+		return false, fmt.Errorf("git diff staged paths: %w: %s", err, staged)
 	}
-
-	msg := fmt.Sprintf("serenity: sync %d file(s)", len(paths))
-	if out, err := runGit(root, "commit", "--quiet", "-m", msg); err != nil {
+	changed := false
+	for _, path := range strings.Split(string(staged), "\x00") {
+		if owned[path] {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return false, nil
+	}
+	if out, err := runGitStdin(root, pathspec, "--literal-pathspecs", "commit", "--only", "--quiet", "-m", message, "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
 		return false, fmt.Errorf("git commit: %w: %s", err, out)
 	}
 	return true, nil
@@ -73,20 +115,7 @@ func Flush(q *Queue, root string) (committed bool, err error) {
 // commit represents. A no-op (false, nil), exactly like Flush's, when the
 // path has nothing staged to commit (already clean, or called twice).
 func CommitPath(root, path, message string) (bool, error) {
-	if out, err := runGit(root, "add", "--", path); err != nil {
-		return false, fmt.Errorf("git add: %w: %s", err, out)
-	}
-	cmd := exec.Command("git", "diff", "--cached", "--quiet")
-	cmd.Dir = root
-	if err := cmd.Run(); err == nil {
-		return false, nil
-	} else if _, isExit := err.(*exec.ExitError); !isExit {
-		return false, fmt.Errorf("git diff --cached: %w", err)
-	}
-	if out, err := runGit(root, "commit", "--quiet", "-m", message); err != nil {
-		return false, fmt.Errorf("git commit: %w: %s", err, out)
-	}
-	return true, nil
+	return commitPaths(root, []string{path}, message)
 }
 
 func runGit(root string, args ...string) ([]byte, error) {

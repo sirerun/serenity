@@ -212,7 +212,7 @@ func (s *Server) Serve(ctx context.Context, input io.ReadCloser, output io.Write
 					break
 				}
 				if tool.schema.Validate(args) != nil {
-					reply = success(req.id, Result{Content: []Content{{Type: "text", Text: "Arguments do not match the tool input schema; check tools/list for required fields and types"}}, IsError: true})
+					reply = success(req.id, toolFailure(tool.tool, InvalidArguments))
 					break
 				}
 				if len(calls) >= MaxInFlight {
@@ -246,7 +246,7 @@ func jsonschemaValue(raw json.RawMessage) (any, error) {
 }
 
 func invoke(ctx context.Context, tool Tool, args json.RawMessage) (encoded json.RawMessage) {
-	const failed = `{"content":[{"type":"text","text":"Tool execution failed"}],"isError":true}`
+	failed, _ := json.Marshal(toolFailure(tool, ExecutionFailed))
 	encoded = json.RawMessage(failed)
 	defer func() {
 		if recover() != nil {
@@ -270,4 +270,35 @@ func invoke(ctx context.Context, tool Tool, args json.RawMessage) (encoded json.
 		return encoded
 	}
 	return data
+}
+
+func toolFailure(tool Tool, kind FailureKind) (result Result) {
+	message := "Tool execution failed"
+	if kind == InvalidArguments {
+		message = "Arguments do not match the tool input schema; check tools/list for required fields and types"
+	}
+	fallback := Result{Content: []Content{{Type: "text", Text: message}}, IsError: true}
+	result = fallback
+	defer func() {
+		if recover() != nil {
+			result = fallback
+		}
+	}()
+	if tool.Failure == nil {
+		return result
+	}
+	candidate := tool.Failure(kind)
+	if len(candidate.Content) == 0 {
+		return result
+	}
+	for _, c := range candidate.Content {
+		if c.Type != "text" {
+			return result
+		}
+	}
+	candidate.IsError = true
+	if _, err := json.Marshal(candidate); err != nil {
+		return result
+	}
+	return candidate
 }

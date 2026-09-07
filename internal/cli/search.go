@@ -6,6 +6,10 @@ import (
 	"io"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/sirerun/serenity/internal/index"
+	"github.com/sirerun/serenity/internal/store"
 
 	"github.com/sirerun/serenity/internal/providers"
 
@@ -62,7 +66,16 @@ func searchResults(ctx context.Context, root, query string, limit int) ([]search
 		note = fmt.Sprintf("embedding model %s pinned; live embedding calls land with real extraction wiring (T1.15) -- running full-text-only search", cfg.Models.Embedding)
 	}
 
-	results, err := search.Search(ctx, eng, nil, query, limit, search.Options{})
+	proj, err := store.LoadMemoryProjection(store.NewSourceStore(root))
+	if err != nil {
+		return nil, "", fmt.Errorf("search: source policy: %w", err)
+	}
+	now := time.Now()
+	restricted, err := index.RestrictedSummaryEntities(root, proj, now)
+	if err != nil {
+		return nil, "", fmt.Errorf("search: summary policy: %w", err)
+	}
+	results, err := search.Search(ctx, eng, nil, query, limit, search.Options{Eligible: index.SourceEligibility(proj, false, false, now, restricted)})
 	if err != nil {
 		return nil, "", err
 	}
