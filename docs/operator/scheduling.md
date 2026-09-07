@@ -1,7 +1,7 @@
 # Scheduling: running `serenity cron` on a timer
 
 `serenity cron <job>` (ADR 006, plan T2.19) runs one scheduled job to
-completion and exits: `sweep`, `consolidate`, `decay`, `slo`. Nothing in
+completion and exits: `sweep`, `consolidate`, `decay`, `slo`, `revisit`. Nothing in
 Serenity schedules these on its own — you supply the timer. This page ships
 a launchd unit (macOS) and a systemd timer (Linux) for each job.
 
@@ -13,6 +13,7 @@ a launchd unit (macOS) and a systemd timer (Linux) for each job.
 | `consolidate` | Rebuilds summary fences and re-embeds changed chunks                       | Nightly            |
 | `decay`       | Read-time confidence decay, alias-candidate detection                      | Weekly             |
 | `slo`         | Recomputes queue SLOs (depth, age, time-to-dispose) for `serenity status`  | Every 15–30 min    |
+| `revisit`     | Creates [decision-review cards](revisit.md) for elapsed or changed-claim conditions | Weekly |
 
 Two cron jobs racing on the same brain repo resolve through the dirty-tree
 guard, not a lock file (ADR 006) — run at most one timer per job per brain.
@@ -63,7 +64,7 @@ it and your brain root into the template below, one plist per job.
 </plist>
 ```
 
-Repeat with `consolidate`/`decay`/`slo` in the `Label` and the final
+Repeat with `consolidate`/`decay`/`slo`/`revisit` in the `Label` and the final
 `ProgramArguments` entry — adjust `StartInterval` (seconds) per the table
 above (86400 for nightly, 604800 for weekly).
 
@@ -107,7 +108,7 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-Repeat with `consolidate`/`decay`/`slo` in the filenames, `ExecStart`'s
+Repeat with `consolidate`/`decay`/`slo`/`revisit` in the filenames, `ExecStart`'s
 final argument, and `OnUnitActiveSec` per the table above (`1d` nightly,
 `1w` weekly).
 
