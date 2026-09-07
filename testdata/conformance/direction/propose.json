@@ -1,0 +1,124 @@
+{
+  "protocol": "direction",
+  "operation": "propose",
+  "cases": [
+    {
+      "name": "propose with an unsupported kind returns invalid_kind",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/direction/propose",
+          "request_body": {
+            "kind": "reconcile",
+            "payload": {}
+          },
+          "response": {
+            "status": 400,
+            "body": "{\"error\":\"invalid_kind\",\"message\":\"kind must be one of precept_draft, effect; got \\\"reconcile\\\"\"}\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "propose precept_draft with no alternatives is rejected before anything is staged",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/direction/propose",
+          "request_body": {
+            "kind": "precept_draft",
+            "payload": {
+              "question_id": "",
+              "question": "",
+              "answer": "",
+              "title": "cap monthly spend at $50",
+              "body": "because runaway spend",
+              "alternatives": null
+            }
+          },
+          "response": {
+            "status": 400,
+            "body": "{\"error\":\"invalid_payload\",\"message\":\"precept_draft payload carries no alternatives; propose must seed at least the \\\"do not adopt this\\\" floor\"}\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "propose precept_draft with a title and one alternative creates a pending disposition item (.dira/ is never touched by propose -- see internal/server/direction's own doc comment and test)",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/direction/propose",
+          "request_body": {
+            "kind": "precept_draft",
+            "payload": {
+              "question_id": "qst-0001",
+              "question": "should we cap monthly spend?",
+              "answer": "yes, at $50",
+              "title": "cap monthly spend at $50",
+              "body": "because runaway spend",
+              "alternatives": [
+                {
+                  "option": "no ceiling",
+                  "why_not": "unbounded risk",
+                  "revisit_if": "quarterly review"
+                }
+              ]
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"item_id\":\"93284c8deb61491cf6fa4de22464f2cb\"}\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "propose effect creates a pending disposition item",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/direction/propose",
+          "request_body": {
+            "kind": "effect",
+            "payload": {
+              "row": {
+                "id": "s1",
+                "task_class": "judgment",
+                "tier": "judgment",
+                "provider": "anthropic",
+                "model_version": "claude-x@v1",
+                "input_tokens": 500,
+                "output_tokens": 200,
+                "cost_usd": 1.5,
+                "occurred_at": "2026-09-07T11:00:00Z"
+              },
+              "month_to_date_usd": 40,
+              "ceiling_usd": 50
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"item_id\":\"7e4d8e1b294954be44e7988a7374369c\"}\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "propose with no payload returns invalid_payload",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/direction/propose",
+          "request_body": {
+            "kind": "effect"
+          },
+          "response": {
+            "status": 400,
+            "body": "{\"error\":\"invalid_payload\",\"message\":\"payload is required\"}\n"
+          }
+        }
+      ]
+    }
+  ]
+}
