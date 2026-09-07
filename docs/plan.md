@@ -156,7 +156,7 @@ gap, fixed same day) -- v0.1.0 itself was left untouched, not retagged.
 ### Wave 2a: E2 queue, ladder, sweeps, capture (6 agents)
 - [ ] T2.1 DISPOSITION store `internal/disposition`: items, append-only history, idempotency, already_disposed
 - [ ] T2.10 Ladder policy object `internal/ladder`: config parse with mandatory correlation guards, cell state, promotion, demotion, auto-action logging
-- [ ] T2.12 Decay + weekly sweep `internal/reconcile/decay.go` (read-time decay, alias candidates, low-confidence to distill)
+- [x] T2.12 Decay + weekly sweep `internal/reconcile/decay.go` (read-time decay, alias candidates, low-confidence to distill) (merged PR #78, 2026-09-06)
 - [ ] T2.16 Voice-note connector (transcription via router local-cheap tier)
 - [x] T2.19 (2026-09-06/07, PR #75) `serenity cron <job>` runner with injected clock (sweep, consolidate, decay, slo) + launchd/systemd unit docs
 - [ ] T2.20 Distill queue + `serenity capture <text|audio>` staging
