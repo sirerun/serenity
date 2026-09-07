@@ -401,12 +401,22 @@ func TestExtractDefaultVocabularyMatchesConfigDefault(t *testing.T) {
 }
 
 // TestBuildPromptIncludesFamilyGuidanceForRootCausedFamilies is T1.28's
-// acc-line-adjacent unit test: buildPrompt must render each of the four
-// TP=0 families' worked example (docs/evals/m1-report.md; docs/plans/
-// E1-m1-ingest.md T1.28) inline with its vocabulary bullet, and must not
-// silently drop or misplace the guidance for any of them.
+// (and now T1.29's) acc-line-adjacent unit test: buildPrompt must render
+// every familyGuidance entry -- T1.28's original four TP=0 families plus
+// T1.29's five partially-scoring ones (docs/evals/m1-report.md; docs/plans/
+// E1-m1-ingest.md T1.28/T1.29) -- inline with its own vocabulary bullet,
+// and must not silently drop or misplace the guidance for any of them.
+// The vocabulary list passed to buildPrompt is every guided family plus
+// one unguided control ("works_at", see the Omits test below), not a
+// hardcoded subset of familyGuidance's keys -- so a future new entry added
+// to the map without being added here fails loudly (guidance for a family
+// buildPrompt was never asked to render can't appear in its output) rather
+// than silently passing.
 func TestBuildPromptIncludesFamilyGuidanceForRootCausedFamilies(t *testing.T) {
-	vocab := []string{"committed_to", "costs", "owns_account", "said", "works_at"}
+	vocab := []string{"works_at"}
+	for family := range familyGuidance {
+		vocab = append(vocab, family)
+	}
 	prompt := buildPrompt(vocab, "irrelevant chunk text")
 
 	for family, guidance := range familyGuidance {
