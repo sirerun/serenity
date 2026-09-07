@@ -1,0 +1,37 @@
+site_name: Serenity
+site_description: Durable, reviewable agent memory
+site_url: https://serenity.sire.run
+docs_dir: docs
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.snippets
+nav:
+  - Home: index.md
+  - Quickstart: operator/server.md
+  - Operator:
+      - Server: operator/server.md
+      - MCP: operator/mcp.md
+      - Claude: operator/claude.md
+      - Connectors: operator/connect.md
+      - Scheduling: operator/scheduling.md
+      - Conformance: operator/conformance.md
+      - Threat model: operator/threat-model.md
+  - Connectors:
+      - Overview: connectors/README.md
+      - IMAP: connectors/imap.md
+      - Files: connectors/file.md
+      - Git repositories: connectors/gitrepo.md
+  - Protocols:
+      - MEMORY_VERBS: protocol/MEMORY_VERBS_v1.md
+      - DISPOSITION: protocol/DISPOSITION_v1.md
+      - DIRECTION: protocol/DIRECTION_v1.md
+  - Governance:
+      - RFC 0001: rfc/0001-serenity.md
+      - Threat model source: threat-model.md
