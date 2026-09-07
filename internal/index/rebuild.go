@@ -220,3 +220,64 @@ func ReembedMissing(ctx context.Context, eng *SQLite, embedder Embedder) (embedd
 	}
 	return embedded, nil
 }
+
+// Refresh rebuilds the file-derived projection while retaining vectors only
+// when both the chunk reference and its exact text are unchanged. All model
+// pins are kept separately; deleted or edited chunks lose every old vector.
+// Runtime tables remain untouched, just as in Rebuild. After interruption the
+// projection is disposable and a subsequent refresh/re-embed repairs it.
+func Refresh(ctx context.Context, root string, cfg *config.Config, eng *SQLite) error {
+	chunks, err := eng.AllChunks(ctx)
+	if err != nil {
+		return err
+	}
+	old := make(map[string]string, len(chunks))
+	for _, ch := range chunks {
+		old[ch.ChunkRef] = ch.Text
+	}
+	type savedVector struct {
+		ref, model string
+		blob       []byte
+	}
+	rows, err := eng.db.QueryContext(ctx, `SELECT chunk_ref, model, vec FROM vectors`)
+	if err != nil {
+		return fmt.Errorf("refresh vectors: %w", err)
+	}
+	var saved []savedVector
+	for rows.Next() {
+		var v savedVector
+		if err := rows.Scan(&v.ref, &v.model, &v.blob); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		saved = append(saved, v)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := Rebuild(ctx, root, cfg, eng); err != nil {
+		return err
+	}
+	current, err := eng.AllChunks(ctx)
+	if err != nil {
+		return err
+	}
+	unchanged := make(map[string]bool, len(current))
+	for _, ch := range current {
+		text, ok := old[ch.ChunkRef]
+		unchanged[ch.ChunkRef] = ok && text == ch.Text
+	}
+	for _, v := range saved {
+		if !unchanged[v.ref] {
+			continue
+		}
+		if _, err := eng.db.ExecContext(ctx, `INSERT INTO vectors(chunk_ref, model, vec) VALUES(?,?,?)`, v.ref, v.model, v.blob); err != nil {
+			return fmt.Errorf("refresh restore vector: %w", err)
+		}
+	}
+	return nil
+}
