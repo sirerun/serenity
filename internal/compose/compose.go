@@ -1,6 +1,6 @@
 // Package compose implements the synthesis half of RFC 0001 section 11:
 // `serenity ask` composes a cited natural-language answer from the
-// claims a brain repo has actually accumulated. Three behaviors are
+// claims and attributed source reports a brain repo has accumulated. These guarantees are
 // structural, not model-trusted:
 //
 //   - Every citation the answer reports resolves to a claim this call
@@ -8,12 +8,12 @@
 //     model's response against the retrieved candidate set, so a
 //     model-invented claim id is dropped, never surfaced (the model is
 //     never asked to be honest about this; the code enforces it).
-//   - A cited claim that replaced an earlier one always carries its full
-//     supersession chain (RFC's "believed X until June, now Y"), built
+//   - A cited claim that replaced an earlier one carries its eligible
+//     supersession history (RFC's "believed X until June, now Y"), built
 //     deterministically from domain.Claim.Supersedes/SupersededBy --
 //     independent of whether the model's prose happens to mention it.
-//   - A question with no matching claim always returns a non-empty gap
-//     statement naming how stale the brain's newest evidence is, instead
+//   - A question with no matching eligible evidence returns a non-empty gap
+//     statement based only on evidence the caller may see, instead
 //     of a fabricated answer or a silent empty result.
 //   - RFC §14's redaction pass runs on the composed prompt before it ever
 //     reaches Completer.Complete, unconditionally (T4.11): internal/redact.
@@ -45,6 +45,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirerun/serenity/internal/config"
@@ -150,6 +151,8 @@ type Answer struct {
 	// this for its own cost block; nil when the provider returned no
 	// accounting -- never a fabricated zero).
 	Usage *Usage
+	// ModelVersion is the model reported by the actual completion provider.
+	ModelVersion string
 }
 
 // Usage is one synthesis call's measured token/cost accounting --
@@ -195,9 +198,14 @@ func New(root string, cfg *config.Config, st search.Store, embedder embed.Embedd
 // privacy must filter BOTH claim and source candidates before the prompt."
 type AskOptions struct {
 	Since, Until time.Time
+	// Now pins TTL and validity decisions for an entire request; zero uses the composer clock.
+	Now time.Time
 }
 
 func (o AskOptions) includes(t time.Time) bool {
+	if t.IsZero() && (!o.Since.IsZero() || !o.Until.IsZero()) {
+		return false
+	}
 	if !o.Since.IsZero() && t.Before(o.Since) {
 		return false
 	}
@@ -216,31 +224,47 @@ func (c *Composer) Ask(ctx context.Context, query string) (Answer, error) {
 	return c.AskWithOptions(ctx, query, AskOptions{})
 }
 
-// AskWithOptions is Ask plus an optional [since, until] evidence window.
-// Claim-based retrieval and citation are byte-for-byte the pre-T4.20
-// behavior when opts is the zero value; the new source-evidence half
-// (raw MEMORY_VERBS facts, mapping doc's "Composer minimum coherent
-// extension") is additive: it never changes Citations/Supersessions, only
-// adds SourceCitations and widens what counts as "no evidence at all" for
-// the gap check.
+// AskWithOptions applies one captured clock and the same eligibility rules to
+// heads, histories, source retrieval and gap metadata before any provider call.
 func (c *Composer) AskWithOptions(ctx context.Context, query string, opts AskOptions) (Answer, error) {
+	now := opts.Now
+	if now.IsZero() {
+		now = c.now()
+	}
+	request := *c
+	request.now = func() time.Time { return now }
+	if c.Embedder != nil {
+		request.Embedder = &queryEmbedding{Embedder: c.Embedder}
+	}
+	c = &request
+	proj, err := store.LoadMemoryProjection(store.NewSourceStore(c.Root))
+	if err != nil {
+		return Answer{}, fmt.Errorf("compose: source policy: %w", err)
+	}
+	restricted, err := index.RestrictedSummaryEntities(c.Root, proj, now)
+	if err != nil {
+		return Answer{}, fmt.Errorf("compose: summary policy: %w", err)
+	}
+	eligible := index.SourceEligibility(proj, true, true, now, restricted)
 	bySubject, err := AllClaims(c.Root, c.Config)
 	if err != nil {
 		return Answer{}, fmt.Errorf("compose: %w", err)
 	}
 
-	live := resolveLive(groupBySubjectFamily(bySubject))
-
-	candidates, err := c.relevant(ctx, query, live)
+	live := filterEvidence(resolveLive(groupBySubjectFamily(bySubject)), opts, eligible, now)
+	bySubject = make(map[string][]domain.Claim)
+	for _, lc := range live {
+		bySubject[lc.SubjectSlug] = append(bySubject[lc.SubjectSlug], lc.Claim)
+	}
+	candidates, err := c.relevant(ctx, query, live, eligible)
 	if err != nil {
 		return Answer{}, err
 	}
-	candidates = filterClaimsByDate(candidates, opts)
 	if len(candidates) > retrievalLimit {
 		candidates = candidates[:retrievalLimit]
 	}
 
-	sourceCandidates, err := c.relevantSourceEvidence(ctx, query, opts)
+	sourceCandidates, err := c.relevantSourceEvidence(ctx, query, opts, proj, eligible)
 	if err != nil {
 		return Answer{}, err
 	}
@@ -249,18 +273,16 @@ func (c *Composer) AskWithOptions(ctx context.Context, query string, opts AskOpt
 		return c.gapAnswer(bySubject), nil
 	}
 
-	indexOnly, err := c.anySourceIndexOnly(candidates)
-	if err != nil {
-		return Answer{}, err
-	}
-
 	prompt := buildPrompt(query, candidates)
 	if len(sourceCandidates) > 0 {
 		prompt += buildSourceEvidenceSection(sourceCandidates)
 	}
 
+	if c.Router == nil {
+		return Answer{}, fmt.Errorf("compose: no synthesis provider configured")
+	}
 	result, err := c.Router.Complete(ctx, router.TaskClassComposerSynthesis,
-		router.Prompt{Text: redact.Apply(prompt, redact.Options{}), IndexOnly: indexOnly}, router.Budget{})
+		router.Prompt{Text: redact.Apply(prompt, redact.Options{})}, router.Budget{})
 	if err != nil {
 		return Answer{}, fmt.Errorf("compose: synthesis: %w", err)
 	}
@@ -285,25 +307,85 @@ func (c *Composer) AskWithOptions(ctx context.Context, query string, opts AskOpt
 		SourceCitations: sourceCitations,
 		Supersessions:   supersessions,
 		Usage:           usage,
+		ModelVersion:    result.ModelVersion,
 	}, nil
 }
 
-// filterClaimsByDate drops any candidate whose own ObservedAt falls
-// outside opts' window -- a zero ObservedAt (no upstream stage has set it
-// yet, compose.go's own pre-existing disclosed gap) is never filtered by a
-// bound it cannot honestly satisfy.
-func filterClaimsByDate(candidates []liveClaim, opts AskOptions) []liveClaim {
-	if opts.Since.IsZero() && opts.Until.IsZero() {
-		return candidates
+// PublicClaims resolves canonical heads for cards without exposing private or
+// expired claims. Callers share their request projection and clock with reads.
+func PublicClaims(root string, cfg *config.Config, proj *store.MemoryProjection, now time.Time) (map[string][]domain.Claim, error) {
+	bySubject, err := AllClaims(root, cfg)
+	if err != nil {
+		return nil, err
 	}
-	out := make([]liveClaim, 0, len(candidates))
-	for _, lc := range candidates {
-		if t := lc.Provenance.ObservedAt; !t.IsZero() && !opts.includes(t) {
+	eligible := index.SourceEligibility(proj, true, false, now)
+	live := filterEvidence(resolveLive(groupBySubjectFamily(bySubject)), AskOptions{}, eligible, now)
+	result := make(map[string][]domain.Claim)
+	for _, cl := range live {
+		result[cl.SubjectSlug] = append(result[cl.SubjectSlug], cl.Claim)
+	}
+	return result, nil
+}
+
+func claimCurrent(cl domain.Claim, now time.Time) bool {
+	parse := func(value string) (time.Time, bool) {
+		for _, layout := range []string{time.RFC3339Nano, "2006-01-02", "2006-01", "2006"} {
+			if t, err := time.Parse(layout, value); err == nil {
+				return t, true
+			}
+		}
+		return time.Time{}, false
+	}
+	if cl.ValidFrom != "" {
+		from, ok := parse(cl.ValidFrom)
+		if !ok || now.Before(from) {
+			return false
+		}
+	}
+	if cl.ValidTo != "" {
+		until, ok := parse(cl.ValidTo)
+		if !ok || !now.Before(until) {
+			return false
+		}
+	}
+	return true
+}
+
+// Resolve lifecycle before applying visibility: removing a private replacement
+// first would accidentally resurrect its public predecessor.
+func filterEvidence(live []liveClaim, opts AskOptions, eligible func(index.Hit) bool, now time.Time) []liveClaim {
+	allowed := func(cl domain.Claim) bool {
+		return cl.Visibility != domain.VisibilityPrivate && opts.includes(cl.Provenance.ObservedAt) && eligible(index.Hit{SourceSHA256: cl.Provenance.SourceSHA256})
+	}
+	out := make([]liveClaim, 0, len(live))
+	for _, lc := range live {
+		if !allowed(lc.Claim) || !claimCurrent(lc.Claim, now) {
 			continue
 		}
+		history := make([]domain.Claim, 0, len(lc.History))
+		for _, ancestor := range lc.History {
+			if allowed(ancestor) {
+				history = append(history, ancestor)
+			}
+		}
+		lc.History = history
 		out = append(out, lc)
 	}
 	return out
+}
+
+// One Ask may retrieve claims and source reports through separate search arms.
+// Both use exactly one query embedding, including any search pool widening.
+type queryEmbedding struct {
+	embed.Embedder
+	once   sync.Once
+	vector []float32
+	err    error
+}
+
+func (e *queryEmbedding) Embed(ctx context.Context, query string) ([]float32, error) {
+	e.once.Do(func() { e.vector, e.err = e.Embedder.Embed(ctx, query) })
+	return e.vector, e.err
 }
 
 // AllClaims walks every entity page and shard file under root and
@@ -466,8 +548,8 @@ func ancestorsOf(c domain.Claim, byID, bySupersededBy map[string]domain.Claim) [
 // most connectors; an entity-page chunk carries only title+summary, not
 // each individual claim's predicate/object). A claim matches if either
 // signal fires; ranking favors claims that fire on both.
-func (c *Composer) relevant(ctx context.Context, query string, live []liveClaim) ([]liveClaim, error) {
-	relevantSubjects, err := c.relevantSubjects(ctx, query, live)
+func (c *Composer) relevant(ctx context.Context, query string, live []liveClaim, eligible func(index.Hit) bool) ([]liveClaim, error) {
+	relevantSubjects, err := c.relevantSubjects(ctx, query, live, eligible)
 	if err != nil {
 		return nil, err
 	}
@@ -506,9 +588,9 @@ func (c *Composer) relevant(ctx context.Context, query string, live []liveClaim)
 // maps its hits back to subject slugs: an entity-page hit names its slug
 // directly, and a raw-source-chunk hit's SourceSHA256 is mapped back to
 // every live claim whose provenance cites that source.
-func (c *Composer) relevantSubjects(ctx context.Context, query string, live []liveClaim) (map[string]bool, error) {
+func (c *Composer) relevantSubjects(ctx context.Context, query string, live []liveClaim, eligible func(index.Hit) bool) (map[string]bool, error) {
 	limit := retrievalLimit * searchPoolMultiplier
-	hits, err := search.Search(ctx, c.Store, c.Embedder, query, limit, search.Options{})
+	hits, err := search.Search(ctx, c.Store, c.Embedder, query, limit, search.Options{Eligible: eligible})
 	if err != nil {
 		return nil, fmt.Errorf("compose: chunk search: %w", err)
 	}
@@ -551,18 +633,13 @@ const sourceRetrievalLimit = 8
 // are further narrowed to opts' date window against each fact's own
 // CreatedAt, and deduplicated by source SHA (one hit per distinct fact,
 // best-ranked first -- Search's own fused ordering).
-func (c *Composer) relevantSourceEvidence(ctx context.Context, query string, opts AskOptions) ([]store.MemoryFactRecord, error) {
-	ss := store.NewSourceStore(c.Root)
-	proj, err := store.LoadMemoryProjection(ss)
-	if err != nil {
-		return nil, fmt.Errorf("compose: load memory projection: %w", err)
-	}
-	now := c.now()
+func (c *Composer) relevantSourceEvidence(ctx context.Context, query string, opts AskOptions, proj *store.MemoryProjection, permitted func(index.Hit) bool) ([]store.MemoryFactRecord, error) {
 	eligible := func(h index.Hit) bool {
-		if h.Kind != store.SourceKindMemoryFact {
+		if h.Kind != store.SourceKindMemoryFact || !permitted(h) {
 			return false
 		}
-		return store.MemoryEligible(proj, h.SourceSHA256, true, now)
+		rec, ok := proj.Get(h.SourceSHA256)
+		return ok && opts.includes(rec.Payload.CreatedAt)
 	}
 	hits, err := search.Search(ctx, c.Store, c.Embedder, query, sourceRetrievalLimit*searchPoolMultiplier, search.Options{Eligible: eligible})
 	if err != nil {
@@ -577,9 +654,6 @@ func (c *Composer) relevantSourceEvidence(ctx context.Context, query string, opt
 		}
 		rec, ok := proj.Get(h.SourceSHA256)
 		if !ok {
-			continue
-		}
-		if !opts.includes(rec.Payload.CreatedAt) {
 			continue
 		}
 		seen[h.SourceSHA256] = true
@@ -691,34 +765,6 @@ func lexicalScore(qTokens map[string]bool, c domain.Claim) int {
 		}
 	}
 	return score
-}
-
-// anySourceIndexOnly reports whether any candidate claim's provenance
-// cites a source marked index_only (RFC §7.4, §14): such bytes must never
-// leave the machine, and a claim's own predicate/object text can restate
-// index_only content even though domain.Claim carries no IndexOnly flag
-// of its own -- so this checks back against the source store before every
-// synthesis call, the same rule router.Complete already enforces for
-// extraction prompts (T1.7), applied here at the claim layer since no
-// upstream stage tags claims with it yet.
-func (c *Composer) anySourceIndexOnly(candidates []liveClaim) (bool, error) {
-	ss := store.NewSourceStore(c.Root)
-	sources, err := ss.All()
-	if err != nil {
-		return false, fmt.Errorf("compose: read sources: %w", err)
-	}
-	indexOnly := make(map[string]bool, len(sources))
-	for _, src := range sources {
-		if src.IndexOnly {
-			indexOnly[src.SHA256] = true
-		}
-	}
-	for _, lc := range candidates {
-		if indexOnly[lc.Provenance.SourceSHA256] {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 // buildPrompt renders the structured synthesis prompt: every candidate

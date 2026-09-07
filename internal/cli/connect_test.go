@@ -229,7 +229,7 @@ func TestConnectClaudeInstall(t *testing.T) {
 	requests := []string{
 		`{"jsonrpc":"2.0","id":"init","method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"connect-test","version":"1"}}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized"}` + "\n" + `{"jsonrpc":"2.0","id":"list","method":"tools/list"}`,
-		`{"jsonrpc":"2.0","id":"entity","method":"tools/call","params":{"name":"entity","arguments":{"slug":"connect-missing-entity"}}}`,
+		`{"jsonrpc":"2.0","id":"entity","method":"tools/call","params":{"name":"entity","arguments":{"name":"connect-missing-entity"}}}`,
 	}
 	// Keep stdin open until each response arrives: EOF intentionally cancels
 	// in-flight tool calls in the stdio transport.

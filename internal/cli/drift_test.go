@@ -1,38 +1,22 @@
 package cli
 
-// drift_test.go -- T4.9: CLI vs protocol drift tests (RFC 0001 section
-// 13.1: "CLI and protocol surfaces are thin wrappers over one engine;
-// drift tests assert identical results"). Each test below drives the
-// REAL CLI function the corresponding cobra command runs
-// (searchResults/askAnswerFor/runCheck/runInteractive/BuildBrief) --
-// never a hand-rolled reimplementation of its logic -- against the real
-// protocol handler (internal/server/memory, /disposition, /direction)
-// over an identical fixture, then deep-equals normalized JSON.
-//
-// Two different guarantee strengths appear here, both legitimate:
-//   - check/check_plan and brief/brief hold BY CONSTRUCTION: both sides
-//     call the identical shared function (check.ToWire,
-//     serverdirection.Handlers.BuildBrief), so they cannot drift apart --
-//     the same guarantee internal/direction/check/wire.go's own doc
-//     comment already claims for check_plan (T4.6).
-//   - search/recall, ask/synthesize, and inbox-dispose/dispose assemble
-//     their wire shapes independently on each side (recall's own
-//     PackFacts/synthesize's own FactOfCitation are exported specifically
-//     so this test calls the real mapping rather than a duplicate of it,
-//     but the CLI side never calls into internal/server/memory at all) --
-//     TestDriftSearchMatchesRecallCatchesAOneSidedFieldAddition is this
-//     task's own real red->green spot check proving the comparison is
-//     not vacuous, per this task's own acc line ("a temporary one-sided
-//     field addition fails the test").
+// The drift pairs exercise shared CLI entry points and live protocol handlers.
+// MEMORY_VERBS v1 has a different wire contract from local CLI output, so its
+// pairs compare the shared search text/page identity and answer/citation data.
+// Local-private versus remote-world audience behavior is tested separately.
+// The brief pair remains a shared-engine check: no CLI brief command exists.
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/sirerun/serenity/internal/config"
 	coredirection "github.com/sirerun/serenity/internal/direction"
@@ -43,6 +27,7 @@ import (
 	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/router"
+	"github.com/sirerun/serenity/internal/search"
 	"github.com/sirerun/serenity/internal/server"
 	serverdirection "github.com/sirerun/serenity/internal/server/direction"
 	serverdisposition "github.com/sirerun/serenity/internal/server/disposition"
@@ -152,9 +137,8 @@ func TestDriftBriefMatchesProtocolBrief(t *testing.T) {
 
 // TestDriftSearchMatchesRecall drives the real searchResults (the exact
 // function `serenity search` calls) and MEMORY_VERBS's real recall verb
-// over the same synced fixture, comparing recall's own Fact/budget
-// projection (built via the exported memory.PackFacts, the same function
-// recall itself calls) against what recall's actual verb call returns.
+// over the same synced public fixture, comparing retrieved text, page
+// identity, and explicit char/4 budget against recall's actual output.
 func TestDriftSearchMatchesRecall(t *testing.T) {
 	requireGit(t)
 	ctx := context.Background()
@@ -184,7 +168,6 @@ func TestDriftSearchMatchesRecall(t *testing.T) {
 	if len(cliResults) == 0 {
 		t.Fatal("searchResults returned nothing -- fixture did not index")
 	}
-	wantEvidence, wantUsed, wantDropped := memory.PackFacts(cliResults, budget)
 
 	h := newDriftMemoryHandlers(t, root)
 	tool := findTool(t, h, "recall")
@@ -192,27 +175,17 @@ func TestDriftSearchMatchesRecall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("recall handler: %v", err)
 	}
-	var got struct {
-		memory.Envelope
+	if result.IsError || len(result.Content) != 1 {
+		t.Fatalf("recall failed: %+v", result)
 	}
-	if err := json.Unmarshal([]byte(result.Content[0].Text), &got); err != nil {
-		t.Fatalf("unmarshal recall response: %v\n%s", err, result.Content[0].Text)
+	if err := compareRecallSearch(cliResults, []byte(result.Content[0].Text), budget); err != nil {
+		t.Fatal(err)
 	}
 
-	if !reflect.DeepEqual(got.Evidence, wantEvidence) {
-		t.Fatalf("recall Evidence != PackFacts(searchResults(...)):\nrecall: %+v\nwant:   %+v", got.Evidence, wantEvidence)
-	}
-	if got.Budget == nil || got.Budget.BudgetUsed != wantUsed || got.Budget.DroppedCount != wantDropped {
-		t.Fatalf("recall Budget = %+v, want used=%d dropped=%d", got.Budget, wantUsed, wantDropped)
-	}
 }
 
-// TestDriftSearchMatchesRecallCatchesAOneSidedFieldAddition is this
-// task's own acc-line-literal spot check: "a temporary one-sided field
-// addition fails the test." Recall's own Fact mapping (memory.PackFacts)
-// is temporarily changed to drop Score -- a one-sided divergence from
-// what searchResults' own ranked results actually carry -- and the drift
-// test above is confirmed to fail before the change is reverted.
+// Mutate the actual protocol response after first proving the unmodified pair
+// matches. The same comparison must reject an added field and changed text.
 func TestDriftSearchMatchesRecallCatchesAOneSidedFieldAddition(t *testing.T) {
 	requireGit(t)
 	ctx := context.Background()
@@ -241,29 +214,42 @@ func TestDriftSearchMatchesRecallCatchesAOneSidedFieldAddition(t *testing.T) {
 		t.Fatal("searchResults returned nothing -- fixture did not index")
 	}
 
-	// Real one-sided divergence: build the "expected" side the way this
-	// test's own sibling does, but with Score zeroed -- simulating a
-	// protocol-side field this drift test would otherwise miss if it
-	// only checked Text/ChunkRef.
-	wantEvidence, _, _ := memory.PackFacts(cliResults, 2000)
-	for i := range wantEvidence {
-		wantEvidence[i].Score = 0
-	}
-
 	h := newDriftMemoryHandlers(t, root)
 	tool := findTool(t, h, "recall")
 	result, err := tool.Handler(ctx, mustMarshalJSON(t, map[string]any{"query": "nebula", "budget_tokens": 2000}))
 	if err != nil {
 		t.Fatalf("recall handler: %v", err)
 	}
-	var got struct{ memory.Envelope }
-	if err := json.Unmarshal([]byte(result.Content[0].Text), &got); err != nil {
-		t.Fatalf("unmarshal recall response: %v", err)
+	if result.IsError || len(result.Content) != 1 {
+		t.Fatalf("recall failed: %+v", result)
+	}
+	wire := []byte(result.Content[0].Text)
+	if err := compareRecallSearch(cliResults, wire, 2000); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutation := range []string{"added_field", "changed_chunk"} {
+		t.Run(mutation, func(t *testing.T) {
+			var response map[string]any
+			if err := json.Unmarshal(wire, &response); err != nil {
+				t.Fatal(err)
+			}
+			results := response["results"].([]any)
+			first := results[0].(map[string]any)
+			if mutation == "added_field" {
+				first["unexpected_drift_field"] = true
+			} else {
+				first["chunk"] = "one-sided drift"
+			}
+			changed, err := json.Marshal(response)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := compareRecallSearch(cliResults, changed, 2000); err == nil {
+				t.Fatal("actual response mutation escaped drift comparison")
+			}
+		})
 	}
 
-	if reflect.DeepEqual(got.Evidence, wantEvidence) {
-		t.Fatal("expected the deliberately Score-zeroed comparison to fail, but it passed -- the drift test is not exercising Score")
-	}
 }
 
 // ---- ask / synthesize ----
@@ -276,14 +262,9 @@ func (f fakeCompleter) Complete(context.Context, router.TaskClass, router.Prompt
 	return router.Result{Text: f.text, ModelVersion: "fake-composer@v1"}, nil
 }
 
-// TestDriftAskMatchesSynthesize drives the real askAnswerFor (the shared
-// core askAnswer itself calls) and MEMORY_VERBS's real synthesize verb
-// with the identical injected fakeCompleter -- the same
-// dependency-injection seam memory.Deps.Composer already gives the
-// protocol side -- over the same fixture claim, comparing synthesize's
-// citation projection (built via the exported memory.FactOfCitation, the
-// same function synthesize itself calls) against what the synthesize
-// verb call actually returns.
+// Compare the real shared ask answer and its cited page identities with the
+// canonical synthesize response. Usage stays unknown when the test provider
+// does not report measured usage.
 func TestDriftAskMatchesSynthesize(t *testing.T) {
 	requireGit(t)
 	ctx := context.Background()
@@ -335,34 +316,50 @@ func TestDriftAskMatchesSynthesize(t *testing.T) {
 	if len(answer.Citations) != 1 {
 		t.Fatalf("Citations = %v, want exactly 1", answer.Citations)
 	}
-	wantEvidence := []memory.Fact{memory.FactOfCitation(answer.Citations[0])}
+	wantSources := []string{answer.Citations[0].Subject}
+	sort.Strings(wantSources)
 
+	memoryQueue := writer.NewQueue(nil)
+	t.Cleanup(memoryQueue.Close)
 	h := memory.New(memory.Deps{
 		Root: root, Config: cfg, Index: eng,
 		Composer: completer, ComposerModelVersion: "fake-composer@v1",
-		Disposition: disposition.NewStore(eng), Queue: writer.NewQueue(nil),
-		Fence: store.NewFenceWriter(root), Shard: store.NewShardStore(root),
+		Queue:   memoryQueue,
+		Sources: store.NewSourceStore(root), Fence: store.NewFenceWriter(root), Shard: store.NewShardStore(root),
 	})
 	tool := findToolFrom(t, h.Tools(), "synthesize")
-	result, err := tool.Handler(ctx, mustMarshalJSON(t, map[string]any{"query": query}))
+	result, err := tool.Handler(ctx, mustMarshalJSON(t, map[string]any{"question": query}))
 	if err != nil {
 		t.Fatalf("synthesize handler: %v", err)
 	}
+	if result.IsError || len(result.Content) != 1 {
+		t.Fatalf("synthesize failed: %+v", result)
+	}
 	var got struct {
-		memory.Envelope
-		Text string `json:"text,omitempty"`
-		Gap  string `json:"gap,omitempty"`
+		ProtocolVersion int      `json:"protocol_version"`
+		Answer          string   `json:"answer"`
+		Sources         []string `json:"sources"`
+		Gaps            []string `json:"gaps"`
+		Cost            struct {
+			Model        string   `json:"model"`
+			InputTokens  *int     `json:"input_tokens"`
+			OutputTokens *int     `json:"output_tokens"`
+			USD          *float64 `json:"usd_estimate"`
+		} `json:"cost"`
 	}
 	if err := json.Unmarshal([]byte(result.Content[0].Text), &got); err != nil {
-		t.Fatalf("unmarshal synthesize response: %v\n%s", err, result.Content[0].Text)
+		t.Fatal(err)
+	}
+	if got.ProtocolVersion != 1 || got.Answer != answer.Text || len(got.Gaps) != 0 {
+		t.Fatalf("synthesize answer drift: %+v; shared answer: %+v", got, answer)
+	}
+	if !reflect.DeepEqual(got.Sources, wantSources) {
+		t.Fatalf("synthesize sources %v != shared citations %v", got.Sources, wantSources)
+	}
+	if got.Cost.Model != "fake-composer@v1" || got.Cost.InputTokens != nil || got.Cost.OutputTokens != nil || got.Cost.USD != nil {
+		t.Fatalf("synthesize fabricated or changed usage: %+v", got.Cost)
 	}
 
-	if got.Text != answer.Text {
-		t.Fatalf("synthesize Text = %q, want askAnswerFor's own answer.Text %q", got.Text, answer.Text)
-	}
-	if !reflect.DeepEqual(got.Evidence, wantEvidence) {
-		t.Fatalf("synthesize Evidence != FactOfCitation(askAnswerFor's Citations):\ngot:  %+v\nwant: %+v", got.Evidence, wantEvidence)
-	}
 }
 
 // ---- inbox dispose / dispose ----
@@ -585,10 +582,12 @@ func newDriftMemoryHandlers(t *testing.T, root string) *memory.Handlers {
 		t.Fatalf("OpenIndex: %v", err)
 	}
 	t.Cleanup(func() { _ = eng.Close() })
+	memoryQueue := writer.NewQueue(nil)
+	t.Cleanup(memoryQueue.Close)
 	return memory.New(memory.Deps{
 		Root: root, Config: config.Default(), Index: eng,
-		Disposition: disposition.NewStore(eng), Queue: writer.NewQueue(nil),
-		Fence: store.NewFenceWriter(root), Shard: store.NewShardStore(root),
+		Queue:   memoryQueue,
+		Sources: store.NewSourceStore(root), Fence: store.NewFenceWriter(root), Shard: store.NewShardStore(root),
 	})
 }
 
@@ -615,4 +614,50 @@ func mustMarshalJSON(t *testing.T, v any) json.RawMessage {
 		t.Fatalf("marshal: %v", err)
 	}
 	return b
+}
+
+// compareRecallSearch compares the real shared retrieval payload; the fixture
+// contains public entity-page evidence and no raw remembered facts. Scores are
+// local ranking details absent from the adopted wire contract.
+func compareRecallSearch(cli []search.Result, wire []byte, budget int) error {
+	var got struct {
+		Version      int               `json:"protocol_version"`
+		Facts        []json.RawMessage `json:"facts"`
+		Total        int               `json:"total"`
+		Results      []map[string]any  `json:"results"`
+		BudgetTokens *int              `json:"budget_tokens"`
+		BudgetUsed   *int              `json:"budget_used"`
+		Dropped      *int              `json:"dropped_count"`
+		Degraded     string            `json:"search_degraded"`
+	}
+	if err := json.Unmarshal(wire, &got); err != nil {
+		return err
+	}
+	if got.Version != 1 || got.Facts == nil || len(got.Facts) != 0 || got.Total != 0 || got.Degraded == "" {
+		return fmt.Errorf("recall envelope drift: %s", wire)
+	}
+	if len(got.Results) != len(cli) {
+		return fmt.Errorf("recall returned %d search results; CLI returned %d", len(got.Results), len(cli))
+	}
+	used := 0
+	allowed := map[string]bool{"slug": true, "title": true, "chunk": true, "evidence": true, "create_safety": true, "provenance": true}
+	for i, hit := range cli {
+		r := got.Results[i]
+		for key := range r {
+			if !allowed[key] {
+				return fmt.Errorf("unexpected recall result field %q", key)
+			}
+		}
+		if r["slug"] != hit.EntitySlug || r["provenance"] != hit.EntitySlug || r["chunk"] != hit.Text {
+			return fmt.Errorf("recall result %d diverges: %v; CLI: %+v", i, r, hit)
+		}
+		if r["evidence"] != "keyword_exact" || r["create_safety"] != "exists" {
+			return fmt.Errorf("recall public page classification drift: %v", r)
+		}
+		used += (utf8.RuneCountInString(hit.Text) + 3) / 4
+	}
+	if got.BudgetTokens == nil || *got.BudgetTokens != budget || got.BudgetUsed == nil || *got.BudgetUsed != used || got.Dropped == nil || *got.Dropped != 0 {
+		return fmt.Errorf("recall budget drift: %s", wire)
+	}
+	return nil
 }

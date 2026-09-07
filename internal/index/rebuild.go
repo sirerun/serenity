@@ -27,6 +27,23 @@ import (
 // leaks into the index; the reconciler (M2) turns such divergence into a
 // disposition item.
 func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) error {
+	srcStore := store.NewSourceStore(root)
+	sources, err := srcStore.All()
+	if err != nil {
+		return err
+	}
+	memProj, err := store.LoadMemoryProjection(srcStore)
+	if err != nil {
+		return fmt.Errorf("rebuild: load memory projection: %w", err)
+	}
+	// A derived summary has no span-level privacy attribution. Omit it when
+	// canonical history contains restricted evidence rather than embedding or
+	// returning a stale summary that may have incorporated that evidence.
+	now := time.Now()
+	restricted, err := RestrictedSummaryEntities(root, memProj, now)
+	if err != nil {
+		return err
+	}
 	if err := eng.ResetAll(ctx); err != nil {
 		return err
 	}
@@ -60,7 +77,15 @@ func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) e
 				return err
 			}
 		}
-		text := p.Title + "\n" + p.Summary
+		text := p.Title
+		for _, cl := range p.Claims {
+			if cl.Visibility == domain.VisibilityPrivate || memProj.SourceIndexOnly(cl.Provenance.SourceSHA256) {
+				restricted[p.Entity.Slug] = true
+			}
+		}
+		if !restricted[p.Entity.Slug] {
+			text += "\n" + p.Summary
+		}
 		// Entity-page chunks are derived summaries, not raw Source
 		// material -- no SourceSHA256 to carry, "entity_page" as their
 		// own Kind bucket for internal/search's per-type cap (T1.11).
@@ -125,16 +150,6 @@ func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) e
 	// fact text (including local-private facts for CLI local search)");
 	// the audience split (MCP remote vs local CLI) is enforced at query
 	// time, never by omission from the index.
-	srcStore := store.NewSourceStore(root)
-	sources, err := srcStore.All()
-	if err != nil {
-		return err
-	}
-	memProj, err := store.LoadMemoryProjection(srcStore)
-	if err != nil {
-		return fmt.Errorf("rebuild: load memory projection: %w", err)
-	}
-	now := time.Now()
 	for _, src := range sources {
 		switch src.Kind {
 		case store.SourceKindMemoryExpiry:
@@ -188,7 +203,7 @@ type Embedder interface {
 	ModelVersion() string
 }
 
-// chunksLackingVector returns every indexed chunk that has no stored
+// chunksLackingVector returns every egress-eligible indexed chunk with no stored
 // vector under pin, in AllChunks' deterministic chunk_ref order. This is
 // the read-only half shared by ReembedMissing (which then embeds and
 // writes each one) and PendingReembed (which only counts them) -- the
@@ -201,8 +216,25 @@ func chunksLackingVector(ctx context.Context, eng *SQLite, pin string) ([]Hit, e
 	if err != nil {
 		return nil, err
 	}
+	root, err := indexedRoot(ctx, eng)
+	if err != nil {
+		return nil, err
+	}
+	proj, err := store.LoadMemoryProjection(store.NewSourceStore(root))
+	if err != nil {
+		return nil, fmt.Errorf("reembed: source policy: %w", err)
+	}
+	now := time.Now()
+	restricted, err := RestrictedSummaryEntities(root, proj, now)
+	if err != nil {
+		return nil, err
+	}
+	eligible := SourceEligibility(proj, true, true, now, restricted)
 	var missing []Hit
 	for _, c := range chunks {
+		if !eligible(c) {
+			continue
+		}
 		has, err := eng.HasVector(ctx, c.ChunkRef, pin)
 		if err != nil {
 			return nil, err
@@ -219,7 +251,7 @@ func chunksLackingVector(ctx context.Context, eng *SQLite, pin string) ([]Hit, e
 // embed if called with an embedder pinned to pin right now (RFC §10.1
 // "staged re-embed", plan T1.16 `serenity migrate --models`). A pin that
 // has never embedded anything (a fresh migration target) reports every
-// stored chunk as pending, since none has a vector under it yet. Read-only:
+// eligible chunk as pending, since none has a vector under it yet. Read-only:
 // unlike ReembedMissing, this never calls UpsertVector and is safe to call
 // from outside the file-first allowlist (e.g. the CLI, before it decides
 // whether to run the migration at all).
@@ -231,7 +263,7 @@ func PendingReembed(ctx context.Context, eng *SQLite, pin string) (int, error) {
 	return len(missing), nil
 }
 
-// ReembedMissing fills in every indexed chunk's vector under embedder's
+// ReembedMissing fills in every egress-eligible chunk's vector under embedder's
 // pin (RFC §10.1's "embed" pipeline stage), skipping chunks that already
 // have one under that pin. It lives here, not in the CLI, because
 // UpsertVector is an index-write primitive the file-first CI gate
@@ -321,4 +353,144 @@ func Refresh(ctx context.Context, root string, cfg *config.Config, eng *SQLite) 
 		}
 	}
 	return nil
+}
+
+// SourceEligibility is the shared query-time authority for source chunks. The
+// index is only a cache: stale, private or expired memory cannot become generic
+// evidence when its canonical record disappears. IndexOnly controls egress,
+// independently of local/remote visibility.
+func SourceEligibility(proj *store.MemoryProjection, remote, egress bool, now time.Time, restricted ...map[string]bool) func(Hit) bool {
+	return func(h Hit) bool {
+		if h.Kind == "entity_page" {
+			for _, subjects := range restricted {
+				if subjects[h.EntitySlug] {
+					return false
+				}
+			}
+		}
+		if proj.IsLifecycle(h.SourceSHA256) || h.Kind == store.SourceKindMemoryExpiry {
+			return false
+		}
+		if strings.HasPrefix(h.Kind, "memory_") {
+			if h.Kind != store.SourceKindMemoryFact {
+				return false
+			}
+			if _, ok := proj.Get(h.SourceSHA256); !ok {
+				return false
+			}
+		}
+		if egress && proj.SourceIndexOnly(h.SourceSHA256) {
+			return false
+		}
+		return store.MemoryEligible(proj, h.SourceSHA256, remote || egress, now)
+	}
+}
+
+// Production indexes live under <brain>/.serenity. Standalone index fixtures
+// use their containing directory and still fail closed for reserved chunks.
+func indexedRoot(ctx context.Context, eng *SQLite) (string, error) {
+	rows, err := eng.db.QueryContext(ctx, "PRAGMA database_list")
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var seq int
+		var name, file string
+		if err := rows.Scan(&seq, &name, &file); err != nil {
+			return "", err
+		}
+		if name == "main" {
+			root := filepath.Dir(file)
+			if filepath.Base(root) == ".serenity" {
+				root = filepath.Dir(root)
+			}
+			return root, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	return "", fmt.Errorf("index: main database path unavailable")
+}
+
+// RestrictedSummaryEntities identifies untraceable cached summaries that may
+// quote private, index-only or expired source evidence. Canonical parse errors
+// fail closed. Retained history remains relevant because cached text can be old.
+func RestrictedSummaryEntities(root string, proj *store.MemoryProjection, now time.Time) (map[string]bool, error) {
+	restricted := make(map[string]bool)
+	for _, rec := range proj.All() {
+		if rec.Payload.Visibility == store.MemoryVisibilityPrivate || proj.SourceIndexOnly(rec.SHA256) || rec.Expired(now) {
+			restricted[rec.Payload.EntitySlug] = true
+		}
+	}
+	pages, err := filepath.Glob(filepath.Join(root, "brain", "entities", "*", "*.md"))
+	if err != nil {
+		return nil, err
+	}
+	fw := store.NewFenceWriter(root)
+	for _, path := range pages {
+		page, err := fw.ParseEntity(path)
+		if err != nil {
+			return nil, err
+		}
+		for _, cl := range page.Claims {
+			if cl.Visibility == domain.VisibilityPrivate || proj.SourceIndexOnly(cl.Provenance.SourceSHA256) || !store.MemoryEligible(proj, cl.Provenance.SourceSHA256, true, now) {
+				restricted[page.Entity.Slug] = true
+			}
+		}
+	}
+	shards := store.NewShardStore(root)
+	slugs, err := shards.Slugs()
+	if err != nil {
+		return nil, err
+	}
+	for _, slug := range slugs {
+		families, err := shards.Families(slug)
+		if err != nil {
+			return nil, err
+		}
+		for _, family := range families {
+			lines, err := shards.Lines(slug, family)
+			if err != nil {
+				return nil, err
+			}
+			for _, cl := range lines {
+				if cl.Visibility == domain.VisibilityPrivate || proj.SourceIndexOnly(cl.Provenance.SourceSHA256) || !store.MemoryEligible(proj, cl.Provenance.SourceSHA256, true, now) {
+					restricted[slug] = true
+				}
+			}
+		}
+	}
+	return restricted, nil
+}
+
+// RefreshMemoryFact replaces one derived chunk after a canonical memory write.
+// It reads the persisted source representation again rather than accepting new
+// authoritative text through an index-only path. TTL and visibility remain
+// enforced by SourceEligibility at query time.
+func RefreshMemoryFact(ctx context.Context, root, sha string, eng *SQLite, now time.Time) error {
+	projection, err := store.LoadMemoryProjection(store.NewSourceStore(root))
+	if err != nil {
+		return err
+	}
+	rec, ok := projection.Get(sha)
+	if !ok {
+		return fmt.Errorf("index: memory source not found")
+	}
+	tx, err := eng.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	ref := "fact:" + sha
+	if _, err := tx.ExecContext(ctx, "DELETE FROM chunks WHERE chunk_ref = ?", ref); err != nil {
+		return err
+	}
+	if !rec.Expired(now) {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO chunks(chunk_ref, entity_slug, text, source_sha256, kind) VALUES(?,?,?,?,?)`, ref, rec.Payload.EntitySlug, rec.Payload.Fact, sha, store.SourceKindMemoryFact); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

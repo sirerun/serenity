@@ -40,16 +40,7 @@ func (h *Handlers) forgetTool() mcp.Tool {
 	}
 }
 
-// forget expires the memory_fact source named by req.ID through a
-// canonical, audit-preserving memory_expiry source
-// (internal/writer.MemoryFact.Forget, T4.20) -- the original fact is
-// never edited or deleted. Works for every id remember ever returned,
-// regardless of the chosen canonical representation (the opaque SHA256,
-// or the frozen legacy numeric id rendered as a string) -- private ids are
-// inaccessible via this call's own not_found path below, since only the
-// projection this handler consults ever resolves an id to a target in the
-// first place, and forget's own not_found/idempotent semantics apply
-// identically either way.
+// forget records an immutable expiry event for an accessible public fact.
 func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool, error) {
 	var req forgetRequest
 	if err := json.Unmarshal(args, &req); err != nil {
@@ -70,7 +61,14 @@ func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool,
 		return verbError(ErrCodeNotFound, fmt.Sprintf("no fact with id %q", id), "ids come from remember/recall (facts[].fact_id). recall the entity first to find the right fact"), true, nil
 	}
 
-	reason := trimmed(req.Reason)
+	record, found := proj.Get(sha)
+	if !found {
+		return verbError(ErrCodeNotFound, "Fact not found", "use a fact id returned by recall"), true, nil
+	}
+	if record.Payload.Visibility != store.MemoryVisibilityWorld {
+		return verbError(ErrCodeScopeDenied, "Fact is outside the remote scope", "manage private facts through a local interface"), true, nil
+	}
+	reason := req.Reason
 	mw := h.deps.memoryWriter()
 	result, err := mw.Forget(sha, reason, now)
 	if err != nil {
@@ -83,8 +81,6 @@ func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool,
 	resp := forgetResponse{ProtocolVersion: ProtocolVersion, ID: id, Expired: result.Expired}
 	if reason != "" {
 		resp.Reason = &reason
-	} else if result.Record.ExpiredReason != "" {
-		resp.Reason = &result.Record.ExpiredReason
 	}
 	return resp, false, nil
 }

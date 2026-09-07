@@ -9,6 +9,7 @@
 package writer
 
 import (
+	"errors"
 	"sort"
 	"sync"
 )
@@ -35,11 +36,13 @@ type Result struct {
 // trivially satisfies per-file ordering: jobs for a given path always
 // run strictly one at a time, in the order they were submitted.
 type Queue struct {
-	mu   sync.Mutex
-	seq  map[string]uint64
-	jobs chan submitted
-	wg   sync.WaitGroup
-	hook func(Result)
+	mu     sync.Mutex
+	runMu  sync.Mutex // serializes complete writes with git publication
+	closed bool
+	seq    map[string]uint64
+	jobs   chan submitted
+	wg     sync.WaitGroup
+	hook   func(Result)
 
 	// touchedMu guards touched independently of mu: Submit holds mu while
 	// blocked handing a job to the unbuffered jobs channel, and drain
@@ -78,6 +81,7 @@ func NewQueue(hook func(Result)) *Queue {
 func (q *Queue) drain() {
 	defer q.wg.Done()
 	for s := range q.jobs {
+		q.runMu.Lock()
 		b, err := s.job.Render()
 		res := Result{Job: s.job, Seq: s.seq, Bytes: b, Err: err}
 		if err == nil && s.job.Path != "" {
@@ -85,6 +89,7 @@ func (q *Queue) drain() {
 			q.touched[s.job.Path] = true
 			q.touchedMu.Unlock()
 		}
+		q.runMu.Unlock()
 		if q.hook != nil {
 			q.hook(res)
 		}
@@ -99,6 +104,14 @@ func (q *Queue) drain() {
 // same path.
 func (q *Queue) Submit(j Job) Result {
 	q.mu.Lock()
+	if q.closed {
+		q.mu.Unlock()
+		return Result{Job: j, Err: ErrQueueClosed}
+	}
+	if j.Render == nil {
+		q.mu.Unlock()
+		return Result{Job: j, Err: errors.New("writer: missing render callback")}
+	}
 	q.seq[j.Path]++
 	seq := q.seq[j.Path]
 	reply := make(chan Result, 1)
@@ -148,7 +161,14 @@ func (q *Queue) MarkTouched(path string) {
 
 // Close stops accepting new jobs and waits for the drain goroutine to
 // finish everything already queued. A Queue is not usable after Close.
+var ErrQueueClosed = errors.New("writer: queue closed")
+
 func (q *Queue) Close() {
-	close(q.jobs)
+	q.mu.Lock()
+	if !q.closed {
+		q.closed = true
+		close(q.jobs)
+	}
+	q.mu.Unlock()
 	q.wg.Wait()
 }

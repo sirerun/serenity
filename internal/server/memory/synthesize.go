@@ -73,6 +73,10 @@ func (h *Handlers) synthesize(ctx context.Context, args json.RawMessage) (any, b
 		return verbError(ErrCodeInvalidParams, "synthesize: until is not a valid ISO 8601 date/datetime", "pass an ISO 8601 date (\"2026-06-01\") or datetime (\"2026-06-01T00:00:00Z\")"), true, nil
 	}
 
+	if !since.IsZero() && !until.IsZero() && since.After(until) {
+		return verbError(ErrCodeInvalidParams, "since must not be later than until", "provide an ordered date window"), true, nil
+	}
+
 	if h.deps.Composer == nil {
 		note := h.deps.ComposerUnavailableNote
 		if note == "" {
@@ -82,7 +86,7 @@ func (h *Handlers) synthesize(ctx context.Context, args json.RawMessage) (any, b
 	}
 
 	c := compose.New(h.deps.Root, h.deps.Config, h.deps.Index, h.deps.Embedder, h.deps.Composer, h.deps.ComposerModelVersion)
-	answer, err := c.AskWithOptions(ctx, question, compose.AskOptions{Since: since, Until: until})
+	answer, err := c.AskWithOptions(ctx, question, compose.AskOptions{Since: since, Until: until, Now: h.deps.now()})
 	if err != nil {
 		return nil, false, err
 	}
@@ -90,6 +94,9 @@ func (h *Handlers) synthesize(ctx context.Context, args json.RawMessage) (any, b
 	resp := synthesizeResponse{
 		ProtocolVersion: ProtocolVersion,
 		Cost:            synthesizeCost{Model: h.deps.ComposerModelVersion},
+	}
+	if answer.ModelVersion != "" {
+		resp.Cost.Model = answer.ModelVersion
 	}
 	if answer.Usage != nil {
 		in, out, usd := answer.Usage.InputTokens, answer.Usage.OutputTokens, answer.Usage.CostUSD
@@ -114,9 +121,13 @@ func (h *Handlers) synthesize(ctx context.Context, args json.RawMessage) (any, b
 		}
 	}
 	for _, sc := range answer.SourceCitations {
-		if sc.EntitySlug != "" && !seen[sc.EntitySlug] {
-			seen[sc.EntitySlug] = true
-			resp.Sources = append(resp.Sources, sc.EntitySlug)
+		source := sc.EntitySlug
+		if source == "" {
+			source = "source-" + sc.SHA256
+		}
+		if !seen[source] {
+			seen[source] = true
+			resp.Sources = append(resp.Sources, source)
 		}
 	}
 	sort.Strings(resp.Sources)

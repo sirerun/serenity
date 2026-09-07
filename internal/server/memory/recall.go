@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/search"
@@ -16,11 +17,6 @@ import (
 // limit -- generous enough that a caller exploring without an explicit
 // limit rarely hits it, disclosed rather than silently unbounded.
 const defaultRecallLimit = 50
-
-// searchPoolMultiplier widens the search arm's own request beyond limit so
-// enough candidates survive eligibility filtering and dedup to fill limit
-// results.
-const searchPoolMultiplier = 5
 
 type recallRequest struct {
 	Query        string `json:"query,omitempty"`
@@ -55,7 +51,7 @@ type recallResponse struct {
 	ProtocolVersion int            `json:"protocol_version"`
 	Facts           []recallFact   `json:"facts"`
 	Total           int            `json:"total"`
-	Results         []recallResult `json:"results,omitempty"`
+	Results         []recallResult `json:"results,omitzero"`
 	SearchDegraded  string         `json:"search_degraded,omitempty"`
 	BudgetTokens    *int           `json:"budget_tokens,omitempty"`
 	BudgetUsed      *int           `json:"budget_used,omitempty"`
@@ -96,27 +92,34 @@ func (h *Handlers) recall(ctx context.Context, args json.RawMessage) (any, bool,
 		return verbError(ErrCodeInvalidParams, "recall: malformed request", "send a JSON object; every field is optional"), true, nil
 	}
 
-	var sinceT struct{ ok bool }
-	_ = sinceT
 	since, err := parseSinceUntil(req.Since)
 	if err != nil {
 		return verbError(ErrCodeInvalidParams, "recall: since is not a valid ISO 8601 date/datetime", "pass an ISO 8601 date (\"2026-06-01\") or datetime (\"2026-06-01T00:00:00Z\")"), true, nil
 	}
 
-	var entitySlug string
+	var entitySlug, entityType string
 	scopedToEntity := false
 	if req.Entity != "" {
-		_, slug, ok := canonicalEntityRef(req.Entity)
+		typ, slug, ok := canonicalEntityRef(req.Entity)
 		if !ok {
 			return verbError(ErrCodeInvalidParams, "recall: entity is not a valid reference", "pass a plain name or a \"type/slug\" reference with no path separators beyond the one splitting them"), true, nil
 		}
 		entitySlug = slug
+		if strings.Contains(req.Entity, "/") {
+			entityType = typ
+		}
 		scopedToEntity = true
 	}
 
 	limit := defaultRecallLimit
-	if req.Limit != nil && *req.Limit > 0 {
+	if req.Limit != nil {
+		if *req.Limit < 0 {
+			return verbError(ErrCodeInvalidParams, "limit must be nonnegative", "omit limit or provide a nonnegative integer"), true, nil
+		}
 		limit = *req.Limit
+	}
+	if req.BudgetTokens != nil && *req.BudgetTokens < 0 {
+		return verbError(ErrCodeInvalidParams, "budget_tokens must be nonnegative", "omit the budget or provide a nonnegative integer"), true, nil
 	}
 
 	now := h.deps.now()
@@ -133,6 +136,9 @@ func (h *Handlers) recall(ctx context.Context, args json.RawMessage) (any, bool,
 	}
 	facts := make([]store.MemoryFactRecord, 0, len(candidates))
 	for _, rec := range candidates {
+		if entityType != "" && rec.Payload.EntityType != entityType {
+			continue
+		}
 		if rec.Expired(now) {
 			continue
 		}
@@ -144,18 +150,28 @@ func (h *Handlers) recall(ctx context.Context, args json.RawMessage) (any, bool,
 		}
 		facts = append(facts, rec)
 	}
-	sort.Slice(facts, func(i, j int) bool { return facts[i].Payload.CreatedAt.After(facts[j].Payload.CreatedAt) })
+	sort.Slice(facts, func(i, j int) bool {
+		if facts[i].Payload.CreatedAt.Equal(facts[j].Payload.CreatedAt) {
+			return facts[i].SHA256 < facts[j].SHA256
+		}
+		return facts[i].Payload.CreatedAt.After(facts[j].Payload.CreatedAt)
+	})
 	if len(facts) > limit {
 		facts = facts[:limit]
 	}
 
 	var results []recallResult
-	var searchDegraded string
 	if req.Query != "" {
-		eligible := func(hit index.Hit) bool {
-			return store.MemoryEligible(proj, hit.SourceSHA256, true, now)
+		results = []recallResult{}
+	}
+	var searchDegraded string
+	if strings.TrimSpace(req.Query) != "" && limit > 0 {
+		restricted, err := index.RestrictedSummaryEntities(h.deps.Root, proj, now)
+		if err != nil {
+			return nil, false, err
 		}
-		hits, err := search.Search(ctx, h.deps.Index, h.deps.Embedder, req.Query, limit*searchPoolMultiplier, search.Options{Eligible: eligible})
+		eligible := index.SourceEligibility(proj, true, false, now, restricted)
+		hits, err := search.Search(ctx, h.deps.Index, h.deps.Embedder, req.Query, limit, search.Options{Eligible: eligible})
 		if err != nil {
 			return nil, false, err
 		}
@@ -229,7 +245,7 @@ func charEstimate(s string) int {
 	if s == "" {
 		return 0
 	}
-	return (len(s) + 3) / 4
+	return (utf8.RuneCountInString(s) + 3) / 4
 }
 
 func recallFactOf(rec store.MemoryFactRecord) recallFact {
@@ -245,15 +261,6 @@ func recallFactOf(rec store.MemoryFactRecord) recallFact {
 	}
 }
 
-// highVectorMatchThreshold is the fused RRF score above which a hit --
-// under a live embedder -- is classified "high_vector_match" rather than
-// "weak_semantic": a real, if simple, implementation-defined derivation
-// (RFC's own allowance: "the derivation of both is implementation-defined
-// and may improve; the values are frozen"). RRFK=60 means a chunk ranked
-// #1 in BOTH channels contributes 2/61 ≈ 0.033; this threshold requires
-// roughly a top-3 rank in at least one channel.
-const highVectorMatchThreshold = 0.02
-
 // recallResultOf classifies one search hit into the pinned enum shapes
 // (evidence, create_safety) -- zero-LLM heuristics over real signals
 // (query/hit text overlap, whether the hit's own entity slug already has
@@ -263,7 +270,7 @@ func recallResultOf(root, query string, r search.Result, hasEmbedder bool) recal
 	slug := r.EntitySlug
 	if slug == "" {
 		if r.SourceSHA256 != "" && len(r.SourceSHA256) >= 8 {
-			slug = "source-" + r.SourceSHA256[:8]
+			slug = "source-" + r.SourceSHA256
 		} else {
 			slug = r.ChunkRef
 		}
@@ -274,11 +281,7 @@ func recallResultOf(root, query string, r search.Result, hasEmbedder bool) recal
 	if r.EntitySlug != "" {
 		if matches, _ := globEntityPage(root, r.EntitySlug); len(matches) > 0 {
 			createSafety = "exists"
-		} else {
-			createSafety = "probable"
 		}
-	} else if r.Kind == "entity_page" {
-		createSafety = "probable"
 	}
 
 	evidence := classifyEvidence(query, r, hasEmbedder)
@@ -295,14 +298,8 @@ func recallResultOf(root, query string, r search.Result, hasEmbedder bool) recal
 
 func classifyEvidence(query string, r search.Result, hasEmbedder bool) string {
 	q := strings.ToLower(strings.TrimSpace(query))
-	if q != "" && r.EntitySlug != "" && strings.EqualFold(r.EntitySlug, slugify(query)) {
-		return "exact_title_match"
-	}
 	if q != "" && strings.Contains(strings.ToLower(r.Text), q) {
 		return "keyword_exact"
-	}
-	if hasEmbedder && r.RRFScore >= highVectorMatchThreshold {
-		return "high_vector_match"
 	}
 	return "weak_semantic"
 }

@@ -31,7 +31,7 @@ var testNow = time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
 func gitRepoFixture(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not available")
+		t.Fatal("git required for real persistence fixture")
 	}
 	root := t.TempDir()
 	run := func(args ...string) {

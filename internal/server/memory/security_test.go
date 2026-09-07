@@ -48,26 +48,9 @@ func hashDir(t *testing.T, dir string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// TestSlugTraversalRejected is T4.11's own "path traversal" acc-line
-// clause, migrated to the pinned contract's actual parameters (mapping doc
-// coordinator refinement #7: "migrate them to actual pinned fact/entity/
-// name/id parameters and string-code errors, retaining substantive
-// no-outside-write/no-precept-write assertions" -- the old test drove this
-// through the guessed Subject/Slug/ClaimID fields and asserted the old
-// nested invalid_argument error; this drives the SAME traversal-shaped
-// values through entity's name, remember's entity, and forget's id, and
-// asserts the new flat VerbError with the pinned invalid_params code).
-//
-// A traversal-shaped reference must come back as a clean VerbError
-// (isError=true, Error="invalid_params", a populated Suggestion), never a
-// panic and never a file read or written outside the fixture root --
-// entity's Name and remember's Entity both flow through
-// canonicalEntityRef -> validSlug before ever reaching store.FenceWriter.
-// PathFor/store.ShardStore.PathFor/globEntityPage; forget's ID flows
-// through store.MemoryProjection's own SHA/legacy-id lookup, which never
-// treats an id as a path at all -- a traversal-shaped id simply resolves
-// to nothing (not_found), proven here by the same before/after fixture
-// hash as the other two verbs.
+// The original traversal probes used the superseded Subject/Slug/ClaimID
+// contract. These probes use the adopted entity/name/id inputs and retain
+// both the no-write and no-outside-read/write security assertions.
 func TestSlugTraversalRejected(t *testing.T) {
 	h, root := newTestHandlers(t)
 	ctx := context.Background()
@@ -81,6 +64,13 @@ func TestSlugTraversalRejected(t *testing.T) {
 		"/etc/passwd",
 	}
 
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "sentinel.md")
+	if err := os.WriteFile(secret, []byte("outside-boundary-sentinel"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	malicious = append(malicious, secret)
+	outsideBefore := hashDir(t, outside)
 	before := hashDir(t, root)
 
 	for _, ref := range malicious {
@@ -95,10 +85,7 @@ func TestSlugTraversalRejected(t *testing.T) {
 				t.Fatalf("entity(%q): Error = %q, want %q", ref, ve.Error, ErrCodeInvalidParams)
 			}
 
-			// remember -- the write-side vector: an unvalidated Entity
-			// flows toward store.FenceWriter.PathFor with no sanitization
-			// of its own, making this the arbitrary-file-write half of
-			// this test.
+			// Exercise the write-side entity input too.
 			resp, isError, err = h.remember(ctx, mustMarshal(t, rememberRequest{
 				Fact: "traversal probe", Provenance: "security test", Entity: ref,
 			}))
@@ -124,8 +111,10 @@ func TestSlugTraversalRejected(t *testing.T) {
 		})
 	}
 
-	// No traversal attempt above left any trace inside the fixture root:
-	// every one was rejected before reaching a filesystem call.
+	if got := hashDir(t, outside); got != outsideBefore {
+		t.Fatalf("outside fixture changed: %s != %s", got, outsideBefore)
+	}
+	// Rejected writes also leave canonical local storage untouched.
 	after := hashDir(t, root)
 	if before != after {
 		t.Fatalf("fixture root changed across traversal attempts: before=%s after=%s", before, after)

@@ -3,6 +3,7 @@ package writer
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -21,6 +22,9 @@ import (
 // of its own (its content-addressed dedup is safe unserialized, but a
 // caller-chosen legacy id and a caller-chosen "is this a duplicate" verdict
 // are not).
+// Allocation and semantic deduplication require all canonical writes for a
+// brain to use this same queue. Independent processes are not serialized here;
+// concurrent writable stdio servers for one brain are outside this guarantee.
 type MemoryFact struct {
 	Queue   *Queue
 	Sources *store.SourceStore
@@ -57,6 +61,9 @@ type RememberResult struct {
 // Remember writes fact as a new canonical memory_fact source (or resolves
 // it to an existing exact duplicate), fully inside one Queue.Submit call.
 func (w *MemoryFact) Remember(input RememberInput, now time.Time) (RememberResult, error) {
+	if w.Queue == nil || w.Sources == nil {
+		return RememberResult{}, fmt.Errorf("writer: memory writer dependencies unavailable")
+	}
 	var result RememberResult
 	var innerErr error
 	res := w.Queue.Submit(Job{
@@ -80,12 +87,16 @@ func (w *MemoryFact) rememberLocked(input RememberInput, now time.Time) (Remembe
 		return RememberResult{}, err
 	}
 
-	key := store.DedupKey(input.Fact, input.Provenance, input.EntitySlug, input.Kind, input.Visibility, input.ValidUntil)
+	key := store.DedupKey(input.Fact, input.Provenance, input.EntitySlug, input.Kind, input.Visibility, input.ValidUntil, input.EntityType)
 	if dup, ok := proj.FindDuplicate(key, now); ok {
+		w.markSource(dup.SHA256)
 		return RememberResult{Record: dup, Inserted: false}, nil
 	}
 
-	legacyID := proj.NextLegacyID()
+	legacyID, err := proj.NextLegacyID()
+	if err != nil {
+		return RememberResult{}, err
+	}
 	payload := store.MemoryFactPayload{
 		FormatVersion: store.MemoryFactFormatVersion,
 		RecordType:    store.SourceKindMemoryFact,
@@ -99,24 +110,13 @@ func (w *MemoryFact) rememberLocked(input RememberInput, now time.Time) (Remembe
 		CreatedAt:     now,
 		ValidUntil:    input.ValidUntil,
 	}
-	data, err := store.EncodeMemoryFact(payload)
-	if err != nil {
-		return RememberResult{}, err
+	written, err := w.Sources.WriteMemoryFact(payload)
+	if written.SHA256 != "" {
+		w.markSource(written.SHA256)
 	}
-
-	// A collision here means the payload's own content (fact text
-	// included) hashes identically to something already on disk --
-	// SourceStore.Write's content-addressed dedup would then hand back
-	// the ORIGINAL metadata rather than writing again. Since the payload
-	// embeds a just-allocated, previously-unused legacy_id, that can only
-	// happen for a byte-for-byte identical payload already written under
-	// that same legacy_id -- i.e., truly the same write, safe to treat as
-	// success rather than a real collision.
-	written, err := w.Sources.Write(data, store.NewMemoryFactSource(now))
 	if err != nil {
 		return RememberResult{}, fmt.Errorf("writer: write memory fact: %w", err)
 	}
-	w.Queue.MarkTouched(w.Sources.DirFor(written.SHA256))
 
 	return RememberResult{Record: store.MemoryFactRecord{SHA256: written.SHA256, Payload: payload}, Inserted: true}, nil
 }
@@ -135,6 +135,9 @@ type ForgetResult struct {
 // prior forget, or its own TTL having passed) writes nothing and returns
 // Expired=false; an unknown target returns ErrMemoryFactNotFound.
 func (w *MemoryFact) Forget(targetSHA256, reason string, now time.Time) (ForgetResult, error) {
+	if w.Queue == nil || w.Sources == nil {
+		return ForgetResult{}, fmt.Errorf("writer: memory writer dependencies unavailable")
+	}
 	var result ForgetResult
 	var innerErr error
 	res := w.Queue.Submit(Job{
@@ -159,6 +162,10 @@ func (w *MemoryFact) forgetLocked(targetSHA256, reason string, now time.Time) (F
 		return ForgetResult{}, ErrMemoryFactNotFound
 	}
 	if rec.Expired(now) {
+		w.markSource(rec.SHA256)
+		if rec.ExpirySHA256 != "" {
+			w.markSource(rec.ExpirySHA256)
+		}
 		return ForgetResult{Record: rec, Expired: false}, nil
 	}
 
@@ -169,15 +176,14 @@ func (w *MemoryFact) forgetLocked(targetSHA256, reason string, now time.Time) (F
 		Reason:        reason,
 		ExpiredAt:     now,
 	}
-	data, err := store.EncodeMemoryExpiry(payload)
-	if err != nil {
-		return ForgetResult{}, err
+	written, err := w.Sources.WriteMemoryExpiry(payload)
+	if written.SHA256 != "" {
+		w.markSource(written.SHA256)
 	}
-	written, err := w.Sources.Write(data, store.NewMemoryExpirySource(now))
 	if err != nil {
 		return ForgetResult{}, fmt.Errorf("writer: write memory expiry: %w", err)
 	}
-	w.Queue.MarkTouched(w.Sources.DirFor(written.SHA256))
+	rec.ExpirySHA256 = written.SHA256
 
 	rec.ExpiredAt = &now
 	rec.ExpiredReason = reason
@@ -194,10 +200,21 @@ func ByLegacyOrOpaqueID(p *store.MemoryProjection, id string) (sha string, ok bo
 	if rec, found := p.Get(id); found {
 		return rec.SHA256, true
 	}
-	if n, err := strconv.ParseInt(id, 10, 64); err == nil && n > 0 {
+	if n, err := strconv.ParseInt(id, 10, 64); err == nil && n > 0 && n <= store.MaxMemoryLegacyID && strconv.FormatInt(n, 10) == id {
 		if rec, found := p.ByLegacyID(n); found {
 			return rec.SHA256, true
 		}
 	}
 	return "", false
+}
+
+// Mark exact files even for a duplicate so retry after a failed commit/restart
+// retains the canonical commit obligation without allocating a second fact.
+func (w *MemoryFact) markSource(sha string) {
+	if !store.ValidSourceSHA(sha) {
+		return
+	}
+	dir := w.Sources.DirFor(sha)
+	w.Queue.MarkTouched(filepath.Join(dir, "bytes"))
+	w.Queue.MarkTouched(filepath.Join(dir, "meta.yaml"))
 }

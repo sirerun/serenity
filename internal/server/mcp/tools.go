@@ -21,7 +21,17 @@ type Tool struct {
 	Description string                                                 `json:"description,omitempty"`
 	InputSchema json.RawMessage                                        `json:"inputSchema"`
 	Handler     func(context.Context, json.RawMessage) (Result, error) `json:"-"`
+	// Failure optionally renders schema and execution failures in the domain's wire format.
+	Failure func(FailureKind) Result `json:"-"`
 }
+
+// FailureKind identifies a tool-level failure without exposing internal errors.
+type FailureKind string
+
+const (
+	InvalidArguments FailureKind = "invalid_arguments"
+	ExecutionFailed  FailureKind = "execution_failed"
+)
 
 // Content is text returned by a tool. Domain envelopes can be serialized in Text.
 type Content struct {

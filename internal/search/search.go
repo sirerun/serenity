@@ -42,6 +42,9 @@ type Result struct {
 // pinned defaults (DefaultMaxPerType, DefaultMaxPerPage,
 // DefaultNearDupeCosine).
 type Options struct {
+	// FTSExpression preserves an explicitly constructed SQLite MATCH expression.
+	// The default treats the query as ordinary text in both retrieval channels.
+	FTSExpression  bool
 	MaxPerType     int
 	MaxPerPage     int
 	NearDupeCosine float64
@@ -75,16 +78,8 @@ func (o Options) withDefaults() Options {
 // per-page caps.
 const candidatePoolMultiplier = 5
 
-// poolWidenFactor and maxPoolWidenings bound how far Search retries with a
-// larger candidate pool when Options.Eligible excludes enough hits to
-// starve limit (T4.20 mapping item 5: "must not stop at the old limit*5
-// pool when excluded hits occupy it. Widen or paginate until enough
-// eligible results survive or the source is exhausted"). Doubling five
-// times off a limit*5 base reaches limit*160 before giving up -- generous
-// against a pool dominated by ineligible hits, still bounded so a genuinely
-// exhausted store returns promptly rather than looping.
+// Widen until the index is exhausted or enough eligible results survive.
 const poolWidenFactor = 2
-const maxPoolWidenings = 5
 
 // Search answers query by fusing the vector and full-text rankings via
 // RRF (rrf.go) and running the fused list through 4 dedup layers
@@ -107,28 +102,41 @@ func Search(ctx context.Context, store Store, embedder embed.Embedder, query str
 		return nil, nil
 	}
 	opts = opts.withDefaults()
+	if limit > int(^uint(0)>>1)/candidatePoolMultiplier {
+		return nil, fmt.Errorf("search: limit exceeds addressable range")
+	}
 	pool := limit * candidatePoolMultiplier
 
 	var pin string
+	var qvec []float32
 	if embedder != nil {
 		pin = embedder.ModelVersion()
+		var err error
+		qvec, err = embedder.Embed(ctx, query)
+		if err != nil {
+			return nil, fmt.Errorf("search: embed query: %w", err)
+		}
 	}
 
+	ftsQuery := query
+	if !opts.FTSExpression {
+		ftsQuery = index.LiteralFTSQuery(query)
+	}
 	var results []Result
-	for attempt := 0; ; attempt++ {
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		var vectorHits []index.Hit
 		if embedder != nil {
-			qvec, err := embedder.Embed(ctx, query)
-			if err != nil {
-				return nil, fmt.Errorf("search: embed query: %w", err)
-			}
+			var err error
 			vectorHits, err = store.SearchVectors(ctx, pin, qvec, pool)
 			if err != nil {
 				return nil, fmt.Errorf("search: vector scan: %w", err)
 			}
 		}
 
-		ftsHits, err := store.SearchFTS(ctx, query, pool)
+		ftsHits, err := store.SearchFTS(ctx, ftsQuery, pool)
 		if err != nil {
 			return nil, fmt.Errorf("search: fts scan: %w", err)
 		}
@@ -148,8 +156,11 @@ func Search(ctx context.Context, store Store, embedder embed.Embedder, query str
 		results = fused
 
 		exhausted := len(vectorHits) < pool && len(ftsHits) < pool
-		if len(results) >= limit || exhausted || attempt >= maxPoolWidenings {
+		if len(results) >= limit || exhausted {
 			break
+		}
+		if pool > int(^uint(0)>>1)/poolWidenFactor {
+			return nil, fmt.Errorf("search: candidate pool exceeds addressable range")
 		}
 		pool *= poolWidenFactor
 	}

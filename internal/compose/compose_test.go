@@ -190,6 +190,9 @@ func TestAskCitationsResolveToRealClaims(t *testing.T) {
 	}
 	c := New(root, config.Default(), fakeSearchStore{}, nil, newTestRouter(fp), "fake-composer@v1")
 
+	// Keep this citation/history fixture inside its actual validity window.
+	c.now = fixedNow(mustDate(t, "2024-03-01"))
+
 	ans, err := c.Ask(context.Background(), "What project does Ava belong to?")
 	if err != nil {
 		t.Fatalf("Ask: %v", err)
@@ -257,6 +260,9 @@ func TestAskStaleClaimSupersessionChain(t *testing.T) {
 		resp:         router.Response{Text: "Ava currently works as an engineering manager [claim:role-em]."},
 	}
 	c := New(root, config.Default(), fakeSearchStore{}, nil, newTestRouter(fp), "fake-composer@v1")
+
+	// Keep this citation/history fixture inside its actual validity window.
+	c.now = fixedNow(mustDate(t, "2024-03-01"))
 
 	ans, err := c.Ask(context.Background(), "What is Ava's current role?")
 	if err != nil {

@@ -112,7 +112,8 @@ func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, error
 	q := writer.NewQueue(nil)
 	closeDeps := func() error {
 		q.Close()
-		return eng.Close()
+		_, flushErr := writer.Flush(q, root)
+		return errors.Join(flushErr, eng.Close())
 	}
 
 	ledger := &providers.IndexSpendLedger{Eng: eng}

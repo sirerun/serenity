@@ -110,6 +110,13 @@ func runAsk(ctx context.Context, root, question string, out io.Writer) error {
 		_, _ = fmt.Fprintln(out, answer.Gap)
 		return nil
 	}
-	_, _ = fmt.Fprintln(out, answer.Text)
+	if _, err := fmt.Fprintln(out, answer.Text); err != nil {
+		return err
+	}
+	for _, source := range answer.SourceCitations {
+		if _, err := fmt.Fprintf(out, "[source:%s] %s (attribution: %s)\n", source.SHA256, source.Fact, source.Provenance); err != nil {
+			return err
+		}
+	}
 	return nil
 }

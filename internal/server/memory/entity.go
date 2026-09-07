@@ -3,12 +3,14 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/sirerun/serenity/internal/compose"
 	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/server/mcp"
 	"github.com/sirerun/serenity/internal/store"
@@ -65,7 +67,7 @@ type entityResponse struct {
 	Found           bool               `json:"found"`
 	LatencyMs       int64              `json:"latency_ms"`
 	Card            *entityCard        `json:"card,omitempty"`
-	Suggestions     []entitySuggestion `json:"suggestions,omitempty"`
+	Suggestions     []entitySuggestion `json:"suggestions"`
 }
 
 func (h *Handlers) entityTool() mcp.Tool {
@@ -93,17 +95,12 @@ type resolvedEntityPage struct {
 	page  *store.EntityPage
 	path  string
 	mtime time.Time
-	tier  int // 0 = alias, 1 = exact title, 2 = slug/suffix
 }
 
-// entity resolves name -> a card, zero LLM (RFC's own p99<100ms promise is
-// op-layer latency; this implementation's own real Go work easily clears
-// it against a single-brain-repo fixture). Resolution precedence is
-// alias > exact title > slug/suffix, ties broken by most-recently-touched
-// (file mtime); a miss is a normal, successful found:false response, never
-// an error (this task's own acc line).
+// entity resolves alias, title, then slug, with recency breaking ties.
 func (h *Handlers) entity(ctx context.Context, args json.RawMessage) (any, bool, error) {
-	t0 := h.deps.now()
+	started := time.Now()
+	now := h.deps.now()
 	var req entityRequest
 	if err := json.Unmarshal(args, &req); err != nil {
 		return verbError(ErrCodeInvalidParams, "entity: malformed request", "send a JSON object with a non-empty \"name\" string"), true, nil
@@ -123,19 +120,18 @@ func (h *Handlers) entity(ctx context.Context, args json.RawMessage) (any, bool,
 	}
 
 	matches := matchEntityPages(name, refType, refSlug, pages)
-	latency := h.deps.now().Sub(t0).Milliseconds()
 
 	if len(matches) == 0 {
 		suggestions := nearMissSuggestions(name, refSlug, pages)
-		return entityResponse{ProtocolVersion: ProtocolVersion, Found: false, LatencyMs: latency, Suggestions: suggestions}, false, nil
+		return entityResponse{ProtocolVersion: ProtocolVersion, Found: false, LatencyMs: time.Since(started).Milliseconds(), Suggestions: suggestions}, false, nil
 	}
 
 	best := matches[0]
-	card, err := h.buildEntityCard(best, pages)
+	card, err := h.buildEntityCard(best, pages, now)
 	if err != nil {
 		return nil, false, err
 	}
-	resp := entityResponse{ProtocolVersion: ProtocolVersion, Found: true, LatencyMs: latency, Card: card}
+	resp := entityResponse{ProtocolVersion: ProtocolVersion, Found: true, LatencyMs: time.Since(started).Milliseconds(), Card: card, Suggestions: []entitySuggestion{}}
 	for _, m := range matches[1:] {
 		resp.Suggestions = append(resp.Suggestions, entitySuggestion{Slug: m.page.Entity.Slug, Title: m.page.Title, CreateSafety: "exists"})
 	}
@@ -143,23 +139,57 @@ func (h *Handlers) entity(ctx context.Context, args json.RawMessage) (any, bool,
 }
 
 func (h *Handlers) loadAllEntityPages() ([]resolvedEntityPage, error) {
-	paths, err := filepath.Glob(filepath.Join(h.deps.Root, "brain", "entities", "*", "*.md"))
+	base := filepath.Join(h.deps.Root, "brain", "entities")
+	for _, dir := range []string{h.deps.Root, filepath.Join(h.deps.Root, "brain"), base} {
+		info, err := os.Lstat(dir)
+		if os.IsNotExist(err) {
+			return []resolvedEntityPage{}, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("entity: unsafe directory %s", dir)
+		}
+	}
+	types, err := os.ReadDir(base)
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(paths)
-	out := make([]resolvedEntityPage, 0, len(paths))
-	for _, p := range paths {
-		page, err := h.deps.Fence.ParseEntity(p)
+	out := []resolvedEntityPage{}
+	for _, typ := range types {
+		if typ.Type()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("entity: symlink type directory")
+		}
+		if !typ.IsDir() {
+			continue
+		}
+		dir := filepath.Join(base, typ.Name())
+		files, err := os.ReadDir(dir)
 		if err != nil {
-			continue // a page that fails to parse is not a candidate, never a hard error for a read-only lookup
+			return nil, err
 		}
-		info, statErr := os.Stat(p)
-		mtime := time.Time{}
-		if statErr == nil {
-			mtime = info.ModTime()
+		for _, file := range files {
+			if file.Type()&os.ModeSymlink != 0 {
+				return nil, fmt.Errorf("entity: symlink page")
+			}
+			if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
+				continue
+			}
+			path := filepath.Join(dir, file.Name())
+			info, err := file.Info()
+			if err != nil {
+				return nil, err
+			}
+			if !info.Mode().IsRegular() {
+				return nil, fmt.Errorf("entity: nonregular page")
+			}
+			page, err := h.deps.Fence.ParseEntity(path)
+			if err != nil {
+				return nil, fmt.Errorf("entity: parse page: %w", err)
+			}
+			out = append(out, resolvedEntityPage{page: page, path: path, mtime: info.ModTime()})
 		}
-		out = append(out, resolvedEntityPage{page: page, path: p, mtime: mtime})
 	}
 	return out, nil
 }
@@ -173,6 +203,9 @@ func matchEntityPages(name, refType, refSlug string, pages []resolvedEntityPage)
 	bestTier := -1
 	var candidates []resolvedEntityPage
 	for _, rp := range pages {
+		if strings.Contains(name, "/") && !strings.EqualFold(rp.page.Entity.Type, refType) {
+			continue
+		}
 		tier := -1
 		for _, alias := range rp.page.Entity.Aliases {
 			if strings.EqualFold(alias, name) {
@@ -186,7 +219,7 @@ func matchEntityPages(name, refType, refSlug string, pages []resolvedEntityPage)
 		if tier == -1 {
 			if rp.page.Entity.Slug == refSlug || strings.EqualFold(rp.page.Entity.Slug, refSlug) {
 				tier = 2
-			} else if strings.HasSuffix(strings.ToLower(rp.page.Entity.Slug), nameLower) {
+			} else if strings.HasSuffix(strings.ToLower(rp.page.Entity.Slug), "/"+nameLower) || strings.HasSuffix(strings.ToLower(rp.page.Entity.Slug), "-"+nameLower) {
 				tier = 2
 			}
 		}
@@ -200,7 +233,6 @@ func matchEntityPages(name, refType, refSlug string, pages []resolvedEntityPage)
 			candidates = append(candidates, rp)
 		}
 	}
-	_ = refType
 	sort.SliceStable(candidates, func(i, j int) bool { return candidates[i].mtime.After(candidates[j].mtime) })
 	return candidates
 }
@@ -210,7 +242,7 @@ func matchEntityPages(name, refType, refSlug string, pages []resolvedEntityPage)
 // nothing overlaps at all, never a fabricated non-empty result.
 func nearMissSuggestions(name, refSlug string, pages []resolvedEntityPage) []entitySuggestion {
 	qTokens := tokenizeName(name)
-	var out []entitySuggestion
+	out := []entitySuggestion{}
 	for _, rp := range pages {
 		hit := false
 		for tok := range tokenizeName(rp.page.Title) {
@@ -240,17 +272,10 @@ func tokenizeName(s string) map[string]bool {
 	return out
 }
 
-// buildEntityCard renders one page into the pinned card shape: real,
-// derived open_threads (active commitment-kind memory facts plus the
-// page's own last-90-day timeline, capped 3), real edges (typed,
-// out-edges-first, derived from this entity's own live claims pointing at
-// another known entity's slug, plus the "in" edges every OTHER entity's
-// claims contribute back), and a genuine active_fact_count/backlink_count
-// -- never fabricated, and private facts are excluded before any of these
-// fields is built (entity is always the MCP/remote audience -- RFC:
-// "remote callers see visibility=world facts only").
-func (h *Handlers) buildEntityCard(best resolvedEntityPage, pages []resolvedEntityPage) (*entityCard, error) {
-	now := h.deps.now()
+// buildEntityCard derives remote prose and threads from active public source
+// facts. Cached summaries and timelines lack per-entry privacy attribution and
+// cannot safely be reused. Edges use canonical public claim heads.
+func (h *Handlers) buildEntityCard(best resolvedEntityPage, pages []resolvedEntityPage, now time.Time) (*entityCard, error) {
 	proj, err := store.LoadMemoryProjection(h.deps.Sources)
 	if err != nil {
 		return nil, err
@@ -259,33 +284,40 @@ func (h *Handlers) buildEntityCard(best resolvedEntityPage, pages []resolvedEnti
 	slug := best.page.Entity.Slug
 	activeFacts := make([]store.MemoryFactRecord, 0)
 	for _, rec := range proj.ByEntity(slug) {
-		if rec.Expired(now) || rec.Payload.Visibility != store.MemoryVisibilityWorld {
+		if typ := rec.Payload.EntityType; typ != "" && typ != defaultEntityType && !strings.EqualFold(typ, best.page.Entity.Type) {
+			continue
+		}
+		if rec.Expired(now) || rec.Payload.CreatedAt.After(now) || rec.Payload.Visibility != store.MemoryVisibilityWorld {
 			continue
 		}
 		activeFacts = append(activeFacts, rec)
 	}
 
+	sort.Slice(activeFacts, func(i, j int) bool {
+		if activeFacts[i].Payload.CreatedAt.Equal(activeFacts[j].Payload.CreatedAt) {
+			return activeFacts[i].SHA256 < activeFacts[j].SHA256
+		}
+		return activeFacts[i].Payload.CreatedAt.After(activeFacts[j].Payload.CreatedAt)
+	})
 	var lastTimelineDate *string
 	openThreads := make([]entityOpenThread, 0, 3)
 	cutoff := now.AddDate(0, 0, -90)
+	var summary []string
 	for _, rec := range activeFacts {
-		if rec.Payload.Kind == store.MemoryFactKindCommitment {
+		// Cached page prose and timelines have no per-entry provenance or
+		// visibility. Reconstruct remote prose only from eligible sources.
+		summary = append(summary, rec.Payload.Fact)
+		switch rec.Payload.Kind {
+		case store.MemoryFactKindCommitment:
 			openThreads = append(openThreads, entityOpenThread{Kind: "commitment", Text: rec.Payload.Fact, Date: isoDatePtr(rec.Payload.CreatedAt)})
+		case store.MemoryFactKindEvent:
+			if lastTimelineDate == nil {
+				lastTimelineDate = isoDatePtr(rec.Payload.CreatedAt)
+			}
+			if !rec.Payload.CreatedAt.Before(cutoff) {
+				openThreads = append(openThreads, entityOpenThread{Kind: "recent_event", Text: rec.Payload.Fact, Date: isoDatePtr(rec.Payload.CreatedAt)})
+			}
 		}
-	}
-	tl := append([]store.TimelineEntry(nil), best.page.Timeline...)
-	sort.Slice(tl, func(i, j int) bool { return tl[i].Date > tl[j].Date })
-	if len(tl) > 0 {
-		d := tl[0].Date
-		lastTimelineDate = &d
-	}
-	for _, t := range tl {
-		parsed, err := time.Parse("2006-01-02", t.Date)
-		if err == nil && parsed.Before(cutoff) {
-			continue
-		}
-		date := t.Date
-		openThreads = append(openThreads, entityOpenThread{Kind: "recent_event", Text: t.Text, Date: &date})
 	}
 	sort.SliceStable(openThreads, func(i, j int) bool {
 		di, dj := "", ""
@@ -301,7 +333,11 @@ func (h *Handlers) buildEntityCard(best resolvedEntityPage, pages []resolvedEnti
 		openThreads = openThreads[:3]
 	}
 
-	edges, backlinks := h.entityEdges(slug, best, pages)
+	claims, err := compose.PublicClaims(h.deps.Root, h.deps.Config, proj, now)
+	if err != nil {
+		return nil, err
+	}
+	edges, backlinks := entityEdges(slug, pages, claims)
 
 	var typ *string
 	if best.page.Entity.Type != "" {
@@ -317,7 +353,7 @@ func (h *Handlers) buildEntityCard(best resolvedEntityPage, pages []resolvedEnti
 	return &entityCard{
 		Entity:  entityCardEntity{Slug: slug, Title: best.page.Title, Type: typ},
 		Aka:     append([]string{}, best.page.Entity.Aliases...),
-		Summary: best.page.Summary,
+		Summary: strings.Join(summary, "\n"),
 		LastTouched: entityLastTouched{
 			UpdatedAt:        updatedAt,
 			LastRetrievedAt:  nil, // no per-entity read-tracking exists in this repo -- an honest null, never fabricated
@@ -330,70 +366,60 @@ func (h *Handlers) buildEntityCard(best resolvedEntityPage, pages []resolvedEnti
 	}, nil
 }
 
-// entityEdges derives real typed edges from claim data alone: an "out"
-// edge for each of this entity's own live claims whose Object normalizes
-// to another known page's slug, and an "in" edge for every OTHER entity's
-// live claim that points back at this one -- out-edges first, capped at
-// 10 total (RFC: "top ~10 typed edges, mentions excluded, out-edges
-// first" -- this repo has no separate "mentions" edge kind to exclude, so
-// that constraint is trivially satisfied). backlinks is the real count of
-// "in" edges found, independent of the 10-cap.
-func (h *Handlers) entityEdges(slug string, best resolvedEntityPage, pages []resolvedEntityPage) ([]entityEdge, int) {
-	knownSlugs := make(map[string]bool, len(pages))
-	for _, rp := range pages {
-		knownSlugs[rp.page.Entity.Slug] = true
+// entityEdges uses resolved canonical public heads. Counts and edge limits
+// apply after privacy, validity and supersession filtering.
+func entityEdges(slug string, pages []resolvedEntityPage, claims map[string][]domain.Claim) ([]entityEdge, int) {
+	known := map[string]bool{}
+	for _, page := range pages {
+		known[page.page.Entity.Slug] = true
 	}
-
-	var out []entityEdge
-	for _, c := range best.page.Claims {
-		if key := store.NormalizeKey(c.Object); knownSlugs[key] {
-			out = append(out, entityEdge{Type: c.Predicate, Direction: "out", Slug: key})
+	out, incoming := []entityEdge{}, []entityEdge{}
+	seen := map[string]bool{}
+	add := func(c domain.Claim, direction, target string) {
+		if c.Predicate == "mentions" || c.Predicate == "mention" {
+			return
+		}
+		key := direction + "\x00" + c.Predicate + "\x00" + target
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		edge := entityEdge{Type: c.Predicate, Direction: direction, Slug: target}
+		if direction == "out" {
+			out = append(out, edge)
+		} else {
+			incoming = append(incoming, edge)
 		}
 	}
-	families, _ := h.deps.Shard.Families(slug)
-	for _, family := range families {
-		heads, _ := h.deps.Shard.ResolveHeads(slug, family)
-		for _, key := range store.HeadKeys(heads) {
-			c := heads[key]
-			if k := store.NormalizeKey(c.Object); knownSlugs[k] {
-				out = append(out, entityEdge{Type: c.Predicate, Direction: "out", Slug: k})
-			}
+	for _, c := range claims[slug] {
+		if target := store.NormalizeKey(c.Object); known[target] {
+			add(c, "out", target)
 		}
 	}
-
-	backlinks := 0
-	var in []entityEdge
-	for _, rp := range pages {
-		if rp.page.Entity.Slug == slug {
+	for subject, list := range claims {
+		if subject == slug || !known[subject] {
 			continue
 		}
-		for _, c := range claimsOf(h, rp.page) {
+		for _, c := range list {
 			if store.NormalizeKey(c.Object) == slug {
-				in = append(in, entityEdge{Type: c.Predicate, Direction: "in", Slug: rp.page.Entity.Slug})
-				backlinks++
+				add(c, "in", subject)
 			}
 		}
 	}
-	out = append(out, in...)
+	less := func(a, b entityEdge) bool {
+		if a.Type != b.Type {
+			return a.Type < b.Type
+		}
+		return a.Slug < b.Slug
+	}
+	sort.Slice(out, func(i, j int) bool { return less(out[i], out[j]) })
+	sort.Slice(incoming, func(i, j int) bool { return less(incoming[i], incoming[j]) })
+	backlinks := len(incoming)
+	out = append(out, incoming...)
 	if len(out) > 10 {
 		out = out[:10]
 	}
 	return out, backlinks
-}
-
-// claimsOf returns every live claim -- fence-tier from the page itself,
-// shard-tier resolved heads -- for one entity page, the same fence-vs-
-// shard authority split index.Rebuild applies.
-func claimsOf(h *Handlers, page *store.EntityPage) []domain.Claim {
-	out := append([]domain.Claim(nil), page.Claims...)
-	families, _ := h.deps.Shard.Families(page.Entity.Slug)
-	for _, family := range families {
-		heads, _ := h.deps.Shard.ResolveHeads(page.Entity.Slug, family)
-		for _, key := range store.HeadKeys(heads) {
-			out = append(out, heads[key])
-		}
-	}
-	return out
 }
 
 func isoDatePtr(t time.Time) *string {

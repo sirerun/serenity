@@ -1,13 +1,16 @@
 package store
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/sirerun/serenity/internal/domain"
 )
@@ -111,17 +114,8 @@ func EncodeMemoryFact(p MemoryFactPayload) ([]byte, error) {
 	if p.FormatVersion == 0 {
 		p.FormatVersion = MemoryFactFormatVersion
 	}
-	if p.Fact == "" {
-		return nil, fmt.Errorf("store: memory fact payload: fact is required")
-	}
-	if p.Provenance == "" {
-		return nil, fmt.Errorf("store: memory fact payload: provenance is required")
-	}
-	if !ValidMemoryFactKind(string(p.Kind)) {
-		return nil, fmt.Errorf("store: memory fact payload: invalid kind %q", p.Kind)
-	}
-	if p.Visibility != MemoryVisibilityWorld && p.Visibility != MemoryVisibilityPrivate {
-		return nil, fmt.Errorf("store: memory fact payload: invalid visibility %q", p.Visibility)
+	if err := validateMemoryFact(p); err != nil {
+		return nil, err
 	}
 	return json.Marshal(p)
 }
@@ -133,18 +127,15 @@ func EncodeMemoryFact(p MemoryFactPayload) ([]byte, error) {
 // unrecognized-version bytes are a hard error, never silently treated as an
 // ordinary source.
 func DecodeMemoryFact(data []byte) (MemoryFactPayload, error) {
+	if !utf8.Valid(data) {
+		return MemoryFactPayload{}, fmt.Errorf("store: memory fact JSON is not UTF-8")
+	}
 	var p MemoryFactPayload
 	if err := json.Unmarshal(data, &p); err != nil {
 		return MemoryFactPayload{}, fmt.Errorf("store: corrupt memory_fact payload: %w", err)
 	}
-	if p.RecordType != SourceKindMemoryFact {
-		return MemoryFactPayload{}, fmt.Errorf("store: memory_fact payload: record_type = %q, want %q", p.RecordType, SourceKindMemoryFact)
-	}
-	if p.FormatVersion != MemoryFactFormatVersion {
-		return MemoryFactPayload{}, fmt.Errorf("store: memory_fact payload: unsupported format_version %d", p.FormatVersion)
-	}
-	if !ValidMemoryFactKind(string(p.Kind)) || (p.Visibility != MemoryVisibilityWorld && p.Visibility != MemoryVisibilityPrivate) {
-		return MemoryFactPayload{}, fmt.Errorf("store: memory_fact payload: invalid kind/visibility")
+	if err := validateMemoryFact(p); err != nil {
+		return MemoryFactPayload{}, err
 	}
 	return p, nil
 }
@@ -155,28 +146,63 @@ func EncodeMemoryExpiry(p MemoryExpiryPayload) ([]byte, error) {
 	if p.FormatVersion == 0 {
 		p.FormatVersion = MemoryFactFormatVersion
 	}
-	if p.TargetSHA256 == "" {
-		return nil, fmt.Errorf("store: memory expiry payload: target_sha256 is required")
+	if err := validateMemoryExpiry(p); err != nil {
+		return nil, err
 	}
 	return json.Marshal(p)
 }
 
 // DecodeMemoryExpiry mirrors DecodeMemoryFact's fail-closed contract.
 func DecodeMemoryExpiry(data []byte) (MemoryExpiryPayload, error) {
+	if !utf8.Valid(data) {
+		return MemoryExpiryPayload{}, fmt.Errorf("store: memory expiry JSON is not UTF-8")
+	}
 	var p MemoryExpiryPayload
 	if err := json.Unmarshal(data, &p); err != nil {
 		return MemoryExpiryPayload{}, fmt.Errorf("store: corrupt memory_expiry payload: %w", err)
 	}
-	if p.RecordType != SourceKindMemoryExpiry {
-		return MemoryExpiryPayload{}, fmt.Errorf("store: memory_expiry payload: record_type = %q, want %q", p.RecordType, SourceKindMemoryExpiry)
-	}
-	if p.FormatVersion != MemoryFactFormatVersion {
-		return MemoryExpiryPayload{}, fmt.Errorf("store: memory_expiry payload: unsupported format_version %d", p.FormatVersion)
-	}
-	if p.TargetSHA256 == "" {
-		return MemoryExpiryPayload{}, fmt.Errorf("store: memory_expiry payload: missing target_sha256")
+	if err := validateMemoryExpiry(p); err != nil {
+		return MemoryExpiryPayload{}, err
 	}
 	return p, nil
+}
+
+// MaxMemoryLegacyID is the largest integer exactly representable by JSON clients.
+const MaxMemoryLegacyID int64 = 1<<53 - 1
+
+func validateMemoryFact(p MemoryFactPayload) error {
+	if p.RecordType != SourceKindMemoryFact || p.FormatVersion != MemoryFactFormatVersion {
+		return fmt.Errorf("store: invalid memory fact type/version")
+	}
+	if p.LegacyID <= 0 || p.LegacyID > MaxMemoryLegacyID {
+		return fmt.Errorf("store: invalid memory legacy ID %d", p.LegacyID)
+	}
+	if strings.TrimSpace(p.Fact) == "" || !utf8.ValidString(p.Fact) {
+		return fmt.Errorf("store: memory fact is required UTF-8 text")
+	}
+	if strings.TrimSpace(p.Provenance) == "" || !utf8.ValidString(p.Provenance) || utf8.RuneCountInString(p.Provenance) > 500 {
+		return fmt.Errorf("store: invalid memory provenance")
+	}
+	if !ValidMemoryFactKind(string(p.Kind)) || (p.Visibility != MemoryVisibilityWorld && p.Visibility != MemoryVisibilityPrivate) {
+		return fmt.Errorf("store: invalid memory kind/visibility")
+	}
+	if p.CreatedAt.IsZero() || (p.ValidUntil != nil && p.ValidUntil.IsZero()) {
+		return fmt.Errorf("store: missing memory timestamp")
+	}
+	if !utf8.ValidString(p.EntitySlug) || !utf8.ValidString(p.EntityType) {
+		return fmt.Errorf("store: invalid memory entity text")
+	}
+	return nil
+}
+
+func validateMemoryExpiry(p MemoryExpiryPayload) error {
+	if p.RecordType != SourceKindMemoryExpiry || p.FormatVersion != MemoryFactFormatVersion {
+		return fmt.Errorf("store: invalid memory expiry type/version")
+	}
+	if !ValidSourceSHA(p.TargetSHA256) || p.ExpiredAt.IsZero() || !utf8.ValidString(p.Reason) {
+		return fmt.Errorf("store: invalid memory expiry target/timestamp/reason")
+	}
+	return nil
 }
 
 // MemoryFactRecord is one memory_fact source fully resolved against every
@@ -187,6 +213,7 @@ type MemoryFactRecord struct {
 	SHA256        string // opaque fact_id / forget's id
 	Payload       MemoryFactPayload
 	ExpiredAt     *time.Time // set once a memory_expiry event targets this fact
+	ExpirySHA256  string
 	ExpiredReason string
 }
 
@@ -213,7 +240,9 @@ func (r MemoryFactRecord) Expired(now time.Time) bool {
 // or owns TTL/expiry itself -- purely a derived read of what SourceStore
 // already holds, safe to rebuild from scratch at any time.
 type MemoryProjection struct {
-	bySHA map[string]*MemoryFactRecord
+	bySHA     map[string]*MemoryFactRecord
+	lifecycle map[string]bool
+	indexOnly map[string]bool
 }
 
 // LoadMemoryProjection reads every source ss has ever recorded and resolves
@@ -226,13 +255,15 @@ func LoadMemoryProjection(ss *SourceStore) (*MemoryProjection, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: load memory projection: %w", err)
 	}
-	p := &MemoryProjection{bySHA: make(map[string]*MemoryFactRecord)}
+	p := &MemoryProjection{bySHA: make(map[string]*MemoryFactRecord), lifecycle: make(map[string]bool), indexOnly: make(map[string]bool)}
+	legacy := make(map[int64]string)
 
 	var expiries []struct {
 		sha string
 		pl  MemoryExpiryPayload
 	}
 	for _, src := range sources {
+		p.indexOnly[src.SHA256] = src.IndexOnly
 		switch src.Kind {
 		case SourceKindMemoryFact:
 			data, _, err := ss.Read(src.SHA256)
@@ -243,8 +274,13 @@ func LoadMemoryProjection(ss *SourceStore) (*MemoryProjection, error) {
 			if err != nil {
 				return nil, fmt.Errorf("store: memory fact %s: %w", src.SHA256, err)
 			}
+			if other, exists := legacy[pl.LegacyID]; exists {
+				return nil, fmt.Errorf("store: duplicate memory legacy ID %d in %s and %s", pl.LegacyID, other, src.SHA256)
+			}
+			legacy[pl.LegacyID] = src.SHA256
 			p.bySHA[src.SHA256] = &MemoryFactRecord{SHA256: src.SHA256, Payload: pl}
 		case SourceKindMemoryExpiry:
+			p.lifecycle[src.SHA256] = true
 			data, _, err := ss.Read(src.SHA256)
 			if err != nil {
 				return nil, fmt.Errorf("store: read memory expiry %s: %w", src.SHA256, err)
@@ -276,6 +312,7 @@ func LoadMemoryProjection(ss *SourceStore) (*MemoryProjection, error) {
 			at := e.pl.ExpiredAt
 			rec.ExpiredAt = &at
 			rec.ExpiredReason = e.pl.Reason
+			rec.ExpirySHA256 = e.sha
 		}
 	}
 	return p, nil
@@ -337,20 +374,27 @@ func (p *MemoryProjection) ByLegacyID(id int64) (MemoryFactRecord, bool) {
 	return MemoryFactRecord{}, false
 }
 
-// NextLegacyID returns the next collision-free legacy numeric id: one past
-// the highest currently assigned (mapping: "Persist legacy numeric ID once;
-// collision-check during allocation" -- called from inside writer's single
-// drain goroutine, so this scan-then-assign is race-free by construction,
-// never by luck).
-func (p *MemoryProjection) NextLegacyID() int64 {
-	var max int64
-	for _, rec := range p.bySHA {
-		if rec.Payload.LegacyID > max {
-			max = rec.Payload.LegacyID
+// NextLegacyID allocates a random JSON-safe identity, checking all canonical
+// records including expired ones. Projection also rejects collisions after merges.
+func (p *MemoryProjection) NextLegacyID() (int64, error) {
+	for attempts := 0; attempts < 128; attempts++ {
+		n, err := rand.Int(rand.Reader, big.NewInt(MaxMemoryLegacyID))
+		if err != nil {
+			return 0, fmt.Errorf("store: allocate memory identity: %w", err)
+		}
+		id := n.Int64() + 1
+		if _, exists := p.ByLegacyID(id); !exists {
+			return id, nil
 		}
 	}
-	return max + 1
+	return 0, fmt.Errorf("store: memory identity collision retry limit")
 }
+
+// IsLifecycle identifies immutable expiry events, which are never evidence.
+func (p *MemoryProjection) IsLifecycle(sha string) bool { return p.lifecycle[sha] }
+
+// SourceIndexOnly preserves ordinary source egress policy in the same snapshot.
+func (p *MemoryProjection) SourceIndexOnly(sha string) bool { return p.indexOnly[sha] }
 
 // DedupKey is the exact-duplicate identity for a candidate remember call --
 // same entity + kind + visibility + attribution + effective expiry + fact
@@ -360,12 +404,17 @@ func (p *MemoryProjection) NextLegacyID() int64 {
 // by its exact ISO value (nil/omitted TTL is its own key, distinct from any
 // concrete expiry) so two facts that are identical except for one carrying
 // a different (or no) TTL are never collapsed into one.
-func DedupKey(fact, provenance, entitySlug string, kind MemoryFactKind, visibility MemoryVisibility, validUntil *time.Time) string {
+func DedupKey(fact, provenance, entitySlug string, kind MemoryFactKind, visibility MemoryVisibility, validUntil *time.Time, entityType ...string) string {
 	until := ""
 	if validUntil != nil {
-		until = validUntil.UTC().Format(time.RFC3339)
+		until = validUntil.UTC().Format(time.RFC3339Nano)
 	}
-	sum := sha256.Sum256([]byte(strings.Join([]string{fact, provenance, entitySlug, string(kind), string(visibility), until}, "\x00")))
+	typ := ""
+	if len(entityType) > 0 {
+		typ = entityType[0]
+	}
+	data, _ := json.Marshal([]string{fact, provenance, entitySlug, string(kind), string(visibility), until, typ}) // strings are always JSON encodable
+	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
 }
 
@@ -378,7 +427,7 @@ func (p *MemoryProjection) FindDuplicate(key string, now time.Time) (MemoryFactR
 		if rec.Expired(now) {
 			continue
 		}
-		k := DedupKey(rec.Payload.Fact, rec.Payload.Provenance, rec.Payload.EntitySlug, rec.Payload.Kind, rec.Payload.Visibility, rec.Payload.ValidUntil)
+		k := DedupKey(rec.Payload.Fact, rec.Payload.Provenance, rec.Payload.EntitySlug, rec.Payload.Kind, rec.Payload.Visibility, rec.Payload.ValidUntil, rec.Payload.EntityType)
 		if k == key {
 			return *rec, true
 		}
@@ -414,6 +463,9 @@ func NewMemoryExpirySource(occurredAt time.Time) domain.Source {
 // callers see visibility=world facts only"); remote=false is local CLI
 // search/ask, which may see active private facts too.
 func MemoryEligible(p *MemoryProjection, sourceSHA256 string, remote bool, now time.Time) bool {
+	if p.IsLifecycle(sourceSHA256) {
+		return false
+	}
 	rec, ok := p.Get(sourceSHA256)
 	if !ok {
 		return true

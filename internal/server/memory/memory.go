@@ -1,34 +1,15 @@
-// Package memory implements MEMORY_VERBS v1 (T4.20 repair) over MCP
-// (internal/server/mcp, T4.2): recall, remember, entity, synthesize,
-// forget -- Serenity as a conformant MEMORY_VERBS v1 server against the
-// FROZEN contract at dndungu/gbrain@d35c9c9e441e
-// (docs/protocol/MEMORY_VERBS_v1.md, testdata/pinned-response-schemas.json
-// and testdata/memory-cases-upstream.json, vendored under this package's
-// own testdata/), superseding T4.5's own good-faith but wrong reading of
-// an RFC field list that never named these exact shapes. Every wire type
-// in this package (request AND response) is read directly off the pinned
-// TypeScript operation catalog and response registry, not off RFC 0001
-// §8.1's own prose or this package's earlier Envelope guess -- see
-// memory-compat-mapping.md's architecture note for why that guess could
-// not be patched in place (Claim/Observation/Source's own existing
-// authority layers each rejected fitting an arbitrary attributed fact into
-// them unchanged) and had to be replaced with a genuine, if narrow, new
-// persistence seam instead (memoryfact.go in internal/store and
-// internal/writer).
-//
-// Every response, success or error, carries integer protocol_version at
-// the TOP level, never nested. A domain error is a FLAT VerbError value in
-// place of the verb's own success response type -- {error, message,
-// suggestion, detail?, protocol_version} -- never wrapped inside the
-// success shape's own fields (see VerbError's own doc comment).
+// Package memory implements the five MEMORY_VERBS v1 tools over canonical sources.
 package memory
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -85,27 +66,50 @@ func verbError(code, message, suggestion string) VerbError {
 	return VerbError{ProtocolVersion: ProtocolVersion, Error: code, Message: message, Suggestion: suggestion}
 }
 
-func verbErrorDetail(code, message, suggestion, detail string) VerbError {
-	e := verbError(code, message, suggestion)
-	e.Detail = detail
-	return e
-}
-
-// globEntityPage finds a fence-tier entity page by slug alone.
-// store.FenceWriter has no such lookup (PathFor needs the type folder up
-// front) -- this globs brain/entities/*/<slug>.md directly, the same
-// shape internal/compose.AllClaims's own page glob uses, narrowed to one
-// slug. Zero matches is a normal outcome (no error).
+// globEntityPage finds literal page basenames without interpreting user text as
+// a glob or following links outside the brain's entity directories.
 func globEntityPage(root, slug string) ([]string, error) {
-	return filepath.Glob(filepath.Join(root, "brain", "entities", "*", slug+".md"))
+	if !validSlug(slug) {
+		return nil, nil
+	}
+	base := filepath.Join(root, "brain", "entities")
+	for _, dir := range []string{filepath.Join(root, "brain"), base} {
+		info, err := os.Lstat(dir)
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("unsafe entity directory")
+		}
+	}
+	types, err := os.ReadDir(base)
+	if err != nil {
+		return nil, err
+	}
+	matches := []string{}
+	for _, typ := range types {
+		if !typ.IsDir() || typ.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		page := filepath.Join(base, typ.Name(), slug+".md")
+		info, err := os.Lstat(page)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if info.Mode().IsRegular() {
+			matches = append(matches, page)
+		}
+	}
+	return matches, nil
 }
 
-// validSlug reports whether slug is safe to use as a single path segment
-// (T4.11): store.FenceWriter.PathFor/store.ShardStore.PathFor both plain
-// filepath.Join it in with no sanitization of their own, and
-// globEntityPage globs the same pattern directly, so any '/' or '\', or
-// the exact traversal segments "." or "..", are rejected before ever
-// reaching a store call.
+// validSlug accepts one literal path component.
 func validSlug(slug string) bool {
 	if slug == "" || slug == "." || slug == ".." {
 		return false
@@ -188,17 +192,18 @@ func parseTTL(ttl string, now time.Time) (*time.Time, error) {
 		return nil, fmt.Errorf("ISO-8601 durations like %q are not accepted", ttl)
 	}
 	if m := ttlDurationPattern.FindStringSubmatch(ttl); m != nil {
-		var n int
-		_, _ = fmt.Sscanf(m[1], "%d", &n)
-		var d time.Duration
+		n, err := strconv.ParseInt(m[1], 10, 64)
+		unit := time.Minute
 		switch m[2] {
 		case "d":
-			d = time.Duration(n) * 24 * time.Hour
+			unit = 24 * time.Hour
 		case "h":
-			d = time.Duration(n) * time.Hour
-		case "m":
-			d = time.Duration(n) * time.Minute
+			unit = time.Hour
 		}
+		if err != nil || n <= 0 || n > math.MaxInt64/int64(unit) {
+			return nil, fmt.Errorf("TTL duration must be positive and within range")
+		}
+		d := time.Duration(n) * unit
 		t := now.Add(d)
 		return &t, nil
 	}
@@ -300,13 +305,17 @@ func New(deps Deps) *Handlers {
 // Tools returns the five MEMORY_VERBS v1 tool registrations, ready to pass
 // to mcp.New alongside any other domain tools a future task adds.
 func (h *Handlers) Tools() []mcp.Tool {
-	return []mcp.Tool{
+	tools := []mcp.Tool{
 		h.recallTool(),
 		h.rememberTool(),
 		h.entityTool(),
 		h.synthesizeTool(),
 		h.forgetTool(),
 	}
+	for i := range tools {
+		tools[i].Failure = memoryFailure
+	}
+	return tools
 }
 
 // textResult renders resp (a verb's own response type, or a VerbError) as
@@ -324,19 +333,15 @@ func textResult(resp any, isError bool) (mcp.Result, error) {
 	return mcp.Result{Content: []mcp.Content{{Type: "text", Text: string(data)}}, IsError: isError}, nil
 }
 
-// verbFunc adapts a typed (ctx, request) -> (response, isError, error)
-// function into the mcp.Tool.Handler shape: response is always either the
-// verb's own success type or a VerbError. A non-nil err is this package's
-// own bug (JSON marshal failure), never a domain outcome -- every domain
-// failure is reported via the response's own VerbError/isError rather than
-// a Go error.
+// verbFunc adapts a typed operation to the MCP handler. Operational failures are
+// converted to a uniform domain error by handle; their internals stay local.
 type verbFunc func(ctx context.Context, args json.RawMessage) (resp any, isError bool, err error)
 
 func handle(fn verbFunc) func(context.Context, json.RawMessage) (mcp.Result, error) {
 	return func(ctx context.Context, args json.RawMessage) (mcp.Result, error) {
 		resp, isError, err := fn(ctx, args)
 		if err != nil {
-			return mcp.Result{}, err
+			return memoryFailure(mcp.ExecutionFailed), nil
 		}
 		return textResult(resp, isError)
 	}
@@ -357,8 +362,18 @@ func isoPtr(t *time.Time) *string {
 	if t == nil || t.IsZero() {
 		return nil
 	}
-	s := t.UTC().Format(time.RFC3339)
+	s := t.UTC().Format(time.RFC3339Nano)
 	return &s
 }
 
 func trimmed(s string) string { return strings.TrimSpace(s) }
+
+// memoryFailure keeps domain failures machine-readable without exposing internal paths.
+func memoryFailure(kind mcp.FailureKind) mcp.Result {
+	e := verbError(ErrCodeInternal, "Memory operation failed", "retry the operation; inspect local diagnostics if it persists")
+	if kind == mcp.InvalidArguments {
+		e = verbError(ErrCodeInvalidParams, "Arguments do not match the tool input schema", "check tools/list for required fields and types")
+	}
+	result, _ := textResult(e, true)
+	return result
+}

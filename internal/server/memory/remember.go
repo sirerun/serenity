@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"unicode/utf8"
 
+	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/server/mcp"
 	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
@@ -26,11 +28,7 @@ type rememberResponse struct {
 	StatusText      string  `json:"status_text"`
 	EntitySlug      *string `json:"entity_slug"`
 	ValidUntil      *string `json:"valid_until"`
-	// DegradedDedup is never set true (this task's own acc line: "no
-	// embedder degraded flag") -- exact-duplicate matching (this
-	// implementation's only dedup) needs no embedder at all, so there is
-	// nothing degraded to disclose; kept, always omitted, for schema
-	// completeness against upstream's own optional field.
+	// Exact matching is available; semantic duplicate detection is not.
 	DegradedDedup bool `json:"degraded_dedup,omitempty"`
 }
 
@@ -66,16 +64,16 @@ func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, boo
 	if err := json.Unmarshal(args, &req); err != nil {
 		return verbError(ErrCodeInvalidParams, "remember: malformed request", "send a JSON object with \"fact\" and \"provenance\" strings"), true, nil
 	}
-	fact := trimmed(req.Fact)
-	if fact == "" {
+	fact := req.Fact
+	if trimmed(fact) == "" {
 		return verbError(ErrCodeInvalidParams, "remember: fact must be a non-empty string", "pass the claim to remember, e.g. fact: \"picked Stripe over Adyen -- onboarding speed\""), true, nil
 	}
-	provenance := trimmed(req.Provenance)
-	if provenance == "" {
+	provenance := req.Provenance
+	if trimmed(provenance) == "" {
 		return verbError(ErrCodeProvenanceRequired, "remember: provenance is required and must be non-empty", "pass where the fact came from, e.g. provenance: \"user told me, 2026-06-12\" or \"import: notes.md\""), true, nil
 	}
-	if len(provenance) > provenanceMaxChars {
-		return verbError(ErrCodeInvalidParams, fmt.Sprintf("remember: provenance exceeds %d chars (got %d)", provenanceMaxChars, len(provenance)), "shorten the attribution -- provenance is a pointer, not a transcript"), true, nil
+	if utf8.RuneCountInString(provenance) > provenanceMaxChars {
+		return verbError(ErrCodeInvalidParams, fmt.Sprintf("remember: provenance exceeds %d chars (got %d)", provenanceMaxChars, utf8.RuneCountInString(provenance)), "shorten the attribution -- provenance is a pointer, not a transcript"), true, nil
 	}
 
 	kind := req.Kind
@@ -130,8 +128,22 @@ func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, boo
 		statusText = fmt.Sprintf("already knew this -- kept fact #%d", result.Record.Payload.LegacyID)
 	}
 
+	// Canonical bytes are already durable. A derived-index error must not turn
+	// this into an ambiguous failed write; the caller can rebuild the cache.
+	if !result.Record.Expired(now) {
+		cacheReady := false
+		if h.deps.Index != nil {
+			rec := result.Record
+			cacheReady = index.RefreshMemoryFact(ctx, h.deps.Root, rec.SHA256, h.deps.Index, now) == nil
+		}
+		if !cacheReady {
+			statusText += "; search cache unavailable, run serenity sync to rebuild"
+		}
+	}
+
 	return rememberResponse{
 		ProtocolVersion: ProtocolVersion,
+		DegradedDedup:   true,
 		ID:              result.Record.SHA256,
 		Status:          status,
 		StatusText:      statusText,
