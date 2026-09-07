@@ -66,7 +66,8 @@ func newServeCmd() *cobra.Command {
 // Closing those files cannot interrupt an active syscall. A nonblocking duplicate
 // wrapped by NewFile joins the poller, making Close interrupt concurrent pipe I/O.
 // Duplicates share status flags, so cleanup restores the original flags after
-// Serve has joined all I/O workers. The caller's original file stays open.
+// Serve has joined all I/O workers. Original pipes/sockets stay open; other
+// files pass through and are owned by Serve.
 func pollableMCPFile(file *os.File) (*os.File, func() error, error) {
 	info, err := file.Stat()
 	if err != nil {
@@ -79,17 +80,18 @@ func pollableMCPFile(file *os.File) (*os.File, func() error, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("access MCP stream: %w", err)
 	}
-	var original uintptr
-	if err := raw.Control(func(fd uintptr) { original = fd }); err != nil {
+	var flags, fd int
+	var operationErr error
+	if err := raw.Control(func(original uintptr) {
+		flags, operationErr = unix.FcntlInt(original, unix.F_GETFL, 0)
+		if operationErr == nil {
+			fd, operationErr = unix.FcntlInt(original, unix.F_DUPFD_CLOEXEC, 0)
+		}
+	}); err != nil {
 		return nil, nil, fmt.Errorf("access MCP descriptor: %w", err)
 	}
-	flags, err := unix.FcntlInt(original, unix.F_GETFL, 0)
-	if err != nil {
-		return nil, nil, fmt.Errorf("read MCP stream flags: %w", err)
-	}
-	fd, err := unix.FcntlInt(original, unix.F_DUPFD_CLOEXEC, 0)
-	if err != nil {
-		return nil, nil, fmt.Errorf("duplicate MCP stream: %w", err)
+	if operationErr != nil {
+		return nil, nil, fmt.Errorf("duplicate MCP stream: %w", operationErr)
 	}
 	if err := unix.SetNonblock(fd, true); err != nil {
 		_ = unix.Close(fd)
@@ -101,8 +103,11 @@ func pollableMCPFile(file *os.File) (*os.File, func() error, error) {
 		if errors.Is(closeErr, os.ErrClosed) {
 			closeErr = nil
 		}
-		_, restoreErr := unix.FcntlInt(original, unix.F_SETFL, flags)
-		return errors.Join(closeErr, restoreErr)
+		var restoreErr error
+		controlErr := raw.Control(func(original uintptr) {
+			_, restoreErr = unix.FcntlInt(original, unix.F_SETFL, flags)
+		})
+		return errors.Join(closeErr, controlErr, restoreErr)
 	}
 	return prepared, cleanup, nil
 }
