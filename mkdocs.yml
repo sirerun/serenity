@@ -35,3 +35,5 @@ nav:
   - Governance:
       - RFC 0001: rfc/0001-serenity.md
       - Threat model source: threat-model.md
+  - Evals:
+      - BrainBench trend: evals/brainbench-trend.md

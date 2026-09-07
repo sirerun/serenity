@@ -1,0 +1,105 @@
+name: brainbench-trend-nightly
+
+# T5.10: persists BrainBench trend rows (T1.21's per-run score row,
+# evals/brainbench/publish_trend.go) across runs by appending to
+# evals/brainbench-trend.json on the orphan `results/brainbench-trend`
+# branch -- never on main, and never as a build artifact (ci.yml's
+# existing brainbench-trend job already covers the ephemeral per-push
+# case). This is the durable half plan T1.21 explicitly deferred here.
+#
+# Hard USD cap: SERENITY_BRAINBENCH_BUDGET_USD (repository variable, or
+# the workflow_dispatch input below) is passed straight to
+# publish_trend.go's -budget-usd flag and checked for real
+# (internal/eval/brainbench.CheckBudget) every run. It is expected to
+# stay at 0 (spend is always $0 -- see publish_trend.go's own doc
+# comment: this adapter's search call always passes a nil embedder, zero
+# live model calls, structurally) -- the check exists so a future change
+# that wires a live embedder into this adapter fails this job loudly
+# instead of silently overspending.
+#
+# Cache miss (the vendored corpus produced zero scoreable fixtures) and a
+# budget breach both make publish_trend.go print a `::error::` annotation
+# and exit non-zero -- the "Publish trend row" step fails, no commit is
+# made, and this job has no other, more-expensive path to fall back to
+# ("alerts on cache miss instead of re-billing").
+
+on:
+  schedule:
+    - cron: "37 7 * * *"
+  workflow_dispatch:
+    inputs:
+      budget_usd:
+        description: "Override SERENITY_BRAINBENCH_BUDGET_USD for this run"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brainbench-trend-nightly
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      SERENITY_BRAINBENCH_BUDGET_USD: ${{ github.event.inputs.budget_usd || vars.SERENITY_BRAINBENCH_BUDGET_USD || '0.00' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          path: code
+
+      - name: Checkout results branch (bootstrap if missing)
+        working-directory: code
+        run: |
+          set -euo pipefail
+          mkdir -p ../trend
+          git -C ../trend init -q
+          git -C ../trend remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          if git -C ../trend fetch -q origin results/brainbench-trend 2>/dev/null; then
+            git -C ../trend checkout -q -B results/brainbench-trend origin/results/brainbench-trend
+          else
+            echo "results/brainbench-trend does not exist yet -- bootstrapping an orphan branch"
+            git -C ../trend checkout -q --orphan results/brainbench-trend
+            {
+              echo "# BrainBench trend data (plan T5.10)"
+              echo
+              echo "This branch holds only \`evals/brainbench-trend.json\`, an append-only"
+              echo "history of BrainBench retrieval-quality score rows produced by the"
+              echo "\`brainbench-trend-nightly\` workflow in \`main\`"
+              echo "(\`evals/brainbench/publish_trend.go\`, \`internal/eval/brainbench\`)."
+              echo
+              echo "It carries no application code and is never merged into \`main\`."
+            } > ../trend/README.md
+          fi
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: code/go.mod
+
+      - name: Publish trend row
+        working-directory: code
+        run: |
+          go run evals/brainbench/publish_trend.go \
+            -trend-path "$GITHUB_WORKSPACE/trend/evals/brainbench-trend.json" \
+            -budget-usd "$SERENITY_BRAINBENCH_BUDGET_USD"
+
+      - name: Commit and push
+        working-directory: trend
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add evals/brainbench-trend.json README.md
+          if git diff --cached --quiet; then
+            echo "no change to evals/brainbench-trend.json -- nothing to commit"
+            exit 0
+          fi
+          git commit -q -m "brainbench: append trend row ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:results/brainbench-trend
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
