@@ -1,0 +1,7 @@
+span: Ava's banking app displays a current GitHub organization account balance of $0.00.
+expected:
+    predicate: owns_account
+    object: github-org-account
+    valid_from: 2020-09
+labeler: human-reviewer
+adjudicated: true
