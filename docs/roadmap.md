@@ -268,7 +268,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In progress
 
-- 2026-09-07 T4.7 schema publication is claimed and being reauthored against the verified T4.20 base (`da285d4`, PR #160). It will publish actual memory/DIRECTION/DISPOSITION and CLI machine-output schemas, preserve foreign configuration/report formats, and add `serenity protocol --json`. No schema completion is claimed yet.
+- 2026-09-07 T4.7 schema publication: PR #162 open (`feat/t4-7-protocol-schemas-v2`). 28 draft-2020-12 schemas under `docs/protocol/schemas/` cover every MEMORY_VERBS/DISPOSITION/DIRECTION wire object, each checked by a reflection test against the exact exported Go struct the live server/CLI marshals (required exporting `internal/server/direction`'s and `internal/server/disposition`'s wire structs, a pure rename); new `serenity protocol --json` serves the same embedded schemas. `serenity check --json` and five more live wire responses (brief, recall, synthesize, dispose, check_plan, via T4.9's own drift tests) validate against their schemas. Full validation ladder green locally (gofmt/build/vet/`go test -race ./...`/golangci-lint 0 issues); awaiting CI and merge -- held per this session's no-self-merge rule. Not yet marked done in docs/plan.md; the plan-checkbox/epic-detail/Shipped-entry update follows in a same-session docs PR once this merges, matching this repo's own convention of flipping task checkboxes only after merge.
 
 
 
