@@ -98,14 +98,15 @@ var _ Engine = (*SQLite)(nil)
 // system-of-record doc does"). Rebuild and ResetAll must never wipe a
 // table on this list. Each entry gets its real schema when the milestone
 // that owns it lands (T1.1 jobs, M2 disposition_items/disposition_history,
-// T1.7 spend_ledger); until then they're schema shells so the allowlist
-// can be proven before any consumer exists.
+// T1.7 spend_ledger, T4.12 events); until then they're schema shells so
+// the allowlist can be proven before any consumer exists.
 var RuntimeTables = []string{
 	"jobs",
 	"disposition_items",
 	"disposition_history",
 	"spend_ledger",
 	"caches",
+	"events",
 }
 
 // Hit is one search result. SourceSHA256 and Kind mirror the domain.Source

@@ -30,7 +30,9 @@ func countRows(t *testing.T, s *SQLite, table string) int {
 
 // TestRuntimeTablesContents pins the allowlist named in the T0.10
 // acceptance criterion: exactly {jobs, disposition_items,
-// disposition_history, spend_ledger, caches}, no more, no less.
+// disposition_history, spend_ledger, caches, events}, no more, no less.
+// "events" was added by T4.12, claiming the shell the same way T2.1 claimed
+// disposition_items/disposition_history and T1.7 claimed spend_ledger.
 func TestRuntimeTablesContents(t *testing.T) {
 	want := map[string]bool{
 		"jobs":                true,
@@ -38,6 +40,7 @@ func TestRuntimeTablesContents(t *testing.T) {
 		"disposition_history": true,
 		"spend_ledger":        true,
 		"caches":              true,
+		"events":              true,
 	}
 	if len(RuntimeTables) != len(want) {
 		t.Fatalf("RuntimeTables has %d entries, want %d: %v", len(RuntimeTables), len(want), RuntimeTables)
