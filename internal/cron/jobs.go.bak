@@ -1,0 +1,116 @@
+package cron
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/sirerun/serenity/internal/config"
+	"github.com/sirerun/serenity/internal/consolidate"
+	"github.com/sirerun/serenity/internal/disposition"
+	"github.com/sirerun/serenity/internal/embed"
+	"github.com/sirerun/serenity/internal/index"
+	"github.com/sirerun/serenity/internal/providers"
+	"github.com/sirerun/serenity/internal/store"
+	"github.com/sirerun/serenity/internal/writer"
+)
+
+// Sweep runs the expiry-sweeper pass (plan T2.6, RFC §0001 §8.2): pending
+// disposition items older than the per-kind threshold move to deferred,
+// three cycles to parked. The actual transition logic lives in
+// disposition.Sweep (internal/disposition/expiry.go, tested directly
+// there); this is the scheduled-job wiring T2.19 scaffolded, now filled
+// in per its own doc comment ("same name, same signature, same registry
+// entry"). Resurfacing a parked item is not part of this scheduled job --
+// it happens when new evidence arrives on a specific item, not on a
+// sweep timer (disposition.Store.Resurface, called by whichever caller
+// owns that correlation).
+func Sweep(ctx context.Context, root string, clock Clock) error {
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		return fmt.Errorf("cron: sweep: open index: %w", err)
+	}
+	defer func() { _ = eng.Close() }()
+
+	store := disposition.NewStore(eng)
+	if _, err := disposition.Sweep(ctx, store, nil, clock.Now()); err != nil {
+		return fmt.Errorf("cron: sweep: %w", err)
+	}
+	return recordRun(root, "sweep", clock.Now())
+}
+
+// Consolidate runs the nightly consolidate pass (plan T2.14): summary
+// fences with freshness banners, shard-head refresh, and re-embedding of
+// changed chunks. The actual sweep logic lives in internal/consolidate
+// (tested directly there); this wires it into the job registry exactly
+// like Sweep wires internal/disposition.Sweep -- open the brain's derived
+// index, run the real logic, flush any canonical writes, then record the
+// run. The embedding pass is skipped, not failed, when no embedding model
+// is pinned yet (providers.BuildEmbeddingRouter's own explicit-skip
+// contract, the same one `serenity extract`'s reembedChunks already
+// relies on) -- required for T2.19's own fixture-root acceptance line,
+// where a bare brain has no serenity.yml at all.
+func Consolidate(ctx context.Context, root string, clock Clock) error {
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		return fmt.Errorf("cron: consolidate: open index: %w", err)
+	}
+	defer func() { _ = eng.Close() }()
+
+	cfg, err := loadConfigOrDefault(root)
+	if err != nil {
+		return fmt.Errorf("cron: consolidate: load config: %w", err)
+	}
+
+	q := writer.NewQueue(nil)
+	defer q.Close()
+	c := consolidate.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg)
+	c.Now = clock.Now
+
+	var embedder index.Embedder
+	ledger := &providers.IndexSpendLedger{Eng: eng}
+	if r, ok, _ := providers.BuildEmbeddingRouter(cfg, ledger); ok {
+		embedder = &embed.RouterEmbedder{Router: r, Pin: cfg.Models.Embedding}
+	}
+
+	if _, err := c.Run(ctx, eng, embedder); err != nil {
+		return fmt.Errorf("cron: consolidate: %w", err)
+	}
+	if _, err := writer.Flush(q, root); err != nil {
+		return fmt.Errorf("cron: consolidate: flush: %w", err)
+	}
+	return recordRun(root, "consolidate", clock.Now())
+}
+
+// loadConfigOrDefault reads root's serenity.yml, falling back to
+// config.Default() when the brain has none yet -- consolidate must still
+// run cleanly on a bare fixture root (T2.19's own acceptance line covers
+// every registered job, this one included), the same posture
+// store.FenceWriter/ShardStore already take when no project-specific
+// Vocabulary is configured.
+func loadConfigOrDefault(root string) (*config.Config, error) {
+	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return config.Default(), nil
+		}
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// Decay runs the weekly decay and alias sweep (plan T2.12): read-time
+// confidence decay, alias candidates, and low-confidence-to-distill.
+// Placeholder until T2.12 lands — see the package doc comment.
+func Decay(_ context.Context, root string, clock Clock) error {
+	return recordRun(root, "decay", clock.Now())
+}
+
+// SLO computes queue SLOs for `serenity status` (plan T2.15): depth, p50
+// age, time-to-dispose, and abandonment. Placeholder until T2.15 lands —
+// see the package doc comment.
+func SLO(_ context.Context, root string, clock Clock) error {
+	return recordRun(root, "slo", clock.Now())
+}

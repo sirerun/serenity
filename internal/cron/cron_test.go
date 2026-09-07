@@ -2,12 +2,15 @@ package cron
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/sirerun/serenity/internal/disposition"
+	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/providers"
+	"github.com/sirerun/serenity/internal/store"
 )
 
 // fakeClock is a fixed clock: every call returns the same instant. Real
@@ -124,6 +127,108 @@ func TestSweepJobAdvancesExpiredDispositionItem(t *testing.T) {
 	}
 	if got.State != disposition.StateDeferred || got.DeferCount != 1 {
 		t.Fatalf("after cron sweep: State=%q DeferCount=%d, want deferred/1", got.State, got.DeferCount)
+	}
+}
+
+// TestConsolidateRealSweep proves `serenity cron consolidate` is real,
+// not a placeholder (T2.14): a fence page seeded with a stale
+// hand-written summary, plus a shard-tier claim with no fence head yet,
+// actually get consolidated -- the summary regenerated and the shard
+// head refreshed to match ResolveHeads -- when the Consolidate job runs
+// through the CLI-facing entry point (Run), not just
+// internal/consolidate's own tests. The write also lands as a real git
+// commit (RFC §7.7): consolidate's canonical writes go through the same
+// writer queue + Flush every other write path in this repo uses.
+func TestConsolidateRealSweep(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	ctx := context.Background()
+	root := t.TempDir()
+
+	run := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	run("init", "--quiet")
+	run("config", "user.email", "cron-test@example.com")
+	run("config", "user.name", "cron test")
+
+	fw := store.NewFenceWriter(root)
+	ss := store.NewShardStore(root)
+
+	observed := time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC)
+	page := store.NewEntityPage(domain.Entity{Type: "topic", Slug: "alice-tan"})
+	page.Summary = "stale hand-written summary"
+	page.Claims = []domain.Claim{{
+		ID: "claim-a", SubjectSlug: "alice-tan", Predicate: "works_at",
+		Object: "acme", ObjectKey: store.NormalizeKey("acme"), Confidence: 0.9,
+		State: domain.StateActive, SourceRef: "e1#1", Family: "works_at",
+		Provenance: domain.Provenance{ObservedAt: observed, Actor: "machine"},
+	}}
+	if _, err := fw.WriteEntity(page); err != nil {
+		t.Fatalf("seed entity page: %v", err)
+	}
+
+	shardClaim := domain.Claim{
+		ID: "bal-1", SubjectSlug: "acme-corp", Predicate: "has_balance",
+		Object: "$500", ObjectKey: store.NormalizeKey("$500"), Confidence: 0.9,
+		State: domain.StateActive, SourceRef: "e1#1", Family: "has_balance",
+		Provenance: domain.Provenance{ObservedAt: observed, Actor: "machine"},
+	}
+	if err := ss.Append(shardClaim); err != nil {
+		t.Fatalf("seed shard: %v", err)
+	}
+
+	run("add", ".")
+	run("commit", "--quiet", "-m", "seed")
+	beforeHEAD := strings.TrimSpace(run("rev-parse", "HEAD"))
+
+	at := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
+	if err := Run(ctx, "consolidate", root, fakeClock{at: at}); err != nil {
+		t.Fatalf("Run(consolidate): %v", err)
+	}
+
+	afterHEAD := strings.TrimSpace(run("rev-parse", "HEAD"))
+	if afterHEAD == beforeHEAD {
+		t.Fatal("consolidate did not create a new commit -- it must land its writes through the writer queue and Flush")
+	}
+
+	p, err := fw.ParseEntity(fw.PathFor("topic", "alice-tan"))
+	if err != nil {
+		t.Fatalf("ParseEntity(alice-tan): %v", err)
+	}
+	if p.Summary == "stale hand-written summary" {
+		t.Fatal("summary fence was not regenerated -- consolidate must always overwrite the DERIVED summary")
+	}
+
+	acmeP, err := fw.ParseEntity(fw.PathFor("topic", "acme-corp"))
+	if err != nil {
+		t.Fatalf("ParseEntity(acme-corp): %v", err)
+	}
+	wantHeads, err := ss.ResolveHeads("acme-corp", "has_balance")
+	if err != nil {
+		t.Fatalf("ResolveHeads: %v", err)
+	}
+	if len(acmeP.Claims) != len(wantHeads) || len(acmeP.Claims) != 1 {
+		t.Fatalf("acme-corp has %d claim row(s), want 1 (== len(ResolveHeads)): %+v", len(acmeP.Claims), acmeP.Claims)
+	}
+	if acmeP.Claims[0].ID != "bal-1" || acmeP.Claims[0].SourceRef != "shard" {
+		t.Fatalf("acme-corp shard head row = %+v, want id=bal-1 src=shard", acmeP.Claims[0])
+	}
+
+	rec, err := ReadRecord(root, "consolidate")
+	if err != nil {
+		t.Fatalf("ReadRecord: %v", err)
+	}
+	if rec.RunCount != 1 || !rec.LastRun.Equal(at) {
+		t.Fatalf("record = %+v, want RunCount=1 LastRun=%s", rec, at)
 	}
 }
 
