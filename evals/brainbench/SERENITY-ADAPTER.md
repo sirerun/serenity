@@ -75,6 +75,18 @@ go run evals/brainbench/gen_trend.go        # writes evals/brainbench-trend.json
 
 CI runs both on every push (`ci.yml`'s `test` and `brainbench-trend` jobs);
 neither needs network access — the corpus is vendored, not fetched.
-`evals/brainbench-trend.json` is this run's score row only; T5.10 is what
-persists rows like it across runs on a results branch and renders the trend
-chart into the docs site.
+`evals/brainbench-trend.json` from `gen_trend.go` is this run's score row
+only, still gitignored and ephemeral.
+
+**T5.10** persists rows like it durably: `.github/workflows/brainbench-trend-
+nightly.yml` runs nightly (and on `workflow_dispatch`) and appends a row via
+`go run evals/brainbench/publish_trend.go` to `evals/brainbench-trend.json`
+on the orphan `results/brainbench-trend` branch — never `main`, never
+gitignored there. It enforces a hard USD cap
+(`SERENITY_BRAINBENCH_BUDGET_USD`, `internal/eval/brainbench.CheckBudget`)
+and refuses to publish on a cache miss
+(`internal/eval/brainbench.CheckCacheHit`) rather than silently publishing a
+bad point or falling back to a paid re-run — see `trend.go`'s package doc
+for why this adapter has no such fallback to begin with. The docs site's
+[BrainBench trend page](https://github.com/sirerun/serenity/blob/main/docs/evals/brainbench-trend.md)
+renders the chart directly from that branch's live JSON.

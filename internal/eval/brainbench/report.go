@@ -15,14 +15,28 @@ const RowSchemaVersion = 1
 
 // Row is one CI run's score row -- the shape written to
 // evals/brainbench-trend.json (T1.21's acc line: "a per-run score row").
-// T5.10 appends rows like this one to a persistent trend file on a
-// results branch; this package only produces a single run's row.
+// T5.10 (evals/brainbench/publish_trend.go, trend.go) appends rows like
+// this one to a persistent trend file on a results branch; this package
+// only produces a single run's row.
+//
+// BudgetUSD and SpentUSD are T5.10's hard-cap fields, added additively
+// (RowSchemaVersion unchanged -- see its own doc comment). SpentUSD is
+// always 0 today: Evaluate's search call always passes a nil embedder
+// (see its own doc comment), so this adapter makes zero live model calls
+// structurally, not by configuration -- there is no code path that could
+// spend anything. The fields are still recorded on every row, and
+// CheckBudget in trend.go still runs the real comparison every publish,
+// so a future change that wires a live embedder into this adapter trips
+// the guard instead of silently overspending or silently publishing an
+// under-reported number.
 type Row struct {
-	SchemaVersion int    `json:"schema_version"`
-	Timestamp     string `json:"ts"`
-	Commit        string `json:"commit,omitempty"`
-	GbrainPin     string `json:"gbrain_pin"`
-	Adapter       string `json:"adapter"`
+	SchemaVersion int     `json:"schema_version"`
+	Timestamp     string  `json:"ts"`
+	Commit        string  `json:"commit,omitempty"`
+	GbrainPin     string  `json:"gbrain_pin"`
+	Adapter       string  `json:"adapter"`
+	BudgetUSD     float64 `json:"budget_usd"`
+	SpentUSD      float64 `json:"spent_usd"`
 	Report
 }
 
