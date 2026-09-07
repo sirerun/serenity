@@ -87,10 +87,7 @@ func (p *AnthropicProvider) Send(ctx context.Context, prompt string) (Response, 
 	if maxTokens == 0 {
 		maxTokens = defaultAnthropicMaxTokens
 	}
-	client := p.HTTPClient
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client := httpClientOrDefault(p.HTTPClient)
 
 	reqBody, err := json.Marshal(anthropicRequest{
 		Model:     p.Model,

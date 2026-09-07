@@ -74,10 +74,7 @@ func (p *OpenAIEmbeddingsProvider) Send(ctx context.Context, prompt string) (Res
 	if baseURL == "" {
 		baseURL = defaultOpenAIEmbeddingsBaseURL
 	}
-	client := p.HTTPClient
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client := httpClientOrDefault(p.HTTPClient)
 
 	reqBody, err := json.Marshal(openAIEmbeddingsRequest{Model: p.Model, Input: prompt})
 	if err != nil {

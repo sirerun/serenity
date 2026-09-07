@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 // fakeProvider is a test double implementing Provider. Test-file only,
@@ -22,6 +23,30 @@ func (f *fakeProvider) ModelVersion() string { return f.modelVersion }
 func (f *fakeProvider) Send(_ context.Context, _ string) (Response, error) {
 	f.calls++
 	return f.resp, f.err
+}
+
+// retryFakeProvider is a test double implementing Provider whose Send
+// fails with a configured error for the first failCount calls, then
+// succeeds. failCount left at or above the router's retryAttempts makes
+// it fail every attempt Complete makes. Test-file only, per the zero-stub
+// policy.
+type retryFakeProvider struct {
+	name         string
+	modelVersion string
+	failWith     error
+	failCount    int
+	resp         Response
+	calls        int
+}
+
+func (f *retryFakeProvider) Name() string         { return f.name }
+func (f *retryFakeProvider) ModelVersion() string { return f.modelVersion }
+func (f *retryFakeProvider) Send(_ context.Context, _ string) (Response, error) {
+	f.calls++
+	if f.calls <= f.failCount {
+		return Response{}, f.failWith
+	}
+	return f.resp, nil
 }
 
 // fakeLedger is a test double implementing SpendLedger.
@@ -235,5 +260,80 @@ func TestCompleteFailsWhenLedgerAppendFails(t *testing.T) {
 	_, err := r.Complete(context.Background(), TaskClassSummarization, Prompt{Text: "x"}, Budget{})
 	if err == nil {
 		t.Fatal("expected Complete to fail when the spend ledger append fails -- an unrecorded call must not report success")
+	}
+}
+
+// noSleep replaces Router.sleep in tests so retry backoff never actually
+// waits real wall-clock time, regardless of the production base/max delay
+// constants.
+func noSleep(time.Duration) {}
+
+func TestCompleteRetriesTransientErrorThenSucceeds(t *testing.T) {
+	fp := &retryFakeProvider{
+		name:         "fake",
+		modelVersion: "fake@v1",
+		failWith:     &fakeNetError{msg: "connection reset by peer", timeout: false},
+		failCount:    1, // fails once, then succeeds
+		resp:         Response{Text: "ok after retry"},
+	}
+	ledger := &fakeLedger{}
+	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
+	r.sleep = noSleep
+
+	result, err := r.Complete(context.Background(), TaskClassSummarization, Prompt{Text: "x"}, Budget{})
+	if err != nil {
+		t.Fatalf("Complete returned an error after a single transient failure followed by success: %v", err)
+	}
+	if result.Text != "ok after retry" {
+		t.Fatalf("result.Text = %q, want %q", result.Text, "ok after retry")
+	}
+	if fp.calls != 2 {
+		t.Fatalf("provider Send was called %d times, want 2 (one failure, one retry that succeeded)", fp.calls)
+	}
+	if len(ledger.entries) != 1 {
+		t.Fatalf("spend ledger has %d entries, want 1 -- exactly the successful call is billed", len(ledger.entries))
+	}
+}
+
+func TestCompleteFailsClearlyAfterBoundedRetriesWhenAlwaysFailing(t *testing.T) {
+	fp := &retryFakeProvider{
+		name:         "fake",
+		modelVersion: "fake@v1",
+		failWith:     &fakeNetError{msg: "connection refused", timeout: false},
+		failCount:    1000, // never succeeds
+	}
+	ledger := &fakeLedger{}
+	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
+	r.sleep = noSleep
+
+	_, err := r.Complete(context.Background(), TaskClassSummarization, Prompt{Text: "x"}, Budget{})
+	if err == nil {
+		t.Fatal("expected Complete to return a clear error when every attempt fails, not a success")
+	}
+	if fp.calls != defaultRetryAttempts {
+		t.Fatalf("provider Send was called %d times, want exactly %d (bounded retry count, not an unbounded hang)", fp.calls, defaultRetryAttempts)
+	}
+	if len(ledger.entries) != 0 {
+		t.Fatalf("spend ledger has %d entries, want 0 -- a call that never succeeded is never billed", len(ledger.entries))
+	}
+}
+
+func TestCompleteDoesNotRetryNonTransientError(t *testing.T) {
+	fp := &retryFakeProvider{
+		name:         "fake",
+		modelVersion: "fake@v1",
+		failWith:     errors.New("openai_compatible: status 400: bad request"),
+		failCount:    1000,
+	}
+	ledger := &fakeLedger{}
+	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
+	r.sleep = noSleep
+
+	_, err := r.Complete(context.Background(), TaskClassSummarization, Prompt{Text: "x"}, Budget{})
+	if err == nil {
+		t.Fatal("expected Complete to return an error for a non-transient application-level failure")
+	}
+	if fp.calls != 1 {
+		t.Fatalf("provider Send was called %d times, want 1 -- an application-level error (e.g. a 4xx status) is never retried", fp.calls)
 	}
 }

@@ -71,10 +71,7 @@ func (p *OpenAICompatibleProvider) Send(ctx context.Context, prompt string) (Res
 	if baseURL == "" {
 		baseURL = defaultOpenAICompatibleBaseURL
 	}
-	client := p.HTTPClient
-	if client == nil {
-		client = http.DefaultClient
-	}
+	client := httpClientOrDefault(p.HTTPClient)
 
 	reqBody, err := json.Marshal(openAIRequest{
 		Model:    p.Model,
