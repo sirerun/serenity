@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/sirerun/serenity/internal/router"
@@ -47,5 +48,31 @@ func TestBuildProviderOpenAIDefaultsBaseURLWhenUnset(t *testing.T) {
 	oc := p.(*router.OpenAICompatibleProvider)
 	if oc.BaseURL != "" {
 		t.Fatalf("BaseURL = %q, want empty when OPENAI_BASE_URL is unset", oc.BaseURL)
+	}
+}
+
+// TestBuildProviderOpenAIPinsTemperatureZero is T1.29's own follow-up
+// finding: an unset (server-default, non-zero) temperature makes
+// eval-runner's -mode live scoring non-reproducible run to run --
+// individual held-out spans flip outcome between otherwise-identical
+// runs. Pinning temperature=0 fixes that reproducibility gap; it did NOT,
+// under a controlled same-conditions comparison, change which families
+// clear the P>=0.90/R>=0.80 bar (see docs/lore.md L-0011 for the full
+// finding, including a since-corrected overclaim in an earlier draft).
+// "temperature" is a standard OpenAI chat-completions field, safe to send
+// to any OpenAI-compatible endpoint unconditionally (unlike
+// disable_thinking's server-specific chat_template_kwargs, which stays
+// opt-in).
+func TestBuildProviderOpenAIPinsTemperatureZero(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "sk-test")
+
+	p, _, err := buildProvider("openai", "qwen3.8-27b", "v1")
+	if err != nil {
+		t.Fatalf("buildProvider: %v", err)
+	}
+	oc := p.(*router.OpenAICompatibleProvider)
+	want := map[string]any{"temperature": 0}
+	if !reflect.DeepEqual(oc.ExtraBody, want) {
+		t.Fatalf("ExtraBody = %#v, want %#v", oc.ExtraBody, want)
 	}
 }
