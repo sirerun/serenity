@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sirerun/serenity/internal/config"
+	"github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/reconcile"
@@ -109,20 +110,27 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 		q := writer.NewQueue(nil)
 		defer q.Close()
 		sw := supersede.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg)
-		if err := runInteractive(ctx, dispStore, sw, in, out, currentActor(), now); err != nil {
+		// dirStore shares q with sw: a Queue is subsystem-agnostic (any
+		// Path+Render job), so a decompose accept's .dira write and an
+		// edit_accept's brain-repo write land in the same session-ending
+		// Flush below, exactly like the "one commit per review session"
+		// comment already promises for edit_accept alone.
+		dirStore := direction.NewStore(root, q)
+		if err := runInteractive(ctx, dispStore, sw, dirStore, in, out, currentActor(), now); err != nil {
 			return err
 		}
 		// One commit per review session (RFC 0001 section 7.7's Flush --
 		// "commits every path the queue has written since the last
-		// Flush"), not one per edit_accept: batching every write-through
-		// this session made into a single commit is Flush's own intended
-		// shape, the same one internal/writer's own tests exercise.
+		// Flush"), not one per write-through: batching every write-through
+		// this session made (edit_accept, T2.7; a decompose accept, T3.11)
+		// into a single commit is Flush's own intended shape, the same one
+		// internal/writer's own tests exercise.
 		committed, ferr := writer.Flush(q, root)
 		if ferr != nil {
 			return fmt.Errorf("inbox: flush: %w", ferr)
 		}
 		if committed {
-			_, _ = fmt.Fprintln(out, "inbox: committed this session's edit_accept write-through(s)")
+			_, _ = fmt.Fprintln(out, "inbox: committed this session's write-through(s)")
 		}
 		return nil
 	}
@@ -270,18 +278,34 @@ func reviewableItems(ctx context.Context, dispStore *disposition.Store) ([]dispo
 // key) are silently ignored rather than erroring.
 //
 // space/d/r dispose the whole current row (accept/defer/reject) without
-// ever touching the brain repo -- exactly T2.5's original behavior,
-// unchanged here. e (edit_accept, T2.7) is the one key that also writes
-// through sw to the canonical brain repo (internal/supersede's tier-
-// dispatching Apply, T2.3), because unlike a plain accept an edited value
-// has no earlier write anywhere to fall back on. Wiring space's own
-// accept to also write through sw is a disclosed, deliberately separate
-// gap this task does not close: internal/supersede's Apply has had no
-// real caller at all until this task, and folding that wiring into T2.7
-// silently would go beyond edit_accept, this task's own acc line, and
-// this session's established practice of disclosing rather than
+// ever touching the brain repo, for every Kind except KindDecompose --
+// exactly T2.5's original behavior, unchanged for KindReconcile,
+// KindEntityMerge, KindTombstone, KindDirtyEdit, KindCompact, and every
+// other kind. e (edit_accept, T2.7) is the one key that writes through sw
+// to the canonical brain repo for a KindReconcile row (internal/supersede's
+// tier-dispatching Apply, T2.3), because unlike a plain accept an edited
+// value has no earlier write anywhere to fall back on. Wiring space's own
+// accept to also write through sw for those other kinds is a disclosed,
+// deliberately separate gap this package still does not close:
+// internal/supersede's Apply has had no real caller at all until T2.7, and
+// folding that wiring in silently would go beyond each task's own acc
+// line and this session's established practice of disclosing rather than
 // silently absorbing adjacent gaps.
-func runInteractive(ctx context.Context, dispStore *disposition.Store, sw *supersede.Writer, in io.Reader, out io.Writer, actor string, now time.Time) error {
+//
+// KindDecompose (T3.11) is the one deliberate exception: a plain accept
+// on a decompose child ALSO writes through dirStore to .dira
+// (direction.Store.ApplyDisposedDecompose) -- not e, plain space. This is
+// not the same gap as the others, and closing it here is not scope creep:
+// a decompose proposal has no meaningful "accepted but not yet written"
+// state the way a reconcile item does (space there stops short of a write
+// on purpose, since a human may still want to edit first via e). A
+// decompose child is already the complete proposed content -- title plus
+// rationale -- with nothing left to edit, so accepting it and writing it
+// are the same human decision; deferring the write to some other,
+// not-yet-built keystroke would leave "confirming writes valid dira
+// entries with the edge" (T3.11's own acc line) permanently unmet by
+// design, not merely unwired yet.
+func runInteractive(ctx context.Context, dispStore *disposition.Store, sw *supersede.Writer, dirStore *direction.Store, in io.Reader, out io.Writer, actor string, now time.Time) error {
 	items, err := reviewableItems(ctx, dispStore)
 	if err != nil {
 		return err
@@ -382,6 +406,17 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw *super
 					return fmt.Errorf("inbox: dispose %s: %w", it.ID, err)
 				}
 				_, _ = fmt.Fprintf(out, "disposed %s verdict=%s\n", it.ID, res.Item.Verdict)
+				// KindDecompose (T3.11): a plain accept also writes
+				// through -- see runInteractive's own doc comment for why
+				// this Kind is the deliberate exception to "space never
+				// touches the brain repo". defer/reject never reach here.
+				if verdict == disposition.VerdictAccept && it.Kind == disposition.KindDecompose {
+					entry, aerr := dirStore.ApplyDisposedDecompose(ctx, res.Item, now)
+					if aerr != nil {
+						return fmt.Errorf("inbox: apply decompose %s: %w", it.ID, aerr)
+					}
+					_, _ = fmt.Fprintf(out, "applied %s -> %s written to ledger (%s)\n", it.ID, entry.ID, entry.Title)
+				}
 			}
 			if advance() {
 				return nil

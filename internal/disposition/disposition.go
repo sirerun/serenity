@@ -2,8 +2,9 @@
 // §10.2, §10.3, ADR 004): the human-in-the-loop approval queue that every
 // consequential machine proposal -- a reconcile A/B pair, a precept draft,
 // an effect request, a distill candidate, a source tombstone cascade, a
-// dirty-tree conflict, an ambiguous entity-merge candidate, or a shard
-// compaction pass -- lands in before it can change canonical state.
+// dirty-tree conflict, an ambiguous entity-merge candidate, a shard
+// compaction pass, or a judgment-tier child-intent decomposition proposal
+// -- lands in before it can change canonical state.
 //
 // disposition_items and disposition_history are runtime-only state (RFC §7
 // preamble: "DB-only by design, enumerated in an allowlist"), seeded as
@@ -69,6 +70,24 @@ const (
 	// CLI itself stages one on request (`serenity compact --propose`)
 	// for a human to review before accepting it.
 	KindCompact Kind = "compact"
+	// KindDecompose is one proposed child intent from internal/direction's
+	// Decompose (T3.11, RFC 0001 §10.4/§16's judgment-tier decomposition
+	// task class): a parent dira intent, run through
+	// router.TaskClassDecompositionProposals, may propose several child
+	// intents that `derives_from` it. Decompose stages one item per
+	// proposed child (never the whole batch as one item -- RFC 0001
+	// §8.2's "each recorded individually for the ladder"), all sharing one
+	// GroupID so `serenity inbox` reviews and confirms the batch as one
+	// row. Unlike every other Kind, a plain accept in `serenity inbox`
+	// (not only `e`/edit_accept) writes through to the brain repo for this
+	// Kind -- internal/direction.Store.ApplyDisposedDecompose -- because a
+	// decompose proposal has no meaningful "accepted but not written"
+	// state: accepting it IS the only thing to do with it, there being
+	// nothing to edit first. See internal/cli/inbox.go's own doc comment
+	// on runInteractive for the disclosed reasoning behind this
+	// kind-specific exception to T2.7's "space never touches the brain
+	// repo" default.
+	KindDecompose Kind = "decompose"
 )
 
 // State enumerates disposition item lifecycle states (RFC 0001 §8.2/ADR
