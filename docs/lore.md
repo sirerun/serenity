@@ -413,3 +413,45 @@ was committed, not left as the original (wrong) draft. Whether
 `temperature=0` helps real production extraction (`internal/providers`,
 outside eval-runner, where `disable_thinking` legitimately does vary) is
 separately unmeasured and would need its own task.
+
+## L-0013: A GitHub PR that dispatches zero CI runs is very likely `mergeable: CONFLICTING`, not a platform dispatch failure -- check `gh pr view <n> --json mergeable,mergeStateStatus` before assuming a GitHub-side bug
+
+**Tags:** #ci #github-actions #pool #gotcha
+**Date:** 2026-09-07
+**Repo:** sirerun/serenity
+
+**Rule:** When `gh pr checks <n>` reports "no checks reported" and
+`gh api repos/<owner>/<repo>/actions/runs?branch=<branch>` returns
+`total_count: 0` several minutes after a PR was opened or pushed to, do
+not reach for "GitHub Actions delivery glitch" or "runner pool offline"
+as the first hypothesis. Check `gh pr view <n> --json
+mergeable,mergeStateStatus` first -- a `pull_request` event that lands
+on a head GitHub has already computed as `CONFLICTING`/`DIRTY` against
+its base branch does not get a check-suite dispatched at all, silently.
+No error, no queued-then-failed run, just zero runs, indistinguishable
+from a platform outage until you check mergeability specifically.
+
+**Why:** Hit three times independently in one ~90-minute pool-dispatch
+window against a fast-moving `main` (PR #137, #139, #146), each time
+first suspected as a GitHub Actions dispatch bug, each time actually a
+real conflict: a sibling pool session's docs/plan.md or
+docs/roadmap.md mark-done commit (or, for #139, real code in
+`cmd/eval-runner`/`internal/eval/runner`) had landed on `main` after the
+PR's branch point but before its CI could dispatch. A same-SHA
+`gh pr close`/`gh pr reopen` retrigger (tried once, on #137) did NOT
+fix it -- only a real `git rebase origin/main` + conflict resolution +
+force-push produced both a mergeable PR and, as a side effect, a fresh
+SHA that finally got a genuine dispatch. The fix and the diagnosis are
+the same action; there is no cheaper retrigger that works around an
+unresolved conflict.
+
+**Trigger:** Any PR pool-dispatch environment with docs/plan.md and
+docs/roadmap.md as high-churn shared files that every task's mark-done
+pass touches (this repo's pattern throughout 2026-09-07) will keep
+producing this -- especially in a wide-fanout wave (4-6 concurrent pool
+sessions plus a peer harness like Codex, all merging to the same
+`main` within minutes of each other). `gh pr checks` alone under-
+diagnoses this; `gh pr view --json mergeable,mergeStateStatus` is the
+one-command check that immediately tells CONFLICTING apart from a
+genuine pending/dispatch-lag state, and should be the first thing
+checked, not a fallback after ruling out a platform bug.
