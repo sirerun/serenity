@@ -1,0 +1,105 @@
+{
+  "protocol": "disposition",
+  "operation": "list_pending",
+  "cases": [
+    {
+      "name": "list_pending filters by kind: only the reconcile item is returned",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/disposition/list_pending",
+          "request_body": {
+            "kinds": [
+              "reconcile"
+            ]
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"items\":[{\"item\":{\"id\":\"ebd72d47d6cb7145b1f581425deb94f0\",\"kind\":\"reconcile\",\"state\":\"pending\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:01Z\",\"updated_at\":\"2026-09-07T12:00:01Z\"}}]}\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "list_pending with group:true collapses items sharing a group_id into one row",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/disposition/list_pending",
+          "request_body": {
+            "group": true
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"items\":[{\"item\":{\"id\":\"8c7be57a3e70e66072de44faa97e112e\",\"kind\":\"decompose\",\"state\":\"pending\",\"group_id\":\"g1\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:00Z\",\"updated_at\":\"2026-09-07T12:00:00Z\"},\"members\":[{\"id\":\"8c7be57a3e70e66072de44faa97e112e\",\"kind\":\"decompose\",\"state\":\"pending\",\"group_id\":\"g1\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:00Z\",\"updated_at\":\"2026-09-07T12:00:00Z\"},{\"id\":\"da88f8f13ad0bde81615619a019a88bf\",\"kind\":\"decompose\",\"state\":\"pending\",\"group_id\":\"g1\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:01Z\",\"updated_at\":\"2026-09-07T12:00:01Z\"}]},{\"item\":{\"id\":\"9cfd8aa2ea89f87c73cc22822551d0d5\",\"kind\":\"distill\",\"state\":\"pending\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:02Z\",\"updated_at\":\"2026-09-07T12:00:02Z\"}}]}\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "parked items appear only with the parked filter; the default view excludes them",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/disposition/list_pending",
+          "request_body": {},
+          "response": {
+            "status": 200,
+            "body": "{\"items\":[{\"item\":{\"id\":\"e2d0059ec88559a717f4011b0b1ec344\",\"kind\":\"distill\",\"state\":\"pending\",\"payload\":{},\"created_at\":\"2026-10-22T12:00:00Z\",\"updated_at\":\"2026-10-22T12:00:00Z\"}}]}\n"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/disposition/list_pending",
+          "request_body": {
+            "parked": true
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"items\":[{\"item\":{\"id\":\"876e169deb3801fb3fd96299f27c008c\",\"kind\":\"distill\",\"state\":\"parked\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:00Z\",\"updated_at\":\"2026-10-22T12:00:00Z\",\"defer_count\":3}}]}\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "cursor pagination walks all 5 items in pages of 2 and terminates with no next_cursor",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/disposition/list_pending",
+          "request_body": {
+            "limit": 2
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"items\":[{\"item\":{\"id\":\"6cd3f245564041105b3849dc82287d14\",\"kind\":\"distill\",\"state\":\"pending\",\"payload\":{\"n\":0},\"created_at\":\"2026-09-07T12:00:00Z\",\"updated_at\":\"2026-09-07T12:00:00Z\"}},{\"item\":{\"id\":\"4b897ff110f07533d546403b0ca59d5b\",\"kind\":\"distill\",\"state\":\"pending\",\"payload\":{\"n\":1},\"created_at\":\"2026-09-07T12:00:01Z\",\"updated_at\":\"2026-09-07T12:00:01Z\"}}],\"next_cursor\":\"2\"}\n"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/disposition/list_pending",
+          "request_body": {
+            "cursor": "2",
+            "limit": 2
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"items\":[{\"item\":{\"id\":\"72f05146034026824af83535349619b0\",\"kind\":\"distill\",\"state\":\"pending\",\"payload\":{\"n\":2},\"created_at\":\"2026-09-07T12:00:02Z\",\"updated_at\":\"2026-09-07T12:00:02Z\"}},{\"item\":{\"id\":\"b97a22d4d24c64e499f2b42b03da597a\",\"kind\":\"distill\",\"state\":\"pending\",\"payload\":{\"n\":3},\"created_at\":\"2026-09-07T12:00:03Z\",\"updated_at\":\"2026-09-07T12:00:03Z\"}}],\"next_cursor\":\"4\"}\n"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/disposition/list_pending",
+          "request_body": {
+            "cursor": "4",
+            "limit": 2
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"items\":[{\"item\":{\"id\":\"7b752da0af4db42b23986e61840d27ee\",\"kind\":\"distill\",\"state\":\"pending\",\"payload\":{\"n\":4},\"created_at\":\"2026-09-07T12:00:04Z\",\"updated_at\":\"2026-09-07T12:00:04Z\"}}]}\n"
+          }
+        }
+      ]
+    }
+  ]
+}

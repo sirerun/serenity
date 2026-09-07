@@ -1,0 +1,79 @@
+{
+  "protocol": "direction",
+  "operation": "check_plan",
+  "cases": [
+    {
+      "name": "check_plan with neither plan_text nor actions returns invalid_request",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/direction/check_plan",
+          "request_body": {},
+          "response": {
+            "status": 400,
+            "body": "{\"error\":\"invalid_request\",\"message\":\"exactly one of plan_text or actions is required\"}\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "check_plan with a structured action matching an active constraint returns status violated",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/direction/check_plan",
+          "request_body": {
+            "actions": [
+              {
+                "action": "spend_over",
+                "params": {
+                  "amount": 500
+                }
+              }
+            ]
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"status\":\"violated\",\"considered_count\":1,\"constraints\":[{\"precept_id\":\"cst-0001\",\"outcome\":\"violated\",\"why_not\":\"Unbounded spend risk: \\\"no ceiling\\\" was rejected outright.\",\"revisit_if\":\"quarterly budget review\"}]}\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "check_plan matching zero active constraints returns no_applicable_constraints, never a bare pass",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/direction/check_plan",
+          "request_body": {
+            "actions": [
+              {
+                "action": "start_project"
+              }
+            ]
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"status\":\"no_applicable_constraints\",\"considered_count\":0}\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "check_plan free text with no classifier router configured returns status unverified, never a silent pass",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/direction/check_plan",
+          "request_body": {
+            "plan_text": "deploy to prod now"
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"status\":\"unverified\",\"considered_count\":0,\"confidence\":0}\n"
+          }
+        }
+      ]
+    }
+  ]
+}

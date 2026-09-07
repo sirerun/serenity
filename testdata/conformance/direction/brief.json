@@ -1,0 +1,54 @@
+{
+  "protocol": "direction",
+  "operation": "brief",
+  "cases": [
+    {
+      "name": "brief on a fresh ledger returns all four fixed sections, empty",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/direction/brief",
+          "request_body": {
+            "token_budget": 800
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"budget_estimator\":\"words\",\"sections\":[{\"name\":\"precepts\",\"items\":[],\"omitted\":0},{\"name\":\"intents\",\"items\":[],\"omitted\":0},{\"name\":\"entities\",\"items\":[],\"omitted\":0},{\"name\":\"questions\",\"items\":[],\"omitted\":0}]}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "a zero token_budget returns the minimal valid object: four sections, real candidates all omitted",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/direction/brief",
+          "request_body": {
+            "token_budget": 0
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"budget_estimator\":\"words\",\"sections\":[{\"name\":\"precepts\",\"items\":[],\"omitted\":1},{\"name\":\"intents\",\"items\":[],\"omitted\":0},{\"name\":\"entities\",\"items\":[],\"omitted\":0},{\"name\":\"questions\",\"items\":[],\"omitted\":1}]}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "budget 800 fills sections by priority and drops an overflowing precepts section whole, never starving questions",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/direction/brief",
+          "request_body": {
+            "token_budget": 800
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"budget_estimator\":\"words\",\"sections\":[{\"name\":\"precepts\",\"items\":[],\"omitted\":12},{\"name\":\"intents\",\"items\":[],\"omitted\":0},{\"name\":\"entities\",\"items\":[],\"omitted\":0},{\"name\":\"questions\",\"items\":[\"qst-0001: should we raise the ceiling?\",\"qst-0002: who owns this precept?\"],\"omitted\":0}]}"
+          }
+        }
+      ]
+    }
+  ]
+}

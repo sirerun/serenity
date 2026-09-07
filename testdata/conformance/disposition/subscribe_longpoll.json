@@ -1,0 +1,44 @@
+{
+  "protocol": "disposition",
+  "operation": "subscribe_longpoll",
+  "cases": [
+    {
+      "name": "long-poll subscribe returns immediately once an event already exists past the cursor",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/disposition/capture",
+          "request_body": {
+            "text": "note 0"
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"item_id\":\"436b31e2a8def6a04cbd29b058571852\"}\n"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/disposition/subscribe?cursor=0",
+          "response": {
+            "status": 200,
+            "body": "{\"events\":[{\"cursor\":1,\"kind\":\"disposition.item_created\",\"payload\":{\"item_id\":\"436b31e2a8def6a04cbd29b058571852\",\"kind\":\"distill\",\"state\":\"pending\"},\"occurred_at\":\"2026-09-07T20:01:55.949781Z\"}]}\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "subscribe with no bearer token returns 401 like every other route",
+      "steps": [
+        {
+          "method": "GET",
+          "path": "/disposition/subscribe?cursor=0",
+          "no_auth": true,
+          "response": {
+            "status": 401,
+            "body": "unauthorized\n"
+          }
+        }
+      ]
+    }
+  ]
+}

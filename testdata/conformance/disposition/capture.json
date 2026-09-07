@@ -1,0 +1,36 @@
+{
+  "protocol": "disposition",
+  "operation": "capture",
+  "cases": [
+    {
+      "name": "capture text stages a distill item and returns its id",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/disposition/capture",
+          "request_body": {
+            "text": "call the landlord about the lease"
+          },
+          "response": {
+            "status": 200,
+            "body": "{\"item_id\":\"f13d3f6101c52d486210551ca2b26dd4\"}\n"
+          }
+        }
+      ]
+    },
+    {
+      "name": "capture with no text and no audio_ref returns capture_empty",
+      "steps": [
+        {
+          "method": "POST",
+          "path": "/disposition/capture",
+          "request_body": {},
+          "response": {
+            "status": 400,
+            "body": "{\"error\":\"capture_empty\",\"message\":\"disposition: capture: text or audio_ref required\"}\n"
+          }
+        }
+      ]
+    }
+  ]
+}
