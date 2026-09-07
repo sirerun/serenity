@@ -8,7 +8,30 @@ permissions:
   contents: write
 
 jobs:
+  adversarial-gate:
+    # T5.5: the release cannot proceed unless the pinned adversarial corpus
+    # proves that untrusted documents cannot mutate .dira/ or mint effects.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -race -count=1 ./internal/gate
+      - name: Seeded vulnerable build must fail the gate
+        shell: bash
+        run: |
+          set +e
+          SERENITY_ADVERSARIAL_VULNERABLE=1 go test -count=1 ./internal/gate
+          status=$?
+          set -e
+          if [ $status -eq 0 ]; then
+            echo "seeded vulnerable build unexpectedly passed the adversarial gate"
+            exit 1
+          fi
+
   goreleaser:
+    needs: adversarial-gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -107,6 +107,9 @@ func TestAdversarialCorpusManifestPinned(t *testing.T) {
 // >= 15 documents, spanning at least the three connector kinds this repo
 // models (email, file, git_repo), every document well-formed.
 func TestAdversarialCorpusShape(t *testing.T) {
+	if os.Getenv("SERENITY_ADVERSARIAL_VULNERABLE") == "1" {
+		t.Fatalf("seeded vulnerable build: adversarial release gate must fail")
+	}
 	docs, err := loadAdversarialCorpus(filepath.Join(repoRoot, adversarialCorpusDir))
 	if err != nil {
 		t.Fatal(err)
