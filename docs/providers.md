@@ -72,6 +72,36 @@ embeddings endpoint configured separately; embedding is not silently
 degraded or routed through OpenRouter, it is simply a different
 credential.
 
+## Disabling a reasoning model's "thinking" pass
+
+Some models served through the `openai`/`openrouter` adapters (Qwen3-class
+reasoning models on an SGLang or vLLM server, for example) emit a default
+"thinking" trace before their real answer, billed and timed as regular
+completion tokens. Measured directly against a live `qwen3.8-27b` SGLang
+endpoint (T1.31, docs/devlog.md 2026-09-06): this thinking pass accounted
+for 64-94% of every extraction call's completion tokens and a 6-15x
+wall-clock multiplier per call — the reason a real 92,586-chunk corpus
+projected to roughly 2-3 months of extraction time (docs/evals/m1-report.md).
+
+Set `models.disable_thinking: true` in `serenity.yml` to send
+`chat_template_kwargs: {"enable_thinking": false}` on every extraction and
+composer call:
+
+```yaml
+models:
+  provider: openai
+  extraction: qwen3.8-27b@v1
+  disable_thinking: true
+```
+
+This is **off by default and safe only for a server that understands the
+field** — a real OpenAI or OpenRouter endpoint does not recognize
+`chat_template_kwargs`, and some reject an unrecognized top-level request
+field outright. Leave it unset (or `false`) unless you have confirmed your
+endpoint is an SGLang/vLLM-class server serving a thinking-capable model.
+It has no effect on embeddings (`BuildEmbeddingRouter` never reads it) or
+on a Claude pin (`AnthropicProvider` has no such concept).
+
 ## Changing a pinned model: `serenity config set-model`
 
 ```
