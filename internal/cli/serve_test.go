@@ -4,8 +4,12 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
+
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestServeRequiresStdio(t *testing.T) {
@@ -44,5 +48,42 @@ func TestServeCancelledContext(t *testing.T) {
 	cancel()
 	if err := cmd.ExecuteContext(ctx); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMCPPipeFlagsRestored(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = r.Close(); _ = w.Close() }()
+	raw, err := r.SyscallConn()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fd uintptr
+	if err := raw.Control(func(n uintptr) { fd = n }); err != nil {
+		t.Fatal(err)
+	}
+	before, err := unix.FcntlInt(fd, unix.F_GETFL, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared, cleanup, err := pollableMCPFile(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prepared.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cleanup(); err != nil {
+		t.Fatal(err)
+	}
+	after, err := unix.FcntlInt(fd, unix.F_GETFL, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != after {
+		t.Fatalf("descriptor flags changed: %d -> %d", before, after)
 	}
 }
