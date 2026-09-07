@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -30,6 +31,7 @@ import (
 func newCheckCmd() *cobra.Command {
 	var actionsJSON string
 	var jsonOut bool
+	var claudeHook bool
 	cmd := &cobra.Command{
 		Use:   "check [plan text]",
 		Short: "Check a plan against active precept constraints (DIRECTION v1 check_plan)",
@@ -37,9 +39,18 @@ func newCheckCmd() *cobra.Command {
 			"structured --actions JSON against every active constraint precept in the\n" +
 			"brain repo's ledger, plus open blocking questions.\n\n" +
 			"Exit codes (ADR 010): 0 for pass or no_applicable_constraints, 2 for\n" +
-			"violated, 1 for unverified or any other error.",
+			"violated, 1 for unverified or any other error.\n\n" +
+			"--claude-hook reads a Claude Code PreToolUse hook envelope from stdin\n" +
+			"instead -- this is what `serenity connect claude` installs as Claude\n" +
+			"Code's pre-plan gate; a person runs the plan-text or --actions form.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if claudeHook {
+				if len(args) != 0 || actionsJSON != "" {
+					return claudeGateResult("", fmt.Errorf("--claude-hook is mutually exclusive with plan text and --actions"), cmd.ErrOrStderr())
+				}
+				return runCheckClaudeHook(cmd.Context(), flagRoot, cmd.InOrStdin(), cmd.ErrOrStderr())
+			}
 			var planText string
 			if len(args) == 1 {
 				planText = args[0]
@@ -50,7 +61,80 @@ func newCheckCmd() *cobra.Command {
 	cmd.Flags().StringVar(&actionsJSON, "actions", "",
 		`structured actions as a JSON array, e.g. '[{"action":"spend_over","params":{"amount":500}}]' (mutually exclusive with the plan-text argument)`)
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "machine-readable JSON output")
+	cmd.Flags().BoolVar(&claudeHook, "claude-hook", false,
+		"read a Claude Code PreToolUse hook JSON envelope from stdin (installed by `serenity connect claude`)")
 	return cmd
+}
+
+// runCheckClaudeHook adapts the ordinary check verdict to Claude Code's
+// blocking exit contract. Plan content remains data; only an actual pass
+// permits the call. The ordinary check command keeps ADR 010 exit semantics.
+func runCheckClaudeHook(ctx context.Context, root string, in io.Reader, stderr io.Writer) error {
+	const limit = 1 << 20
+	raw, err := io.ReadAll(io.LimitReader(in, limit+1))
+	if err != nil {
+		return claudeGateResult("", fmt.Errorf("read hook input: %w", err), stderr)
+	}
+	if len(raw) > limit {
+		return claudeGateResult("", fmt.Errorf("hook input exceeds %d bytes", limit), stderr)
+	}
+	var hook struct {
+		Event string          `json:"hook_event_name"`
+		Tool  string          `json:"tool_name"`
+		Input json.RawMessage `json:"tool_input"`
+	}
+	if err := json.Unmarshal(raw, &hook); err != nil {
+		return claudeGateResult("", fmt.Errorf("decode hook input: %w", err), stderr)
+	}
+	if hook.Event == "" {
+		return claudeGateResult("", fmt.Errorf("hook_event_name is required"), stderr)
+	}
+	if hook.Event != "PreToolUse" {
+		return nil
+	}
+	if hook.Tool == "" {
+		return claudeGateResult("", fmt.Errorf("PreToolUse requires tool_name"), stderr)
+	}
+	if hook.Tool != "ExitPlanMode" {
+		return nil
+	}
+	var input struct {
+		Plan string `json:"plan"`
+	}
+	if err := json.Unmarshal(hook.Input, &input); err != nil {
+		return claudeGateResult("", fmt.Errorf("decode tool_input: %w", err), stderr)
+	}
+	if strings.TrimSpace(input.Plan) == "" {
+		return claudeGateResult("", fmt.Errorf("ExitPlanMode requires nonblank tool_input.plan"), stderr)
+	}
+	var output bytes.Buffer
+	checkErr := runCheck(ctx, root, input.Plan, "", true, &output)
+	var result struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(output.Bytes(), &result); err != nil {
+		if checkErr != nil {
+			return claudeGateResult("", checkErr, stderr)
+		}
+		return claudeGateResult("", fmt.Errorf("decode check verdict: %w", err), stderr)
+	}
+	return claudeGateResult(result.Status, checkErr, stderr)
+}
+
+func claudeGateResult(status string, err error, stderr io.Writer) error {
+	if status == "pass" && err == nil {
+		return nil
+	}
+	if status != "" {
+		_, _ = fmt.Fprintf(stderr, "Serenity blocked ExitPlanMode: check status %s. Run serenity check --actions for a structured check; free-text classification is not configured.\n", status)
+	}
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Serenity blocked ExitPlanMode: %v\n", err)
+	}
+	if status == "" && err == nil {
+		_, _ = fmt.Fprintln(stderr, "Serenity blocked ExitPlanMode: missing check verdict")
+	}
+	return &ExitError{Code: 2}
 }
 
 // runCheck is the check_plan CLI surface. It never returns a bare error for
