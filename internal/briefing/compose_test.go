@@ -9,9 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/dira/ledger"
+	"github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/providers"
+	"github.com/sirerun/serenity/internal/writer"
 )
 
 // requireGit and runInit are internal/cli's own test/production helpers;
@@ -65,9 +68,12 @@ func initBrainRepo(t *testing.T, root string) {
 // (drives Needs you), one disposed item inside the Moved-forward
 // lookback (drives Moved forward), enough spend rows to produce a
 // nonzero Watched projection, and leaves the queue under both SLO
-// thresholds (Blocked renders empty) and Drift empty (T3.9 unshipped,
-// disclosed on Compose) -- then asserts Render's exact byte-for-byte
-// text output, the same golden-string discipline
+// thresholds (Blocked renders empty); Drift renders empty here because
+// this call passes a nil dirStore (no dira ledger wired into this
+// particular fixture, per Compose's own disclosed dirStore==nil
+// tolerance) -- TestComposeDriftSourcesRealOrphans below covers the
+// dirStore != nil path -- then asserts Render's exact byte-for-byte text
+// output, the same golden-string discipline
 // internal/cli.TestStatusGoldenOutput already established for `serenity
 // status`.
 func TestComposeGoldenRenderOnFixtureBrain(t *testing.T) {
@@ -130,7 +136,7 @@ func TestComposeGoldenRenderOnFixtureBrain(t *testing.T) {
 	}
 	defer func() { _ = eng.Close() }()
 
-	got, err := Compose(ctx, eng, DefaultConfig(), now)
+	got, err := Compose(ctx, eng, nil, DefaultConfig(), now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +176,7 @@ func TestComposeBlockedSectionReflectsQueueAlerts(t *testing.T) {
 		}
 	}
 
-	got, err := Compose(ctx, eng, DefaultConfig(), now)
+	got, err := Compose(ctx, eng, nil, DefaultConfig(), now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,7 +214,7 @@ func TestComposeFreshBrainRendersEveryFixedSectionNotEmptyOutput(t *testing.T) {
 	}
 	defer func() { _ = eng.Close() }()
 
-	got, err := Compose(ctx, eng, DefaultConfig(), time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC))
+	got, err := Compose(ctx, eng, nil, DefaultConfig(), time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +264,7 @@ func TestComposeDropsSectionOverWordBudgetWhole(t *testing.T) {
 
 	cfg := DefaultConfig()
 	cfg.WordBudget = 3 // each Needs-you line alone is well over 3 words.
-	got, err := Compose(ctx, eng, cfg, now)
+	got, err := Compose(ctx, eng, nil, cfg, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,5 +283,69 @@ func TestComposeDropsSectionOverWordBudgetWhole(t *testing.T) {
 	}
 	if needsYou.Omitted != 5 {
 		t.Fatalf("Needs you omitted=%d, want 5 (all pending items, whole-section drop)", needsYou.Omitted)
+	}
+}
+
+// TestComposeDriftSourcesRealOrphans is the live-wiring half of T3.9: a
+// real dirStore with one chained and one unchained entry, passed to
+// Compose, produces exactly one real Drift line -- not just
+// direction.DetectOrphans in isolation (covered by
+// internal/direction/orphan_test.go), but the actual section a rendered
+// briefing shows.
+func TestComposeDriftSourcesRealOrphans(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	initBrainRepo(t, root)
+
+	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
+	weekAgo := now.Add(-2 * 24 * time.Hour).UTC().Format(time.RFC3339)
+
+	q := writer.NewQueue(nil)
+	t.Cleanup(q.Close)
+	dirStore := direction.NewStore(t.TempDir(), q)
+
+	if err := dirStore.Put(ctx, &ledger.Entry{
+		ID: "int-0001", Kind: ledger.KindIntent, Title: "Ship the widget",
+		State: ledger.StateActive, Created: now.Add(-30 * 24 * time.Hour).UTC().Format(time.RFC3339),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := dirStore.Put(ctx, &ledger.Entry{
+		ID: "note-0001", Kind: ledger.KindNote, Title: "Chained note",
+		State: ledger.StateActive, Created: weekAgo,
+		Edges: []ledger.Edge{{Type: ledger.EdgeDerivesFrom, To: "int-0001"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := dirStore.Put(ctx, &ledger.Entry{
+		ID: "note-0002", Kind: ledger.KindNote, Title: "Unchained note",
+		State: ledger.StateActive, Created: weekAgo,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = eng.Close() }()
+
+	got, err := Compose(ctx, eng, dirStore, DefaultConfig(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var drift PackedSection
+	for _, sec := range got.Sections {
+		if sec.Name == SectionDrift {
+			drift = sec
+		}
+	}
+	if len(drift.Items) != 1 {
+		t.Fatalf("Drift = %+v, want exactly 1 item (the unchained note)", drift.Items)
+	}
+	if want := `note note-0002 "Unchained note" has no derivation edge to an active intent`; drift.Items[0].Text != want {
+		t.Errorf("Drift item = %q, want %q", drift.Items[0].Text, want)
 	}
 }
