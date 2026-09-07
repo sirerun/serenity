@@ -218,7 +218,14 @@ output.
   server-random, so a target seeded with the same fixture entries
   reproduces byte-identical responses; `internal/conformance.CompareBodies`'s
   dynamic-field normalization exists for the other two protocols, not
-  because DIRECTION needs it. DIRECTION v1 is also exercised by
+  because DIRECTION needs it. A handful of `brief` and `check_plan` cases
+  still need a target whose ledger holds exactly those fixture entries (or,
+  for one `brief` case, an entirely fresh ledger) — against an arbitrary
+  `--target` this command did not seed to match, it reports those specific
+  cases as skip rather than a false-alarm fail (`docs/operator/conformance.md`'s
+  disclosed gaps); `go test ./internal/conformance` boots and seeds its own
+  server and is the byte-exact authority for them. DIRECTION v1 is also
+  exercised by
   `internal/server/direction`'s own test suite (nineteen tests over a
   real HTTP listener, including a CLI-binary comparison proving
   `check_plan` deep-equals `serenity check --json` and a `.dira/`

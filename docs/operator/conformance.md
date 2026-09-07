@@ -3,8 +3,8 @@
 `serenity protocol conformance --target <url>` replays the frozen
 transcripts under `testdata/conformance/` (T4.13) against a live server,
 comparing each recorded request/response pair to what the target actually
-returns and reporting pass/fail per case with a diff on mismatch. It is
-this repo's own external, wire-level conformance runner for all three
+returns and reporting pass, fail, or skip per case with a diff on mismatch.
+It is this repo's own external, wire-level conformance runner for all three
 protocols RFC 0001 §8 defines (MEMORY_VERBS v1, DISPOSITION v1, DIRECTION
 v1) — the counterpart to `gbrain protocol conformance` (which only knows
 MEMORY_VERBS) and to each protocol package's own in-process test suite.
@@ -31,7 +31,8 @@ Flags:
   resolved from this build's own source tree).
 - `--json` — machine-readable report instead of the text summary.
 
-Exit status is nonzero when any case fails.
+Exit status is nonzero when any case fails; a skipped case never fails the
+run (see "Disclosed gaps" below for what earns a case "skip").
 
 ## What "pass" means
 
@@ -47,18 +48,27 @@ first place.
 
 ## Disclosed gaps
 
-- **`list_pending`/`dispose` need a matching target.** Their fixture items
-  are seeded by an internal `Store.Create` call the generator makes
-  *before* its transcript's own steps run (see
-  `testdata/conformance/disposition/gen_transcripts.go`) — that seeding
-  is not itself part of the frozen transcript, and item ids are
-  `crypto/rand`, never reproducible outside that one generator run.
-  Replayed against a `--target` that was not independently seeded with
-  matching items, these two operations' happy-path cases legitimately
-  fail (the target has no such item) — this command reports that plainly
-  rather than skipping it silently. `go test ./internal/conformance`
-  remains this pair's byte-exact authority, since only a test that boots
-  and seeds its own server can reproduce matching state.
+- **A fixed set of `list_pending`/`dispose`/`brief`/`check_plan` cases need
+  a matching target, so a mismatch there reports skip, not fail.** Their
+  expected response depends on server-side state a generator script seeded
+  *before* its transcript's own steps ran (see
+  `testdata/conformance/{disposition,direction}/gen_transcripts.go`) —
+  that seeding is not itself part of the frozen transcript. DISPOSITION's
+  item/group ids are `crypto/rand`, never reproducible outside that one
+  generator run; DIRECTION's ledger constraints/questions are literal ids
+  but still require the target's ledger to hold exactly what the generator
+  seeded (or, for one `brief` case, to be an entirely fresh ledger).
+  Replayed against a `--target` that was not independently seeded to
+  match, these specific cases legitimately diverge — reporting that as a
+  failure would be a false alarm, not a finding, since this command has no
+  way to arrange that state on an arbitrary target. It reports skip
+  instead, naming `go test ./internal/conformance` as the byte-exact
+  authority: that suite boots and seeds its own server, so it can reproduce
+  matching state exactly. See `internal/cli.httpTranscriptCasesNeedingSeededState`
+  for the exact list of cases this applies to — every other case in these
+  four operations (validation-only paths like `reject_requires_note`,
+  `invalid_request`, or an unknown `group_id`) needs no seeded state and
+  reports a genuine pass or fail like any other case.
 - **`subscribe`'s SSE mode has no transcript.** Only the long-poll
   fallback envelope is recorded; an open server-sent-events stream isn't a
   single request/response pair, so it doesn't fit this transcript shape.
