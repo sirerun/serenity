@@ -199,7 +199,7 @@ func evaluateFixture(ctx context.Context, f Fixture, g Gold, scoreable []Turn, l
 		var results []search.Result
 		if q := ftsQuery(t.Text); q != "" {
 			var err error
-			results, err = search.Search(ctx, eng, nil, q, limit, search.Options{})
+			results, err = search.Search(ctx, eng, nil, q, limit, search.Options{FTSExpression: true})
 			if err != nil {
 				return counts{}, fmt.Errorf("search turn %d: %w", t.TurnID, err)
 			}

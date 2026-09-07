@@ -256,6 +256,12 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 		return fmt.Errorf("extract: %w", err)
 	}
 
+	// Validate reserved source records before any extraction. Raw memory facts
+	// remain attributed input; their intentional extraction policy is separate.
+	if _, err := store.LoadMemoryProjection(ss); err != nil {
+		return fmt.Errorf("extract: source policy: %w", err)
+	}
+
 	extractor := extract.New(r, cfg.Models.Extraction, cfg.FamilyNames(), nil)
 	q := writer.NewQueue(nil)
 	defer q.Close()
@@ -263,6 +269,13 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 
 	var written, skipped, distilled, rejected, indexOnlySkipped int
 	for _, src := range sources {
+		if src.Kind == store.SourceKindMemoryFact || src.Kind == store.SourceKindMemoryExpiry {
+			continue
+		}
+		if src.IndexOnly {
+			indexOnlySkipped++
+			continue
+		}
 		data, _, err := ss.Read(src.SHA256)
 		if err != nil {
 			return fmt.Errorf("extract: read source %s: %w", src.SHA256, err)

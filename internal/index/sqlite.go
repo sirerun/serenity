@@ -239,6 +239,9 @@ func (s *SQLite) AllChunks(ctx context.Context) ([]Hit, error) {
 }
 
 func (s *SQLite) SearchFTS(ctx context.Context, query string, limit int) ([]Hit, error) {
+	if strings.TrimSpace(query) == "" || limit <= 0 {
+		return nil, nil
+	}
 	rows, err := s.db.QueryContext(ctx, `SELECT chunk_ref, entity_slug, text, source_sha256, kind, bm25(chunks)
 		FROM chunks WHERE chunks MATCH ? ORDER BY bm25(chunks) LIMIT ?`, query, limit)
 	if err != nil {
@@ -358,4 +361,14 @@ func formatValue(v any) string {
 	default:
 		return fmt.Sprint(x)
 	}
+}
+
+// LiteralFTSQuery quotes natural-language terms for SQLite MATCH. Callers that
+// deliberately construct expressions can use SearchFTS directly.
+func LiteralFTSQuery(query string) string {
+	terms := strings.Fields(query)
+	for i, term := range terms {
+		terms[i] = `"` + strings.ReplaceAll(term, `"`, `""`) + `"`
+	}
+	return strings.Join(terms, " ")
 }

@@ -40,120 +40,301 @@ type sourceMeta struct {
 	Meta       map[string]string `yaml:"meta,omitempty"`
 }
 
-// DirFor returns the content-addressed directory for a sha256 hex digest.
-func (s *SourceStore) DirFor(sha string) string {
-	return filepath.Join(s.Root, "brain", "sources", sha[:2], sha)
+// ValidSourceSHA accepts only canonical lowercase, full SHA-256 identities.
+func ValidSourceSHA(sha string) bool {
+	if len(sha) != 64 {
+		return false
+	}
+	for _, c := range sha {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
+// DirFor returns an empty path for invalid identities. I/O methods return an
+// error before resolving a path, so untrusted short IDs never panic or traverse.
+func (s *SourceStore) DirFor(sha string) string {
+	if !ValidSourceSHA(sha) {
+		return ""
+	}
+	return filepath.Join(s.Root, "brain", "sources", sha[:2], sha)
+}
 func (s *SourceStore) bytesPath(sha string) string { return filepath.Join(s.DirFor(sha), "bytes") }
 func (s *SourceStore) metaPath(sha string) string  { return filepath.Join(s.DirFor(sha), "meta.yaml") }
 
-// Write stores data content-addressed and writes its meta.yaml sidecar,
-// returning the resolved Source with SHA256 set from the bytes (never
-// trusted from the caller). If the sha already exists on disk, Write does
-// not touch the filesystem again — it returns the metadata recorded by the
-// original write (§7.4/§7.6: Source is immutable; two logical imports that
-// happen to carry identical bytes dedup onto the first one's identity).
-// An index_only source's raw bytes are excluded from git (its meta.yaml
-// stays tracked) so large or sensitive originals never enter version
-// control (RFC §7.4, gbrain's db_only pattern).
-func (s *SourceStore) Write(data []byte, src domain.Source) (domain.Source, error) {
-	sum := sha256.Sum256(data)
-	sha := hex.EncodeToString(sum[:])
+func reservedMemoryKind(kind string) bool { return strings.HasPrefix(strings.ToLower(kind), "memory_") }
 
-	if existing, err := s.readMeta(sha); err == nil {
-		return existing, nil // content already on disk: immutable, no-op
+// Write publishes ordinary imported material. Memory lifecycle kinds are reserved
+// for the typed entry points: importing JSON never grants expiry semantics.
+func (s *SourceStore) Write(data []byte, src domain.Source) (domain.Source, error) {
+	if reservedMemoryKind(src.Kind) {
+		return domain.Source{}, fmt.Errorf("store: reserved source kind %q requires a typed memory write", src.Kind)
+	}
+	return s.writeSource(data, src)
+}
+
+// WriteMemoryFact publishes a validated canonical raw fact. Call via the writer queue.
+func (s *SourceStore) WriteMemoryFact(p MemoryFactPayload) (domain.Source, error) {
+	data, err := EncodeMemoryFact(p)
+	if err != nil {
+		return domain.Source{}, err
+	}
+	return s.writeSource(data, NewMemoryFactSource(p.CreatedAt))
+}
+
+// WriteMemoryExpiry publishes an immutable lifecycle event through the writer queue.
+func (s *SourceStore) WriteMemoryExpiry(p MemoryExpiryPayload) (domain.Source, error) {
+	data, err := EncodeMemoryExpiry(p)
+	if err != nil {
+		return domain.Source{}, err
+	}
+	return s.writeSource(data, NewMemoryExpirySource(p.ExpiredAt))
+}
+
+// writeSource stages a complete, synced record outside the canonical namespace,
+// then publishes its directory with one rename. Readers never see a half record.
+func (s *SourceStore) writeSource(data []byte, src domain.Source) (domain.Source, error) {
+	digest := sha256.Sum256(data)
+	sha := hex.EncodeToString(digest[:])
+	src.SHA256 = sha
+	if err := validateSourcePayload(data, src); err != nil {
+		return domain.Source{}, err
+	}
+	if err := s.sourceParents(sha, true); err != nil {
+		return domain.Source{}, err
+	}
+	final := s.DirFor(sha)
+	if _, err := os.Lstat(final); err == nil {
+		_, existing, err := s.Read(sha)
+		if errors.Is(err, fs.ErrNotExist) {
+			m, metaErr := s.readMeta(sha)
+			if metaErr == nil && m.IndexOnly && !reservedMemoryKind(m.Kind) && !reservedMemoryKind(src.Kind) {
+				return m, nil
+			}
+		}
+		if err != nil {
+			return domain.Source{}, fmt.Errorf("store: existing source is corrupt: %w", err)
+		}
+		if reservedMemoryKind(src.Kind) && existing.Kind != src.Kind {
+			return domain.Source{}, fmt.Errorf("store: memory identity conflicts with existing source kind")
+		}
+		return existing, nil
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return domain.Source{}, err
 	}
-
-	dir := s.DirFor(sha)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	meta, err := marshalSourceMeta(src)
+	if err != nil {
 		return domain.Source{}, err
 	}
-	if err := os.WriteFile(s.bytesPath(sha), data, 0o644); err != nil {
+	parent := filepath.Dir(final)
+	stage, err := os.MkdirTemp(parent, ".source-stage-")
+	if err != nil {
 		return domain.Source{}, err
 	}
-	src.SHA256 = sha
-	if err := s.writeMeta(src); err != nil {
+	defer func() { _ = os.RemoveAll(stage) }()
+	for name, content := range map[string][]byte{"bytes": data, "meta.yaml": meta} {
+		if err := writeSyncedSourceFile(filepath.Join(stage, name), content); err != nil {
+			return domain.Source{}, err
+		}
+	}
+	if err := syncSourceDirectory(stage); err != nil {
 		return domain.Source{}, err
 	}
+	// For index-only imports establish exclusion before their bytes become visible.
 	if src.IndexOnly {
 		if err := s.ignoreBytes(sha); err != nil {
 			return domain.Source{}, err
 		}
 	}
+	if err := os.Rename(stage, final); err != nil {
+		// Another serialized owner may have published the same immutable bytes.
+		_, existing, readErr := s.Read(sha)
+		if readErr == nil && (!reservedMemoryKind(src.Kind) || existing.Kind == src.Kind) {
+			return existing, nil
+		}
+		return domain.Source{}, fmt.Errorf("store: publish source: %w", err)
+	}
+	if err := syncSourceDirectory(parent); err != nil {
+		return src, fmt.Errorf("store: sync published source: %w", err)
+	}
 	return src, nil
 }
 
-// Exists reports whether content-addressed bytes for sha are already
-// stored. Callers that need to know "is this genuinely new" before
-// calling Write -- for example `serenity sync` (T1.15), scoping its git
-// commit to sources it actually just wrote -- use this rather than
-// duplicating Write's own dedup check.
-func (s *SourceStore) Exists(sha string) bool {
-	_, err := s.readMeta(sha)
-	return err == nil
+func writeSyncedSourceFile(path string, data []byte) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		return err
+	}
+	_, writeErr := f.Write(data)
+	if writeErr == nil {
+		writeErr = f.Sync()
+	}
+	return errors.Join(writeErr, f.Close())
+}
+func syncSourceDirectory(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	return errors.Join(f.Sync(), f.Close())
 }
 
-// All returns every source recorded in the store, sorted by SHA256 --
-// the enumeration primitive a full extract/index pass over "every source
-// ever ingested" needs (T1.15), as distinct from Tombstone's per-claim
-// shard scan. Reads only meta.yaml sidecars, not bytes; callers needing
-// raw content call Read(sha).
+// sourceParents refuses symlinks in the canonical source namespace. Root may be
+// a caller-selected alias, but no child namespace component may redirect I/O.
+func (s *SourceStore) sourceParents(sha string, create bool) error {
+	if !ValidSourceSHA(sha) {
+		return fmt.Errorf("store: invalid source SHA %q", sha)
+	}
+	path := s.Root
+	for _, part := range []string{"brain", "sources", sha[:2]} {
+		parent := path
+		path = filepath.Join(path, part)
+		if create {
+			if err := os.Mkdir(path, 0755); err != nil && !errors.Is(err, fs.ErrExist) {
+				return err
+			}
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("store: invalid source namespace directory %s", path)
+		}
+		if create {
+			if err := syncSourceDirectory(parent); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// Exists recognizes complete sources and metadata-only index-only imports.
+func (s *SourceStore) Exists(sha string) bool {
+	_, _, err := s.Read(sha)
+	if err == nil {
+		return true
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	src, err := s.readMeta(sha)
+	return err == nil && src.IndexOnly && !reservedMemoryKind(src.Kind)
+}
+
+// All excludes unpublished staging directories and validates every canonical
+// directory. Missing bytes are permitted only for ordinary index-only imports
+// whose raw material is intentionally absent from a clone.
 func (s *SourceStore) All() ([]domain.Source, error) {
-	matches, err := filepath.Glob(filepath.Join(s.Root, "brain", "sources", "*", "*", "meta.yaml"))
+	base := filepath.Join(s.Root, "brain", "sources")
+	info, err := os.Lstat(base)
+	if errors.Is(err, fs.ErrNotExist) {
+		return []domain.Source{}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(matches) // sha is the parent dir name, fixed-width hex -- lexical sort is SHA order
-	out := make([]domain.Source, 0, len(matches))
-	for _, m := range matches {
-		sha := filepath.Base(filepath.Dir(m))
-		src, err := s.readMeta(sha)
-		if err != nil {
-			return nil, fmt.Errorf("store: read source %s: %w", sha, err)
-		}
-		out = append(out, src)
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("store: invalid sources directory")
 	}
+	prefixes, err := os.ReadDir(base)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]domain.Source, 0)
+	for _, prefix := range prefixes {
+		if prefix.Name() == ".gitkeep" && prefix.Type().IsRegular() {
+			continue
+		}
+		if strings.HasPrefix(prefix.Name(), ".source-stage-") {
+			continue
+		}
+		if !prefix.IsDir() || len(prefix.Name()) != 2 || !ValidSourceSHA(prefix.Name()+strings.Repeat("0", 62)) {
+			return nil, fmt.Errorf("store: invalid source prefix %q", prefix.Name())
+		}
+		entries, err := os.ReadDir(filepath.Join(base, prefix.Name()))
+		if err != nil {
+			return nil, err
+		}
+		for _, entry := range entries {
+			if strings.HasPrefix(entry.Name(), ".source-stage-") {
+				continue
+			}
+			sha := entry.Name()
+			if !entry.IsDir() || !ValidSourceSHA(sha) || sha[:2] != prefix.Name() {
+				return nil, fmt.Errorf("store: invalid source directory %q", sha)
+			}
+			_, src, err := s.Read(sha)
+			if err != nil {
+				// An index-only clone can contain just meta.yaml. Reserved memory records
+				// never use index_only and must always have complete, verified bytes.
+				m, metaErr := s.readMeta(sha)
+				if !errors.Is(err, fs.ErrNotExist) || metaErr != nil || !m.IndexOnly || reservedMemoryKind(m.Kind) {
+					return nil, fmt.Errorf("store: read source %s: %w", sha, err)
+				}
+				src = m
+			}
+			out = append(out, src)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].SHA256 < out[j].SHA256 })
 	return out, nil
 }
 
-// Read returns the raw bytes and metadata for a stored source.
 func (s *SourceStore) Read(sha string) ([]byte, domain.Source, error) {
-	data, err := os.ReadFile(s.bytesPath(sha))
+	if err := s.sourceParents(sha, false); err != nil {
+		return nil, domain.Source{}, err
+	}
+	info, err := os.Lstat(s.DirFor(sha))
 	if err != nil {
 		return nil, domain.Source{}, err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, domain.Source{}, fmt.Errorf("store: invalid source directory")
 	}
 	src, err := s.readMeta(sha)
 	if err != nil {
 		return nil, domain.Source{}, err
 	}
+	data, err := readSourceRegularFile(s.bytesPath(sha))
+	if err != nil {
+		return nil, domain.Source{}, err
+	}
+	digest := sha256.Sum256(data)
+	if hex.EncodeToString(digest[:]) != sha {
+		return nil, domain.Source{}, fmt.Errorf("store: source content hash mismatch %s", sha)
+	}
+	if err := validateSourcePayload(data, src); err != nil {
+		return nil, domain.Source{}, err
+	}
 	return data, src, nil
 }
 
-func (s *SourceStore) writeMeta(src domain.Source) error {
-	m := sourceMeta{
-		Kind:      src.Kind,
-		URI:       src.URI,
-		IndexOnly: src.IndexOnly,
-		Meta:      src.Meta,
-	}
-	if !src.OccurredAt.IsZero() {
-		m.OccurredAt = src.OccurredAt.UTC().Format("2006-01-02T15:04:05Z")
-	}
-	b, err := yaml.Marshal(m)
+func readSourceRegularFile(path string) ([]byte, error) {
+	info, err := os.Lstat(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return os.WriteFile(s.metaPath(src.SHA256), b, 0o644)
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("store: source path is not a regular file: %s", path)
+	}
+	return os.ReadFile(path)
 }
-
-// readMeta returns fs.ErrNotExist (wrapped) when sha has never been
-// written, so Write can distinguish "dedup, return existing" from a real
-// I/O failure.
+func marshalSourceMeta(src domain.Source) ([]byte, error) {
+	m := sourceMeta{Kind: src.Kind, URI: src.URI, IndexOnly: src.IndexOnly, Meta: src.Meta}
+	if !src.OccurredAt.IsZero() {
+		m.OccurredAt = src.OccurredAt.UTC().Format(time.RFC3339Nano)
+	}
+	return yaml.Marshal(m)
+}
 func (s *SourceStore) readMeta(sha string) (domain.Source, error) {
-	b, err := os.ReadFile(s.metaPath(sha))
+	if !ValidSourceSHA(sha) {
+		return domain.Source{}, fmt.Errorf("store: invalid source SHA %q", sha)
+	}
+	b, err := readSourceRegularFile(s.metaPath(sha))
 	if err != nil {
 		return domain.Source{}, err
 	}
@@ -161,19 +342,48 @@ func (s *SourceStore) readMeta(sha string) (domain.Source, error) {
 	if err := yaml.Unmarshal(b, &m); err != nil {
 		return domain.Source{}, err
 	}
-	src := domain.Source{
-		SHA256:    sha,
-		Kind:      m.Kind,
-		URI:       m.URI,
-		IndexOnly: m.IndexOnly,
-		Meta:      m.Meta,
+	if strings.TrimSpace(m.Kind) == "" {
+		return domain.Source{}, fmt.Errorf("store: missing source kind")
 	}
+	src := domain.Source{SHA256: sha, Kind: m.Kind, URI: m.URI, IndexOnly: m.IndexOnly, Meta: m.Meta}
 	if m.OccurredAt != "" {
-		if t, err := parseOccurredAt(m.OccurredAt); err == nil {
-			src.OccurredAt = t
+		t, err := parseOccurredAt(m.OccurredAt)
+		if err != nil {
+			return domain.Source{}, fmt.Errorf("store: invalid source timestamp: %w", err)
 		}
+		src.OccurredAt = t
 	}
 	return src, nil
+}
+
+func validateSourcePayload(data []byte, src domain.Source) error {
+	if strings.TrimSpace(src.Kind) == "" {
+		return fmt.Errorf("store: source kind is required")
+	}
+	if !reservedMemoryKind(src.Kind) {
+		return nil
+	}
+	switch src.Kind {
+	case SourceKindMemoryFact:
+		p, err := DecodeMemoryFact(data)
+		if err != nil {
+			return err
+		}
+		if src.URI != "memory://fact" || !src.OccurredAt.Equal(p.CreatedAt) {
+			return fmt.Errorf("store: memory fact metadata disagrees with payload")
+		}
+	case SourceKindMemoryExpiry:
+		p, err := DecodeMemoryExpiry(data)
+		if err != nil {
+			return err
+		}
+		if src.URI != "memory://expiry" || !src.OccurredAt.Equal(p.ExpiredAt) {
+			return fmt.Errorf("store: memory expiry metadata disagrees with payload")
+		}
+	default:
+		return fmt.Errorf("store: unknown reserved source kind %q", src.Kind)
+	}
+	return nil
 }
 
 // ignoreBytes appends a root .gitignore entry excluding this source's
@@ -190,6 +400,15 @@ func (s *SourceStore) ignoreBytes(sha string) error {
 	entry := filepath.ToSlash(rel)
 
 	path := filepath.Join(s.Root, ".gitignore")
+	mode := fs.FileMode(0o644)
+	if info, err := os.Lstat(path); err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("store: .gitignore must be a regular file")
+		}
+		mode = info.Mode().Perm()
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
 	b, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
@@ -204,11 +423,31 @@ func (s *SourceStore) ignoreBytes(sha string) error {
 		content += "\n"
 	}
 	content += entry + "\n"
-	return os.WriteFile(path, []byte(content), 0o644)
+	// Replace the directory entry rather than truncating an existing file:
+	// even a swapped symlink or a hard link cannot redirect the write.
+	tmp, err := os.CreateTemp(s.Root, ".gitignore-source-*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+	writeErr := tmp.Chmod(mode)
+	if writeErr == nil {
+		_, writeErr = tmp.WriteString(content)
+	}
+	if writeErr == nil {
+		writeErr = tmp.Sync()
+	}
+	if err := errors.Join(writeErr, tmp.Close()); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return err
+	}
+	return syncSourceDirectory(s.Root)
 }
 
 func parseOccurredAt(s string) (time.Time, error) {
-	return time.Parse("2006-01-02T15:04:05Z", s)
+	return time.Parse(time.RFC3339Nano, s)
 }
 
 // Tombstone returns every claim, across every entity's shard families,

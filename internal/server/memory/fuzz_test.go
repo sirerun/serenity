@@ -2,13 +2,13 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/sirerun/serenity/internal/config"
-	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
@@ -28,7 +28,7 @@ import (
 func fuzzFixture(f *testing.F) *Handlers {
 	f.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
-		f.Skip("git not available")
+		f.Fatal("git is required for the memory parser fixture")
 	}
 	root := f.TempDir()
 	run := func(args ...string) {
@@ -53,37 +53,24 @@ func fuzzFixture(f *testing.F) *Handlers {
 		f.Fatalf("OpenIndex: %v", err)
 	}
 	f.Cleanup(func() { _ = eng.Close() })
+	q := writer.NewQueue(nil)
+	f.Cleanup(q.Close)
 	deps := Deps{
-		Root:        root,
-		Config:      config.Default(),
-		Index:       eng,
-		Disposition: disposition.NewStore(eng),
-		Queue:       writer.NewQueue(nil),
-		Fence:       store.NewFenceWriter(root),
-		Shard:       store.NewShardStore(root),
-		Clock:       fixedClock{testNow},
+		Root:    root,
+		Config:  config.Default(),
+		Index:   eng,
+		Queue:   q,
+		Sources: store.NewSourceStore(root),
+		Fence:   store.NewFenceWriter(root),
+		Shard:   store.NewShardStore(root),
+		Clock:   fixedClock{testNow},
 	}
 	return New(deps)
 }
 
-// FuzzVerbs is T4.11's "go-fuzz on parsers 30s in CI" acc-line clause,
-// applied to MEMORY_VERBS's own five request-decoding entry points.
-// Each verb's json.Unmarshal(args, &req) call is itself a parser over
-// attacker-controlled MCP tool-call arguments (RFC §14 adversary 2: a
-// malicious or compromised MCP client), and this is also where this
-// task's own validSlug hardening lives (memory.go) -- so this target
-// directly fuzzes that new code path alongside the pre-existing
-// decode/validate logic in entity/forget/remember/recall/synthesize.
-// verb selects which of the five handlers runs; args is fuzzed as the
-// raw JSON request body for whichever verb is selected. Every handler
-// must return cleanly for arbitrary bytes -- a Go-level error is this
-// package's own documented signal for a bug in this package (verbFunc's
-// own doc comment: every domain/validation outcome is reported through
-// the response's embedded Envelope.Error, never a Go error), so a
-// non-nil err from any of these five calls indicates something worth
-// investigating by hand, but the crash this acc line's "run without
-// crash" actually names is a panic -- which go test's fuzzing runtime
-// detects and reports natively, the same as FuzzParse.
+// FuzzVerbs exercises the five request parsers with canonical v1 fields,
+// including traversal-shaped names and IDs. Every domain failure must remain
+// a structured VerbError; arbitrary bytes must never panic.
 func FuzzVerbs(f *testing.F) {
 	seeds := []struct {
 		verb string
@@ -91,17 +78,17 @@ func FuzzVerbs(f *testing.F) {
 	}{
 		{"recall", `{"query":"hello","budget_tokens":100}`},
 		{"recall", `{}`},
-		{"remember", `{"subject":"acme-corp","predicate":"has_balance","object":"$1","provenance":{"actor":"human:t"}}`},
+		{"remember", `{"fact":"Acme has $1","entity":"acme-corp","provenance":"human:t"}`},
 		{"remember", `{}`},
-		{"remember", `{"subject":"../../etc/passwd","predicate":"has_balance","object":"$1","provenance":{"actor":"human:t"}}`},
-		{"entity", `{"slug":"acme-corp"}`},
+		{"remember", `{"fact":"traversal probe","entity":"../../etc/passwd","provenance":"human:t"}`},
+		{"entity", `{"name":"acme-corp"}`},
 		{"entity", `{}`},
-		{"entity", `{"slug":"../../etc/passwd"}`},
-		{"synthesize", `{"query":"what"}`},
+		{"entity", `{"name":"../../etc/passwd"}`},
+		{"synthesize", `{"question":"what"}`},
 		{"synthesize", `{}`},
-		{"forget", `{"subject":"acme-corp","claim_id":"x"}`},
+		{"forget", `{"id":"unknown-id"}`},
 		{"forget", `{}`},
-		{"forget", `{"subject":"..","claim_id":"x"}`},
+		{"forget", `{"id":"../../etc/passwd"}`},
 		{"unknown-verb", `{}`},
 		{"", ``},
 	}
@@ -113,17 +100,26 @@ func FuzzVerbs(f *testing.F) {
 	ctx := context.Background()
 
 	f.Fuzz(func(t *testing.T, verb string, args []byte) {
-		switch verb {
-		case "recall":
-			_, _, _ = h.recall(ctx, args)
-		case "remember":
-			_, _, _ = h.remember(ctx, args)
-		case "entity":
-			_, _, _ = h.entity(ctx, args)
-		case "synthesize":
-			_, _, _ = h.synthesize(ctx, args)
-		case "forget":
-			_, _, _ = h.forget(ctx, args)
+		for _, tool := range h.Tools() {
+			if tool.Name != verb {
+				continue
+			}
+			result, err := tool.Handler(ctx, args)
+			if err != nil {
+				t.Fatalf("%s returned an unhandled public error: %v", verb, err)
+			}
+			if len(result.Content) != 1 {
+				t.Fatalf("%s returned %d content blocks", verb, len(result.Content))
+			}
+			if result.IsError {
+				var response VerbError
+				if err := json.Unmarshal([]byte(result.Content[0].Text), &response); err != nil {
+					t.Fatalf("%s error is not a flat VerbError: %v", verb, err)
+				}
+				asVerbError(t, response, true)
+			}
+			return
 		}
+
 	})
 }
