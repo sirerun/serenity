@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -313,5 +314,271 @@ func TestShardAppendIDCollision(t *testing.T) {
 	// is not a collision -- Append must accept it.
 	if err := s.Append(first); err != nil {
 		t.Fatalf("re-appending the identical tuple must not error: %v", err)
+	}
+}
+
+// TestShardRolloverOpensNumberedSegmentAndResolveHeadsSpansBoth is T2.9's
+// own acc-line clause: "a shard crossing rollover size opens
+// <family>.N.jsonl and ResolveHeads spans both."
+func TestShardRolloverOpensNumberedSegmentAndResolveHeadsSpansBoth(t *testing.T) {
+	root := t.TempDir()
+	s := NewShardStore(root)
+	s.RolloverBytes = 10 // any single real line already exceeds this
+	const slug, family = "acct-9", "has_balance"
+	obs := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	// Append takes a claim by value and derives its id internally without
+	// mutating the caller's copy (TestShardAppendDerivesID's own
+	// convention), so ids are set explicitly here rather than read back
+	// off c1/c2 after Append returns.
+	c1 := domain.Claim{SubjectSlug: slug, Predicate: family, Family: family,
+		Object: "100.00 usd", ObjectKey: "k1", Confidence: 0.9, State: domain.StateActive, ID: "id-c1",
+		Provenance: domain.Provenance{ObservedAt: obs, Actor: "machine", SourceSHA256: "src-1"}}
+	if err := s.Append(c1); err != nil {
+		t.Fatalf("append c1: %v", err)
+	}
+	// c1 lands in the base file, which the tiny threshold now counts as
+	// already full -- the next append must open a new numbered segment
+	// rather than keep growing the base file.
+	c2 := domain.Claim{SubjectSlug: slug, Predicate: family, Family: family,
+		Object: "50.00 usd", ObjectKey: "k2", Confidence: 0.9, State: domain.StateActive, ID: "id-c2",
+		Provenance: domain.Provenance{ObservedAt: obs.Add(time.Minute), Actor: "machine", SourceSHA256: "src-2"}}
+	if err := s.Append(c2); err != nil {
+		t.Fatalf("append c2: %v", err)
+	}
+
+	basePath := s.PathFor(slug, family)
+	seg1Path := filepath.Join(filepath.Dir(basePath), family+".1.jsonl")
+	if _, err := os.Stat(basePath); err != nil {
+		t.Fatalf("base segment missing: %v", err)
+	}
+	if _, err := os.Stat(seg1Path); err != nil {
+		t.Fatalf("expected rollover to open %s: %v", seg1Path, err)
+	}
+
+	baseLines, err := readShardFile(basePath)
+	if err != nil || len(baseLines) != 1 || baseLines[0].ID != c1.ID {
+		t.Fatalf("base segment content wrong: %+v err=%v", baseLines, err)
+	}
+	seg1Lines, err := readShardFile(seg1Path)
+	if err != nil || len(seg1Lines) != 1 || seg1Lines[0].ID != c2.ID {
+		t.Fatalf("segment 1 content wrong: %+v err=%v", seg1Lines, err)
+	}
+
+	// ResolveHeads spans both segments -- neither claim shadows the
+	// other since they resolve to distinct object keys.
+	heads, err := s.ResolveHeads(slug, family)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(heads) != 2 || heads["k1"].ID != c1.ID || heads["k2"].ID != c2.ID {
+		t.Fatalf("ResolveHeads did not span both segments: %+v", heads)
+	}
+
+	// Lines returns both, base segment first (append order).
+	lines, err := s.Lines(slug, family)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 2 || lines[0].ID != c1.ID || lines[1].ID != c2.ID {
+		t.Fatalf("Lines did not span both segments in order: %+v", lines)
+	}
+}
+
+// TestShardRolloverOpensMultipleSegmentsInAscendingOrder confirms a third
+// rollover opens <family>.2.jsonl (not, say, overwriting .1.jsonl or
+// jumping straight to some other number), and that Lines' cross-segment
+// order tracks append order across three files, not just two.
+func TestShardRolloverOpensMultipleSegmentsInAscendingOrder(t *testing.T) {
+	root := t.TempDir()
+	s := NewShardStore(root)
+	s.RolloverBytes = 10
+	const slug, family = "acct-10", "has_balance"
+	obs := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	var ids []string
+	for i := 0; i < 3; i++ {
+		id := fmt.Sprintf("id-%d", i)
+		c := domain.Claim{SubjectSlug: slug, Predicate: family, Family: family,
+			Object:     fmt.Sprintf("%d.00 usd", i),
+			ObjectKey:  fmt.Sprintf("k%d", i),
+			Confidence: 0.9, State: domain.StateActive, ID: id,
+			Provenance: domain.Provenance{ObservedAt: obs.Add(time.Duration(i) * time.Minute), Actor: "machine", SourceSHA256: fmt.Sprintf("src-%d", i)},
+		}
+		if err := s.Append(c); err != nil {
+			t.Fatalf("append %d: %v", i, err)
+		}
+		ids = append(ids, id)
+	}
+
+	dir := filepath.Dir(s.PathFor(slug, family))
+	for _, name := range []string{family + ".jsonl", family + ".1.jsonl", family + ".2.jsonl"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("expected segment %s: %v", name, err)
+		}
+	}
+
+	lines, err := s.Lines(slug, family)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 3 {
+		t.Fatalf("Lines = %d lines, want 3", len(lines))
+	}
+	for i, id := range ids {
+		if lines[i].ID != id {
+			t.Fatalf("line %d = %s, want %s (segment read order must match append order)", i, lines[i].ID, id)
+		}
+	}
+}
+
+// TestShardAppendIDCollisionAcrossRolledOverSegments: the id registry
+// (ADR 004 D2) must still catch a collision even when the offending
+// prior id lives in an earlier segment than the one the new line would
+// land in.
+func TestShardAppendIDCollisionAcrossRolledOverSegments(t *testing.T) {
+	root := t.TempDir()
+	s := NewShardStore(root)
+	s.RolloverBytes = 10
+	const slug, family = "acct-11", "has_balance"
+	const width = 1 // 16 possible ids: a collision is easy to force
+
+	// Find two distinct source refs whose DerivedID(width=1) collides
+	// (same brute-force approach TestShardAppendIDCollision uses --
+	// deterministic since sha256 has no randomness).
+	var refA, refB string
+	seen := map[string]string{}
+	for i := 0; ; i++ {
+		ref := fmt.Sprintf("src-%d", i)
+		id := DerivedID(slug, family, "acme", "2026-01", ref, width)
+		if prior, ok := seen[id]; ok {
+			refA, refB = prior, ref
+			break
+		}
+		seen[id] = ref
+		if i > 10_000 {
+			t.Fatal("no id collision found in 10000 tries at width 1 -- DerivedID changed?")
+		}
+	}
+
+	first := domain.Claim{SubjectSlug: slug, Predicate: family, Family: family,
+		Object: "first", ObjectKey: "acme", ValidFrom: "2026-01",
+		Confidence: 0.9, State: domain.StateActive,
+		ID:         DerivedID(slug, family, "acme", "2026-01", refA, width),
+		Provenance: domain.Provenance{SourceSHA256: refA},
+	}
+	if err := s.Append(first); err != nil {
+		t.Fatalf("first append: %v", err)
+	}
+	second := domain.Claim{SubjectSlug: slug, Predicate: family, Family: family,
+		Object: "second", ObjectKey: "acme", ValidFrom: "2026-01",
+		Confidence: 0.9, State: domain.StateActive,
+		ID:         DerivedID(slug, family, "acme", "2026-01", refB, width),
+		Provenance: domain.Provenance{SourceSHA256: refB},
+	}
+	if second.ID != first.ID {
+		t.Fatalf("test setup: ids should collide, got %s and %s", first.ID, second.ID)
+	}
+	// The base segment is already over the tiny threshold, so this
+	// append would otherwise open segment 1 -- the collision check must
+	// still fire before that ever matters.
+	if err := s.Append(second); !errors.Is(err, ErrIDCollision) {
+		t.Fatalf("Append with colliding id/differing tuple across segments = %v, want ErrIDCollision", err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(s.PathFor(slug, family)), family+".1.jsonl")); !os.IsNotExist(err) {
+		t.Fatalf("a refused collision must not open a new segment either: err=%v", err)
+	}
+}
+
+// TestShardCompactConsolidatesRolledOverSegments: Compact must span every
+// segment a family has rolled over into, write kept (live-head) lines
+// back to the single base file, and remove the other segments -- proving
+// the rebuild invariant (§7.7) survives rollover and compaction together,
+// not just compaction alone (TestShard10KProperty already covers compact
+// without rollover).
+func TestShardCompactConsolidatesRolledOverSegments(t *testing.T) {
+	root := t.TempDir()
+	s := NewShardStore(root)
+	s.RolloverBytes = 10
+	const slug, family = "acct-12", "has_balance"
+	obs := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	c1 := domain.Claim{SubjectSlug: slug, Predicate: family, Family: family,
+		Object: "100.00 usd", ObjectKey: "k1", State: domain.StateActive, ID: "aaaa0001",
+		Provenance: domain.Provenance{ObservedAt: obs}}
+	if err := s.Append(c1); err != nil {
+		t.Fatal(err)
+	}
+	c2 := domain.Claim{SubjectSlug: slug, Predicate: family, Family: family,
+		Object: "200.00 usd", ObjectKey: "k1", State: domain.StateActive, ID: "aaaa0002", Supersedes: "aaaa0001",
+		Provenance: domain.Provenance{ObservedAt: obs.Add(time.Hour)}}
+	if err := s.Append(c2); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := filepath.Dir(s.PathFor(slug, family))
+	seg1 := filepath.Join(dir, family+".1.jsonl")
+	if _, err := os.Stat(seg1); err != nil {
+		t.Fatalf("test setup: expected rollover to open segment 1: %v", err)
+	}
+
+	moved, err := s.Compact(slug, family)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved != 1 {
+		t.Fatalf("moved = %d, want 1", moved)
+	}
+
+	if _, err := os.Stat(seg1); !os.IsNotExist(err) {
+		t.Fatalf("expected segment 1 to be removed by Compact, got err=%v", err)
+	}
+
+	lines, err := s.Lines(slug, family)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || lines[0].ID != "aaaa0002" {
+		t.Fatalf("post-compact live shard wrong: %+v", lines)
+	}
+
+	arch, err := readShardFile(s.PathFor(slug, family+".archive"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(arch) != 1 || arch[0].ID != "aaaa0001" {
+		t.Fatalf("archive wrong: %+v", arch)
+	}
+
+	heads, err := NewShardStore(root).ResolveHeads(slug, family)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(heads) != 1 || heads["k1"].ID != "aaaa0002" {
+		t.Fatalf("rebuilt heads wrong: %+v", heads)
+	}
+}
+
+// TestShardDefaultRolloverNotTriggeredByOrdinaryUse guards against a
+// pathologically small DefaultRolloverBytes: ordinary small-scale use
+// (well under TestShard10KProperty's own ~3 MB / 10,000 claims) must
+// never open a second segment under the real default.
+func TestShardDefaultRolloverNotTriggeredByOrdinaryUse(t *testing.T) {
+	root := t.TempDir()
+	s := NewShardStore(root) // RolloverBytes left unset -> DefaultRolloverBytes
+	const slug, family = "acct-13", "has_balance"
+	for i := 0; i < 50; i++ {
+		c := domain.Claim{SubjectSlug: slug, Predicate: family, Family: family,
+			Object: fmt.Sprintf("%d.00 usd", i), ObjectKey: fmt.Sprintf("k%d", i),
+			State:      domain.StateActive,
+			Provenance: domain.Provenance{SourceSHA256: fmt.Sprintf("src-%d", i)},
+		}
+		if err := s.Append(c); err != nil {
+			t.Fatalf("append %d: %v", i, err)
+		}
+	}
+	dir := filepath.Dir(s.PathFor(slug, family))
+	if _, err := os.Stat(filepath.Join(dir, family+".1.jsonl")); !os.IsNotExist(err) {
+		t.Fatalf("50 small claims should not trigger the default rollover threshold, but segment 1 exists (err=%v)", err)
 	}
 }

@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/domain"
+	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
 )
@@ -30,11 +34,11 @@ func buildSerenityBinary(t *testing.T) string {
 	return bin
 }
 
-// TestCompactCLINoConfirmExits1: the built binary's `compact` subcommand
-// refuses without --confirm (RFC §7.7 — compaction is destructive to shard
-// file layout and stays explicit until M2 gates it behind a disposition
-// item).
-func TestCompactCLINoConfirmExits1(t *testing.T) {
+// TestCompactCLINoItemExits1: the built binary's `compact` subcommand
+// refuses with neither --propose nor --item (RFC §7.7 -- compaction is
+// destructive to shard file layout and stays explicit, disposition-
+// approved -- T2.9 replaces T0.9's original --confirm gate with this one).
+func TestCompactCLINoItemExits1(t *testing.T) {
 	requireGit(t)
 	bin := buildSerenityBinary(t)
 	root := t.TempDir()
@@ -56,18 +60,90 @@ func TestCompactCLINoConfirmExits1(t *testing.T) {
 	if code := exitErr.ExitCode(); code != 1 {
 		t.Fatalf("expected exit 1, got %d; output: %s", code, out)
 	}
-	if !strings.Contains(strings.ToLower(string(out)), "confirm") {
-		t.Fatalf("expected output to mention 'confirm', got: %s", out)
+	if !strings.Contains(string(out), "--item") {
+		t.Fatalf("expected output to mention --item, got: %s", out)
 	}
 }
 
-// TestCompactCLIConfirm seeds a shard family with an active claim then a
-// superseding claim on the same object key, runs the built binary through
-// sync -> compact --confirm -> sync, and asserts (as independent subtests)
-// that the archive shard exists, the live shard holds only the resolved
-// head, and the derived-index dump is byte-identical before and after
-// compaction (RFC §7.7).
-func TestCompactCLIConfirm(t *testing.T) {
+// TestCompactCLIProposeStagesCompactItem: --propose creates a real,
+// pending KindCompact disposition item and prints its id -- the item a
+// human then reviews via `serenity inbox` before --item can use it.
+func TestCompactCLIProposeStagesCompactItem(t *testing.T) {
+	requireGit(t)
+	bin := buildSerenityBinary(t)
+	root := t.TempDir()
+
+	var initOut bytes.Buffer
+	if err := runInit(root, &initOut); err != nil {
+		t.Fatalf("init: %v\n%s", err, initOut.String())
+	}
+
+	out, err := exec.Command(bin, "-C", root, "compact", "--propose").CombinedOutput()
+	if err != nil {
+		t.Fatalf("compact --propose: %v\n%s", err, out)
+	}
+	id := parseProposedCompactItemID(t, string(out))
+
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = eng.Close() }()
+	dispStore := disposition.NewStore(eng)
+
+	item, err := dispStore.Get(context.Background(), id)
+	if err != nil {
+		t.Fatalf("Get %s: %v", id, err)
+	}
+	if item.Kind != disposition.KindCompact {
+		t.Fatalf("item.Kind = %q, want %q", item.Kind, disposition.KindCompact)
+	}
+	if item.State != disposition.StatePending {
+		t.Fatalf("item.State = %q, want %q", item.State, disposition.StatePending)
+	}
+}
+
+// TestCompactCLIItemRefusesUnacceptedItem: --item naming a real but still-
+// pending (never disposed) compact item refuses -- staging a proposal is
+// not the same as a human accepting it.
+func TestCompactCLIItemRefusesUnacceptedItem(t *testing.T) {
+	requireGit(t)
+	bin := buildSerenityBinary(t)
+	root := t.TempDir()
+
+	var initOut bytes.Buffer
+	if err := runInit(root, &initOut); err != nil {
+		t.Fatalf("init: %v\n%s", err, initOut.String())
+	}
+
+	proposeOut, err := exec.Command(bin, "-C", root, "compact", "--propose").CombinedOutput()
+	if err != nil {
+		t.Fatalf("compact --propose: %v\n%s", err, proposeOut)
+	}
+	id := parseProposedCompactItemID(t, string(proposeOut))
+
+	out, err := exec.Command(bin, "-C", root, "compact", "--item", id).CombinedOutput()
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected an *exec.ExitError for an unaccepted item, got %v (output: %s)", err, out)
+	}
+	if code := exitErr.ExitCode(); code != 1 {
+		t.Fatalf("expected exit 1, got %d; output: %s", code, out)
+	}
+	if !strings.Contains(string(out), "not an accepted") {
+		t.Fatalf("expected output to explain the item is not accepted, got: %s", out)
+	}
+}
+
+// TestCompactCLIItemAccepted seeds a shard family with an active claim
+// then a superseding claim on the same object key, proposes a compact
+// item and accepts it (a real Store.Dispose call, not a shortcut), runs
+// the built binary through sync -> compact --item <id> -> sync, and
+// asserts (as independent subtests) that the archive shard exists, the
+// live shard holds only the resolved head, and the derived-index dump is
+// byte-identical before and after compaction (RFC §7.7 / T2.9's own acc
+// line).
+func TestCompactCLIItemAccepted(t *testing.T) {
 	requireGit(t)
 	bin := buildSerenityBinary(t)
 	root := t.TempDir()
@@ -114,10 +190,31 @@ func TestCompactCLIConfirm(t *testing.T) {
 	}
 	dumpBefore := dumpIndex(t, root)
 
-	confirmCmd := exec.Command(bin, "-C", root, "compact", "--confirm")
-	confirmOut, err := confirmCmd.CombinedOutput()
+	proposeOut, err := exec.Command(bin, "-C", root, "compact", "--propose").CombinedOutput()
 	if err != nil {
-		t.Fatalf("compact --confirm: %v\n%s", err, confirmOut)
+		t.Fatalf("compact --propose: %v\n%s", err, proposeOut)
+	}
+	id := parseProposedCompactItemID(t, string(proposeOut))
+
+	// Accept it -- a real Store.Dispose call against the same index the
+	// binary just wrote to, the same way a human's `serenity inbox`
+	// space/accept keystroke would (RFC 0001 §8.2), not an in-process
+	// shortcut around the disposition machinery.
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dispStore := disposition.NewStore(eng)
+	if _, err := dispStore.Dispose(context.Background(), id, disposition.VerdictAccept, nil, "", "human:tester", "", time.Now()); err != nil {
+		t.Fatalf("accept compact item: %v", err)
+	}
+	if err := eng.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	itemOut, err := exec.Command(bin, "-C", root, "compact", "--item", id).CombinedOutput()
+	if err != nil {
+		t.Fatalf("compact --item %s: %v\n%s", id, err, itemOut)
 	}
 
 	t.Run("archive-exists", func(t *testing.T) {
@@ -163,4 +260,36 @@ func TestCompactCLIConfirm(t *testing.T) {
 			t.Fatal("dump is empty — test seeded nothing observable")
 		}
 	})
+}
+
+// parseProposedCompactItemID extracts the item id `compact --propose`
+// printed ("staged compact disposition item <id> -- ..."), failing the
+// test with the full output if the expected shape isn't there.
+func parseProposedCompactItemID(t *testing.T, out string) string {
+	t.Helper()
+	const marker = "staged compact disposition item "
+	i := strings.Index(out, marker)
+	if i < 0 {
+		t.Fatalf("propose output missing %q: %s", marker, out)
+	}
+	rest := out[i+len(marker):]
+	id, _, ok := strings.Cut(rest, " ")
+	if !ok || id == "" {
+		t.Fatalf("could not parse item id from propose output: %s", out)
+	}
+	return id
+}
+
+// TestCompactPayloadMarshalsToEmptyObject pins CompactPayload's wire shape
+// -- an empty JSON object, not null or an array -- since disposition.Item
+// stores it as opaque json.RawMessage a future reader must be able to
+// decode.
+func TestCompactPayloadMarshalsToEmptyObject(t *testing.T) {
+	b, err := json.Marshal(CompactPayload{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "{}" {
+		t.Fatalf("CompactPayload{} marshaled to %s, want {}", b)
+	}
 }
