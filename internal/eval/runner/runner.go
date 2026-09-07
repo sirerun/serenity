@@ -40,6 +40,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -143,6 +144,16 @@ type Config struct {
 	// nil in every test and in ModeCached (progress reporting is a
 	// ModeLive-only, real-network-calls concern).
 	OnProgress func(done, total, skipped, errored int)
+
+	// CheckpointPath, when non-empty (ModeLive only), enables T1.32's
+	// incremental resume mechanism: each held-out span's outcome is
+	// appended to this file as soon as it's attempted, and a run that
+	// finds an existing, matching checkpoint here resumes from it
+	// instead of re-attempting already-completed spans. See
+	// checkpoint.go's package doc for why this exists. Empty (the
+	// default, and every test) disables checkpointing entirely --
+	// behavior is then unchanged from before T1.32.
+	CheckpointPath string
 }
 
 // RecallFloor is T1.32's pass/fail rule (chief's disposition ruling on
@@ -274,7 +285,10 @@ func Run(ctx context.Context, cfg Config) (Report, error) {
 		}
 		var skipped, errored int
 		var errSamples []string
-		predictions, skipped, errored, errSamples = runLive(ctx, cfg, heldOut)
+		predictions, skipped, errored, errSamples, err = runLive(ctx, cfg, heldOut)
+		if err != nil {
+			return Report{}, err
+		}
 		total, calls := cfg.Ledger.Snapshot()
 		report.ModelVersion = cfg.ModelVersion
 		report.SpansSkipped = skipped
@@ -409,15 +423,58 @@ const maxErrorSamples = 20
 // 52-span corpus never surfaced. A caller wanting the OLD hard-fail
 // behavior (e.g. detecting a fully-broken endpoint fast) can inspect
 // Report.SpansErrored == len(heldOut) after Run returns instead.
-func runLive(ctx context.Context, cfg Config, heldOut []eval.Label) ([]eval.Prediction, int, int, []string) {
+func runLive(ctx context.Context, cfg Config, heldOut []eval.Label) ([]eval.Prediction, int, int, []string, error) {
 	var predictions []eval.Prediction
 	var skipped, errored int
 	var errorSamples []string
+	alreadyDone := map[string]bool{}
+
+	var ckpt *checkpointWriter
+	ckptClosed := false
+	if cfg.CheckpointPath != "" {
+		resumed, existed, err := loadCheckpoint(cfg.CheckpointPath, cfg.CorpusDir, cfg.ModelVersion, len(heldOut))
+		if err != nil {
+			return nil, 0, 0, nil, fmt.Errorf("runner: checkpoint %s: %w", cfg.CheckpointPath, err)
+		}
+		if existed {
+			alreadyDone = resumed.done
+			predictions = resumed.predictions
+			skipped = resumed.skipped
+			errored = resumed.errored
+			errorSamples = resumed.errorSamples
+		}
+		w, err := openCheckpointWriter(cfg.CheckpointPath, existed, cfg.CorpusDir, cfg.ModelVersion, len(heldOut))
+		if err != nil {
+			return nil, 0, 0, nil, fmt.Errorf("runner: checkpoint %s: %w", cfg.CheckpointPath, err)
+		}
+		ckpt = w
+		defer func() {
+			if !ckptClosed {
+				_ = ckpt.Close() // best-effort cleanup on an early-return path; nothing left to report it to
+			}
+		}()
+	}
+
 	budget := router.Budget{MaxUSD: cfg.BudgetUSD}
 
 	for i, lbl := range heldOut {
+		if alreadyDone[lbl.Span] {
+			// Already attempted by a prior, interrupted invocation of
+			// this exact corpus/config -- its outcome is already folded
+			// into predictions/skipped/errored above via loadCheckpoint.
+			if cfg.OnProgress != nil {
+				cfg.OnProgress(i+1, len(heldOut), skipped, errored)
+			}
+			continue
+		}
+
 		if cfg.Ledger.OverBudget() {
 			skipped++
+			if ckpt != nil {
+				if err := ckpt.writeSkipped(lbl.Span); err != nil {
+					return nil, 0, 0, nil, fmt.Errorf("runner: checkpoint %s: write: %w", cfg.CheckpointPath, err)
+				}
+			}
 			if cfg.OnProgress != nil {
 				cfg.OnProgress(i+1, len(heldOut), skipped, errored)
 			}
@@ -433,23 +490,54 @@ func runLive(ctx context.Context, cfg Config, heldOut []eval.Label) ([]eval.Pred
 			if len(errorSamples) < maxErrorSamples {
 				errorSamples = append(errorSamples, fmt.Sprintf("%q: %v", lbl.Span, err))
 			}
+			if ckpt != nil {
+				if werr := ckpt.writeErrored(lbl.Span, err); werr != nil {
+					return nil, 0, 0, nil, fmt.Errorf("runner: checkpoint %s: write: %w", cfg.CheckpointPath, werr)
+				}
+			}
 			if cfg.OnProgress != nil {
 				cfg.OnProgress(i+1, len(heldOut), skipped, errored)
 			}
 			continue
 		}
 
+		var spanPredictions []eval.Prediction
 		for _, obs := range res.Ready {
-			predictions = append(predictions, eval.Prediction{Span: lbl.Span, Predicate: obs.Predicate, Object: obs.Object})
+			spanPredictions = append(spanPredictions, eval.Prediction{Span: lbl.Span, Predicate: obs.Predicate, Object: obs.Object})
 		}
 		for _, obs := range res.Distill {
-			predictions = append(predictions, eval.Prediction{Span: lbl.Span, Predicate: obs.Predicate, Object: obs.Object})
+			spanPredictions = append(spanPredictions, eval.Prediction{Span: lbl.Span, Predicate: obs.Predicate, Object: obs.Object})
+		}
+		predictions = append(predictions, spanPredictions...)
+		if ckpt != nil {
+			if err := ckpt.writeScored(lbl.Span, spanPredictions); err != nil {
+				return nil, 0, 0, nil, fmt.Errorf("runner: checkpoint %s: write: %w", cfg.CheckpointPath, err)
+			}
 		}
 		if cfg.OnProgress != nil {
 			cfg.OnProgress(i+1, len(heldOut), skipped, errored)
 		}
 	}
-	return predictions, skipped, errored, errorSamples
+
+	if ckpt != nil {
+		// Every held-out span passed to this call has now been
+		// attempted (just now, or in a resumed prior run) -- the
+		// checkpoint has done its job. Remove it so a later, unrelated
+		// invocation over this same corpus/config doesn't silently
+		// "resume" from now-stale data; a real interruption never
+		// reaches this line (no cleanup runs on a kill), which is
+		// exactly the case a checkpoint should still be sitting there
+		// for.
+		if err := ckpt.Close(); err != nil {
+			return nil, 0, 0, nil, fmt.Errorf("runner: checkpoint %s: close: %w", cfg.CheckpointPath, err)
+		}
+		ckptClosed = true
+		if err := os.Remove(cfg.CheckpointPath); err != nil {
+			return nil, 0, 0, nil, fmt.Errorf("runner: checkpoint %s: remove after completion: %w", cfg.CheckpointPath, err)
+		}
+	}
+
+	return predictions, skipped, errored, errorSamples, nil
 }
 
 // spanSourceID stands in for a source sha256 in ExtractChunk's cache-key
