@@ -53,6 +53,43 @@ jobs:
           go-version-file: go.mod
       - run: scripts/verify-dira-cli.sh
 
+  gbrain-protocol-conformance:
+    # T4.14: gbrain's own `protocol conformance` certifier
+    # (github.com/dndungu/gbrain, pinned d35c9c9e441e6cfc86dd5e84b0b168c6b18ee775
+    # -- docs/protocol/MEMORY_VERBS_v1.md) against a live
+    # `serenity serve --http` /mcp endpoint on a throwaway fixture brain.
+    # internal/cli's TestGbrainProtocolConformance drives serve --http
+    # in-process (see that test's own doc comment for why -- no dbus/
+    # gnome-keyring setup here) and execs gbrain's real TypeScript SDK
+    # client as the only genuine subprocess. Separate from `test` because
+    # it needs network access (cloning gbrain, `bun install`), the same
+    # convention dira-vendor-pin/dira-cli-conformance already use for their
+    # own external-tool checks. Runs unconditionally on every push/PR like
+    # every other job here (no path-filtering); making it a GitHub branch
+    # protection "required status check" is a separate repo-settings change
+    # this job's own YAML cannot express -- see docs/plan.md T4.14.
+    runs-on: ubuntu-latest
+    env:
+      GBRAIN_PIN: d35c9c9e441e6cfc86dd5e84b0b168c6b18ee775
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@v2
+      - name: Checkout dndungu/gbrain @ pin
+        run: |
+          git init -q "$RUNNER_TEMP/gbrain"
+          git -C "$RUNNER_TEMP/gbrain" fetch -q --depth 1 https://github.com/dndungu/gbrain.git "$GBRAIN_PIN"
+          git -C "$RUNNER_TEMP/gbrain" checkout -q FETCH_HEAD
+      - run: bun install --frozen-lockfile
+        working-directory: ${{ runner.temp }}/gbrain
+      - name: gbrain protocol conformance against serenity serve --http
+        env:
+          SERENITY_GBRAIN_CONFORMANCE: "1"
+          GBRAIN_CLI_DIR: ${{ runner.temp }}/gbrain
+        run: go test -race -timeout 120s -run ^TestGbrainProtocolConformance$ -v ./internal/cli/...
+
   eval-cached:
     # T1.22: per-push cached eval gate. Scores a frozen fixture
     # (evals/fixtures/ava-cached-predictions.yaml) against the T1.14 Ava
