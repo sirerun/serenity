@@ -4,6 +4,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-09-07 T5.11 local report and manual stdout JSON export merged in PR #149 (`f0d885f`). Reads canonical retained claim history and an existing read-only index; future spend excluded, recovery episodes ordered by completion, connector identities aliased. Missing correction/extraction observations, ladder audits, search latency and monthly growth history carry explicit reasons. Seven independent regressions failed before repair and pass afterward. Local build/vet/lint and 735 top-level race tests passed before integration; all nine final CI checks passed after integration with the memory server. Operator guide: `docs/operator/report.md`.
+
 - 2026-09-07 T4.5 MEMORY_VERBS v1 server -- RFC 0001 §8.1's own "Serenity is a conformant MEMORY_VERBS v1 server: recall, remember, entity, synthesize, forget over MCP", verifies UC-025 -- PR #150, merge commit `4dedd15`. New `internal/server/memory`: `Handlers` implements all five verbs as `mcp.Tool` registrations, the same "thin transport layer, no privileged internal path" discipline `internal/server/disposition`/`internal/server/direction` (T4.4/T4.6) already set -- but riding MCP, not HTTP, per RFC §8.1's own wording, and closing a gap those two tasks didn't have to close: `internal/cli/serve.go` already called `mcp.New(Version, nil)`, an explicit empty tool registry waiting to be filled.
 
   The vendored gbrain envelope (`dndungu/gbrain@d35c9c9e441e`'s `MEMORY_VERBS_v1.md`, T4.13's still-unshipped job) isn't in this repo yet, so `Envelope`/`Fact`/`BudgetMeta`/`Cost`/`VerbError` are this task's own literal, documented reading of RFC §8.1's named field list -- the same disclosed-scope precedent T4.4/T4.6 already set for their own RFC-silent wire shapes.
@@ -226,7 +228,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In progress
 
-- 2026-09-07 T5.11 local weekly report and manual JSON export: claimed for implementation; acceptance checks cover deterministic fixture metrics, all RFC section 16 fields, CLI behavior, and zero network requests. Code and operator documentation will land together.
+- 2026-09-07 T4.20 pinned MEMORY_VERBS compatibility repair is claimed after independent review of `4dedd15`: all five request contracts and required response/error fields differ from gbrain `d35c9c9e441e`. T4.5 implementation remains merged, but its pinned-shape acceptance is reopened; T4.7 schema publication waits for the repair. Existing T4.9 harness work can proceed, but final assertions must use the repaired surface. No certified conformance is claimed.
+
 
 
 - 2026 08 27 E0 wave 0a complete (9/9) -- see Shipped entries for T0.1-T0.12.
