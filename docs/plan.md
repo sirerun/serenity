@@ -177,7 +177,7 @@ gap, fixed same day) -- v0.1.0 itself was left untouched, not retagged.
 - [x] T2.5 CLI inbox: J/K/space, verdicts, grouped items, `--bulk-defer <filter>`, per-family pause, `--parked`
 - [x] T2.7 `edit_accept` through the deterministic writer with human-tier provenance
 - [x] T2.9 Compaction gated by an approved disposition item + shard rollover at configured size (PR #120, 2026-09-07, see docs/plans/E2-m2-reconcile.md and docs/roadmap.md for detail)
-- [ ] T2.14 Consolidate `internal/consolidate`: summary fences with freshness banners, shard-head refresh, re-embed changed chunks
+- [x] T2.14 Consolidate `internal/consolidate`: summary fences with freshness banners, shard-head refresh, re-embed changed chunks (merged PR #107, 2026-09-07; b11678e: real cron consolidation, preserved human prose and canonical claims, shard-head refresh, changed-only embeddings; nine CI checks green; operator contract in docs/operator/consolidation.md)
 
 ### Wave 2d: E2 briefing, evals, tombstone, exit (4 agents)
 - [ ] T2.17 Briefing scaffold `internal/briefing`: five fixed sections, 800-word cap, drop-not-truncate, packing function with a token-estimator parameter
