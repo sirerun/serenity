@@ -1,13 +1,34 @@
 package cron
 
-import "context"
+import (
+	"context"
+	"fmt"
 
-// Sweep runs the expiry-sweeper pass (plan T2.6, RFC §10.3): pending
+	"github.com/sirerun/serenity/internal/disposition"
+	"github.com/sirerun/serenity/internal/providers"
+)
+
+// Sweep runs the expiry-sweeper pass (plan T2.6, RFC §0001 §8.2): pending
 // disposition items older than the per-kind threshold move to deferred,
-// three cycles to parked, and new evidence resurfaces a parked item once.
-// Placeholder until T2.6 lands (deps: [T2.1, T2.19]) — see the package doc
-// comment for what that means and does not mean.
-func Sweep(_ context.Context, root string, clock Clock) error {
+// three cycles to parked. The actual transition logic lives in
+// disposition.Sweep (internal/disposition/expiry.go, tested directly
+// there); this is the scheduled-job wiring T2.19 scaffolded, now filled
+// in per its own doc comment ("same name, same signature, same registry
+// entry"). Resurfacing a parked item is not part of this scheduled job --
+// it happens when new evidence arrives on a specific item, not on a
+// sweep timer (disposition.Store.Resurface, called by whichever caller
+// owns that correlation).
+func Sweep(ctx context.Context, root string, clock Clock) error {
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		return fmt.Errorf("cron: sweep: open index: %w", err)
+	}
+	defer func() { _ = eng.Close() }()
+
+	store := disposition.NewStore(eng)
+	if _, err := disposition.Sweep(ctx, store, nil, clock.Now()); err != nil {
+		return fmt.Errorf("cron: sweep: %w", err)
+	}
 	return recordRun(root, "sweep", clock.Now())
 }
 

@@ -5,6 +5,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sirerun/serenity/internal/disposition"
+	"github.com/sirerun/serenity/internal/providers"
 )
 
 // fakeClock is a fixed clock: every call returns the same instant. Real
@@ -77,6 +80,50 @@ func TestEachJobExitsCleanAndIsIdempotentWithFakeClock(t *testing.T) {
 				t.Fatalf("after second run: got %+v, want RunCount=2 LastRun=%s", rec, at)
 			}
 		})
+	}
+}
+
+// TestSweepJobAdvancesExpiredDispositionItem proves `serenity cron sweep`
+// is real, not a placeholder (T2.6): a disposition item seeded directly
+// against the same brain root's index, aged past the default 14-day
+// threshold, actually transitions to deferred when the Sweep job runs
+// through the CLI-facing entry point (Run), not just internal/disposition
+// package's own tests.
+func TestSweepJobAdvancesExpiredDispositionItem(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	start := time.Date(2026, 9, 6, 12, 0, 0, 0, time.UTC)
+
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		t.Fatalf("OpenIndex: %v", err)
+	}
+	store := disposition.NewStore(eng)
+	item, err := store.Create(ctx, disposition.KindReconcile, nil, "", start)
+	if err != nil {
+		_ = eng.Close()
+		t.Fatalf("Create: %v", err)
+	}
+	if err := eng.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	later := start.Add(15 * 24 * time.Hour)
+	if err := Run(ctx, "sweep", root, fakeClock{at: later}); err != nil {
+		t.Fatalf("Run(sweep): %v", err)
+	}
+
+	eng2, err := providers.OpenIndex(root)
+	if err != nil {
+		t.Fatalf("OpenIndex (reopen): %v", err)
+	}
+	defer func() { _ = eng2.Close() }()
+	got, err := disposition.NewStore(eng2).Get(ctx, item.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.State != disposition.StateDeferred || got.DeferCount != 1 {
+		t.Fatalf("after cron sweep: State=%q DeferCount=%d, want deferred/1", got.State, got.DeferCount)
 	}
 }
 
