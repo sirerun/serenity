@@ -61,6 +61,34 @@ func Flush(q *Queue, root string) (committed bool, err error) {
 	return true, nil
 }
 
+// CommitPath stages and commits exactly one already-on-disk path with the
+// given message -- for a caller that needs a targeted commit outside the
+// touched-path bookkeeping Flush's own queue tracks (T2.4: formalizing an
+// accepted dirty-tree-guard human edit as its own commit, before any
+// further machine write against the same path can proceed -- the guard
+// (dirtytree.go) treats "uncommitted" and "not yet reviewed" as the same
+// thing, so a path stays paused until it is actually committed, review or
+// not). Unlike Flush's generated "serenity: sync N file(s)" subject,
+// message is used verbatim -- the caller is expected to say what the
+// commit represents. A no-op (false, nil), exactly like Flush's, when the
+// path has nothing staged to commit (already clean, or called twice).
+func CommitPath(root, path, message string) (bool, error) {
+	if out, err := runGit(root, "add", "--", path); err != nil {
+		return false, fmt.Errorf("git add: %w: %s", err, out)
+	}
+	cmd := exec.Command("git", "diff", "--cached", "--quiet")
+	cmd.Dir = root
+	if err := cmd.Run(); err == nil {
+		return false, nil
+	} else if _, isExit := err.(*exec.ExitError); !isExit {
+		return false, fmt.Errorf("git diff --cached: %w", err)
+	}
+	if out, err := runGit(root, "commit", "--quiet", "-m", message); err != nil {
+		return false, fmt.Errorf("git commit: %w: %s", err, out)
+	}
+	return true, nil
+}
+
 func runGit(root string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = root
