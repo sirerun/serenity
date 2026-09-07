@@ -142,6 +142,33 @@ type familySpec struct {
 	extraHeldOut  []fact  // exactly 20, in fixed order (T1.32, all held out)
 	contradiction [4]fact // [0],[1] = claim A restated twice; [2],[3] = claim B restated twice
 	pairWhy       string  // human-readable conflict description for contradictions.yaml
+
+	// bonusRegular/bonusExtra (T1.33) are additional facts appended after
+	// a family's standard 44, numbered continuing from 45. Empty for
+	// every family except owns_account, which uses them to close a real
+	// scoring gap T1.32's live run exposed: owns_account P=0.511 with
+	// FP=23 out of 24 TP -- essentially every held-out has_balance span
+	// (below), because every one of them asserts ownership via possessive
+	// phrasing ("Ava's Chase checking balance is $4,230.18.") without a
+	// matching owns_account golden label, so a model correctly extracting
+	// BOTH facts from that span scores an unmatched owns_account false
+	// positive purely from a corpus gap, not a prompt or model defect.
+	// The has_balance block below builds bonusRegular/bonusExtra by
+	// reusing its own already-rendered span text verbatim (never a
+	// separately re-templated string, so there is no risk of the two
+	// diverging) with predicate/object switched to the same account's
+	// owns_account fact. Held out under the exact same rule as
+	// regular/extraHeldOut, by the same position -- see main()'s writing
+	// loop -- so this fix covers every has_balance span regardless of
+	// which subset a future re-split holds out, not only the 24 T1.32
+	// currently scores. Labeled human-reviewer/adjudicated:true
+	// unconditionally (bypassing the normal labelers[i%3] rotation
+	// below): this is a direct, reasoned corpus-consistency correction,
+	// not a second independent labeling pass, and ADR-005's adjudicated
+	// flag is the honest way to represent that. See docs/lore.md and
+	// T1.33's PR for the full root-cause writeup.
+	bonusRegular []fact
+	bonusExtra   []fact
 }
 
 func buildFamilies() []familySpec {
@@ -295,10 +322,36 @@ func buildFamilies() []familySpec {
 			{"AWS billing account", "$312.00 owed", "312.00-usd-owed", "2026-04", ""},
 			{"GitHub organization account", "$0.00", "0.00-usd", "2026-04", ""},
 		}
-		var regular, extra []fact
+		// acctToOwns maps has_balance's bare account name (r.acct above)
+		// to owns_account's own object slug and ownership-valid_from for
+		// that same account (T1.33) -- must agree with the owns_account
+		// familySpec's rows table above; a mismatch here would silently
+		// mislabel a derived fact, so main() cross-checks every derived
+		// object against the owns_account family's own objects and fails
+		// the generator loudly rather than writing a wrong label.
+		acctToOwns := map[string]struct{ slug, from string }{
+			"Chase checking":              {"chase-checking", "2018-03"},
+			"Fidelity 401k":               {"fidelity-401k", "2019-05"},
+			"Coinbase wallet":             {"coinbase-wallet", "2022-04"},
+			"AWS billing account":         {"aws-billing-account", "2021-11"},
+			"GitHub organization account": {"github-org-account", "2020-09"},
+		}
+		var regular, extra, derivedRegular, derivedExtra []fact
 		for _, r := range rows {
+			owns, ok := acctToOwns[r.acct]
+			if !ok {
+				log.Fatalf("gen_corpus: has_balance account %q has no acctToOwns entry", r.acct)
+			}
+			beforeRegular := len(regular)
 			regular = append(regular, gen2(tmpl, r.acct, r.amountText, r.object, r.from, r.to)...)
+			for _, f := range regular[beforeRegular:] {
+				derivedRegular = append(derivedRegular, mk(f.span, owns.slug, owns.from, ""))
+			}
+			beforeExtra := len(extra)
 			extra = append(extra, gen2(tmplExtra, r.acct, r.amountText, r.object, r.from, r.to)...)
+			for _, f := range extra[beforeExtra:] {
+				derivedExtra = append(derivedExtra, mk(f.span, owns.slug, owns.from, ""))
+			}
 		}
 		out = append(out, familySpec{
 			predicate:    "has_balance",
@@ -312,6 +365,25 @@ func buildFamilies() []familySpec {
 			},
 			pairWhy: "Two sources report different balances for the same Chase checking account in the same month -- at most one figure is current.",
 		})
+
+		// Attach the derived owns_account facts (T1.33, built above
+		// alongside has_balance's own regular/extra) to the owns_account
+		// family already appended earlier in this function. Panics via
+		// index -1 if owns_account isn't found -- deliberately loud,
+		// since a silent no-op here would quietly reintroduce the exact
+		// scoring gap this task exists to close.
+		ownsIdx := -1
+		for i, f := range out {
+			if f.predicate == "owns_account" {
+				ownsIdx = i
+				break
+			}
+		}
+		if ownsIdx == -1 {
+			log.Fatalf("gen_corpus: owns_account family not found to attach T1.33's derived has_balance-overlap facts")
+		}
+		out[ownsIdx].bonusRegular = derivedRegular
+		out[ownsIdx].bonusExtra = derivedExtra
 	}
 
 	// has_condition -- health conditions. Contradiction: is her lower
@@ -772,6 +844,49 @@ func main() {
 			writeRecord(filepath.Join(labelsDir, name), r)
 		}
 
+		// bonusRegular/bonusExtra (T1.33): additional facts beyond the
+		// standard 44, numbered continuing from 45, held out under the
+		// exact same positional rule as regular/extraHeldOut above.
+		// Cross-check every bonus object against this family's own
+		// standard-44 objects first -- a mismatch would mean acctToOwns
+		// (has_balance's block, above) has drifted from owns_account's
+		// own rows table, which must fail the generator loudly rather
+		// than silently write a wrong golden label.
+		if len(fam.bonusRegular) > 0 || len(fam.bonusExtra) > 0 {
+			knownObjects := make(map[string]bool, len(all))
+			for _, f := range all {
+				knownObjects[f.object] = true
+			}
+			bonusAll := append([]fact{}, fam.bonusRegular...)
+			bonusAll = append(bonusAll, fam.bonusExtra...)
+			for _, f := range bonusAll {
+				if !knownObjects[f.object] {
+					log.Fatalf("gen_corpus: family %s bonus fact has object %q, not among this family's own standard-44 objects -- acctToOwns has likely drifted from this family's rows table", fam.predicate, f.object)
+				}
+			}
+			for j, f := range bonusAll {
+				r := record{}
+				r.Span = f.span
+				r.Expected.Predicate = fam.predicate
+				r.Expected.Object = f.object
+				r.Expected.ValidFrom = f.validFrom
+				r.Expected.ValidTo = f.validTo
+				// Unconditionally human-reviewer/adjudicated -- see
+				// familySpec's bonusRegular/bonusExtra doc comment: this
+				// is a direct corpus-consistency correction, not a
+				// second independent labeling pass.
+				r.Labeler = "human-reviewer"
+				r.Adjudicated = true
+
+				if (j < len(fam.bonusRegular) && heldOutFactPositions[j]) || j >= len(fam.bonusRegular) {
+					heldOut = append(heldOut, f.span)
+				}
+
+				name := fmt.Sprintf("ava-%s-%02d.yaml", fam.predicate, 44+j+1)
+				writeRecord(filepath.Join(labelsDir, name), r)
+			}
+		}
+
 		pairs = append(pairs, contradictionPairOut{
 			ID:     pairID,
 			Family: fam.predicate,
@@ -780,6 +895,23 @@ func main() {
 			Why:    fam.pairWhy,
 		})
 	}
+
+	// Dedupe before writing (T1.33): split.yaml's held_out is a set of
+	// span TEXT strings, and Split.Filter (split.go) marks every label
+	// sharing that text held out regardless of family, so a span held
+	// out under two families (owns_account's bonus facts reuse
+	// has_balance's own span text verbatim, by design -- see
+	// familySpec's bonusRegular/bonusExtra doc comment) would otherwise
+	// append that same string to heldOut twice, once per family.
+	heldOutSet := make(map[string]bool, len(heldOut))
+	dedupedHeldOut := make([]string, 0, len(heldOut))
+	for _, span := range heldOut {
+		if !heldOutSet[span] {
+			heldOutSet[span] = true
+			dedupedHeldOut = append(dedupedHeldOut, span)
+		}
+	}
+	heldOut = dedupedHeldOut
 
 	sort.Strings(heldOut)
 	writeYAML(splitPath, struct {

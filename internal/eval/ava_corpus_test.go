@@ -85,17 +85,27 @@ func TestAvaCorpusCoversSeededVocabularyWithFloor(t *testing.T) {
 	}
 }
 
-// TestAvaCorpusNoDuplicateSpans guards the split file's addressability:
-// Split.Filter (internal/eval/split.go) keys held-out membership by exact
-// span text, so two labels sharing identical span text would make a
-// held-out entry ambiguous.
+// TestAvaCorpusNoDuplicateSpans guards the real invariant Split.Filter
+// (internal/eval/split.go) and the scoring pipeline depend on: no two
+// labels assert the SAME (span, predicate) pair, which would make it
+// ambiguous which one a matching prediction should score against. It
+// deliberately does NOT require span text to be globally unique across
+// every family (T1.33): one real span of text can genuinely assert
+// several different predicate facts at once -- exactly what
+// owns_account's bonus facts encode, reusing has_balance's own span text
+// verbatim because that span's possessive phrasing ("Ava's Chase checking
+// balance is $4,230.18.") really does assert both facts, and Split.Filter
+// (keyed on span text alone) correctly holds out every label sharing that
+// text regardless of family, not just one.
 func TestAvaCorpusNoDuplicateSpans(t *testing.T) {
-	seen := make(map[string]bool)
+	type spanPredicate struct{ span, predicate string }
+	seen := make(map[spanPredicate]bool)
 	for _, l := range loadAvaLabels(t) {
-		if seen[l.Span] {
-			t.Errorf("duplicate span text: %q", l.Span)
+		key := spanPredicate{l.Span, l.Expected.Predicate}
+		if seen[key] {
+			t.Errorf("duplicate (span, predicate): span %q predicate %q", l.Span, l.Expected.Predicate)
 		}
-		seen[l.Span] = true
+		seen[key] = true
 	}
 }
 
@@ -126,9 +136,18 @@ func TestAvaCorpusContentPopulated(t *testing.T) {
 // property TestAvaCorpusManifestVerifies checks for checksum drift).
 func TestAvaCorpusSplitFileValid(t *testing.T) {
 	labels := loadAvaLabels(t)
-	spanFamily := make(map[string]string, len(labels))
+	// spanHasLabel confirms a span text names at least one real label
+	// (Split.Filter would otherwise silently ignore a stale entry).
+	// Deliberately NOT span->single-family (T1.33): a span can carry more
+	// than one label under different predicates (owns_account's bonus
+	// facts reuse has_balance's own span text verbatim, by design -- see
+	// familySpec's bonusRegular/bonusExtra doc comment), so per-family
+	// held-out counts below are computed straight from labels, not from
+	// a lossy span->family map that would silently drop one family every
+	// time two labels share a span.
+	spanHasLabel := make(map[string]bool, len(labels))
 	for _, l := range labels {
-		spanFamily[l.Span] = l.Expected.Predicate
+		spanHasLabel[l.Span] = true
 	}
 
 	split, err := LoadSplit(filepath.Join(avaCorpusDir(t), "split.yaml"))
@@ -139,7 +158,6 @@ func TestAvaCorpusSplitFileValid(t *testing.T) {
 		t.Fatal("split.yaml has zero held-out spans")
 	}
 
-	byFamily := map[string]int{}
 	seen := make(map[string]bool, len(split.HeldOut))
 	for _, span := range split.HeldOut {
 		if seen[span] {
@@ -147,12 +165,20 @@ func TestAvaCorpusSplitFileValid(t *testing.T) {
 		}
 		seen[span] = true
 
-		family, ok := spanFamily[span]
-		if !ok {
+		if !spanHasLabel[span] {
 			t.Errorf("held_out names a span with no matching label (Split.Filter would silently ignore it): %q", span)
-			continue
 		}
-		byFamily[family]++
+	}
+
+	heldOutSpanSet := make(map[string]bool, len(split.HeldOut))
+	for _, span := range split.HeldOut {
+		heldOutSpanSet[span] = true
+	}
+	byFamily := map[string]int{}
+	for _, l := range labels {
+		if heldOutSpanSet[l.Span] {
+			byFamily[l.Expected.Predicate]++
+		}
 	}
 
 	for _, f := range config.Default().FamilyNames() {
@@ -162,8 +188,20 @@ func TestAvaCorpusSplitFileValid(t *testing.T) {
 	}
 
 	heldOut, rest := split.Filter(labels)
-	if len(heldOut) != len(split.HeldOut) {
-		t.Errorf("split.Filter matched %d of the %d declared held-out spans", len(heldOut), len(split.HeldOut))
+	// wantHeldOutLabels is the count of LABELS whose span is in the
+	// held-out set, independently recomputed from labels+heldOutSpanSet
+	// rather than assumed equal to len(split.HeldOut) (a count of unique
+	// span-text strings): T1.33 means those two counts can legitimately
+	// differ now that a span can carry more than one Label (owns_account
+	// held out span-for-span alongside has_balance).
+	wantHeldOutLabels := 0
+	for _, l := range labels {
+		if heldOutSpanSet[l.Span] {
+			wantHeldOutLabels++
+		}
+	}
+	if len(heldOut) != wantHeldOutLabels {
+		t.Errorf("split.Filter matched %d labels, want %d (labels whose span is in held_out)", len(heldOut), wantHeldOutLabels)
 	}
 	if len(rest)+len(heldOut) != len(labels) {
 		t.Errorf("split.Filter partition sizes %d+%d don't add up to the corpus size %d", len(heldOut), len(rest), len(labels))
@@ -172,12 +210,13 @@ func TestAvaCorpusSplitFileValid(t *testing.T) {
 
 // TestAvaCorpusHeldOutMeetsT132Floor is T1.32's own acc-line floor: every
 // one of the 12 families named in T1.29's acc line has >= 20 scored units
-// (== held-out spans, since this corpus's Label carries exactly one
-// Expected predicate instance per span -- T1.32's "a scored unit is one
-// predicate instance actually evaluated, not a span" wording matters for
-// a corpus where one span could yield several predicted instances, not
-// for how many golden units exist per family here) in the held-out set --
-// the statistical floor chief-architect set so a bootstrap recall
+// (== held-out Labels, one per (span, predicate) pair -- T1.32's "a scored
+// unit is one predicate instance actually evaluated, not a span" wording
+// matters here for real: T1.33 gives owns_account a second Label on
+// several has_balance spans, so a held-out span no longer maps to exactly
+// one scored unit corpus-wide, only to one per family; byFamily below
+// counts Labels, never spans, so this stays correct) in the held-out set
+// -- the statistical floor chief-architect set so a bootstrap recall
 // confidence interval is meaningful (at 4 units, a true recall of 0.85
 // fails a point-estimate 0.80 bar about one run in three from sampling
 // noise alone; at 20 units, under one in eight). Checked against all 13
@@ -186,20 +225,20 @@ func TestAvaCorpusSplitFileValid(t *testing.T) {
 // named in T1.29's acc line.
 func TestAvaCorpusHeldOutMeetsT132Floor(t *testing.T) {
 	labels := loadAvaLabels(t)
-	spanFamily := make(map[string]string, len(labels))
-	for _, l := range labels {
-		spanFamily[l.Span] = l.Expected.Predicate
-	}
 
 	split, err := LoadSplit(filepath.Join(avaCorpusDir(t), "split.yaml"))
 	if err != nil {
 		t.Fatalf("LoadSplit: %v", err)
 	}
+	heldOutSpanSet := make(map[string]bool, len(split.HeldOut))
+	for _, span := range split.HeldOut {
+		heldOutSpanSet[span] = true
+	}
 
 	byFamily := map[string]int{}
-	for _, span := range split.HeldOut {
-		if family, ok := spanFamily[span]; ok {
-			byFamily[family]++
+	for _, l := range labels {
+		if heldOutSpanSet[l.Span] {
+			byFamily[l.Expected.Predicate]++
 		}
 	}
 

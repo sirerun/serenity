@@ -1,0 +1,7 @@
+span: Ava's Fidelity 401k balance is $88,410.02.
+expected:
+    predicate: owns_account
+    object: fidelity-401k
+    valid_from: 2019-05
+labeler: human-reviewer
+adjudicated: true

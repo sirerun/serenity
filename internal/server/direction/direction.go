@@ -452,26 +452,42 @@ func (h *Handlers) handleBrief(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx := r.Context()
+	data, err := h.BuildBrief(r.Context(), req.TaskHint, req.TokenBudget)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+// BuildBrief builds DIRECTION v1's brief object (RFC 0001 §12) exactly as
+// handleBrief does -- the same four capped sections packed through
+// briefing.Pack against tokenBudget -- and returns its JSON encoding
+// (toBriefWire's own marshaled form, byte-identical to what handleBrief
+// itself now calls this function to write). This is the shared core a
+// `serenity brief` CLI verb (T4.9, RFC 0001 §13.1: "CLI and protocol
+// surfaces are thin wrappers over one engine") calls directly, the same
+// single-source-of-truth guarantee internal/direction/check.ToWire
+// already gives check/check_plan -- wire equality holds by construction,
+// not by two implementations happening to agree.
+func (h *Handlers) BuildBrief(ctx context.Context, taskHint string, tokenBudget int) (json.RawMessage, error) {
 	precepts, err := h.preceptItems(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "precepts: "+err.Error())
-		return
+		return nil, fmt.Errorf("precepts: %w", err)
 	}
 	intents, err := h.intentItems(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "intents: "+err.Error())
-		return
+		return nil, fmt.Errorf("intents: %w", err)
 	}
-	entities, err := h.entityItems(req.TaskHint)
+	entities, err := h.entityItems(taskHint)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "entities: "+err.Error())
-		return
+		return nil, fmt.Errorf("entities: %w", err)
 	}
 	questions, err := h.questionItems(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "internal_error", "questions: "+err.Error())
-		return
+		return nil, fmt.Errorf("questions: %w", err)
 	}
 
 	sections := []briefing.Section{
@@ -480,8 +496,8 @@ func (h *Handlers) handleBrief(w http.ResponseWriter, r *http.Request) {
 		{Name: sectionEntities, Items: entities},
 		{Name: sectionQuestions, Items: questions},
 	}
-	packed := briefing.Pack(sections, req.TokenBudget, briefing.WordEstimator)
-	writeJSON(w, http.StatusOK, toBriefWire(packed))
+	packed := briefing.Pack(sections, tokenBudget, briefing.WordEstimator)
+	return json.Marshal(toBriefWire(packed))
 }
 
 func toBriefWire(b briefing.Briefing) briefResponse {

@@ -1,0 +1,7 @@
+span: The mobile app's account overview page shows Ava's GitHub organization account balance as $0.00.
+expected:
+    predicate: owns_account
+    object: github-org-account
+    valid_from: 2020-09
+labeler: human-reviewer
+adjudicated: true

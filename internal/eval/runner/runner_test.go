@@ -621,6 +621,91 @@ func TestRunLiveResumesFromCheckpointAfterInterruption(t *testing.T) {
 	}
 }
 
+// TestRunLiveDoesNotReExtractSpanSharedByTwoLabels guards a real bug T1.33
+// exposed: heldOut can legitimately contain two eval.Labels that share the
+// exact same Span text under two different predicates (a corpus span that
+// genuinely carries two golden facts -- T1.33's has_balance/owns_account
+// overlap is the first real example). runLive's alreadyDone map used to be
+// populated only from loadCheckpoint's cross-invocation resume state and
+// was never updated as the loop itself processed a span for the first
+// time within a single run -- so the second Label sharing an
+// already-processed span triggered a second, redundant live extraction
+// call. Worse, internal/eval.Score iterates predictions without deduping,
+// so the duplicate predictions would have double-counted as an extra true
+// positive. This test proves the fix: exactly one extraction call for the
+// shared span, and both families score a clean TP with no inflation.
+func TestRunLiveDoesNotReExtractSpanSharedByTwoLabels(t *testing.T) {
+	dir := t.TempDir()
+	labelsDir := filepath.Join(dir, labelsSubdir)
+	if err := os.MkdirAll(labelsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	sharedSpan := "Ava's Chase checking balance is $4,230.18."
+	labels := []eval.Label{
+		{Span: sharedSpan, Expected: eval.ExpectedFact{Predicate: "has_balance", Object: "4230.18"}},
+		{Span: sharedSpan, Expected: eval.ExpectedFact{Predicate: "owns_account", Object: "chase-checking"}},
+	}
+	for i, l := range labels {
+		b, err := yaml.Marshal(l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(labelsDir, tinyLabelFileName(i)), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	manifestPath := filepath.Join(dir, manifestSubpath)
+	if err := eval.WriteManifest(labelsDir, manifestPath); err != nil {
+		t.Fatal(err)
+	}
+
+	split := eval.Split{HeldOut: []string{sharedSpan}}
+	sb, err := yaml.Marshal(split)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, splitSubpath), sb, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	provider := &fakeProvider{response: router.Response{
+		Text: `{"observations":[` +
+			`{"subject":"ava","predicate":"has_balance","object":"4230.18","confidence":0.9},` +
+			`{"subject":"ava","predicate":"owns_account","object":"chase-checking","confidence":0.9}` +
+			`]}`,
+	}}
+	ledger := NewTrackingLedger(0)
+	rt := router.New(map[router.Tier]router.Provider{router.TierLocalCheap: provider}, ledger)
+	ex := extract.New(rt, "fake-model@v1", nil, extract.NewMemoryCache())
+
+	report, err := Run(context.Background(), Config{
+		CorpusDir:    dir,
+		Mode:         ModeLive,
+		Extractor:    ex,
+		Ledger:       ledger,
+		ModelVersion: "fake-model@v1",
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if provider.callCount != 1 {
+		t.Errorf("provider called %d times, want 1 -- the second Label sharing the same Span must take the alreadyDone fast path, not re-extract", provider.callCount)
+	}
+	if report.SpansScored != 2 {
+		t.Errorf("SpansScored = %d, want 2 (one per held-out Label, even though only one extraction call was made)", report.SpansScored)
+	}
+	want := eval.PRF1{TP: 1, FP: 0, FN: 0, Precision: 1, Recall: 1, F1: 1}
+	if got := report.Families["has_balance"]; got != want {
+		t.Errorf("has_balance = %+v, want %+v (a redundant second extraction would have inflated TP to 2)", got, want)
+	}
+	if got := report.Families["owns_account"]; got != want {
+		t.Errorf("owns_account = %+v, want %+v (a redundant second extraction would have inflated TP to 2)", got, want)
+	}
+}
+
 // TestRunLiveRefusesToResumeMismatchedCheckpoint guards the safety net in
 // loadCheckpoint: resuming against a checkpoint written for a different
 // corpus, model version, or held-out span count must fail loudly rather
