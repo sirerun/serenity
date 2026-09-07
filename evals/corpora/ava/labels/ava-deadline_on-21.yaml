@@ -1,9 +1,7 @@
-span: Ava's HR portal lists her performance review as due 2026-03-15.
+span: Ava's project tracker shows the Q3 report due 2026-07-31.
 expected:
     predicate: deadline_on
-    object: "2026-03-15"
-    valid_from: 2026-03
+    object: "2026-07-31"
+    valid_from: 2026-07
 labeler: human-reviewer
 adjudicated: true
-contradiction_pair_id: ava-deadline_on-conflict
-contradiction_role: a

@@ -1,0 +1,7 @@
+span: A follow-up email from Ava confirms she committed to reviewing a pending PR by Friday.
+expected:
+    predicate: committed_to
+    object: review-pr-by-friday
+    valid_from: 2026-06
+labeler: model-b
+adjudicated: false

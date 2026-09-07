@@ -1,0 +1,8 @@
+span: A retro doc credits Ava as a contributor to the Aurora migration.
+expected:
+    predicate: belongs_to_project
+    object: aurora-migration
+    valid_from: 2025-07
+    valid_to: 2025-12
+labeler: human-reviewer
+adjudicated: true

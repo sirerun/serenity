@@ -1,9 +1,7 @@
-span: Ava's annual physical in February 2026 recorded her lower back strain as fully resolved with no ongoing symptoms.
+span: Ava's fitness tracker app flags seasonal allergies under her health profile.
 expected:
     predicate: has_condition
-    object: lower-back-strain-resolved
-    valid_from: 2026-02
+    object: seasonal-allergies
+    valid_from: 2015-04
 labeler: model-b
-adjudicated: true
-contradiction_pair_id: ava-has_condition-conflict
-contradiction_role: b
+adjudicated: false

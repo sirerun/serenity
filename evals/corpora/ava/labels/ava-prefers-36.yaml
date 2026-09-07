@@ -1,0 +1,6 @@
+span: A colleague's calendar invite note reminds the team Ava prefers a standing desk.
+expected:
+    predicate: prefers
+    object: standing-desk
+labeler: human-reviewer
+adjudicated: true

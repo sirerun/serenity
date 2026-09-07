@@ -1,0 +1,7 @@
+span: In a note to HR requesting accommodations, Ava mentioned generalized anxiety.
+expected:
+    predicate: has_condition
+    object: generalized-anxiety
+    valid_from: 2021-09
+labeler: model-a
+adjudicated: false

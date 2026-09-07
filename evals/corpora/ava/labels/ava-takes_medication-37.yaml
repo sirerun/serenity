@@ -1,0 +1,7 @@
+span: Ava's insurance claim lists a prescription for melatonin nightly.
+expected:
+    predicate: takes_medication
+    object: melatonin
+    valid_from: 2023-02
+labeler: model-a
+adjudicated: false

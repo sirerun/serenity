@@ -1,9 +1,8 @@
-span: As of February 2026, Ava is still listed as a core contributor to the Beacon redesign.
+span: Ava's status report is filed under Project Lighthouse.
 expected:
     predicate: belongs_to_project
-    object: beacon-redesign
-    valid_from: 2026-02
+    object: project-lighthouse
+    valid_from: 2024-02
+    valid_to: 2024-11
 labeler: human-reviewer
 adjudicated: true
-contradiction_pair_id: ava-belongs_to_project-conflict
-contradiction_role: a

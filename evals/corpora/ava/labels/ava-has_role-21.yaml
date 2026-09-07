@@ -1,9 +1,8 @@
-span: As of February 2026, Ava is still listed as Staff Engineer.
+span: Ava's conference speaker bio lists her title as QA Analyst.
 expected:
     predicate: has_role
-    object: staff-engineer
-    valid_from: 2026-02
+    object: qa-analyst
+    valid_from: 2019-01
+    valid_to: 2020-12
 labeler: human-reviewer
 adjudicated: true
-contradiction_pair_id: ava-has_role-conflict
-contradiction_role: a

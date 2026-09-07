@@ -1,0 +1,8 @@
+span: In a project kickoff doc, Ava is credited as the Engineering Manager.
+expected:
+    predicate: has_role
+    object: engineering-manager
+    valid_from: 2024-01
+    valid_to: 2025-05
+labeler: human-reviewer
+adjudicated: true

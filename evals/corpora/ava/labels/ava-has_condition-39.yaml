@@ -1,0 +1,7 @@
+span: Ava's fitness tracker app flags a lower back strain under her health profile.
+expected:
+    predicate: has_condition
+    object: lower-back-strain
+    valid_from: 2024-11
+labeler: human-reviewer
+adjudicated: true

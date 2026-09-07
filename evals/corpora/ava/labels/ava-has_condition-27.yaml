@@ -1,0 +1,7 @@
+span: Ava's fitness tracker app flags mild asthma under her health profile.
+expected:
+    predicate: has_condition
+    object: mild-asthma
+    valid_from: 2010-01
+labeler: human-reviewer
+adjudicated: true

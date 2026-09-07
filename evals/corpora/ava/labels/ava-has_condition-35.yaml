@@ -1,0 +1,7 @@
+span: Ava's fitness tracker app flags generalized anxiety under her health profile.
+expected:
+    predicate: has_condition
+    object: generalized-anxiety
+    valid_from: 2021-09
+labeler: model-b
+adjudicated: false

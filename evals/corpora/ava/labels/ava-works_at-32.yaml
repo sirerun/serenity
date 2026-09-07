@@ -1,0 +1,8 @@
+span: Ava's benefits enrollment form names Globex Corporation as her employer.
+expected:
+    predicate: works_at
+    object: globex-corporation
+    valid_from: 2022-07
+    valid_to: 2023-12
+labeler: model-b
+adjudicated: false

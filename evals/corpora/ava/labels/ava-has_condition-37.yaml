@@ -1,0 +1,7 @@
+span: Ava's insurance claim form lists a lower back strain as a pre-existing condition.
+expected:
+    predicate: has_condition
+    object: lower-back-strain
+    valid_from: 2024-11
+labeler: model-a
+adjudicated: false

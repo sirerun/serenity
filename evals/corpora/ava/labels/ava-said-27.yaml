@@ -1,0 +1,7 @@
+span: Ava's follow-up Slack message after the sprint planning session says she'd rather use feature flags than a hard cutover.
+expected:
+    predicate: said
+    object: prefer-feature-flags
+    valid_from: 2026-05
+labeler: human-reviewer
+adjudicated: true

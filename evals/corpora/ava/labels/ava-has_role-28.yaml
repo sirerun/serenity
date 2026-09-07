@@ -1,0 +1,8 @@
+span: In a project kickoff doc, Ava is credited as the Backend Engineer.
+expected:
+    predicate: has_role
+    object: backend-engineer
+    valid_from: 2021-01
+    valid_to: 2022-06
+labeler: model-a
+adjudicated: false

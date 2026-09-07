@@ -170,6 +170,46 @@ func TestAvaCorpusSplitFileValid(t *testing.T) {
 	}
 }
 
+// TestAvaCorpusHeldOutMeetsT132Floor is T1.32's own acc-line floor: every
+// one of the 12 families named in T1.29's acc line has >= 20 scored units
+// (== held-out spans, since this corpus's Label carries exactly one
+// Expected predicate instance per span -- T1.32's "a scored unit is one
+// predicate instance actually evaluated, not a span" wording matters for
+// a corpus where one span could yield several predicted instances, not
+// for how many golden units exist per family here) in the held-out set --
+// the statistical floor chief-architect set so a bootstrap recall
+// confidence interval is meaningful (at 4 units, a true recall of 0.85
+// fails a point-estimate 0.80 bar about one run in three from sampling
+// noise alone; at 20 units, under one in eight). Checked against all 13
+// seeded families, not just T1.29's 12 -- gen_corpus.go expands every
+// family uniformly, so `costs` clears the floor too even though it isn't
+// named in T1.29's acc line.
+func TestAvaCorpusHeldOutMeetsT132Floor(t *testing.T) {
+	labels := loadAvaLabels(t)
+	spanFamily := make(map[string]string, len(labels))
+	for _, l := range labels {
+		spanFamily[l.Span] = l.Expected.Predicate
+	}
+
+	split, err := LoadSplit(filepath.Join(avaCorpusDir(t), "split.yaml"))
+	if err != nil {
+		t.Fatalf("LoadSplit: %v", err)
+	}
+
+	byFamily := map[string]int{}
+	for _, span := range split.HeldOut {
+		if family, ok := spanFamily[span]; ok {
+			byFamily[family]++
+		}
+	}
+
+	for _, f := range config.Default().FamilyNames() {
+		if byFamily[f] < 20 {
+			t.Errorf("family %q has %d held-out scored units, want >= 20 (T1.32 floor)", f, byFamily[f])
+		}
+	}
+}
+
 // contradictionRecord is the raw shape gen_corpus.go writes into each
 // label file's contradiction_pair_id/contradiction_role fields --
 // deliberately not part of eval.Label (see label.go's doc comment on why

@@ -1,9 +1,7 @@
-span: Ava's March 2026 planning-doc summary quotes her saying the Postgres migration ships by end of March.
+span: A colleague's recap of the Tuesday standup quotes Ava saying the deploy window should move to Thursday.
 expected:
     predicate: said
-    object: migration-ships-end-of-march
-    valid_from: 2026-03
+    object: deploy-window-thursday
+    valid_from: 2026-05
 labeler: model-a
-adjudicated: true
-contradiction_pair_id: ava-said-conflict
-contradiction_role: a
+adjudicated: false

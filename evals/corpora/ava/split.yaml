@@ -1,7 +1,62 @@
 held_out:
+    - A February 2026 badge-system export lists Ava Standardo's employer as Acme Corp.
+    - A February 2026 badge-system export lists Ava Standardo's employer as Contoso Systems.
+    - A February 2026 badge-system export lists Ava Standardo's employer as Globex Corporation.
+    - A February 2026 badge-system export lists Ava Standardo's employer as Initech.
+    - A February 2026 badge-system export lists Ava Standardo's employer as Northwind Traders.
     - A calendar reminder shows Ava's the Q3 report due 2026-07-31.
+    - A colleague's calendar invite note reminds the team Ava prefers VS Code as her editor.
+    - A colleague's calendar invite note reminds the team Ava prefers a standing desk.
+    - A colleague's calendar invite note reminds the team Ava prefers dark roast coffee.
+    - A colleague's calendar invite note reminds the team Ava prefers oat milk.
+    - A colleague's calendar invite note reminds the team Ava prefers remote work on Fridays.
+    - A colleague's recap of the Tuesday standup quotes Ava saying the deploy window should move to Thursday.
+    - A colleague's recap of the on-call review quotes Ava saying the on-call rotation needs a fourth person.
+    - A colleague's recap of the quarterly review quotes Ava saying the Q2 roadmap review went well.
+    - A colleague's recap of the sprint planning session quotes Ava saying she'd rather use feature flags than a hard cutover.
+    - A colleague's recap of the vendor sync quotes Ava saying the vendor's SLA response times are unacceptable.
+    - A finance dashboard entry for Ava's AWS bill lists $312.00.
+    - A finance dashboard entry for Ava's conference ticket for the Systems Summit lists $899.00.
+    - A finance dashboard entry for Ava's domain renewal for avastandar.do lists $18.00.
+    - A finance dashboard entry for Ava's gym membership lists $65.00.
+    - A finance dashboard entry for Ava's therapy session copay lists $40.00.
     - A finance summary lists Ava's Coinbase wallet holding $2,015.67.
+    - A follow-up email from Ava confirms she committed to mentoring a new hire through onboarding.
+    - A follow-up email from Ava confirms she committed to paying off her credit card balance this quarter.
+    - A follow-up email from Ava confirms she committed to reviewing a pending PR by Friday.
+    - A follow-up email from Ava confirms she committed to running a half marathon in the fall.
+    - A follow-up email from Ava confirms she committed to shipping the Q3 report by the end of the month.
+    - A hospital intake form names Ava's accountant as Renee Ortiz.
+    - A hospital intake form names Ava's best friend as Theo Kim.
+    - A hospital intake form names Ava's sister as Lily Chen.
+    - A hospital intake form names Ava's spouse as Dan Standardo.
+    - A hospital intake form names Ava's therapist as Dr. Novak.
     - A pharmacy refill record shows Ava picked up an albuterol inhaler as needed.
+    - A referral letter from Ava's primary care doctor cites a lower back strain.
+    - A referral letter from Ava's primary care doctor cites chronic migraine.
+    - A referral letter from Ava's primary care doctor cites generalized anxiety.
+    - A referral letter from Ava's primary care doctor cites mild asthma.
+    - A referral letter from Ava's primary care doctor cites seasonal allergies.
+    - A reminder in Ava's task app flags her passport renewal as due 2026-09-01.
+    - A reminder in Ava's task app flags her tax filing as due 2026-04-15.
+    - A reminder in Ava's task app flags the Q3 report as due 2026-07-31.
+    - A reminder in Ava's task app flags the security audit response as due 2026-06-10.
+    - A reminder in Ava's task app flags the vendor contract renewal as due 2026-05-20.
+    - A retro doc credits Ava as a contributor to Operation Tidewater.
+    - A retro doc credits Ava as a contributor to Project Lighthouse.
+    - A retro doc credits Ava as a contributor to Project Meridian.
+    - A retro doc credits Ava as a contributor to the Aurora migration.
+    - A retro doc credits Ava as a contributor to the Beacon redesign.
+    - A screenshot Ava shared with her accountant shows her AWS billing account at $312.00 owed.
+    - A screenshot Ava shared with her accountant shows her Chase checking at $4,230.18.
+    - A screenshot Ava shared with her accountant shows her Coinbase wallet at $2,015.67.
+    - A screenshot Ava shared with her accountant shows her Fidelity 401k at $88,410.02.
+    - A screenshot Ava shared with her accountant shows her GitHub organization account at $0.00.
+    - A support ticket Ava filed mentions her AWS billing account.
+    - A support ticket Ava filed mentions her Chase checking account.
+    - A support ticket Ava filed mentions her Coinbase wallet.
+    - A support ticket Ava filed mentions her Fidelity 401k account.
+    - A support ticket Ava filed mentions her GitHub organization account.
     - According to her HR record, Ava Standardo is employed by Contoso Systems.
     - According to her setup notes, Ava prefers VS Code as her editor.
     - An onboarding email confirms Ava was granted a Fidelity 401k account.
@@ -20,34 +75,239 @@ held_out:
     - Ava prefers remote work on Fridays.
     - Ava told her manager she is committed to reviewing a pending PR by Friday.
     - Ava was quoted in the on-call review retro notes saying the on-call rotation needs a fourth person.
+    - Ava's 1:1 notes record her commitment to mentoring a new hire through onboarding.
+    - Ava's 1:1 notes record her commitment to paying off her credit card balance this quarter.
+    - Ava's 1:1 notes record her commitment to reviewing a pending PR by Friday.
+    - Ava's 1:1 notes record her commitment to running a half marathon in the fall.
+    - Ava's 1:1 notes record her commitment to shipping the Q3 report by the end of the month.
     - Ava's GitHub organization account balance is $0.00.
     - Ava's LinkedIn-style bio lists her current employer as Globex Corporation.
+    - Ava's OKR doc lists a commitment to mentoring a new hire through onboarding.
+    - Ava's OKR doc lists a commitment to paying off her credit card balance this quarter.
+    - Ava's OKR doc lists a commitment to reviewing a pending PR by Friday.
+    - Ava's OKR doc lists a commitment to running a half marathon in the fall.
+    - Ava's OKR doc lists a commitment to shipping the Q3 report by the end of the month.
+    - Ava's assistant's briefing notes mention she prefers VS Code as her editor.
+    - Ava's assistant's briefing notes mention she prefers a standing desk.
+    - Ava's assistant's briefing notes mention she prefers dark roast coffee.
+    - Ava's assistant's briefing notes mention she prefers oat milk.
+    - Ava's assistant's briefing notes mention she prefers remote work on Fridays.
     - Ava's banking app displays a current Fidelity 401k balance of $88,410.02.
+    - Ava's benefits enrollment form names Acme Corp as her employer.
+    - Ava's benefits enrollment form names Contoso Systems as her employer.
+    - Ava's benefits enrollment form names Globex Corporation as her employer.
+    - Ava's benefits enrollment form names Initech as her employer.
+    - Ava's benefits enrollment form names Northwind Traders as her employer.
+    - Ava's benefits form lists her accountant as Renee Ortiz.
+    - Ava's benefits form lists her best friend as Theo Kim.
+    - Ava's benefits form lists her sister as Lily Chen.
+    - Ava's benefits form lists her spouse as Dan Standardo.
+    - Ava's benefits form lists her therapist as Dr. Novak.
+    - Ava's business card reads "Ava Standardo, Backend Engineer."
+    - Ava's business card reads "Ava Standardo, Engineering Manager."
+    - Ava's business card reads "Ava Standardo, QA Analyst."
+    - Ava's business card reads "Ava Standardo, Senior Backend Engineer."
+    - Ava's business card reads "Ava Standardo, Staff Engineer."
+    - Ava's calendar invite series is titled after Operation Tidewater.
+    - Ava's calendar invite series is titled after Project Lighthouse.
+    - Ava's calendar invite series is titled after Project Meridian.
+    - Ava's calendar invite series is titled after the Aurora migration.
+    - Ava's calendar invite series is titled after the Beacon redesign.
     - Ava's calendar shows recurring standups for the Aurora migration.
+    - Ava's conference speaker bio lists her title as Backend Engineer.
+    - Ava's conference speaker bio lists her title as Engineering Manager.
+    - Ava's conference speaker bio lists her title as QA Analyst.
+    - Ava's conference speaker bio lists her title as Senior Backend Engineer.
+    - Ava's conference speaker bio lists her title as Staff Engineer.
     - Ava's deadline for the security audit response is 2026-06-10.
     - Ava's domain renewal for avastandar.do costs $18.00.
     - Ava's email after the sprint planning session stated she'd rather use feature flags than a hard cutover.
     - Ava's emergency contact form names her best friend as Theo Kim.
+    - Ava's estate-planning worksheet lists a AWS billing account among her assets.
+    - Ava's estate-planning worksheet lists a Chase checking account among her assets.
+    - Ava's estate-planning worksheet lists a Coinbase wallet among her assets.
+    - Ava's estate-planning worksheet lists a Fidelity 401k account among her assets.
+    - Ava's estate-planning worksheet lists a GitHub organization account among her assets.
     - Ava's expense report lists Ava's AWS bill at $312.00.
+    - Ava's fitness tracker app flags a lower back strain under her health profile.
+    - Ava's fitness tracker app flags chronic migraine under her health profile.
+    - Ava's fitness tracker app flags generalized anxiety under her health profile.
+    - Ava's fitness tracker app flags mild asthma under her health profile.
+    - Ava's fitness tracker app flags seasonal allergies under her health profile.
+    - Ava's follow-up Slack message after the Tuesday standup says the deploy window should move to Thursday.
+    - Ava's follow-up Slack message after the on-call review says the on-call rotation needs a fourth person.
+    - Ava's follow-up Slack message after the quarterly review says the Q2 roadmap review went well.
+    - Ava's follow-up Slack message after the sprint planning session says she'd rather use feature flags than a hard cutover.
+    - Ava's follow-up Slack message after the vendor sync says the vendor's SLA response times are unacceptable.
+    - Ava's holiday card list includes her accountant, Renee Ortiz.
+    - Ava's holiday card list includes her best friend, Theo Kim.
+    - Ava's holiday card list includes her sister, Lily Chen.
+    - Ava's holiday card list includes her spouse, Dan Standardo.
+    - Ava's holiday card list includes her therapist, Dr. Novak.
+    - Ava's insurance claim form lists a lower back strain as a pre-existing condition.
+    - Ava's insurance claim form lists chronic migraine as a pre-existing condition.
+    - Ava's insurance claim form lists generalized anxiety as a pre-existing condition.
+    - Ava's insurance claim form lists mild asthma as a pre-existing condition.
+    - Ava's insurance claim form lists seasonal allergies as a pre-existing condition.
+    - Ava's insurance claim lists a prescription for Zyrtec daily.
+    - Ava's insurance claim lists a prescription for an albuterol inhaler as needed.
+    - Ava's insurance claim lists a prescription for melatonin nightly.
+    - Ava's insurance claim lists a prescription for sertraline daily.
+    - Ava's insurance claim lists a prescription for sumatriptan as needed for migraines.
     - Ava's manager set a deadline for her tax filing of 2026-04-15.
+    - Ava's manager's meeting notes list her passport renewal as due 2026-09-01.
+    - Ava's manager's meeting notes list her tax filing as due 2026-04-15.
+    - Ava's manager's meeting notes list the Q3 report as due 2026-07-31.
+    - Ava's manager's meeting notes list the security audit response as due 2026-06-10.
+    - Ava's manager's meeting notes list the vendor contract renewal as due 2026-05-20.
     - Ava's medical intake form lists seasonal allergies as an ongoing condition.
     - Ava's medication list includes Zyrtec daily.
     - Ava's monthly budget line for Ava's therapy session copay is $40.00.
+    - Ava's monthly reconciliation spreadsheet records her AWS billing account at $312.00 owed.
+    - Ava's monthly reconciliation spreadsheet records her Chase checking at $4,230.18.
+    - Ava's monthly reconciliation spreadsheet records her Coinbase wallet at $2,015.67.
+    - Ava's monthly reconciliation spreadsheet records her Fidelity 401k at $88,410.02.
+    - Ava's monthly reconciliation spreadsheet records her GitHub organization account at $0.00.
     - Ava's password manager lists a saved login for her GitHub organization account.
+    - Ava's patient portal medication list includes Zyrtec daily.
+    - Ava's patient portal medication list includes an albuterol inhaler as needed.
+    - Ava's patient portal medication list includes melatonin nightly.
+    - Ava's patient portal medication list includes sertraline daily.
+    - Ava's patient portal medication list includes sumatriptan as needed for migraines.
+    - Ava's pay stub identifies her employer as Acme Corp.
+    - Ava's pay stub identifies her employer as Contoso Systems.
+    - Ava's pay stub identifies her employer as Globex Corporation.
+    - Ava's pay stub identifies her employer as Initech.
+    - Ava's pay stub identifies her employer as Northwind Traders.
+    - Ava's project tracker shows her passport renewal due 2026-09-01.
+    - Ava's project tracker shows her tax filing due 2026-04-15.
+    - Ava's project tracker shows the Q3 report due 2026-07-31.
+    - Ava's project tracker shows the security audit response due 2026-06-10.
+    - Ava's project tracker shows the vendor contract renewal due 2026-05-20.
+    - Ava's receipt for Ava's AWS bill shows $312.00.
+    - Ava's receipt for Ava's conference ticket for the Systems Summit shows $899.00.
+    - Ava's receipt for Ava's domain renewal for avastandar.do shows $18.00.
+    - Ava's receipt for Ava's gym membership shows $65.00.
+    - Ava's receipt for Ava's therapy session copay shows $40.00.
     - Ava's records show she holds a Chase checking account.
+    - Ava's reimbursement request for Ava's AWS bill cites $312.00.
+    - Ava's reimbursement request for Ava's conference ticket for the Systems Summit cites $899.00.
+    - Ava's reimbursement request for Ava's domain renewal for avastandar.do cites $18.00.
+    - Ava's reimbursement request for Ava's gym membership cites $65.00.
+    - Ava's reimbursement request for Ava's therapy session copay cites $40.00.
     - Ava's standing order confirms she prefers oat milk.
+    - Ava's status report is filed under Operation Tidewater.
+    - Ava's status report is filed under Project Lighthouse.
+    - Ava's status report is filed under Project Meridian.
+    - Ava's status report is filed under the Aurora migration.
+    - Ava's status report is filed under the Beacon redesign.
     - Ava's task tracker shows a commitment to mentoring a new hire through onboarding.
+    - Ava's tax documents reference a AWS billing account under her name.
+    - Ava's tax documents reference a Chase checking account under her name.
+    - Ava's tax documents reference a Coinbase wallet under her name.
+    - Ava's tax documents reference a Fidelity 401k account under her name.
+    - Ava's tax documents reference a GitHub organization account under her name.
+    - Ava's team onboarding doc notes that she prefers VS Code as her editor.
+    - Ava's team onboarding doc notes that she prefers a standing desk.
+    - Ava's team onboarding doc notes that she prefers dark roast coffee.
+    - Ava's team onboarding doc notes that she prefers oat milk.
+    - Ava's team onboarding doc notes that she prefers remote work on Fridays.
     - Ava's team roster lists her under Project Lighthouse.
     - Ava's therapist is Dr. Novak.
     - Ava's wellness app tracks chronic migraine as a chronic condition.
+    - Ava's year-end financial summary lists her AWS billing account balance at $312.00 owed.
+    - Ava's year-end financial summary lists her Chase checking balance at $4,230.18.
+    - Ava's year-end financial summary lists her Coinbase wallet balance at $2,015.67.
+    - Ava's year-end financial summary lists her Fidelity 401k balance at $88,410.02.
+    - Ava's year-end financial summary lists her GitHub organization account balance at $0.00.
     - During the Tuesday standup meeting, Ava said the deploy window should move to Thursday.
     - In a Slack intro, Ava mentioned she's now with Initech.
+    - In a chat with IT, Ava confirmed she still has a AWS billing account.
+    - In a chat with IT, Ava confirmed she still has a Chase checking account.
+    - In a chat with IT, Ava confirmed she still has a Coinbase wallet.
+    - In a chat with IT, Ava confirmed she still has a Fidelity 401k account.
+    - In a chat with IT, Ava confirmed she still has a GitHub organization account.
     - In a message to her manager, Ava mentioned she has mild asthma.
+    - In a note to HR requesting accommodations, Ava mentioned a lower back strain.
+    - In a note to HR requesting accommodations, Ava mentioned chronic migraine.
+    - In a note to HR requesting accommodations, Ava mentioned generalized anxiety.
+    - In a note to HR requesting accommodations, Ava mentioned mild asthma.
+    - In a note to HR requesting accommodations, Ava mentioned seasonal allergies.
+    - In a note to her care team, Ava confirmed she is still taking Zyrtec daily.
+    - In a note to her care team, Ava confirmed she is still taking an albuterol inhaler as needed.
+    - In a note to her care team, Ava confirmed she is still taking melatonin nightly.
+    - In a note to her care team, Ava confirmed she is still taking sertraline daily.
+    - In a note to her care team, Ava confirmed she is still taking sumatriptan as needed for migraines.
     - In a planning meeting, Ava committed to shipping the Q3 report by the end of the month.
+    - In a project kickoff doc, Ava is credited as the Backend Engineer.
+    - In a project kickoff doc, Ava is credited as the Engineering Manager.
+    - In a project kickoff doc, Ava is credited as the QA Analyst.
+    - In a project kickoff doc, Ava is credited as the Senior Backend Engineer.
+    - In a project kickoff doc, Ava is credited as the Staff Engineer.
     - In a project kickoff doc, Ava is named a contributor to Project Meridian.
+    - In a resourcing spreadsheet, Ava is allocated to Operation Tidewater.
+    - In a resourcing spreadsheet, Ava is allocated to Project Lighthouse.
+    - In a resourcing spreadsheet, Ava is allocated to Project Meridian.
+    - In a resourcing spreadsheet, Ava is allocated to the Aurora migration.
+    - In a resourcing spreadsheet, Ava is allocated to the Beacon redesign.
+    - In a retro survey, Ava wrote that she prefers VS Code as her editor.
+    - In a retro survey, Ava wrote that she prefers a standing desk.
+    - In a retro survey, Ava wrote that she prefers dark roast coffee.
+    - In a retro survey, Ava wrote that she prefers oat milk.
+    - In a retro survey, Ava wrote that she prefers remote work on Fridays.
+    - In a status email, Ava confirmed her passport renewal is due 2026-09-01.
+    - In a status email, Ava confirmed her tax filing is due 2026-04-15.
+    - In a status email, Ava confirmed the Q3 report is due 2026-07-31.
+    - In a status email, Ava confirmed the security audit response is due 2026-06-10.
+    - In a status email, Ava confirmed the vendor contract renewal is due 2026-05-20.
+    - In a status update, Ava said she is committed to mentoring a new hire through onboarding.
+    - In a status update, Ava said she is committed to paying off her credit card balance this quarter.
+    - In a status update, Ava said she is committed to reviewing a pending PR by Friday.
+    - In a status update, Ava said she is committed to running a half marathon in the fall.
+    - In a status update, Ava said she is committed to shipping the Q3 report by the end of the month.
+    - In a team icebreaker, Ava mentioned her accountant, Renee Ortiz.
+    - In a team icebreaker, Ava mentioned her best friend, Theo Kim.
+    - In a team icebreaker, Ava mentioned her sister, Lily Chen.
+    - In a team icebreaker, Ava mentioned her spouse, Dan Standardo.
+    - In a team icebreaker, Ava mentioned her therapist, Dr. Novak.
+    - In a text to her sister, Ava mentioned she just refilled Zyrtec daily.
+    - In a text to her sister, Ava mentioned she just refilled an albuterol inhaler as needed.
+    - In a text to her sister, Ava mentioned she just refilled melatonin nightly.
+    - In a text to her sister, Ava mentioned she just refilled sertraline daily.
+    - In a text to her sister, Ava mentioned she just refilled sumatriptan as needed for migraines.
     - In an email signature, Ava listed her spouse as Dan Standardo.
+    - In her conference speaker bio, Ava lists Acme Corp as where she currently works.
+    - In her conference speaker bio, Ava lists Contoso Systems as where she currently works.
+    - In her conference speaker bio, Ava lists Globex Corporation as where she currently works.
+    - In her conference speaker bio, Ava lists Initech as where she currently works.
+    - In her conference speaker bio, Ava lists Northwind Traders as where she currently works.
     - In her performance review, Ava is listed as a Backend Engineer.
     - In the quarterly review, Ava said the Q2 roadmap review went well.
+    - Meeting notes from the Tuesday standup record Ava saying the deploy window should move to Thursday.
+    - Meeting notes from the on-call review record Ava saying the on-call rotation needs a fourth person.
+    - Meeting notes from the quarterly review record Ava saying the Q2 roadmap review went well.
+    - Meeting notes from the sprint planning session record Ava saying she'd rather use feature flags than a hard cutover.
+    - Meeting notes from the vendor sync record Ava saying the vendor's SLA response times are unacceptable.
     - Per the org chart, Ava holds the role of QA Analyst.
+    - The Tuesday standup summary attributes to Ava the comment that the deploy window should move to Thursday.
     - The invoice for Ava's conference ticket for the Systems Summit shows $899.00.
+    - The mobile app's account overview page shows Ava's AWS billing account balance as $312.00 owed.
+    - The mobile app's account overview page shows Ava's Chase checking balance as $4,230.18.
+    - The mobile app's account overview page shows Ava's Coinbase wallet balance as $2,015.67.
+    - The mobile app's account overview page shows Ava's Fidelity 401k balance as $88,410.02.
+    - The mobile app's account overview page shows Ava's GitHub organization account balance as $0.00.
+    - The on-call review summary attributes to Ava the comment that the on-call rotation needs a fourth person.
+    - The quarterly review summary attributes to Ava the comment that the Q2 roadmap review went well.
+    - The sprint planning session summary attributes to Ava the comment that she'd rather use feature flags than a hard cutover.
     - The statement shows Ava's Chase checking at $4,230.18.
+    - The team wiki's org page shows Ava's role as Backend Engineer.
+    - The team wiki's org page shows Ava's role as Engineering Manager.
+    - The team wiki's org page shows Ava's role as QA Analyst.
+    - The team wiki's org page shows Ava's role as Senior Backend Engineer.
+    - The team wiki's org page shows Ava's role as Staff Engineer.
+    - The vendor confirmation email for Ava's AWS bill states $312.00.
+    - The vendor confirmation email for Ava's conference ticket for the Systems Summit states $899.00.
+    - The vendor confirmation email for Ava's domain renewal for avastandar.do states $18.00.
+    - The vendor confirmation email for Ava's gym membership states $65.00.
+    - The vendor confirmation email for Ava's therapy session copay states $40.00.
+    - The vendor sync summary attributes to Ava the comment that the vendor's SLA response times are unacceptable.

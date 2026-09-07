@@ -1,0 +1,7 @@
+span: Ava's holiday card list includes her accountant, Renee Ortiz.
+expected:
+    predicate: relates_to
+    object: renee-ortiz
+    valid_from: 2019-01
+labeler: model-b
+adjudicated: false

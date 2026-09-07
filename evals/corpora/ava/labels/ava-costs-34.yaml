@@ -1,0 +1,7 @@
+span: A finance dashboard entry for Ava's gym membership lists $65.00.
+expected:
+    predicate: costs
+    object: 65.00-usd
+    valid_from: 2026-01
+labeler: model-a
+adjudicated: false

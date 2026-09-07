@@ -1,9 +1,7 @@
-span: Ava's budgeting app stopped syncing her Chase checking account in February 2026 because the bank reported it closed.
+span: In a chat with IT, Ava confirmed she still has a Chase checking account.
 expected:
     predicate: owns_account
-    object: chase-checking-closed
-    valid_from: 2026-02
+    object: chase-checking
+    valid_from: 2018-03
 labeler: human-reviewer
 adjudicated: true
-contradiction_pair_id: ava-owns_account-conflict
-contradiction_role: b

@@ -1,0 +1,6 @@
+span: Ava's assistant's briefing notes mention she prefers remote work on Fridays.
+expected:
+    predicate: prefers
+    object: remote-fridays
+labeler: human-reviewer
+adjudicated: true

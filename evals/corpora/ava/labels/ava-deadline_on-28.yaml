@@ -1,0 +1,7 @@
+span: A reminder in Ava's task app flags her tax filing as due 2026-04-15.
+expected:
+    predicate: deadline_on
+    object: "2026-04-15"
+    valid_from: 2026-04
+labeler: model-a
+adjudicated: false

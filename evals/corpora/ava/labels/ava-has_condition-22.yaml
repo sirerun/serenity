@@ -1,9 +1,7 @@
-span: A February 2026 PT progress note keeps Ava's lower back strain open as an active issue.
+span: In a note to HR requesting accommodations, Ava mentioned seasonal allergies.
 expected:
     predicate: has_condition
-    object: lower-back-strain-active
-    valid_from: 2026-02
+    object: seasonal-allergies
+    valid_from: 2015-04
 labeler: model-a
-adjudicated: true
-contradiction_pair_id: ava-has_condition-conflict
-contradiction_role: a
+adjudicated: false

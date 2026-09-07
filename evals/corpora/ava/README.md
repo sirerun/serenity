@@ -46,8 +46,17 @@ respectively.
   `eval.WriteManifest` by hand against a different path.
 - `split.yaml` -- the held-out split, in `internal/eval.Split`'s exact
   format (`held_out: [<span text>, ...]`), loadable via
-  `eval.LoadSplit`/`Split.Filter` unmodified. 52 of the corpus's 312 spans
-  (4 per family) are held out.
+  `eval.LoadSplit`/`Split.Filter` unmodified. 312 of the corpus's 572
+  spans (24 per family) are held out -- expanded from the original 4 per
+  family by T1.32, so a bootstrap recall confidence interval (see below)
+  has enough scored units to be meaningful: chief-architect's finding was
+  that at 4 units a true recall of 0.85 fails a point-estimate 0.80 bar
+  about one run in three from sampling noise alone, at 20 units under one
+  in eight. T1.32's expansion is purely additive over T1.29's original
+  52-span held-out set -- verified by regenerating and diffing: every
+  span that was held out before T1.32 is still held out after it, so no
+  `familyGuidance` (`internal/extract/extract.go`) worked example that
+  was already checked against the old split needs re-checking.
 - `contradictions.yaml` -- a human-readable index of the 13 contradiction
   pairs (`id`, `family`, `span_a`, `span_b`, `why`), generated from the
   same source data as the label files so the two never drift apart.
@@ -59,10 +68,11 @@ respectively.
 T1.20's adversarial corpus and T3.13's DIRECTION corpus are both
 hand-authored one YAML file at a time -- appropriate for their scale (16
 and 64 rows). This corpus's acceptance floor is >= 20 labeled spans PER
-PREDICATE FAMILY across 13 families (260+ spans minimum); hand-authoring
-300+ independent files would mean 300+ opportunities for the corpus to
-drift from itself (inconsistent entities, dates, or slugs across files)
-with no single point of review.
+PREDICATE FAMILY across 13 families (260+ spans minimum) for the whole
+corpus, PLUS (T1.32) >= 20 HELD-OUT spans per family (260+ more, on top);
+hand-authoring 500+ independent files would mean 500+ opportunities for
+the corpus to drift from itself (inconsistent entities, dates, or slugs
+across files) with no single point of review.
 
 Instead, `gen_corpus.go` embeds one hand-authored, reviewable dataset: a
 coherent Ava Standardo timeline (employer and role history, financial and
@@ -80,12 +90,17 @@ together from the same source, so they cannot silently disagree.
 
 ## The persona: a February 2026 upheaval
 
-24 spans per family = 20 regular (5 facts x 4 phrasings) + 4 contradiction
-spans (2 restatements of "claim A", 2 of "claim B"). The regular facts
-trace Ava's career from Contoso Systems (2019) through Beta LLC, her
-accounts, an ongoing set of health conditions and medications, stated
-preferences, real commitments and deadlines, her core relationships, her
-project history, things she has said in meetings, and recurring costs.
+44 spans per family = 20 "regular" (5 facts x 4 original T1.14 phrasings,
+the train pool) + 20 "extra" (T1.32: the same 5 facts x 4 NEW phrasings,
+entirely held out) + 4 contradiction spans (2 restatements of "claim A", 2
+of "claim B", never held out). The regular facts trace Ava's career from
+Contoso Systems (2019) through Beta LLC, her accounts, an ongoing set of
+health conditions and medications, stated preferences, real commitments
+and deadlines, her core relationships, her project history, things she
+has said in meetings, and recurring costs. T1.32's extra phrasings widen
+the document-type diversity for the same 5 facts (insurance forms,
+patient portals, OKR docs, reimbursement requests, and more) on top of
+T1.14's original four (plain statement, formal record, chat/email, bio).
 
 Several of the 13 contradiction pairs are deliberately clustered around
 the same month (February/March 2026) as a single plausible incident: a
@@ -121,6 +136,10 @@ contradictory quote (`said`), and an invoice-vs-ledger cost disagreement
    real label (`Split.Filter` would otherwise silently ignore a typo'd
    entry instead of erroring), and every family has at least one held-out
    span.
+5a. **Every family has >= 20 held-out spans** (T1.32,
+   `TestAvaCorpusHeldOutMeetsT132Floor`) -- the statistical floor a
+   bootstrap recall confidence interval needs to be meaningful (see
+   above); a weaker floor than "at least one" (item 5).
 6. **>= 10 contradiction pairs exist**
    (`TestAvaCorpusContradictionPairsMeetFloor`) -- this corpus embeds 13,
    one per predicate family.

@@ -1,0 +1,8 @@
+span: In her conference speaker bio, Ava lists Initech as where she currently works.
+expected:
+    predicate: works_at
+    object: initech
+    valid_from: 2021-01
+    valid_to: 2022-06
+labeler: human-reviewer
+adjudicated: true

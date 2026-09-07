@@ -1,9 +1,8 @@
-span: Ava's new February 2026 email signature reads "Ava Standardo, Engineering Manager."
+span: In a project kickoff doc, Ava is credited as the QA Analyst.
 expected:
     predicate: has_role
-    object: engineering-manager
-    valid_from: 2026-02
+    object: qa-analyst
+    valid_from: 2019-01
+    valid_to: 2020-12
 labeler: human-reviewer
 adjudicated: true
-contradiction_pair_id: ava-has_role-conflict
-contradiction_role: b

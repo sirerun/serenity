@@ -1,0 +1,6 @@
+span: A colleague's calendar invite note reminds the team Ava prefers oat milk.
+expected:
+    predicate: prefers
+    object: oat-milk
+labeler: model-a
+adjudicated: false

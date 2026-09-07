@@ -1,0 +1,6 @@
+span: Ava's team onboarding doc notes that she prefers oat milk.
+expected:
+    predicate: prefers
+    object: oat-milk
+labeler: model-a
+adjudicated: false

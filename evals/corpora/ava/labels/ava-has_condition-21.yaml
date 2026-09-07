@@ -1,9 +1,7 @@
-span: Ava's physical therapy chart lists her lower back strain as still active in February 2026.
+span: Ava's insurance claim form lists seasonal allergies as a pre-existing condition.
 expected:
     predicate: has_condition
-    object: lower-back-strain-active
-    valid_from: 2026-02
+    object: seasonal-allergies
+    valid_from: 2015-04
 labeler: human-reviewer
 adjudicated: true
-contradiction_pair_id: ava-has_condition-conflict
-contradiction_role: a

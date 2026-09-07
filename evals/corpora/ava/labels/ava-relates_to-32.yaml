@@ -1,0 +1,7 @@
+span: A hospital intake form names Ava's best friend as Theo Kim.
+expected:
+    predicate: relates_to
+    object: theo-kim
+    valid_from: 2010-09
+labeler: model-b
+adjudicated: false
