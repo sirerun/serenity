@@ -1,9 +1,7 @@
-span: Ava's March 2026 message to the on-call channel commits to an April cutover for the Postgres migration instead.
+span: A follow-up email from Ava confirms she committed to shipping the Q3 report by the end of the month.
 expected:
     predicate: committed_to
-    object: migrate-postgres-delay-to-april
-    valid_from: 2026-03
+    object: ship-q3-report
+    valid_from: 2026-07
 labeler: human-reviewer
 adjudicated: true
-contradiction_pair_id: ava-committed_to-conflict
-contradiction_role: b

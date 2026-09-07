@@ -1,0 +1,7 @@
+span: Ava's insurance claim form lists chronic migraine as a pre-existing condition.
+expected:
+    predicate: has_condition
+    object: chronic-migraine
+    valid_from: 2020-06
+labeler: model-b
+adjudicated: false

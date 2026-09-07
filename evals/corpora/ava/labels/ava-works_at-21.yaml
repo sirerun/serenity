@@ -1,9 +1,8 @@
-span: As of February 2026, Ava Standardo's HR record still lists Acme Corp as her employer.
+span: A February 2026 badge-system export lists Ava Standardo's employer as Contoso Systems.
 expected:
     predicate: works_at
-    object: acme-corp
-    valid_from: 2026-02
+    object: contoso-systems
+    valid_from: 2019-01
+    valid_to: 2020-12
 labeler: human-reviewer
 adjudicated: true
-contradiction_pair_id: ava-works_at-conflict
-contradiction_role: a

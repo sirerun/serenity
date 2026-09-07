@@ -1,0 +1,7 @@
+span: A reminder in Ava's task app flags her passport renewal as due 2026-09-01.
+expected:
+    predicate: deadline_on
+    object: "2026-09-01"
+    valid_from: 2026-09
+labeler: model-b
+adjudicated: false

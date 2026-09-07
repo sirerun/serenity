@@ -1,0 +1,8 @@
+span: In her conference speaker bio, Ava lists Northwind Traders as where she currently works.
+expected:
+    predicate: works_at
+    object: northwind-traders
+    valid_from: 2024-01
+    valid_to: 2025-05
+labeler: model-b
+adjudicated: false

@@ -1,0 +1,7 @@
+span: Ava's manager's meeting notes list the security audit response as due 2026-06-10.
+expected:
+    predicate: deadline_on
+    object: "2026-06-10"
+    valid_from: 2026-06
+labeler: human-reviewer
+adjudicated: true

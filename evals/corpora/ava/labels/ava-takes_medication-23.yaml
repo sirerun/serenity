@@ -1,9 +1,7 @@
-span: Ava told her therapist in February 2026 that she had stopped taking sertraline entirely.
+span: Ava's patient portal medication list includes Zyrtec daily.
 expected:
     predicate: takes_medication
-    object: sertraline-discontinued
-    valid_from: 2026-02
+    object: zyrtec
+    valid_from: 2016-01
 labeler: model-b
-adjudicated: true
-contradiction_pair_id: ava-takes_medication-conflict
-contradiction_role: b
+adjudicated: false

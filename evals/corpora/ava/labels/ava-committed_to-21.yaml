@@ -1,9 +1,7 @@
-span: Ava committed in a March 2026 planning doc to cutting over the Postgres migration by the end of March.
+span: Ava's 1:1 notes record her commitment to shipping the Q3 report by the end of the month.
 expected:
     predicate: committed_to
-    object: migrate-postgres-end-of-march
-    valid_from: 2026-03
+    object: ship-q3-report
+    valid_from: 2026-07
 labeler: human-reviewer
 adjudicated: true
-contradiction_pair_id: ava-committed_to-conflict
-contradiction_role: a

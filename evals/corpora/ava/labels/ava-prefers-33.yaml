@@ -1,0 +1,6 @@
+span: Ava's team onboarding doc notes that she prefers a standing desk.
+expected:
+    predicate: prefers
+    object: standing-desk
+labeler: human-reviewer
+adjudicated: true

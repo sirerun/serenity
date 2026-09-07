@@ -1,0 +1,6 @@
+span: Ava's assistant's briefing notes mention she prefers oat milk.
+expected:
+    predicate: prefers
+    object: oat-milk
+labeler: human-reviewer
+adjudicated: true

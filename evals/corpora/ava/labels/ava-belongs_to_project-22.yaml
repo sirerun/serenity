@@ -1,9 +1,8 @@
-span: The Beacon redesign's February 2026 contributor list still carries Ava's name.
+span: A retro doc credits Ava as a contributor to Project Lighthouse.
 expected:
     predicate: belongs_to_project
-    object: beacon-redesign
-    valid_from: 2026-02
+    object: project-lighthouse
+    valid_from: 2024-02
+    valid_to: 2024-11
 labeler: model-a
-adjudicated: true
-contradiction_pair_id: ava-belongs_to_project-conflict
-contradiction_role: a
+adjudicated: false

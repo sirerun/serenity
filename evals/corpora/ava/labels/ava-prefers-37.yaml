@@ -1,0 +1,6 @@
+span: Ava's team onboarding doc notes that she prefers remote work on Fridays.
+expected:
+    predicate: prefers
+    object: remote-fridays
+labeler: model-a
+adjudicated: false

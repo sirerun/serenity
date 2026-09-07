@@ -1,0 +1,8 @@
+span: The team wiki's org page shows Ava's role as Senior Backend Engineer.
+expected:
+    predicate: has_role
+    object: senior-backend-engineer
+    valid_from: 2022-07
+    valid_to: 2023-12
+labeler: human-reviewer
+adjudicated: true

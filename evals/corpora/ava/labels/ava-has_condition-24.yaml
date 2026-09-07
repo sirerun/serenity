@@ -1,9 +1,7 @@
-span: Ava's February 2026 physical exam notes close out the lower back strain as resolved.
+span: A referral letter from Ava's primary care doctor cites seasonal allergies.
 expected:
     predicate: has_condition
-    object: lower-back-strain-resolved
-    valid_from: 2026-02
+    object: seasonal-allergies
+    valid_from: 2015-04
 labeler: human-reviewer
 adjudicated: true
-contradiction_pair_id: ava-has_condition-conflict
-contradiction_role: b

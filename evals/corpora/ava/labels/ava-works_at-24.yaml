@@ -1,9 +1,8 @@
-span: Beta LLC's February 2026 new-hire welcome email addresses Ava Standardo as its newest employee.
+span: Ava's benefits enrollment form names Contoso Systems as her employer.
 expected:
     predicate: works_at
-    object: beta-llc
-    valid_from: 2026-02
+    object: contoso-systems
+    valid_from: 2019-01
+    valid_to: 2020-12
 labeler: human-reviewer
 adjudicated: true
-contradiction_pair_id: ava-works_at-conflict
-contradiction_role: b

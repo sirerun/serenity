@@ -1,0 +1,7 @@
+span: Ava's follow-up Slack message after the vendor sync says the vendor's SLA response times are unacceptable.
+expected:
+    predicate: said
+    object: vendor-sla-unacceptable
+    valid_from: 2026-03
+labeler: model-b
+adjudicated: false

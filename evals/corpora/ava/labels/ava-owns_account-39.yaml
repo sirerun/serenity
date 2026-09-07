@@ -1,0 +1,7 @@
+span: Ava's estate-planning worksheet lists a Coinbase wallet among her assets.
+expected:
+    predicate: owns_account
+    object: coinbase-wallet
+    valid_from: 2022-04
+labeler: human-reviewer
+adjudicated: true

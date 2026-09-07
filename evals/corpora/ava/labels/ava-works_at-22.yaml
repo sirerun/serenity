@@ -1,9 +1,8 @@
-span: Payroll's February 2026 export still runs Ava Standardo's paycheck through Acme Corp.
+span: Ava's pay stub identifies her employer as Contoso Systems.
 expected:
     predicate: works_at
-    object: acme-corp
-    valid_from: 2026-02
+    object: contoso-systems
+    valid_from: 2019-01
+    valid_to: 2020-12
 labeler: model-a
-adjudicated: true
-contradiction_pair_id: ava-works_at-conflict
-contradiction_role: a
+adjudicated: false

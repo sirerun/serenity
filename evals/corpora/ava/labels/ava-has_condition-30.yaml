@@ -1,0 +1,7 @@
+span: In a note to HR requesting accommodations, Ava mentioned chronic migraine.
+expected:
+    predicate: has_condition
+    object: chronic-migraine
+    valid_from: 2020-06
+labeler: human-reviewer
+adjudicated: true

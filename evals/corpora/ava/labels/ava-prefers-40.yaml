@@ -1,0 +1,6 @@
+span: A colleague's calendar invite note reminds the team Ava prefers remote work on Fridays.
+expected:
+    predicate: prefers
+    object: remote-fridays
+labeler: model-a
+adjudicated: false

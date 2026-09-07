@@ -1,9 +1,7 @@
-span: Ava's March 2026 sprint plan pins the Postgres migration cutover to end-of-month.
+span: In a status update, Ava said she is committed to shipping the Q3 report by the end of the month.
 expected:
     predicate: committed_to
-    object: migrate-postgres-end-of-march
-    valid_from: 2026-03
+    object: ship-q3-report
+    valid_from: 2026-07
 labeler: model-a
-adjudicated: true
-contradiction_pair_id: ava-committed_to-conflict
-contradiction_role: a
+adjudicated: false

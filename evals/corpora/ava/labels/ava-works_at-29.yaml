@@ -1,0 +1,8 @@
+span: A February 2026 badge-system export lists Ava Standardo's employer as Globex Corporation.
+expected:
+    predicate: works_at
+    object: globex-corporation
+    valid_from: 2022-07
+    valid_to: 2023-12
+labeler: model-b
+adjudicated: false

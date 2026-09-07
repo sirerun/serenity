@@ -1,0 +1,7 @@
+span: In a chat with IT, Ava confirmed she still has a Fidelity 401k account.
+expected:
+    predicate: owns_account
+    object: fidelity-401k
+    valid_from: 2019-05
+labeler: model-a
+adjudicated: false

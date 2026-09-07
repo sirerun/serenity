@@ -1,0 +1,7 @@
+span: Ava's holiday card list includes her therapist, Dr. Novak.
+expected:
+    predicate: relates_to
+    object: dr-novak
+    valid_from: 2021-10
+labeler: human-reviewer
+adjudicated: true

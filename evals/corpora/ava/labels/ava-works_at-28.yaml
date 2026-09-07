@@ -1,0 +1,8 @@
+span: Ava's benefits enrollment form names Initech as her employer.
+expected:
+    predicate: works_at
+    object: initech
+    valid_from: 2021-01
+    valid_to: 2022-06
+labeler: model-a
+adjudicated: false

@@ -1,0 +1,7 @@
+span: A support ticket Ava filed mentions her Coinbase wallet.
+expected:
+    predicate: owns_account
+    object: coinbase-wallet
+    valid_from: 2022-04
+labeler: model-b
+adjudicated: false

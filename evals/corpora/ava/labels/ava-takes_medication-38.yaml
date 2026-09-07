@@ -1,0 +1,7 @@
+span: In a text to her sister, Ava mentioned she just refilled melatonin nightly.
+expected:
+    predicate: takes_medication
+    object: melatonin
+    valid_from: 2023-02
+labeler: model-b
+adjudicated: false

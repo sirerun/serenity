@@ -1,9 +1,8 @@
-span: Ava Standardo joined Beta LLC in February 2026 as her new employer.
+span: In her conference speaker bio, Ava lists Contoso Systems as where she currently works.
 expected:
     predicate: works_at
-    object: beta-llc
-    valid_from: 2026-02
+    object: contoso-systems
+    valid_from: 2019-01
+    valid_to: 2020-12
 labeler: model-b
-adjudicated: true
-contradiction_pair_id: ava-works_at-conflict
-contradiction_role: b
+adjudicated: false

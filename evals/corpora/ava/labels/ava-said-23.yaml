@@ -1,9 +1,7 @@
-span: In a March 2026 Slack message, Ava said the Postgres migration would slip to April.
+span: Ava's follow-up Slack message after the Tuesday standup says the deploy window should move to Thursday.
 expected:
     predicate: said
-    object: migration-ships-april
-    valid_from: 2026-03
+    object: deploy-window-thursday
+    valid_from: 2026-05
 labeler: model-b
-adjudicated: true
-contradiction_pair_id: ava-said-conflict
-contradiction_role: b
+adjudicated: false

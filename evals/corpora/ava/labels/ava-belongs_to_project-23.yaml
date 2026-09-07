@@ -1,9 +1,8 @@
-span: A February 2026 org update reassigned Ava fully to Project Anchorpoint, replacing her Beacon redesign work.
+span: Ava's calendar invite series is titled after Project Lighthouse.
 expected:
     predicate: belongs_to_project
-    object: project-anchorpoint
-    valid_from: 2026-02
+    object: project-lighthouse
+    valid_from: 2024-02
+    valid_to: 2024-11
 labeler: model-b
-adjudicated: true
-contradiction_pair_id: ava-belongs_to_project-conflict
-contradiction_role: b
+adjudicated: false

@@ -1,9 +1,6 @@
-span: As of February 2026, Ava's IDE settings sync still shows VS Code as her preferred editor.
+span: Ava's team onboarding doc notes that she prefers dark roast coffee.
 expected:
     predicate: prefers
-    object: vs-code
-    valid_from: 2026-02
+    object: dark-roast-coffee
 labeler: human-reviewer
 adjudicated: true
-contradiction_pair_id: ava-prefers-conflict
-contradiction_role: a

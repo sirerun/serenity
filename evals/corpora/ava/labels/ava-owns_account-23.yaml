@@ -1,9 +1,7 @@
-span: A February 2026 closure notice confirms Ava's Chase checking account was closed and no longer exists.
+span: Ava's estate-planning worksheet lists a Chase checking account among her assets.
 expected:
     predicate: owns_account
-    object: chase-checking-closed
-    valid_from: 2026-02
+    object: chase-checking
+    valid_from: 2018-03
 labeler: model-b
-adjudicated: true
-contradiction_pair_id: ava-owns_account-conflict
-contradiction_role: b
+adjudicated: false

@@ -1,9 +1,7 @@
-span: The HR system's March 2026 task list still shows Ava's performance review due 2026-03-15.
+span: In a status email, Ava confirmed the Q3 report is due 2026-07-31.
 expected:
     predicate: deadline_on
-    object: "2026-03-15"
-    valid_from: 2026-03
+    object: "2026-07-31"
+    valid_from: 2026-07
 labeler: model-a
-adjudicated: true
-contradiction_pair_id: ava-deadline_on-conflict
-contradiction_role: a
+adjudicated: false

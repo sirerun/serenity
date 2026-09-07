@@ -1,0 +1,7 @@
+span: Ava's tax documents reference a Fidelity 401k account under her name.
+expected:
+    predicate: owns_account
+    object: fidelity-401k
+    valid_from: 2019-05
+labeler: model-a
+adjudicated: false

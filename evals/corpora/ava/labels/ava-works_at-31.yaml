@@ -1,0 +1,8 @@
+span: In her conference speaker bio, Ava lists Globex Corporation as where she currently works.
+expected:
+    predicate: works_at
+    object: globex-corporation
+    valid_from: 2022-07
+    valid_to: 2023-12
+labeler: model-a
+adjudicated: false
