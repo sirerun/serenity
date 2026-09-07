@@ -166,7 +166,7 @@ gap, fixed same day) -- v0.1.0 itself was left untouched, not retagged.
 - [x] T2.6 Expiry sweeper: pending > 14d (per kind) -> deferred; 3 cycles -> parked; resurface once on new evidence (merged PR #85, 2026-09-07)
 - [x] T2.8 Two-client dispose race property test (merged PR #84, 2026-09-07)
 - [x] T2.11 Ladder calibration sweep `internal/ladder/calibrate.go` + `evals/calibration/` (merged PR #91, 2026-09-07)
-- [ ] T2.13 Entity resolution `internal/entities`: alias match, embedding similarity within type, undoable merge event, split, ambiguous -> disposition
+- [x] T2.13 Entity resolution `internal/entities`: alias match, embedding similarity within type, undoable merge event, split, ambiguous -> disposition (PR TBD, 2026-09-07, see docs/plans/E2-m2-reconcile.md and docs/roadmap.md for detail)
 - [ ] T2.15 Queue SLOs (`internal/queue/slo.go`) into `serenity status`
 
 ### Wave 2c: E2 write paths and inbox (6 agents)

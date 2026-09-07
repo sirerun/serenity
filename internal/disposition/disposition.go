@@ -1,8 +1,9 @@
 // Package disposition implements the DISPOSITION queue (RFC 0001 §8.2,
 // §10.2, §10.3, ADR 004): the human-in-the-loop approval queue that every
 // consequential machine proposal -- a reconcile A/B pair, a precept draft,
-// an effect request, a distill candidate, a source tombstone cascade, or a
-// dirty-tree conflict -- lands in before it can change canonical state.
+// an effect request, a distill candidate, a source tombstone cascade, a
+// dirty-tree conflict, or an ambiguous entity-merge candidate -- lands in
+// before it can change canonical state.
 //
 // disposition_items and disposition_history are runtime-only state (RFC §7
 // preamble: "DB-only by design, enumerated in an allowlist"), seeded as
@@ -44,6 +45,16 @@ const (
 	KindDistill      Kind = "distill"
 	KindTombstone    Kind = "tombstone"
 	KindDirtyEdit    Kind = "dirty_edit"
+	// KindEntityMerge is an ambiguous entity-merge candidate awaiting human
+	// review (internal/entities, T2.13, RFC 0001 §10.5: "Staged: exact/alias
+	// match -> embedding similarity within type (auto-merge with undoable
+	// merge event + audit trail) -> ambiguous cases as low-priority
+	// disposition items"). A pair whose embedding similarity falls short of
+	// the auto-merge threshold but is too close to ignore lands here instead
+	// of being merged; accept/reject is a human call, not this package's --
+	// internal/entities defines the payload shape and never auto-applies a
+	// merge for an item of this kind.
+	KindEntityMerge Kind = "entity_merge"
 )
 
 // State enumerates disposition item lifecycle states (RFC 0001 §8.2/ADR
