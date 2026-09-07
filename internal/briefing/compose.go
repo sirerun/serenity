@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/sirerun/serenity/internal/dira/ledger"
+	"github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/queue"
@@ -25,21 +27,28 @@ const DefaultWordBudget = 800
 // shape queue.Config and spend.Config already carry.
 const DefaultMovedForwardLookback = 24 * time.Hour
 
-// Config holds Compose's two policy numbers.
+// Config holds Compose's policy numbers.
 type Config struct {
 	WordBudget           int
 	MovedForwardLookback time.Duration
+	// OrphanLookback bounds "Drift" to activity created within this long
+	// of now. Zero means direction.DefaultOrphanLookback (RFC 0001
+	// §10.4's own "weekly").
+	OrphanLookback time.Duration
 }
 
 // DefaultConfig returns RFC 0001 §7's own word cap and this task's own
 // disclosed 24h Moved-forward lookback.
 func DefaultConfig() Config {
-	return Config{WordBudget: DefaultWordBudget, MovedForwardLookback: DefaultMovedForwardLookback}
+	return Config{WordBudget: DefaultWordBudget, MovedForwardLookback: DefaultMovedForwardLookback, OrphanLookback: direction.DefaultOrphanLookback}
 }
 
 func (c Config) orDefault() Config {
 	if c.WordBudget <= 0 {
 		c.WordBudget = DefaultWordBudget
+	}
+	if c.OrphanLookback <= 0 {
+		c.OrphanLookback = direction.DefaultOrphanLookback
 	}
 	if c.MovedForwardLookback <= 0 {
 		c.MovedForwardLookback = DefaultMovedForwardLookback
@@ -75,13 +84,15 @@ func (c Config) orDefault() Config {
 // wiring of T4.10's own disclosed gap ("the briefing's Watched section
 // is untouched since internal/briefing (T2.17) has not shipped yet").
 //
-// Drift is left empty: T3.9 (orphan detector, RFC 0001 §10.4 "weekly:
+// Drift sources direction.DetectOrphans (T3.9, RFC 0001 §10.4 "weekly:
 // activity with no derivation edge to an active intent -> briefing Drift
-// section") has not shipped in this codebase yet (deps: [T3.3, T2.17,
-// T2.19], still open), so there is nothing to source it from -- disclosed,
-// not built here, the same "package-complete, one section not yet wired
-// because its own upstream hasn't shipped" shape Watched itself carried
-// until this task closed it.
+// section") over dirStore, one line per orphaned entry -- the first live
+// wiring of T3.9's own detector, the same "package shipped standalone,
+// wired the moment its own upstream section exists" shape T4.10's Watched
+// carried until this package closed it. dirStore may be nil: no dira
+// ledger store wired in yet at a given call site leaves Drift empty
+// exactly as before, rather than erroring -- the same disclosed-gap
+// tolerance Watched itself needed before T4.10 existed.
 //
 // T2.14 (consolidate)'s role here is establishing that the brain Compose
 // renders over has already had its entity summary fences and shard heads
@@ -96,7 +107,7 @@ func (c Config) orDefault() Config {
 // -- disclosed: Compose's golden test does not itself exercise the
 // consolidate step, only the disposition/queue/spend state a real nightly
 // run would leave behind by the time briefing rendering's turn comes.
-func Compose(ctx context.Context, eng *index.SQLite, cfg Config, now time.Time) (Briefing, error) {
+func Compose(ctx context.Context, eng *index.SQLite, dirStore ledger.Store, cfg Config, now time.Time) (Briefing, error) {
 	cfg = cfg.orDefault()
 	ds := disposition.NewStore(eng)
 
@@ -116,12 +127,21 @@ func Compose(ctx context.Context, eng *index.SQLite, cfg Config, now time.Time) 
 		return Briefing{}, fmt.Errorf("briefing: read spend rows: %w", err)
 	}
 
+	var drift []Item
+	if dirStore != nil {
+		orphans, err := direction.DetectOrphans(ctx, dirStore, now, cfg.OrphanLookback)
+		if err != nil {
+			return Briefing{}, fmt.Errorf("briefing: detect orphans: %w", err)
+		}
+		drift = driftItems(orphans)
+	}
+
 	sections := []Section{
 		{Name: SectionBlocked, Items: blockedItems(snap, qcfg)},
 		{Name: SectionNeedsYou, Items: needsYouItems(items, now)},
 		{Name: SectionMovedForward, Items: movedForwardItems(items, now, cfg.MovedForwardLookback)},
 		{Name: SectionWatched, Items: watchedItems(spendRows, now)},
-		{Name: SectionDrift, Items: nil},
+		{Name: SectionDrift, Items: drift},
 	}
 	return Pack(sections, cfg.WordBudget, WordEstimator), nil
 }
@@ -172,4 +192,12 @@ func watchedItems(rows []index.SpendRow, now time.Time) []Item {
 	return []Item{{Text: fmt.Sprintf(
 		"spend $%.2f month-to-date, projected $%.2f of $%.2f ceiling",
 		proj.MonthToDateUSD, proj.ProjectedUSD, proj.CeilingUSD)}}
+}
+
+func driftItems(orphans []direction.Orphan) []Item {
+	var out []Item
+	for _, o := range orphans {
+		out = append(out, Item{Text: fmt.Sprintf("%s %s %q has no derivation edge to an active intent", o.Kind, o.ID, o.Title)})
+	}
+	return out
 }
