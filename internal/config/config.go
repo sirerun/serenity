@@ -12,6 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/sirerun/serenity/internal/domain"
+	"github.com/sirerun/serenity/internal/ladder"
 )
 
 // FileName is the canonical config file name at the brain repo root.
@@ -78,6 +79,20 @@ type Config struct {
 	Server     Server            `yaml:"server,omitempty"`
 	Families   map[string]Family `yaml:"families"`
 	Connectors map[string]any    `yaml:"connectors,omitempty"`
+	// Ladder is the earned-automation ladder policy object (RFC §10.3,
+	// T2.10). config.Default seeds the RFC's published priors; T2.11's
+	// calibration sweep replaces them with evidence-backed defaults before
+	// launch. A brain repo created before T2.10 has no "ladder:" key in its
+	// serenity.yml at all, so Load leaves this at its Go zero value on
+	// those brains -- every field 0/empty, which internal/ladder's mandatory
+	// correlation-guard validation (ParseConfig) never runs against here,
+	// since plain per-field YAML decoding (not ParseConfig) is what Load
+	// uses. A zero-value Ladder is inert: T2.2's reconcile engine (not yet
+	// built) is expected to treat a config whose correlation guards are
+	// both 0 as "ladder not configured for this brain" rather than feeding
+	// it to ladder.NewEngine, the same disclosed-scope pattern ADR 013 used
+	// for the Provider field's empty-string fallback.
+	Ladder ladder.Config `yaml:"ladder,omitempty"`
 }
 
 // Default returns the install-time seed: the controlled predicate
@@ -114,6 +129,7 @@ func Default() *Config {
 			"said":               {Tier: domain.TierFence, HalfLifeDays: 365},
 			"costs":              {Tier: domain.TierShard, HalfLifeDays: 30},
 		},
+		Ladder: *ladder.DefaultConfig(),
 	}
 }
 
