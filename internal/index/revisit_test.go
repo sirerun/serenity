@@ -5,15 +5,13 @@ import (
 	"encoding/json"
 	"testing"
 	"time"
-
-	"github.com/sirerun/serenity/internal/direction"
 )
 
 func TestRevisitRollsBackCardAndCheckpoint(t *testing.T) {
 	ctx := context.Background()
 	eng := openDispositionTestDB(t)
 	now := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
-	request := direction.RevisitRequest{ID: "revisit:rollback", Condition: direction.RevisitCondition{Timed: true, After: now.Add(-time.Hour)}, Payload: json.RawMessage(`{"action":"review"}`), Now: now}
+	request := RevisitRequest{ID: "revisit:rollback", Condition: RevisitCondition{Timed: true, After: now.Add(-time.Hour)}, NewItem: revisitTestItem, Outstanding: revisitTestOutstanding, Now: now}
 	// Fail after the card INSERT, when the checkpoint UPDATE is attempted.
 	// A rollback must remove both the card and the initial checkpoint shell.
 	_, err := eng.db.ExecContext(ctx, `CREATE TRIGGER reject_revisit_checkpoint BEFORE UPDATE ON caches BEGIN SELECT RAISE(ABORT, 'injected checkpoint failure'); END`)
@@ -56,7 +54,7 @@ func TestRevisitRejectsCorruptCheckpointWithoutCard(t *testing.T) {
 	if _, err := eng.db.ExecContext(ctx, `INSERT INTO caches(id,payload) VALUES(?,?)`, id, []byte(`broken-json`)); err != nil {
 		t.Fatal(err)
 	}
-	request := direction.RevisitRequest{ID: id, Condition: direction.RevisitCondition{Timed: true, After: now}, Payload: json.RawMessage(`{"action":"review"}`), Now: now}
+	request := RevisitRequest{ID: id, Condition: RevisitCondition{Timed: true, After: now}, NewItem: revisitTestItem, Outstanding: revisitTestOutstanding, Now: now}
 	if created, err := eng.Revisit(ctx, request); err == nil || created {
 		t.Fatalf("corrupt state accepted: created=%v err=%v", created, err)
 	}
@@ -71,4 +69,15 @@ func TestRevisitRejectsCorruptCheckpointWithoutCard(t *testing.T) {
 	if stored != "broken-json" {
 		t.Fatalf("corrupt state silently replaced: %q", stored)
 	}
+}
+
+func revisitTestItem(id string, now time.Time) ([]byte, error) {
+	return json.Marshal(map[string]any{"id": id, "state": "pending", "created_at": now})
+}
+func revisitTestOutstanding(data []byte) (bool, error) {
+	var item struct {
+		State string `json:"state"`
+	}
+	err := json.Unmarshal(data, &item)
+	return item.State != "disposed", err
 }

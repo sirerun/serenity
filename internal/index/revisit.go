@@ -8,10 +8,24 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"github.com/sirerun/serenity/internal/direction"
-	"github.com/sirerun/serenity/internal/disposition"
 )
+
+// RevisitCondition selects a timed deadline or an exact claim-state key.
+type RevisitCondition struct {
+	Timed bool
+	After time.Time
+	Key   []string
+}
+
+// RevisitRequest supplies application-owned item encoding. Callbacks run inside
+// the transaction and must not perform database I/O or other side effects.
+type RevisitRequest struct {
+	ID          string
+	Condition   RevisitCondition
+	Now         time.Time
+	NewItem     func(id string, now time.Time) ([]byte, error)
+	Outstanding func(payload []byte) (bool, error)
+}
 
 // RevisitCheckpoint is runtime delivery state, preserved by index rebuild.
 type RevisitCheckpoint struct {
@@ -39,8 +53,8 @@ func (s *SQLite) RevisitCheckpoint(ctx context.Context, id string) (RevisitCheck
 // Revisit serializes observation and delivery in a transaction. The first SQL
 // statement acquires SQLite's writer lock before any reads, including across
 // independent processes, avoiding a deferred-transaction upgrade race.
-func (s *SQLite) Revisit(ctx context.Context, request direction.RevisitRequest) (bool, error) {
-	if request.ID == "" || !json.Valid(request.Payload) || (request.Condition.Timed == (len(request.Condition.Key) > 0)) {
+func (s *SQLite) Revisit(ctx context.Context, request RevisitRequest) (bool, error) {
+	if request.ID == "" || request.NewItem == nil || request.Outstanding == nil || (request.Condition.Timed == (len(request.Condition.Key) > 0)) {
 		return false, errors.New("invalid revisit request")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -107,11 +121,10 @@ func (s *SQLite) Revisit(ctx context.Context, request direction.RevisitRequest) 
 		if err = tx.QueryRowContext(ctx, `SELECT payload FROM disposition_items WHERE id=?`, cp.ItemID).Scan(&itemData); err != nil {
 			return false, fmt.Errorf("read revisit review: %w", err)
 		}
-		var item disposition.Item
-		if err = json.Unmarshal(itemData, &item); err != nil {
-			return false, err
+		outstanding, err = request.Outstanding(itemData)
+		if err != nil {
+			return false, fmt.Errorf("decode revisit review: %w", err)
 		}
-		outstanding = item.State != disposition.StateDisposed
 	}
 	created := due && eligible && !outstanding
 	if created {
@@ -121,12 +134,11 @@ func (s *SQLite) Revisit(ctx context.Context, request direction.RevisitRequest) 
 		cp.Fingerprint = fingerprint
 		cp.PendingChange = false
 		cp.Initialized = true
-		item := disposition.Item{ID: cp.ItemID, Kind: disposition.KindPreceptDraft, State: disposition.StatePending, Payload: request.Payload, CreatedAt: request.Now.UTC(), UpdatedAt: request.Now.UTC()}
-		itemData, err := json.Marshal(item)
+		itemData, err := request.NewItem(cp.ItemID, request.Now.UTC())
 		if err != nil {
 			return false, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO disposition_items(id,payload) VALUES(?,?)`, item.ID, itemData); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO disposition_items(id,payload) VALUES(?,?)`, cp.ItemID, itemData); err != nil {
 			return false, err
 		}
 	}

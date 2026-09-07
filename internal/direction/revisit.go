@@ -11,14 +11,12 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/dira/ledger"
+	"github.com/sirerun/serenity/internal/disposition"
+	"github.com/sirerun/serenity/internal/index"
 )
 
 // RevisitCondition is an opt-in deterministic alternative revisit condition.
-type RevisitCondition struct {
-	Timed bool
-	After time.Time
-	Key   []string
-}
+type RevisitCondition = index.RevisitCondition
 
 // ParseRevisitCondition leaves ordinary dira prose unsupported, not guessed.
 func ParseRevisitCondition(raw string) (RevisitCondition, bool, error) {
@@ -50,12 +48,7 @@ func ParseRevisitCondition(raw string) (RevisitCondition, bool, error) {
 }
 
 // RevisitRequest carries immutable source text and one evaluated condition.
-type RevisitRequest struct {
-	ID        string
-	Condition RevisitCondition
-	Payload   json.RawMessage
-	Now       time.Time
-}
+type RevisitRequest = index.RevisitRequest
 
 // RevisitBackend atomically observes claims and checkpoints a review delivery.
 type RevisitBackend interface {
@@ -107,7 +100,17 @@ func SweepRevisit(ctx context.Context, store ledger.Store, backend RevisitBacken
 			if err != nil {
 				return result, fmt.Errorf("revisit payload: %w", err)
 			}
-			requests = append(requests, RevisitRequest{ID: "revisit:" + hex.EncodeToString(key[:]), Condition: condition, Payload: payload, Now: now.UTC()})
+			requests = append(requests, RevisitRequest{ID: "revisit:" + hex.EncodeToString(key[:]), Condition: condition, Now: now.UTC(),
+				NewItem: func(id string, at time.Time) ([]byte, error) {
+					return json.Marshal(disposition.Item{ID: id, Kind: disposition.KindPreceptDraft, State: disposition.StatePending, Payload: payload, CreatedAt: at, UpdatedAt: at})
+				},
+				Outstanding: func(data []byte) (bool, error) {
+					var item disposition.Item
+					if err := json.Unmarshal(data, &item); err != nil {
+						return false, err
+					}
+					return item.State != disposition.StateDisposed, nil
+				}})
 		}
 	}
 	// Parse all conditions first so a malformed condition cannot partially sweep.
