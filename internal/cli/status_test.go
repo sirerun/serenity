@@ -9,7 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/index"
+	"github.com/sirerun/serenity/internal/providers"
 )
 
 // fakeStatusClock is a settable index.Clock: each seeded job's
@@ -134,6 +136,7 @@ func TestStatusGoldenOutput(t *testing.T) {
 		"connector  imap:jane@example.com status=failed lag=45m0s\n" +
 		"jobs       total=4 running=1 succeeded=2 failed=1 interrupted=0\n" +
 		"spend      calls=2 cost_usd=$0.1255 month_to_date=$0.1255 projected_month=$0.1389 ceiling=$50.00\n" +
+		"queue      depth=0 depth_alert=false p50_age=n/a age_alert=false time_to_dispose=n/a abandonment=n/a\n" +
 		"rebuild    last=10m0s ago took=250ms\n"
 
 	if out.String() != want {
@@ -165,10 +168,63 @@ func TestStatusFreshBrainNoJobsNoRebuild(t *testing.T) {
 		"connector  none configured (no jobs recorded yet)\n",
 		"jobs       total=0 running=0 succeeded=0 failed=0 interrupted=0\n",
 		"spend      calls=0 cost_usd=$0.0000 month_to_date=$0.0000 projected_month=$0.0000 ceiling=$50.00\n",
+		"queue      depth=0 depth_alert=false p50_age=n/a age_alert=false time_to_dispose=n/a abandonment=n/a\n",
 		"rebuild    never (run `serenity sync`)\n",
 	} {
 		if !bytes.Contains(out.Bytes(), []byte(want)) {
 			t.Fatalf("expected fresh-brain status to contain %q, got:\n%s", want, out.String())
 		}
+	}
+}
+
+// TestStatusRendersQueueSLOs is T2.15's own acc-line clause: "status
+// renders depth, p50 age, time-to-dispose, abandonment." internal/queue's
+// own tests (internal/queue/slo_test.go) prove the SLO math; this proves
+// runStatus is actually wired to it end to end -- real disposition items
+// seeded through the same *index.SQLite `serenity status` itself opens
+// (providers.OpenIndex), not a bypassed fixture.
+func TestStatusRendersQueueSLOs(t *testing.T) {
+	requireGit(t)
+	ctx := context.Background()
+	root := t.TempDir()
+
+	var initOut bytes.Buffer
+	if err := runInit(root, &initOut); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
+
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dispStore := disposition.NewStore(eng)
+
+	// One pending item, 6 hours old -- depth=1, p50 age=6h, neither alert
+	// trips (well under the 50-item/3-day thresholds).
+	if _, err := dispStore.Create(ctx, disposition.KindReconcile, nil, "", now.Add(-6*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	// One disposed item that took exactly 30 minutes -- time-to-dispose.
+	item, err := dispStore.Create(ctx, disposition.KindReconcile, nil, "", now.Add(-1*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dispStore.Dispose(ctx, item.ID, disposition.VerdictAccept, nil, "", "human:t", "", now.Add(-30*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := eng.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runStatus(ctx, root, &out, now); err != nil {
+		t.Fatal(err)
+	}
+
+	want := "queue      depth=1 depth_alert=false p50_age=6h0m0s age_alert=false time_to_dispose=30m0s abandonment=0.00\n"
+	if !bytes.Contains(out.Bytes(), []byte(want)) {
+		t.Fatalf("expected status to contain %q, got:\n%s", want, out.String())
 	}
 }

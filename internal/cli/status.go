@@ -14,7 +14,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/sirerun/serenity/internal/config"
+	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/index"
+	"github.com/sirerun/serenity/internal/queue"
 	"github.com/sirerun/serenity/internal/spend"
 )
 
@@ -68,9 +70,43 @@ func runStatus(ctx context.Context, root string, out io.Writer, now time.Time) e
 	}
 	printSpend(out, spendRows, now)
 
+	if err := printQueueSLOs(ctx, out, eng, now); err != nil {
+		return err
+	}
+
 	if err := printRebuildTiming(ctx, out, eng, now); err != nil {
 		return err
 	}
+	return nil
+}
+
+// printQueueSLOs reports the DISPOSITION queue's SLOs (RFC 0001 §7/§16,
+// plan T2.15): depth, p50 pending age, time-to-dispose, and abandonment,
+// each flagged against RFC 0001 §7's own thresholds (depth > 50, p50 age
+// > 3 days). A metric with no data yet (fresh brain, nothing pending, or
+// nothing ever disposed) renders "n/a" rather than a misleading zero --
+// same discipline printRebuildTiming already applies to "never rebuilt".
+func printQueueSLOs(ctx context.Context, out io.Writer, eng *index.SQLite, now time.Time) error {
+	snap, err := queue.Compute(ctx, disposition.NewStore(eng), queue.DefaultConfig(), now)
+	if err != nil {
+		return fmt.Errorf("status: compute queue SLOs: %w", err)
+	}
+
+	p50Age := "n/a"
+	if snap.P50AgeOK {
+		p50Age = snap.P50Age.Round(time.Second).String()
+	}
+	timeToDispose := "n/a"
+	if snap.TimeToDisposeOK {
+		timeToDispose = snap.TimeToDispose.Round(time.Second).String()
+	}
+	abandonment := "n/a"
+	if snap.AbandonmentOK {
+		abandonment = fmt.Sprintf("%.2f", snap.Abandonment)
+	}
+
+	_, _ = fmt.Fprintf(out, "queue      depth=%d depth_alert=%t p50_age=%s age_alert=%t time_to_dispose=%s abandonment=%s\n",
+		snap.Depth, snap.DepthAlert, p50Age, snap.AgeAlert, timeToDispose, abandonment)
 	return nil
 }
 
