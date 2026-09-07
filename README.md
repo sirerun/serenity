@@ -158,6 +158,8 @@ scope and ownership rules.
 - [Design RFC](docs/rfc/0001-serenity.md) — intended behavior and data contracts.
 - [Model providers](docs/providers.md) — configuration and credentials.
 - [Connector guide](docs/connectors/README.md) — supported sources and setup.
+- [Decision reviews](docs/operator/revisit.md) — scheduled reminders when a
+  recorded revisit condition becomes due.
 - [HTTP transport](docs/operator/server.md) — authentication and bind configuration
   for the server implementation.
 - [Threat model](docs/threat-model.md) — trust boundaries and security assumptions.
