@@ -27,7 +27,7 @@ unsupported. A client that cannot use this version should disconnect.
 
 Against a real brain repo, `tools/list` reports all five MEMORY_VERBS v1
 verbs (`internal/server/memory`); see
-[MEMORY_VERBS v1 implementation](../../internal/server/memory/README.md)
+[MEMORY_VERBS v1 implementation](https://github.com/sirerun/serenity/blob/main/internal/server/memory/README.md)
 for their request/response shapes and persistence model. Internal consumers
 can construct an immutable registry with `mcp.New(version, tools)` directly.
 Each tool supplies an object input schema and a handler accepting context
@@ -169,7 +169,7 @@ them is interchangeable with another:
   header (`2025-11-25`).
 - MEMORY_VERBS v1's own domain `protocol_version` integer (currently `1`),
   a field inside a tool's JSON *content* (see
-  [MEMORY_VERBS v1 implementation](../../internal/server/memory/README.md)),
+  [MEMORY_VERBS v1 implementation](https://github.com/sirerun/serenity/blob/main/internal/server/memory/README.md)),
   unrelated to either of the above.
 
 ### Verifying
