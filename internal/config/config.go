@@ -36,6 +36,19 @@ type Models struct {
 	// existing brains are unaffected. BuildEmbeddingRouter never reads
 	// this field: OpenRouter has no embeddings endpoint.
 	Provider string `yaml:"provider,omitempty"`
+	// DisableThinking, when true, asks an OpenAI-compatible chat endpoint
+	// to skip a reasoning-capable model's default "thinking" pass
+	// (SGLang/vLLM's chat_template_kwargs.enable_thinking, sent verbatim
+	// via router.OpenAICompatibleProvider.ExtraBody) for the Extraction
+	// and Composer pins (T1.31; docs/devlog.md 2026-09-06 measures a
+	// 6-15x per-call wall-clock reduction against a live qwen3.8-27b
+	// endpoint, with equivalent extraction quality on the sampled
+	// chunks). Default false so existing brains and real OpenAI/
+	// OpenRouter calls are unaffected -- a real OpenAI/OpenRouter
+	// endpoint does not recognize this field and some reject unknown
+	// top-level fields outright, so this must stay opt-in, never a
+	// default. BuildEmbeddingRouter never reads this field.
+	DisableThinking bool `yaml:"disable_thinking,omitempty"`
 }
 
 // Family declares one predicate family: its storage tier and the

@@ -50,6 +50,62 @@ func TestBuildExtractionRouterOpenRouterProvider(t *testing.T) {
 	}
 }
 
+// TestBuildExtractionRouterDisableThinking covers T1.31: setting
+// models.disable_thinking wires OpenAICompatibleProvider.ExtraBody with
+// the SGLang/vLLM chat_template_kwargs.enable_thinking:false payload,
+// for both the openrouter-selected and substring-inferred local-server
+// paths -- and, the negative-space companion, leaving it unset (the
+// default) leaves ExtraBody nil so existing brains and real OpenAI/
+// OpenRouter calls are unaffected.
+func TestBuildExtractionRouterDisableThinking(t *testing.T) {
+	t.Run("set: ExtraBody carries enable_thinking:false", func(t *testing.T) {
+		t.Setenv("OPENAI_API_KEY", "")
+		t.Setenv("OPENAI_BASE_URL", "http://127.0.0.1:9/v1")
+
+		cfg := &config.Config{
+			Models: config.Models{
+				DisableThinking: true,
+				Extraction:      "qwen3.8-27b@v1",
+			},
+		}
+		r, ok, note := BuildExtractionRouter(cfg, &fakeLedger{})
+		if !ok {
+			t.Fatalf("BuildExtractionRouter ok = false, want true (note: %s)", note)
+		}
+		p, _ := r.Provider(router.TierLocalCheap)
+		oc, ok := p.(*router.OpenAICompatibleProvider)
+		if !ok {
+			t.Fatalf("provider type = %T, want *router.OpenAICompatibleProvider", p)
+		}
+		ctk, ok := oc.ExtraBody["chat_template_kwargs"].(map[string]any)
+		if !ok {
+			t.Fatalf("ExtraBody = %+v, want a chat_template_kwargs map", oc.ExtraBody)
+		}
+		if enable, ok := ctk["enable_thinking"].(bool); !ok || enable {
+			t.Fatalf("enable_thinking = %v, want false", ctk["enable_thinking"])
+		}
+	})
+
+	t.Run("unset (default): ExtraBody stays nil", func(t *testing.T) {
+		t.Setenv("OPENAI_API_KEY", "")
+		t.Setenv("OPENAI_BASE_URL", "http://127.0.0.1:9/v1")
+
+		cfg := &config.Config{Models: config.Models{Extraction: "qwen3.8-27b@v1"}}
+		r, ok, note := BuildExtractionRouter(cfg, &fakeLedger{})
+		if !ok {
+			t.Fatalf("BuildExtractionRouter ok = false, want true (note: %s)", note)
+		}
+		p, _ := r.Provider(router.TierLocalCheap)
+		oc, ok := p.(*router.OpenAICompatibleProvider)
+		if !ok {
+			t.Fatalf("provider type = %T, want *router.OpenAICompatibleProvider", p)
+		}
+		if oc.ExtraBody != nil {
+			t.Fatalf("ExtraBody = %+v, want nil when models.disable_thinking is unset", oc.ExtraBody)
+		}
+	})
+}
+
 // TestBuildComposerRouterOpenRouterProvider mirrors
 // TestBuildExtractionRouterOpenRouterProvider for BuildComposerRouter,
 // which resolves to router.TierJudgment rather than TierLocalCheap.

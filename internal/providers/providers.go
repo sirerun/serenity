@@ -109,7 +109,7 @@ func buildChatProvider(cfg *config.Config, purpose, model, version, skipSuffix s
 		if key == "" {
 			return nil, false, fmt.Sprintf("models.provider is openrouter but OPENROUTER_API_KEY is not set; %s", skipSuffix)
 		}
-		return &router.OpenAICompatibleProvider{BaseURL: openRouterBaseURL, APIKey: key, Model: model, Version: version}, true, ""
+		return &router.OpenAICompatibleProvider{BaseURL: openRouterBaseURL, APIKey: key, Model: model, Version: version, ExtraBody: thinkingExtraBody(cfg)}, true, ""
 	case "", "anthropic", "openai":
 		if strings.Contains(strings.ToLower(model), "claude") {
 			key := os.Getenv("ANTHROPIC_API_KEY")
@@ -123,10 +123,24 @@ func buildChatProvider(cfg *config.Config, purpose, model, version, skipSuffix s
 		if key == "" && baseURL == "" {
 			return nil, false, fmt.Sprintf("models.%s is pinned but neither OPENAI_API_KEY nor OPENAI_BASE_URL (local server) is set; %s", purpose, skipSuffix)
 		}
-		return &router.OpenAICompatibleProvider{APIKey: key, BaseURL: baseURL, Model: model, Version: version}, true, ""
+		return &router.OpenAICompatibleProvider{APIKey: key, BaseURL: baseURL, Model: model, Version: version, ExtraBody: thinkingExtraBody(cfg)}, true, ""
 	default:
 		return nil, false, fmt.Sprintf("models.provider %q is not one of openrouter, anthropic, openai; %s", cfg.Models.Provider, skipSuffix)
 	}
+}
+
+// thinkingExtraBody returns the SGLang/vLLM chat_template_kwargs payload
+// that disables a Qwen3-class model's default reasoning pass (T1.31) when
+// cfg.Models.DisableThinking is set, else nil -- nil means
+// OpenAICompatibleProvider.Send sends a request byte-identical to before
+// this field existed, which matters because a real OpenAI/OpenRouter
+// endpoint (also served by this same adapter) does not know this field
+// and may reject an unrecognized one outright.
+func thinkingExtraBody(cfg *config.Config) map[string]any {
+	if !cfg.Models.DisableThinking {
+		return nil
+	}
+	return map[string]any{"chat_template_kwargs": map[string]any{"enable_thinking": false}}
 }
 
 // splitPin splits a serenity.yml "<model>@<version>" pin into its two
