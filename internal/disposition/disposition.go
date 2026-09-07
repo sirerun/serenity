@@ -143,6 +143,20 @@ type Item struct {
 	// true, enforcing the one-time cap structurally rather than trusting
 	// callers not to invoke it twice.
 	Resurfaced bool `json:"resurfaced,omitempty"`
+
+	// AppliedClaimID is the id of the claim a KindReconcile item's
+	// accept/edit_accept verdict actually wrote to the canonical brain
+	// repo (internal/supersede, T2.3/T2.7), set once RecordResultClaimID
+	// is called after that write succeeds -- "the disposition row
+	// references the new claim id" (T2.7's acc line). It is empty for
+	// every item this package's own Dispose/Create/RouteDistill calls
+	// never write to a brain repo (any non-reconcile kind, a reject or
+	// defer verdict, or a reconcile item nothing has applied yet):
+	// disposition_items/disposition_history remain DB-only runtime state
+	// (package doc comment) regardless of this field's presence -- it is
+	// a cross-reference into the canonical repo's own claim id space, not
+	// a second place canonical state lives.
+	AppliedClaimID string `json:"applied_claim_id,omitempty"`
 }
 
 // HistoryEntry is one append-only disposition_history row (RFC 0001 §8.2:
@@ -419,6 +433,31 @@ func (s *Store) Dispose(ctx context.Context, id string, verdict Verdict, editedP
 		return Result{}, err
 	}
 	return Result{Item: item}, nil
+}
+
+// RecordResultClaimID stamps AppliedClaimID on an already-disposed item
+// once a caller outside this package (internal/supersede, T2.3/T2.7) has
+// actually written the claim id names to the canonical brain repo. It is
+// a separate, later write from Dispose's own -- the disposition_items row
+// changes state (pending -> disposed) the instant a human verdicts it,
+// which can happen before the corresponding brain-repo write completes
+// (a crash, a retry, a batch-applied backlog); this method lets that
+// write's result reach the disposition row whenever it does succeed,
+// without re-running Dispose's own idempotency/already_disposed machinery
+// (id is a fact about a write that already happened, not a new verdict).
+func (s *Store) RecordResultClaimID(ctx context.Context, id, claimID string, now time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, err := s.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	item.AppliedClaimID = claimID
+	item.UpdatedAt = now.UTC()
+	if err := s.put(ctx, item); err != nil {
+		return fmt.Errorf("disposition: record result claim id for %s: %w", id, err)
+	}
+	return nil
 }
 
 // dirtyEditItemID derives a stable id for a dirty_edit item from a T0.4
