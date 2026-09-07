@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/disposition_error.schema.json",
+  "title": "DISPOSITION v1 error envelope",
+  "description": "internal/server/disposition.ProtoError -- the stable machine-checkable error shape every DISPOSITION v1 handler returns on failure.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["error", "message"],
+  "additionalProperties": false,
+  "properties": {
+    "error": {
+      "type": "string",
+      "enum": [
+        "method_not_allowed",
+        "invalid_request",
+        "not_found",
+        "invalid_verdict",
+        "reject_requires_note",
+        "capture_empty",
+        "internal_error"
+      ]
+    },
+    "message": { "type": "string" }
+  }
+}

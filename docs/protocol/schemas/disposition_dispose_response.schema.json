@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/disposition_dispose_response.schema.json",
+  "title": "DISPOSITION v1 dispose response",
+  "description": "internal/server/disposition.DisposeResponse. One result per disposed item -- more than one only when the request named a group_id, each member disposed individually, never as one bulk write.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["results"],
+  "additionalProperties": false,
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["item"],
+        "additionalProperties": false,
+        "description": "internal/server/disposition.DisposeResultWire.",
+        "properties": {
+          "item": { "$ref": "disposition_item.schema.json" },
+          "already_disposed": {
+            "type": "boolean",
+            "description": "True when the item was already disposed before this call; item carries the recorded verdict, not this request's."
+          },
+          "replayed": {
+            "type": "boolean",
+            "description": "True when idempotency_key matched a prior successful call; item is the original result, byte-identical."
+          }
+        }
+      }
+    }
+  }
+}

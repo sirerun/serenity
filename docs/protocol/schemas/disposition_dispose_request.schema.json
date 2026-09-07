@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/disposition_dispose_request.schema.json",
+  "title": "DISPOSITION v1 dispose request",
+  "description": "internal/server/disposition.DisposeRequest (RFC 0001 section 8.2: dispose(item_id | group_id, verdict, edited_payload?, note?, idempotency_key)). Exactly one of item_id/group_id is required at the protocol-semantics level (enforced by the handler, not expressible as a flat json-schema required list here); idempotency_key is required at this wire layer even though the underlying store treats an empty key as no idempotency check.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["verdict", "idempotency_key"],
+  "additionalProperties": false,
+  "properties": {
+    "item_id": { "type": "string" },
+    "group_id": { "type": "string" },
+    "verdict": { "type": "string", "enum": ["accept", "edit_accept", "reject", "defer"] },
+    "edited_payload": {
+      "description": "Opaque JSON payload for an edit_accept verdict -- not constrained here."
+    },
+    "note": { "type": "string", "description": "Required by the store when verdict is reject." },
+    "idempotency_key": { "type": "string" },
+    "actor": { "type": "string" }
+  }
+}

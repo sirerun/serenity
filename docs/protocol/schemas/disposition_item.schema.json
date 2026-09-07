@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/disposition_item.schema.json",
+  "title": "DISPOSITION v1 item",
+  "description": "internal/disposition.Item -- one queued approval item. Shared by list_pending and dispose's own response wire objects, which both embed it verbatim (referenced by $ref, never redeclared).",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["id", "kind", "state", "created_at", "updated_at"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string" },
+    "kind": {
+      "type": "string",
+      "enum": ["reconcile", "precept_draft", "effect", "distill", "tombstone", "dirty_edit", "entity_merge", "compact", "decompose"]
+    },
+    "state": {
+      "type": "string",
+      "enum": ["pending", "deferred", "parked", "disposed"]
+    },
+    "group_id": { "type": "string" },
+    "payload": {
+      "description": "Opaque per-kind JSON payload -- shape depends on kind, not constrained here."
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "defer_count": {
+      "type": "integer",
+      "description": "How many times this item has been deferred."
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["accept", "edit_accept", "reject", "defer"],
+      "description": "Set once State == disposed."
+    },
+    "note": { "type": "string" },
+    "edited_payload": {
+      "description": "Opaque JSON payload attached by an edit_accept verdict -- not constrained here."
+    },
+    "actor": { "type": "string" },
+    "disposed_at": { "type": "string", "format": "date-time" },
+    "idempotency_key": { "type": "string" },
+    "route": {
+      "type": "string",
+      "enum": ["claim-batch", "precept-draft", "note", "trash"],
+      "description": "Set only for a distill item disposed through the capture routing path."
+    },
+    "resurfaced": {
+      "type": "boolean",
+      "description": "True once a parked item has been resurfaced back to pending -- a one-time transition."
+    },
+    "applied_claim_id": {
+      "type": "string",
+      "description": "The claim id a reconcile item's accept/edit_accept verdict wrote to the canonical brain repo, once applied."
+    }
+  }
+}

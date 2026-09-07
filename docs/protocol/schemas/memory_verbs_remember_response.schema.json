@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_verbs_remember_response.schema.json",
+  "title": "MEMORY_VERBS v1 remember response",
+  "description": "internal/server/memory.RememberResponse.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["protocol_version", "id", "status", "status_text", "entity_slug", "valid_until"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 1 },
+    "id": { "type": "string", "description": "Opaque fact id. On status=duplicate this is the EXISTING fact's id." },
+    "status": {
+      "type": "string",
+      "enum": ["inserted", "duplicate", "superseded"],
+      "description": "Branch on THIS, never on status_text."
+    },
+    "status_text": { "type": "string", "description": "Human rendering of status. Display only -- never branch on it." },
+    "entity_slug": { "type": ["string", "null"] },
+    "valid_until": { "type": ["string", "null"], "description": "ISO 8601 or null (never expires)." },
+    "degraded_dedup": {
+      "type": "boolean",
+      "description": "Present (true) when no embedding provider -- near-duplicates may insert."
+    }
+  }
+}

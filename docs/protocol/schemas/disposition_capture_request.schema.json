@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/disposition_capture_request.schema.json",
+  "title": "DISPOSITION v1 capture request",
+  "description": "internal/server/disposition.CaptureRequest (RFC 0001 section 8.2: capture(text | audio_ref, hint?)). At least one of text/audio_ref must be non-empty -- enforced by the handler (coredisp.Capture returns capture_empty otherwise), not expressible as a flat json-schema required list here.",
+  "protocol_version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "text": { "type": "string" },
+    "audio_ref": { "type": "string" },
+    "hint": { "type": "string" }
+  }
+}

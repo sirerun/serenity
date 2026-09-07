@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/direction_propose_response.schema.json",
+  "title": "DIRECTION v1 propose response",
+  "description": "internal/server/direction.ProposeResponse. item_id is the newly staged DISPOSITION queue item -- propose never mutates a precept directly; every accepted proposal lands in the DISPOSITION queue exactly like a human-authored one.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["item_id"],
+  "additionalProperties": false,
+  "properties": {
+    "item_id": { "type": "string" }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/direction_propose_request.schema.json",
+  "title": "DIRECTION v1 propose request",
+  "description": "internal/server/direction.ProposeRequest (RFC 0001 section 8.3: propose(kind, payload)). payload is opaque to the wire layer -- its shape depends on kind, validated server-side before anything is staged.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["kind", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": ["precept_draft", "effect"],
+      "description": "Deliberately narrower than DISPOSITION's full kind vocabulary -- an agent may only propose these two."
+    },
+    "payload": {
+      "description": "Opaque JSON payload whose shape depends on kind -- not constrained here."
+    }
+  }
+}

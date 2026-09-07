@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/sirerun/serenity/docs/protocol/schemas"
 	"github.com/sirerun/serenity/internal/config"
 	coredirection "github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/direction/check"
@@ -81,6 +82,7 @@ func TestDriftCheckMatchesCheckPlan(t *testing.T) {
 	if !reflect.DeepEqual(cliWire, httpWire) {
 		t.Fatalf("CLI check.WireResult != check_plan's:\nCLI:  %+v\nHTTP: %+v", cliWire, httpWire)
 	}
+	validateAgainstProtocolSchema(t, "direction", "check_plan_response", resp)
 }
 
 func isExitError(err error, target **ExitError) bool {
@@ -131,6 +133,7 @@ func TestDriftBriefMatchesProtocolBrief(t *testing.T) {
 	if !reflect.DeepEqual(cliParsed, httpParsed) {
 		t.Fatalf("BuildBrief output != /direction/brief's:\nBuildBrief: %s\nHTTP: %s", cliResp, resp)
 	}
+	validateAgainstProtocolSchema(t, "direction", "brief_response", resp)
 }
 
 // ---- search / recall ----
@@ -181,7 +184,7 @@ func TestDriftSearchMatchesRecall(t *testing.T) {
 	if err := compareRecallSearch(cliResults, []byte(result.Content[0].Text), budget); err != nil {
 		t.Fatal(err)
 	}
-
+	validateAgainstProtocolSchema(t, "memory_verbs", "recall_response", []byte(result.Content[0].Text))
 }
 
 // Mutate the actual protocol response after first proving the unmodified pair
@@ -359,7 +362,7 @@ func TestDriftAskMatchesSynthesize(t *testing.T) {
 	if got.Cost.Model != "fake-composer@v1" || got.Cost.InputTokens != nil || got.Cost.OutputTokens != nil || got.Cost.USD != nil {
 		t.Fatalf("synthesize fabricated or changed usage: %+v", got.Cost)
 	}
-
+	validateAgainstProtocolSchema(t, "memory_verbs", "synthesize_response", []byte(result.Content[0].Text))
 }
 
 // ---- inbox dispose / dispose ----
@@ -455,6 +458,7 @@ func TestDriftInboxDisposeMatchesDispose(t *testing.T) {
 	if cliResult.State != disposition.StateDisposed || cliResult.Verdict != disposition.VerdictAccept {
 		t.Fatalf("CLI item state/verdict = %s/%s, want disposed/accept", cliResult.State, cliResult.Verdict)
 	}
+	validateAgainstProtocolSchema(t, "disposition", "dispose_response", resp)
 }
 
 // ---- shared fixture/HTTP helpers ----
@@ -605,6 +609,26 @@ func findToolFrom(t *testing.T, tools []mcp.Tool, name string) mcp.Tool {
 	}
 	t.Fatalf("no tool named %q registered", name)
 	return mcp.Tool{}
+}
+
+// validateAgainstProtocolSchema is T4.7's own reuse of these already-real
+// wire responses: rather than spin up separate fixtures, every drift pair
+// above that produces a genuine live protocol response (over MCP or real
+// HTTP) also gets validated against its own docs/protocol/schemas/*.json
+// entry here, with the real draft-2020-12 validator
+// (santhosh-tekuri/jsonschema/v6) -- broadening "every CLI --json output
+// validates against its schema in CI" (T4.7's acc line) to every wire
+// object this test file already exercises end-to-end, not only
+// `serenity check --json`'s own dedicated test.
+func validateAgainstProtocolSchema(t *testing.T, protocol, object string, data []byte) {
+	t.Helper()
+	e, ok := schemas.Lookup(protocol, object)
+	if !ok {
+		t.Fatalf("no schema registered for %s/%s", protocol, object)
+	}
+	if err := schemas.Validate(e, data); err != nil {
+		t.Fatalf("%s/%s: live response violates its own schema: %v\nresponse: %s", protocol, object, err, data)
+	}
 }
 
 func mustMarshalJSON(t *testing.T, v any) json.RawMessage {

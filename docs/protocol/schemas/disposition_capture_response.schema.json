@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/disposition_capture_response.schema.json",
+  "title": "DISPOSITION v1 capture response",
+  "description": "internal/server/disposition.CaptureResponse. item_id is the newly staged distill item's id.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["item_id"],
+  "additionalProperties": false,
+  "properties": {
+    "item_id": { "type": "string" }
+  }
+}

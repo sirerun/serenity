@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/direction_error.schema.json",
+  "title": "DIRECTION v1 error envelope",
+  "description": "internal/server/direction.ProtoError -- the stable machine-checkable error shape every DIRECTION v1 handler returns on failure.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["error", "message"],
+  "additionalProperties": false,
+  "properties": {
+    "error": {
+      "type": "string",
+      "enum": [
+        "method_not_allowed",
+        "invalid_request",
+        "invalid_action",
+        "invalid_kind",
+        "invalid_payload",
+        "internal_error"
+      ]
+    },
+    "message": { "type": "string" }
+  }
+}

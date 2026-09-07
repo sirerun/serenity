@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_verbs_synthesize_response.schema.json",
+  "title": "MEMORY_VERBS v1 synthesize response",
+  "description": "internal/server/memory.SynthesizeResponse. Best-effort cost aggregate (retries/multi-call flows sum; cache hits may undercount) -- an honest signal, not an invoice.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": ["protocol_version", "answer", "sources", "cost"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 1 },
+    "answer": { "type": "string" },
+    "sources": { "type": "array", "items": { "type": "string" } },
+    "gaps": { "type": "array", "items": { "type": "string" } },
+    "cost": {
+      "type": "object",
+      "required": ["model", "input_tokens", "output_tokens", "usd_estimate"],
+      "additionalProperties": false,
+      "properties": {
+        "model": { "type": "string" },
+        "input_tokens": { "type": ["integer", "null"] },
+        "output_tokens": { "type": ["integer", "null"] },
+        "usd_estimate": { "type": ["number", "null"] }
+      }
+    }
+  }
+}

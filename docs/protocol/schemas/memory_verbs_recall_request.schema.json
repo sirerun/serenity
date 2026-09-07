@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_verbs_recall_request.schema.json",
+  "title": "MEMORY_VERBS v1 recall request",
+  "description": "internal/server/memory.RecallRequest. Every field is optional -- an empty object is a valid call that returns every active public fact.",
+  "protocol_version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "query": {
+      "type": "string",
+      "description": "Hybrid-search the brain's pages; omit to skip the search arm."
+    },
+    "entity": {
+      "type": "string",
+      "description": "Scope the facts arm to one entity (name or type/slug)."
+    },
+    "budget_tokens": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Server-side char/4 packing budget; facts pack first."
+    },
+    "since": {
+      "type": "string",
+      "description": "ISO 8601 date/datetime -- filters the facts arm only."
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "limit": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Per-arm cap on candidates."
+    }
+  }
+}
