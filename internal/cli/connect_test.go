@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -203,18 +204,88 @@ func TestConnectClaudeInstall(t *testing.T) {
 	defer cancel()
 	c := exec.CommandContext(ctx, bin, args...)
 	c.Dir = project
-	c.Stdin = strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"connect-test","version":"1"}}}` + "\n")
-	b, e := c.Output()
-	if e != nil {
-		t.Fatalf("configured MCP handshake: %v %s", e, b)
+	input, err := c.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
 	}
-	var response map[string]any
-	if e = json.Unmarshal(b, &response); e != nil {
+	output, err := c.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var serverErrors bytes.Buffer
+	c.Stderr = &serverErrors
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waited := false
+	defer func() {
+		if !waited {
+			cancel()
+			_ = c.Wait()
+		}
+	}()
+	decoder := json.NewDecoder(output)
+	frames := map[string]map[string]any{}
+	requests := []string{
+		`{"jsonrpc":"2.0","id":"init","method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"connect-test","version":"1"}}}`,
+		`{"jsonrpc":"2.0","method":"notifications/initialized"}` + "\n" + `{"jsonrpc":"2.0","id":"list","method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":"entity","method":"tools/call","params":{"name":"entity","arguments":{"slug":"connect-missing-entity"}}}`,
+	}
+	// Keep stdin open until each response arrives: EOF intentionally cancels
+	// in-flight tool calls in the stdio transport.
+	for _, request := range requests {
+		if _, err := io.WriteString(input, request+"\n"); err != nil {
+			t.Fatal(err)
+		}
+		var frame map[string]any
+		if err := decoder.Decode(&frame); err != nil {
+			t.Fatalf("read configured MCP response: %v", err)
+		}
+		id, ok := frame["id"].(string)
+		if !ok || frame["jsonrpc"] != "2.0" || frame["error"] != nil || frame["result"] == nil {
+			t.Fatal(frame)
+		}
+		if _, duplicate := frames[id]; duplicate {
+			t.Fatal("duplicate response", id)
+		}
+		frames[id] = frame
+	}
+	if err := input.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitErr := c.Wait()
+	waited = true
+	if waitErr != nil {
+		t.Fatalf("configured MCP session: %v %s", waitErr, serverErrors.String())
+	}
+
+	if len(frames) != 3 || frames["init"] == nil || frames["list"] == nil || frames["entity"] == nil {
+		t.Fatal(frames)
+	}
+	list := frames["list"]["result"].(map[string]any)["tools"].([]any)
+	names := map[string]bool{}
+	for _, item := range list {
+		names[item.(map[string]any)["name"].(string)] = true
+	}
+	if !reflect.DeepEqual(names, map[string]bool{"recall": true, "remember": true, "entity": true, "synthesize": true, "forget": true}) || len(list) != 5 {
+		t.Fatal("wrong registered memory tools", list)
+	}
+	result := frames["entity"]["result"].(map[string]any)
+	if result["isError"] == true {
+		t.Fatal("entity lookup returned MCP error", result)
+	}
+	content := result["content"].([]any)
+	if len(content) != 1 {
+		t.Fatal(content)
+	}
+	var entity map[string]any
+	if e := json.Unmarshal([]byte(content[0].(map[string]any)["text"].(string)), &entity); e != nil {
 		t.Fatal(e)
 	}
-	if response["jsonrpc"] != "2.0" || response["id"] != float64(1) || response["result"] == nil || response["error"] != nil {
-		t.Fatal(response)
+	if entity["found"] != false || entity["protocol_version"] != float64(1) {
+		t.Fatal("registered entity tool did not return domain miss", entity)
 	}
+
 }
 func TestConnectClaudeIdempotent(t *testing.T) {
 	root := initBrainRepo(t)
@@ -455,7 +526,7 @@ func TestConnectClaudeGateInjection(t *testing.T) {
 }
 func TestConnectClaudeDocs(t *testing.T) {
 	doc := readFileT(t, "../../docs/operator/claude.md")
-	for _, want := range []string{"--config-dir", "settings.local.json", "--stdio", "unverified", "zero tools", "exit 2", "https://code.claude.com/docs/en/hooks"} {
+	for _, want := range []string{"--config-dir", "settings.local.json", "--stdio", "unverified", "five memory tools", "exit 2", "https://code.claude.com/docs/en/hooks"} {
 		if !strings.Contains(doc, want) {
 			t.Fatal("missing documentation", want)
 		}

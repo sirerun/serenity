@@ -18,7 +18,9 @@ and [hook contract](https://code.claude.com/docs/en/hooks).
 `--print` emits only the generated MCP JSON document, without creating files
 or directories. Neither command accesses the keychain or includes tokens,
 Authorization headers, credential environment variables or permission rules.
-Stdio currently advertises zero tools; installation does not add memory tools.
+Against an initialized brain, stdio exposes five memory tools: `recall`,
+`remember`, `entity`, `synthesize`, and `forget`. The installer uses this existing
+server registration; it does not provide a classifier or model credentials.
 
 Installation preserves unrelated settings, MCP servers, and hooks, including
 other hooks for ExitPlanMode. Existing conflicting Serenity entries or invalid
