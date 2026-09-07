@@ -362,3 +362,44 @@ pool/session load hammering the same host's `.git/objects`/`.git/config`.
 Root cause (which specific test or git invocation writes `core.bare`) not
 isolated; see L-0007's caution about unconfirmed root-cause theories
 before attempting a code fix.
+
+## L-0011: `eval-runner -mode live`'s pass/fail verdict against the P>=0.90/R>=0.80 bar is not reproducible run-to-run unless temperature is pinned
+
+**Tags:** #eval #router #model #gotcha
+**Date:** 2026-09-07
+**Repo:** sirerun/serenity
+
+**Rule:** Never treat one `eval-runner -mode live` run's per-family P/R as
+the final word on whether a prompt/guidance change closed a gap, unless
+the provider pins `temperature` (or the run is repeated and stable).
+`cmd/eval-runner`'s own `buildProvider("openai", ...)` now pins
+`ExtraBody: {"temperature": 0}` (T1.29) specifically to close this for
+eval-runner's own scoring; a caller building a raw `OpenAICompatibleProvider`
+directly (a diagnostic script, a different corpus runner) still needs to
+set this itself.
+**Why:** `internal/router.OpenAICompatibleProvider.Send` never sent a
+`temperature` field before T1.29, so the request left it to the server's
+own default -- non-zero on the DGX SGLang `qwen3.8-27b` endpoint. Found
+running T1.29's own acc-line re-verification: two live runs against the
+identical 52 held-out ava spans, identical prompt/code, differed only in
+whether `temperature=0` was set, and the P>=0.90/R>=0.80 pass count swung
+from 5/12 to 7/12 target families -- with individual spans flipping
+outcome between runs (one span's predicate misclassified as `prefers`
+instead of `said` in one run, correctly `said` in the next, no code
+change between them). With only 4 held-out spans per family, the bar's
+own math (R>=0.80 requires 4/4 correct; P>=0.90 tolerates near-zero false
+positives) makes this corpus especially sensitive to any residual sampling
+noise -- a single flipped span can move a family from clearing the bar to
+missing it. `"temperature"` is a standard OpenAI chat-completions field
+(unlike `disable_thinking`'s SGLang/vLLM-specific
+`chat_template_kwargs`, T1.31), so it is safe to send unconditionally to
+a real OpenAI/OpenRouter endpoint too -- no opt-in flag needed the way
+T1.31's flag needed one.
+**Trigger:** Any live-eval or diagnostic run against `evals/corpora/ava`
+(or a similarly small held-out split) that reports a family's P/R as
+"still failing" or "now passing" based on a single run without checking
+whether temperature was pinned. Flagged, not fixed: whether pinning
+`temperature=0` for real production extraction (`internal/providers`,
+outside eval-runner) would help or hurt has NOT been measured -- that
+needs its own task, this entry documents the eval-scoring-specific gap
+T1.29 closed for `eval-runner` only.
