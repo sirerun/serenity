@@ -1,0 +1,6918 @@
+{
+  "generated_at": "2026-09-07T05:39:53Z",
+  "grid": {
+    "min_dispositions": [
+      15,
+      20,
+      30,
+      50,
+      75,
+      100
+    ],
+    "min_accept": [
+      0.9,
+      0.93,
+      0.95,
+      0.97,
+      0.98,
+      0.99
+    ],
+    "sample_rate": [
+      0.02,
+      0.05,
+      0.1,
+      0.15,
+      0.2
+    ]
+  },
+  "correlation_guards": {
+    "MinSpanDays": 14,
+    "MinDistinctSources": 5
+  },
+  "scenarios": [
+    {
+      "name": "reliable_high_volume",
+      "cell": "email/has_role",
+      "want_promote": true,
+      "why": "200 dispositions, 99.5% accept, spanning 60 days across 25 sources: abundant, diverse, high-quality evidence -- should promote under any reasonable threshold."
+    },
+    {
+      "name": "thin_evidence_looks_perfect",
+      "cell": "email/has_balance",
+      "want_promote": false,
+      "why": "25 dispositions, 100% accept: a perfect small sample is exactly the shape that fools a low min_dispositions bar -- a short window is more sensitive to a single lucky streak than a longer one, so this must not promote even at a flawless observed rate. Eliminates any min_dispositions candidate \u003c= 25."
+    },
+    {
+      "name": "exactly_the_rfc_prior_bar",
+      "cell": "email/works_at",
+      "want_promote": true,
+      "why": "Exactly RFC 0001 §10.3's stated prior bar (50 dispositions, 98% accept): a cell meeting the bar precisely must actually clear it, not be silently rejected by an off-by-one in the comparison. Confirms min_dispositions \u003c= 50 and min_accept \u003c= 0.98 are viable."
+    },
+    {
+      "name": "noisy_moderate_volume",
+      "cell": "email/lives_in",
+      "want_promote": false,
+      "why": "150 dispositions but only 92% accept (an 8% error rate): too risky to fully automate regardless of volume -- humans should keep reviewing this cell. Eliminates any min_accept candidate \u003c= 0.92."
+    },
+    {
+      "name": "correlated_error_risk",
+      "cell": "email/has_title",
+      "want_promote": false,
+      "why": "100 dispositions at 99% accept looks excellent in isolation, but all from a 5-day window across only 2 sources -- exactly the correlated-error shape RFC §10.3's mandatory guards exist to catch (one bad connector day or one labeling mood). Validates that sweepGuards (min_span_days=14, min_distinct_sources=5) block this regardless of the swept min_dispositions/min_accept grid point; does not itself discriminate among grid candidates."
+    },
+    {
+      "name": "never_automate_family",
+      "cell": "precept-touching",
+      "want_promote": false,
+      "why": "Even a flawless, abundant, diverse history must never promote a never_automate cell (precept-touching conflicts are structurally unsafe to auto-resolve). Validates NeverAutomate overrides any grid point; does not itself discriminate among grid candidates."
+    }
+  ],
+  "candidates": [
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.9,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.9,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.9,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.9,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.9,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.93,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.93,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.93,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.93,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.93,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.95,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.95,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.95,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.95,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.95,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.97,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.97,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.97,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.97,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.97,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.98,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.98,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.98,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.98,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.98,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.99,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.99,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.99,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.99,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 15,
+      "min_accept": 0.99,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.9,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.9,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.9,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.9,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.9,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.93,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.93,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.93,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.93,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.93,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.95,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.95,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.95,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.95,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.95,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.97,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.97,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.97,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.97,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.97,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.98,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.98,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.98,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.98,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.98,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.99,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.99,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.99,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.99,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 20,
+      "min_accept": 0.99,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.9,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.9,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.9,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.9,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.9,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.93,
+      "sample_rate": 0.02,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.93,
+      "sample_rate": 0.05,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.93,
+      "sample_rate": 0.1,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.93,
+      "sample_rate": 0.15,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.93,
+      "sample_rate": 0.2,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.95,
+      "sample_rate": 0.02,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.95,
+      "sample_rate": 0.05,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.95,
+      "sample_rate": 0.1,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.95,
+      "sample_rate": 0.15,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.95,
+      "sample_rate": 0.2,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.97,
+      "sample_rate": 0.02,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.97,
+      "sample_rate": 0.05,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.97,
+      "sample_rate": 0.1,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.97,
+      "sample_rate": 0.15,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.97,
+      "sample_rate": 0.2,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.98,
+      "sample_rate": 0.02,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.98,
+      "sample_rate": 0.05,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.98,
+      "sample_rate": 0.1,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.98,
+      "sample_rate": 0.15,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.98,
+      "sample_rate": 0.2,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.99,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.99,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.99,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.99,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 30,
+      "min_accept": 0.99,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.9,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.9,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.9,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.9,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.9,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.93,
+      "sample_rate": 0.02,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.93,
+      "sample_rate": 0.05,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.93,
+      "sample_rate": 0.1,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.93,
+      "sample_rate": 0.15,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.93,
+      "sample_rate": 0.2,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.95,
+      "sample_rate": 0.02,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.95,
+      "sample_rate": 0.05,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.95,
+      "sample_rate": 0.1,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.95,
+      "sample_rate": 0.15,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.95,
+      "sample_rate": 0.2,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.97,
+      "sample_rate": 0.02,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.97,
+      "sample_rate": 0.05,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.97,
+      "sample_rate": 0.1,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.97,
+      "sample_rate": 0.15,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.97,
+      "sample_rate": 0.2,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.98,
+      "sample_rate": 0.02,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.98,
+      "sample_rate": 0.05,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.98,
+      "sample_rate": 0.1,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.98,
+      "sample_rate": 0.15,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.98,
+      "sample_rate": 0.2,
+      "all_correct": true,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.99,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.99,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.99,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.99,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 50,
+      "min_accept": 0.99,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.9,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.9,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.9,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.9,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.9,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.93,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.93,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.93,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.93,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.93,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.95,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.95,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.95,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.95,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.95,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.97,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.97,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.97,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.97,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.97,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.98,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.98,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.98,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.98,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.98,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.99,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.99,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.99,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.99,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 75,
+      "min_accept": 0.99,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.9,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.9,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.9,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.9,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.9,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": true,
+          "correct": false
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.93,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.93,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.93,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.93,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.93,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.95,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.95,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.95,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.95,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.95,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.97,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.97,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.97,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.97,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.97,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.98,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.98,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.98,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.98,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.98,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.99,
+      "sample_rate": 0.02,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.99,
+      "sample_rate": 0.05,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.99,
+      "sample_rate": 0.1,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.99,
+      "sample_rate": 0.15,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    },
+    {
+      "min_dispositions": 100,
+      "min_accept": 0.99,
+      "sample_rate": 0.2,
+      "all_correct": false,
+      "scenarios": [
+        {
+          "scenario": "reliable_high_volume",
+          "promoted": true,
+          "correct": true
+        },
+        {
+          "scenario": "thin_evidence_looks_perfect",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "exactly_the_rfc_prior_bar",
+          "promoted": false,
+          "correct": false
+        },
+        {
+          "scenario": "noisy_moderate_volume",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "correlated_error_risk",
+          "promoted": false,
+          "correct": true
+        },
+        {
+          "scenario": "never_automate_family",
+          "promoted": false,
+          "correct": true
+        }
+      ]
+    }
+  ],
+  "chosen": {
+    "min_dispositions": 50,
+    "min_accept": 0.98,
+    "sample_rate": 0.05
+  },
+  "rationale": "the RFC 0001 §10.3 prior (min_dispositions=50, min_accept=0.98, sample_rate=0.05) is among the grid points that correctly classify every synthetic scenario below; this sweep found no evidence to loosen it, and -- with no real production disposition history yet (E2 has not shipped) -- deliberately does not use a synthetic scenario battery this session authored to justify moving away from a value the RFC council already considered. sample_rate does not affect Evaluate's promote/no-promote outcome at all (see AutoAction.Sampled's doc); it is retained at the prior's value here, not independently discriminated by this correctness sweep."
+}
