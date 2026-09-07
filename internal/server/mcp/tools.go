@@ -1,4 +1,8 @@
-// Package mcp implements MCP's newline-delimited JSON-RPC stdio transport.
+// Package mcp implements MCP over two transports sharing one dispatch: the
+// newline-delimited JSON-RPC stdio transport (Server.Serve) and the
+// Streamable HTTP transport (HTTPHandler, T4.21). Session holds the
+// protocol state (initialize/tools-list/tools-call/cancellation) both
+// transports drive.
 package mcp
 
 import (
