@@ -131,6 +131,18 @@ type Config struct {
 
 	// Now stubs time.Now for deterministic tests; nil means time.Now.
 	Now func() time.Time
+
+	// OnProgress, when non-nil, is called after every held-out span
+	// ModeLive attempts (scored, skipped, or errored) with the running
+	// totals -- done is always len(heldOut) on the final call. A
+	// multi-hour live run (T1.32's expanded 312-span held-out corpus
+	// runs ~4-5x longer than the original 52-span split) previously gave
+	// no signal at all until it either finished or died; a caller (see
+	// cmd/eval-runner) wires this to a stderr progress line so a
+	// background run's own log file says something before the end. Left
+	// nil in every test and in ModeCached (progress reporting is a
+	// ModeLive-only, real-network-calls concern).
+	OnProgress func(done, total, skipped, errored int)
 }
 
 // RecallFloor is T1.32's pass/fail rule (chief's disposition ruling on
@@ -168,6 +180,19 @@ type Report struct {
 	Spend         *SpendSection         `json:"spend,omitempty"`
 	SpansScored   int                   `json:"spans_scored"`
 	SpansSkipped  int                   `json:"spans_skipped_on_budget,omitempty"`
+	// SpansErrored and ErrorSamples are T1.32's live-run resilience
+	// fields: a single held-out span whose extraction call fails (even
+	// after internal/router's T1.30 bounded retry is exhausted -- e.g. a
+	// transient "context deadline exceeded" against the DGX endpoint) no
+	// longer aborts the entire run (see runLive's doc comment). The span
+	// is excluded from SpansScored the same way a budget-skipped span is
+	// (its golden label still counts as a miss in Families/RecallCI --
+	// unchanged scoring semantics, just no longer fatal to collect).
+	// ErrorSamples carries up to maxErrorSamples "span: error" strings so
+	// a report.json from a mostly-broken endpoint is loudly diagnosable
+	// rather than silently indistinguishable from genuinely low recall.
+	SpansErrored int      `json:"spans_errored,omitempty"`
+	ErrorSamples []string `json:"error_samples,omitempty"`
 	// RecallCI and PrecisionCI are T1.32's bootstrap confidence intervals
 	// per family, built from the same per-unit matching that produced
 	// Families -- Families itself is unchanged (still the plain point
@@ -247,15 +272,15 @@ func Run(ctx context.Context, cfg Config) (Report, error) {
 		if cfg.Extractor == nil || cfg.Ledger == nil {
 			return Report{}, fmt.Errorf("runner: mode live requires a non-nil Extractor and Ledger")
 		}
-		var skipped int
-		predictions, skipped, err = runLive(ctx, cfg, heldOut)
-		if err != nil {
-			return Report{}, err
-		}
+		var skipped, errored int
+		var errSamples []string
+		predictions, skipped, errored, errSamples = runLive(ctx, cfg, heldOut)
 		total, calls := cfg.Ledger.Snapshot()
 		report.ModelVersion = cfg.ModelVersion
 		report.SpansSkipped = skipped
-		report.SpansScored = len(heldOut) - skipped
+		report.SpansErrored = errored
+		report.ErrorSamples = errSamples
+		report.SpansScored = len(heldOut) - skipped - errored
 		report.Spend = &SpendSection{
 			BudgetUSD:       cfg.BudgetUSD,
 			SpentUSD:        total,
@@ -364,14 +389,38 @@ func scoreReconcile(corpusDir string) (reconcileeval.Report, error) {
 // are scored: this measures raw extraction accuracy against the golden
 // set, not reconciliation eligibility (DistillThreshold gates the latter,
 // a separate concern from whether the model got the fact right at all).
-func runLive(ctx context.Context, cfg Config, heldOut []eval.Label) ([]eval.Prediction, int, error) {
+// maxErrorSamples bounds Report.ErrorSamples so a fully-broken endpoint
+// (every one of a large held-out set erroring) doesn't inflate
+// report.json with hundreds of near-identical lines -- the count
+// (Report.SpansErrored) already carries the magnitude; the samples exist
+// to show what kind of error, not to enumerate every occurrence.
+const maxErrorSamples = 20
+
+// runLive drives cfg.Extractor over every held-out span. A single span's
+// extraction error (T1.32 finding: T1.30's bounded retry -- 3 attempts,
+// backoff capped 30s -- exhausted by one persistent "context deadline
+// exceeded" against the DGX endpoint) no longer aborts the whole run and
+// discards every other span's already-completed result; it is recorded
+// (errored count + a bounded sample of "span: error" strings) and
+// skipped like a budget skip, and the loop continues. This matters at
+// T1.32's corpus scale specifically: a 4-5 hour, ~312-call live run has
+// real exposure to a single transient network blip, and losing the
+// entire run's results to one is a genuine operability gap the smaller
+// 52-span corpus never surfaced. A caller wanting the OLD hard-fail
+// behavior (e.g. detecting a fully-broken endpoint fast) can inspect
+// Report.SpansErrored == len(heldOut) after Run returns instead.
+func runLive(ctx context.Context, cfg Config, heldOut []eval.Label) ([]eval.Prediction, int, int, []string) {
 	var predictions []eval.Prediction
-	var skipped int
+	var skipped, errored int
+	var errorSamples []string
 	budget := router.Budget{MaxUSD: cfg.BudgetUSD}
 
-	for _, lbl := range heldOut {
+	for i, lbl := range heldOut {
 		if cfg.Ledger.OverBudget() {
 			skipped++
+			if cfg.OnProgress != nil {
+				cfg.OnProgress(i+1, len(heldOut), skipped, errored)
+			}
 			continue
 		}
 
@@ -380,7 +429,14 @@ func runLive(ctx context.Context, cfg Config, heldOut []eval.Label) ([]eval.Pred
 		// real index_only source.
 		res, err := cfg.Extractor.ExtractChunk(ctx, spanSourceID(lbl.Span), false, c, budget)
 		if err != nil {
-			return nil, skipped, fmt.Errorf("runner: live extraction on span %q: %w", lbl.Span, err)
+			errored++
+			if len(errorSamples) < maxErrorSamples {
+				errorSamples = append(errorSamples, fmt.Sprintf("%q: %v", lbl.Span, err))
+			}
+			if cfg.OnProgress != nil {
+				cfg.OnProgress(i+1, len(heldOut), skipped, errored)
+			}
+			continue
 		}
 
 		for _, obs := range res.Ready {
@@ -389,8 +445,11 @@ func runLive(ctx context.Context, cfg Config, heldOut []eval.Label) ([]eval.Pred
 		for _, obs := range res.Distill {
 			predictions = append(predictions, eval.Prediction{Span: lbl.Span, Predicate: obs.Predicate, Object: obs.Object})
 		}
+		if cfg.OnProgress != nil {
+			cfg.OnProgress(i+1, len(heldOut), skipped, errored)
+		}
 	}
-	return predictions, skipped, nil
+	return predictions, skipped, errored, errorSamples
 }
 
 // spanSourceID stands in for a source sha256 in ExtractChunk's cache-key

@@ -81,6 +81,16 @@ func run(args []string) error {
 		cfg.Extractor = extract.New(rt, modelVersion, nil, extract.NewMemoryCache())
 		cfg.Ledger = ledger
 		cfg.ModelVersion = modelVersion
+		// T1.32: a live run over the expanded ~312-span held-out corpus
+		// runs several hours; without this, a background-redirected log
+		// stayed empty until the run either finished or died, which is
+		// exactly what made a real mid-run failure hard to diagnose (see
+		// docs/roadmap.md's T1.32 entry). One stderr line per span is
+		// cheap relative to the real network call it follows.
+		cfg.OnProgress = func(done, total, skipped, errored int) {
+			fmt.Fprintf(os.Stderr, "%s eval-runner: progress %d/%d (skipped=%d errored=%d)\n",
+				time.Now().Format(time.RFC3339), done, total, skipped, errored)
+		}
 	}
 
 	report, err := runner.Run(context.Background(), cfg)

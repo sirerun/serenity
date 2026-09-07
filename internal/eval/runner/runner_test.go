@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -454,20 +455,87 @@ func TestRunReconcileWorksInLiveMode(t *testing.T) {
 	}
 }
 
-func TestRunLivePropagatesExtractorError(t *testing.T) {
+// TestRunLiveSkipsErroredSpansAndReportsThem is T1.32's rewrite of the
+// former TestRunLivePropagatesExtractorError: a per-span extraction error
+// (e.g. a persistent "context deadline exceeded" surviving T1.30's
+// bounded retry -- exactly what happened mid-run against the DGX endpoint
+// on the real expanded 312-span corpus) must no longer discard the whole
+// run's results. Run must still succeed, and the errored spans must be
+// visible in the report rather than silently indistinguishable from
+// genuinely low recall.
+func TestRunLiveSkipsErroredSpansAndReportsThem(t *testing.T) {
 	corpus := buildTinyCorpus(t)
 	provider := &fakeProvider{err: errors.New("boom")}
 	ledger := NewTrackingLedger(0)
 	rt := router.New(map[router.Tier]router.Provider{router.TierLocalCheap: provider}, ledger)
 	ex := extract.New(rt, "fake-model@v1", nil, extract.NewMemoryCache())
 
-	_, err := Run(context.Background(), Config{
+	var progressCalls int
+	report, err := Run(context.Background(), Config{
+		CorpusDir: corpus,
+		Mode:      ModeLive,
+		Extractor: ex,
+		Ledger:    ledger,
+		OnProgress: func(done, total, skipped, errored int) {
+			progressCalls++
+			if total != 3 {
+				t.Errorf("OnProgress total = %d, want 3", total)
+			}
+		},
+	})
+	if err != nil {
+		t.Fatalf("Run must survive every held-out span erroring, got: %v", err)
+	}
+
+	// buildTinyCorpus's 3 labels are all held out, and fakeProvider always
+	// errors, so every span should be counted as errored, none scored.
+	if report.SpansErrored != 3 {
+		t.Errorf("SpansErrored = %d, want 3", report.SpansErrored)
+	}
+	if report.SpansScored != 0 {
+		t.Errorf("SpansScored = %d, want 0 (every span errored)", report.SpansScored)
+	}
+	if len(report.ErrorSamples) != 3 {
+		t.Errorf("len(ErrorSamples) = %d, want 3", len(report.ErrorSamples))
+	}
+	for _, s := range report.ErrorSamples {
+		if !strings.Contains(s, "boom") {
+			t.Errorf("ErrorSamples entry %q does not mention the underlying error", s)
+		}
+	}
+	if progressCalls != 3 {
+		t.Errorf("OnProgress called %d times, want 3 (once per held-out span)", progressCalls)
+	}
+	// Every held-out label still counts as a miss under unchanged scoring
+	// semantics (an errored span is a miss exactly like a budget skip) --
+	// works_at should show up as a false negative, not silently vanish.
+	if fn := report.Families["works_at"].FN; fn != 1 {
+		t.Errorf("works_at FN = %d, want 1 (errored span still scores as a miss)", fn)
+	}
+}
+
+// TestRunLiveReportsAllErroredWhenEveryCallFails guards the "loudly
+// visible, not silently masked" half of the T1.32 resilience fix: when
+// every held-out span errors (e.g. the endpoint is completely down, not
+// one transient blip), SpansErrored equaling the full held-out count is
+// how a caller distinguishes a broken run from genuinely poor recall.
+func TestRunLiveReportsAllErroredWhenEveryCallFails(t *testing.T) {
+	corpus := buildTinyCorpus(t)
+	provider := &fakeProvider{err: errors.New("connection refused")}
+	ledger := NewTrackingLedger(0)
+	rt := router.New(map[router.Tier]router.Provider{router.TierLocalCheap: provider}, ledger)
+	ex := extract.New(rt, "fake-model@v1", nil, extract.NewMemoryCache())
+
+	report, err := Run(context.Background(), Config{
 		CorpusDir: corpus,
 		Mode:      ModeLive,
 		Extractor: ex,
 		Ledger:    ledger,
 	})
-	if err == nil {
-		t.Fatal("Run must propagate a real extractor error, got nil")
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if report.SpansErrored != 3 {
+		t.Fatalf("SpansErrored = %d, want 3 (all held-out spans, endpoint fully down)", report.SpansErrored)
 	}
 }
