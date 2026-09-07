@@ -75,7 +75,7 @@ func (s *Server) Serve(ctx context.Context, input io.ReadCloser, output io.Write
 		case <-ctx.Done():
 		}
 	})
-	defer func() { cancel(); _ = input.Close(); workers.Wait() }()
+	defer func() { cancel(); workers.Wait() }()
 	calls := make(map[string]*activeCall)
 	completed := make(chan completion, MaxInFlight)
 	state := 0 // new, initialize answered, initialized
