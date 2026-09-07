@@ -172,6 +172,9 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In progress
 
+- 2026-09-07 T4.8 Claude connection and pre-plan hook: claimed; preparing idempotent project-scoped installation and subprocess tests in temporary directories. Existing free-text unverified behavior will remain explicit.
+
+
 - 2026 08 27 E0 wave 0a complete (9/9) -- see Shipped entries for T0.1-T0.12.
 - 2026 08 27 E0 wave 0b complete (3/3: T0.13, T0.4, T0.5) -- see Shipped entries. Dispatched via `/apply --pool` (this session, `/loop` tick), routed to per-task worktrees on `/Volumes/BuildOffload` per the disk-mitigation note recorded when the wave was dispatched.
 - 2026 08 28 Wave 4 (`/apply --pool`) complete (6/6): T1.8, T1.10, T1.18, T1.20, T3.5, T3.13 -- see Shipped entries. Each task owned its own S6 docs entries. (T1.14, T1.17 also unblocked by this wave, deferred to a later wave.)
