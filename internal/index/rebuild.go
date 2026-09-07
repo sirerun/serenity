@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/sirerun/serenity/internal/config"
@@ -104,12 +105,52 @@ func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) e
 	// text-extraction pipeline exists yet in this codebase, a disclosed
 	// v1 gap) are stored and git-committed by `serenity sync` like any
 	// other source; they are simply never chunked into the FTS index here.
+	//
+	// MEMORY_VERBS memory_fact/memory_expiry sources (T4.20) are a
+	// distinct raw-ingress kind and never fall through to the generic
+	// chunk.Split branch below: a memory_expiry source is a lifecycle
+	// event, never indexed at all (mapping doc: "Exclude lifecycle
+	// events"), and a memory_fact source's bytes are a canonical JSON
+	// envelope, not prose -- indexing the envelope verbatim would leak
+	// its own field names into full-text search and would defeat the
+	// point of decoding it first. Only the fact's own text is indexed,
+	// as one chunk, tagged with the payload's own entity_slug so recall's
+	// query arm and entity() resolve it exactly like any other page hit.
+	// A fact already expired by its own TTL as of this rebuild is skipped
+	// here too -- an authoritative belt-and-suspenders alongside the
+	// query-time canonical filter (search.Options.Eligible /
+	// store.MemoryEligible) every read path also applies, since an index
+	// can go stale between rebuilds. Both private and world-visible
+	// facts ARE indexed here (mapping: "Rebuild indexes decoded active
+	// fact text (including local-private facts for CLI local search)");
+	// the audience split (MCP remote vs local CLI) is enforced at query
+	// time, never by omission from the index.
 	srcStore := store.NewSourceStore(root)
 	sources, err := srcStore.All()
 	if err != nil {
 		return err
 	}
+	memProj, err := store.LoadMemoryProjection(srcStore)
+	if err != nil {
+		return fmt.Errorf("rebuild: load memory projection: %w", err)
+	}
+	now := time.Now()
 	for _, src := range sources {
+		switch src.Kind {
+		case store.SourceKindMemoryExpiry:
+			continue
+		case store.SourceKindMemoryFact:
+			rec, ok := memProj.Get(src.SHA256)
+			if !ok || rec.Expired(now) {
+				continue
+			}
+			ref := "fact:" + src.SHA256
+			if err := eng.InsertChunk(ctx, ref, rec.Payload.EntitySlug, rec.Payload.Fact, src.SHA256, store.SourceKindMemoryFact); err != nil {
+				return err
+			}
+			continue
+		}
+
 		data, _, err := srcStore.Read(src.SHA256)
 		if err != nil {
 			return fmt.Errorf("rebuild: read source %s: %w", src.SHA256, err)

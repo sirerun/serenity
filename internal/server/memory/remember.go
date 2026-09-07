@@ -5,254 +5,137 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/sirerun/serenity/internal/domain"
-	"github.com/sirerun/serenity/internal/ingest"
-	"github.com/sirerun/serenity/internal/reconcile"
 	"github.com/sirerun/serenity/internal/server/mcp"
 	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
 )
 
-// machineConfidenceCap and defaultMachineConfidence mirror RFC 0001
-// §9's own confidence bounds ("machine-assigned confidence is capped at
-// 0.90 (local-cheap) / 0.95 (judgment). Only human confirmation can set
-// confidence above 0.95"): remember has no tier of its own (it is a
-// direct write, not a router.Complete call), so this task reads "machine"
-// broadly -- any Provenance.Actor that is not literally "human:<id>" is
-// capped at the lower, local-cheap bound, the more conservative of the
-// two named ceilings, disclosed rather than silently picking 0.95.
-const machineConfidenceCap = 0.90
-const defaultMachineConfidence = 0.90
-
-type rememberProvenance struct {
-	// Actor is required -- "remember with empty provenance ->
-	// provenance_required" (this task's own acc line) is read as: the
-	// provenance object itself, or its Actor field, being absent/empty is
-	// what triggers the error, since Actor is the one field every other
-	// domain.Provenance-producing path in this repo always sets
-	// (ClaimFromObservation: "machine"; supersede.Retract's actor
-	// parameter; T2.7's edit_accept: the disposing human).
-	Actor        string `json:"actor"`
-	SourceSHA256 string `json:"source_sha256,omitempty"`
-	Span         string `json:"span,omitempty"`
-	Model        string `json:"model,omitempty"`
-}
-
 type rememberRequest struct {
-	Subject    string              `json:"subject"`
-	Predicate  string              `json:"predicate"`
-	Object     string              `json:"object"`
-	Confidence *float64            `json:"confidence,omitempty"`
-	ValidFrom  string              `json:"valid_from,omitempty"`
-	Provenance *rememberProvenance `json:"provenance,omitempty"`
+	Fact       string `json:"fact"`
+	Provenance string `json:"provenance"`
+	TTL        string `json:"ttl,omitempty"`
+	Entity     string `json:"entity,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+	Visibility string `json:"visibility,omitempty"`
 }
 
 type rememberResponse struct {
-	Envelope
-	// Status is "remembered" (written to the brain repo) or
-	// "staged_for_review" (internal/reconcile, T2.2, found a genuine
-	// conflict or a temporal-supersession shape against an active
-	// neighbor and staged a KindReconcile disposition item instead of
-	// writing -- RFC §10.3: "No automatic supersession at trust level
-	// 0"). staged_for_review is a successful response, not an
-	// Envelope.Error: the system did exactly what it should when a new
-	// claim disagrees with what it already believes.
-	Status            string `json:"status"`
-	DispositionItemID string `json:"disposition_item_id,omitempty"`
+	ProtocolVersion int     `json:"protocol_version"`
+	ID              string  `json:"id"`
+	Status          string  `json:"status"` // inserted | duplicate | superseded
+	StatusText      string  `json:"status_text"`
+	EntitySlug      *string `json:"entity_slug"`
+	ValidUntil      *string `json:"valid_until"`
+	// DegradedDedup is never set true (this task's own acc line: "no
+	// embedder degraded flag") -- exact-duplicate matching (this
+	// implementation's only dedup) needs no embedder at all, so there is
+	// nothing degraded to disclose; kept, always omitted, for schema
+	// completeness against upstream's own optional field.
+	DegradedDedup bool `json:"degraded_dedup,omitempty"`
 }
+
+const provenanceMaxChars = 500
 
 func (h *Handlers) rememberTool() mcp.Tool {
 	schema := `{
 		"type": "object",
 		"properties": {
-			"subject": {"type": "string"},
-			"predicate": {"type": "string"},
-			"object": {"type": "string"},
-			"confidence": {"type": "number", "minimum": 0, "maximum": 1},
-			"valid_from": {"type": "string"},
-			"provenance": {
-				"type": "object",
-				"properties": {
-					"actor": {"type": "string"},
-					"source_sha256": {"type": "string"},
-					"span": {"type": "string"},
-					"model": {"type": "string"}
-				},
-				"required": ["actor"]
-			}
+			"fact": {"type": "string", "description": "The fact to remember, one claim per call."},
+			"provenance": {"type": "string", "description": "Where this fact came from (required, free text, max 500 chars)."},
+			"ttl": {"type": "string", "description": "Duration shorthand (\"30d\", \"12h\", \"45m\") or absolute ISO 8601 timestamp. Omit = never expires."},
+			"entity": {"type": "string", "description": "Person/company/project this fact is about."},
+			"kind": {"type": "string", "enum": ["event", "preference", "commitment", "belief", "fact"]},
+			"visibility": {"type": "string", "enum": ["world", "private"]}
 		},
-		"required": ["subject", "predicate", "object", "provenance"]
+		"required": ["fact", "provenance"]
 	}`
 	return mcp.Tool{
 		Name:        "remember",
-		Description: "Record a new fact (subject, predicate, object) with provenance, reconciled against what the brain already believes.",
+		Description: "Save one fact to durable agent memory, with mandatory attribution.",
 		InputSchema: json.RawMessage(schema),
 		Handler:     handle(h.remember),
 	}
 }
 
-// remember writes through the writer queue and reconcile, never
-// id-equality dedup (this task's own pitfall note): unlike
-// internal/ingest.Writer's trust-0 posture ("no merging, no conflict
-// detection... that is the reconcile engine's job, deferred to E2"),
-// remember runs the new claim through internal/reconcile (T2.2) before
-// ever calling writer.Shard/Fence, because MEMORY_VERBS's remember is an
-// interactive write path with no upstream extraction/reconcile stage of
-// its own the way ingest has -- this verb is where that stage has to
-// live.
-//
-// Only VerdictConflict/VerdictWindowClose block the write (RFC §10.3's
-// "no automatic supersession at trust level 0" -- reconcile.Engine.Process
-// already stages exactly one KindReconcile disposition item for either).
-// VerdictAgree/VerdictNeutralAdditive/VerdictScoped all write immediately,
-// reusing the identical tier-routing (config.TierOf) and writer entry
-// points (writer.Shard/Fence) internal/ingest.Writer.writeShardClaim/
-// writeFenceClaim already established -- duplicated here in miniature
-// rather than imported, since ingest.Writer's own methods are
-// unexported and its Write signature takes []domain.Observation, not a
-// pre-built domain.Claim.
+// remember writes fact as a new canonical memory_fact source
+// (internal/writer.MemoryFact, T4.20) -- raw attributed material, never an
+// automatic accepted domain.Claim (memory-compat-mapping.md: "never
+// automatic accepted belief").
 func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, bool, error) {
 	var req rememberRequest
 	if err := json.Unmarshal(args, &req); err != nil {
-		return rememberResponse{Envelope: errorEnvelope("invalid_argument", "remember: malformed request", "send a JSON object with subject, predicate, object, and provenance.actor")}, true, nil
+		return verbError(ErrCodeInvalidParams, "remember: malformed request", "send a JSON object with \"fact\" and \"provenance\" strings"), true, nil
 	}
-	if req.Subject == "" || req.Predicate == "" || req.Object == "" {
-		return rememberResponse{Envelope: errorEnvelope("invalid_argument", "remember: subject, predicate, and object are all required", "pass non-empty subject, predicate, and object strings")}, true, nil
+	fact := trimmed(req.Fact)
+	if fact == "" {
+		return verbError(ErrCodeInvalidParams, "remember: fact must be a non-empty string", "pass the claim to remember, e.g. fact: \"picked Stripe over Adyen -- onboarding speed\""), true, nil
 	}
-	if !validSlug(req.Subject) {
-		return rememberResponse{Envelope: errorEnvelope("invalid_argument", "remember: subject must be a single path segment", "pass a subject slug with no \"/\", \"\\\\\", \".\", or \"..\" -- e.g. \"acme-corp\", not a path")}, true, nil
+	provenance := trimmed(req.Provenance)
+	if provenance == "" {
+		return verbError(ErrCodeProvenanceRequired, "remember: provenance is required and must be non-empty", "pass where the fact came from, e.g. provenance: \"user told me, 2026-06-12\" or \"import: notes.md\""), true, nil
 	}
-	if req.Provenance == nil || req.Provenance.Actor == "" {
-		return rememberResponse{Envelope: errorEnvelope("provenance_required", "remember: provenance is required", "pass provenance.actor (e.g. \"human:you\" or \"machine\"), and provenance.source_sha256/span/model when the fact came from a known source")}, true, nil
+	if len(provenance) > provenanceMaxChars {
+		return verbError(ErrCodeInvalidParams, fmt.Sprintf("remember: provenance exceeds %d chars (got %d)", provenanceMaxChars, len(provenance)), "shorten the attribution -- provenance is a pointer, not a transcript"), true, nil
+	}
+
+	kind := req.Kind
+	if kind == "" {
+		kind = string(store.MemoryFactKindFact)
+	}
+	if !store.ValidMemoryFactKind(kind) {
+		return verbError(ErrCodeInvalidParams, fmt.Sprintf("remember: kind %q is not a fact kind", kind), "use one of: event | preference | commitment | belief | fact"), true, nil
+	}
+
+	visibility := req.Visibility
+	if visibility == "" {
+		visibility = string(store.MemoryVisibilityWorld)
+	}
+	if visibility != string(store.MemoryVisibilityWorld) && visibility != string(store.MemoryVisibilityPrivate) {
+		return verbError(ErrCodeInvalidParams, fmt.Sprintf("remember: visibility %q is not valid", visibility), "use \"world\" (default -- agents can recall it) or \"private\" (local CLI reads only)"), true, nil
 	}
 
 	now := h.deps.now()
-	confidence := defaultMachineConfidence
-	if req.Confidence != nil {
-		confidence = *req.Confidence
-	}
-	human := isHumanActor(req.Provenance.Actor)
-	if !human && confidence > machineConfidenceCap {
-		confidence = machineConfidenceCap
-	}
-	if confidence < 0 {
-		confidence = 0
-	}
-	if confidence > 1 {
-		confidence = 1
-	}
-
-	objectKey := store.NormalizeKey(req.Object)
-	claim := domain.Claim{
-		SubjectSlug: req.Subject,
-		Predicate:   req.Predicate,
-		Object:      req.Object,
-		ObjectKey:   objectKey,
-		Confidence:  confidence,
-		ValidFrom:   req.ValidFrom,
-		State:       domain.StateActive,
-		Family:      req.Predicate, // families are 1:1 with predicates in the seed vocabulary (store/fence.go), same as ClaimFromObservation
-		Provenance: domain.Provenance{
-			SourceSHA256: req.Provenance.SourceSHA256,
-			Span:         req.Provenance.Span,
-			Model:        req.Provenance.Model,
-			ObservedAt:   now,
-			Actor:        req.Provenance.Actor,
-		},
-	}
-	claim.ID = store.DerivedID(claim.SubjectSlug, claim.Predicate, claim.ObjectKey, claim.ValidFrom, claim.Provenance.SourceSHA256, store.DefaultIDWidth)
-
-	tier := h.deps.Config.TierOf(claim.Family)
-	active, err := h.activeNeighbors(claim, tier)
+	validUntil, err := parseTTL(req.TTL, now)
 	if err != nil {
-		return nil, false, fmt.Errorf("remember: read active claims: %w", err)
+		return verbError(ErrCodeInvalidParams, "remember: "+err.Error(), "use duration shorthand (\"30d\", \"12h\", \"45m\") or an absolute ISO 8601 timestamp (\"2026-07-12T00:00:00Z\"), never an ISO-8601 duration like \"P30D\""), true, nil
 	}
 
-	if h.engine == nil {
-		return nil, false, fmt.Errorf("remember: no disposition store configured -- cannot reconcile safely")
+	var entitySlug, entityType string
+	if req.Entity != "" {
+		t, s, ok := canonicalEntityRef(req.Entity)
+		if !ok {
+			return verbError(ErrCodeInvalidParams, "remember: entity is not a valid reference", "pass a plain name or a \"type/slug\" reference with no path separators beyond the one splitting them"), true, nil
+		}
+		entityType, entitySlug = t, s
 	}
-	detection, item, err := h.engine.Process(ctx, claim, active, now)
+
+	mw := h.deps.memoryWriter()
+	result, err := mw.Remember(writer.RememberInput{
+		Fact:       fact,
+		Provenance: provenance,
+		EntitySlug: entitySlug,
+		EntityType: entityType,
+		Kind:       store.MemoryFactKind(kind),
+		Visibility: store.MemoryVisibility(visibility),
+		ValidUntil: validUntil,
+	}, now)
 	if err != nil {
-		return nil, false, fmt.Errorf("remember: reconcile: %w", err)
+		return nil, false, fmt.Errorf("remember: %w", err)
 	}
 
-	if detection.Verdict == reconcile.VerdictConflict || detection.Verdict == reconcile.VerdictWindowClose {
-		env := newEnvelope()
-		env.Evidence = []Fact{factOfClaim(claim), factOfClaim(detection.Candidate)}
-		resp := rememberResponse{Envelope: env, Status: "staged_for_review"}
-		if item != nil {
-			resp.DispositionItemID = item.ID
-		}
-		return resp, false, nil
+	status := "inserted"
+	statusText := fmt.Sprintf("remembered as fact #%d", result.Record.Payload.LegacyID)
+	if !result.Inserted {
+		status = "duplicate"
+		statusText = fmt.Sprintf("already knew this -- kept fact #%d", result.Record.Payload.LegacyID)
 	}
 
-	if err := h.writeClaim(tier, claim); err != nil {
-		return nil, false, fmt.Errorf("remember: write claim: %w", err)
-	}
-
-	env := newEnvelope()
-	env.Evidence = []Fact{factOfClaim(claim)}
-	return rememberResponse{Envelope: env, Status: "remembered"}, false, nil
-}
-
-func isHumanActor(actor string) bool {
-	return len(actor) >= 6 && actor[:6] == "human:"
-}
-
-// activeNeighbors reads the active claims already recorded for claim's
-// own (subject, family) -- reconcile.Candidates narrows this down to
-// (subject, predicate) itself, so passing every active claim in claim's
-// own shard file or fence-page family (family is 1:1 with predicate) is
-// already correctly scoped, without internal/compose.AllClaims's
-// whole-repo walk.
-func (h *Handlers) activeNeighbors(claim domain.Claim, tier domain.Tier) ([]domain.Claim, error) {
-	if tier == domain.TierShard {
-		lines, err := h.deps.Shard.Lines(claim.SubjectSlug, claim.Family)
-		if err != nil {
-			return nil, err
-		}
-		return filterActive(lines), nil
-	}
-	path := h.deps.Fence.PathFor(ingest.DefaultEntityType, claim.SubjectSlug)
-	page, err := h.deps.Fence.ParseEntity(path)
-	if err != nil {
-		return nil, nil // no existing page yet -- nothing to reconcile against
-	}
-	var out []domain.Claim
-	for _, c := range page.Claims {
-		if c.Predicate == claim.Predicate {
-			out = append(out, c)
-		}
-	}
-	return filterActive(out), nil
-}
-
-func filterActive(claims []domain.Claim) []domain.Claim {
-	out := make([]domain.Claim, 0, len(claims))
-	for _, c := range claims {
-		if c.State == domain.StateActive {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
-// writeClaim commits claim through the deterministic writer -- the same
-// two entry points (writer.Shard/writer.Fence) and tier split
-// internal/ingest.Writer.writeClaim uses, minus that type's per-Write-call
-// id-dedup cache (remember commits one claim per call, so there is
-// nothing to cache across).
-func (h *Handlers) writeClaim(tier domain.Tier, claim domain.Claim) error {
-	if tier == domain.TierShard {
-		_, _, err := writer.Shard(h.deps.Queue, h.deps.Shard, claim)
-		return err
-	}
-	path := h.deps.Fence.PathFor(ingest.DefaultEntityType, claim.SubjectSlug)
-	page, err := h.deps.Fence.ParseEntity(path)
-	if err != nil {
-		page = store.NewEntityPage(domain.Entity{Type: ingest.DefaultEntityType, Slug: claim.SubjectSlug})
-	}
-	page.Claims = append(page.Claims, claim)
-	_, _, err = writer.Fence(h.deps.Queue, h.deps.Fence, page)
-	return err
+	return rememberResponse{
+		ProtocolVersion: ProtocolVersion,
+		ID:              result.Record.SHA256,
+		Status:          status,
+		StatusText:      statusText,
+		EntitySlug:      stringPtr(result.Record.Payload.EntitySlug),
+		ValidUntil:      isoPtr(result.Record.Payload.ValidUntil),
+	}, false, nil
 }

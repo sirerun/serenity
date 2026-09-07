@@ -45,6 +45,15 @@ type Options struct {
 	MaxPerType     int
 	MaxPerPage     int
 	NearDupeCosine float64
+	// Eligible, when non-nil, filters candidates before every dedup layer
+	// runs (T4.20, memory-compat-mapping.md item 5): a hit failing
+	// Eligible is invisible to the caller and never occupies a per-type/
+	// per-page slot an eligible hit could otherwise have used -- MEMORY_
+	// VERBS's own private/expired-fact audience policy (store.
+	// MemoryEligible) is the production use, but this stays a generic
+	// predicate rather than importing store's own types here. Nil means
+	// every hit is eligible (the pre-T4.20 behavior, byte-identical).
+	Eligible func(index.Hit) bool
 }
 
 func (o Options) withDefaults() Options {
@@ -66,10 +75,27 @@ func (o Options) withDefaults() Options {
 // per-page caps.
 const candidatePoolMultiplier = 5
 
+// poolWidenFactor and maxPoolWidenings bound how far Search retries with a
+// larger candidate pool when Options.Eligible excludes enough hits to
+// starve limit (T4.20 mapping item 5: "must not stop at the old limit*5
+// pool when excluded hits occupy it. Widen or paginate until enough
+// eligible results survive or the source is exhausted"). Doubling five
+// times off a limit*5 base reaches limit*160 before giving up -- generous
+// against a pool dominated by ineligible hits, still bounded so a genuinely
+// exhausted store returns promptly rather than looping.
+const poolWidenFactor = 2
+const maxPoolWidenings = 5
+
 // Search answers query by fusing the vector and full-text rankings via
 // RRF (rrf.go) and running the fused list through 4 dedup layers
 // (dedup.go, in order: exact-source, near-duplicate cosine, per-type cap,
-// per-page cap) before truncating to limit.
+// per-page cap) before truncating to limit. Options.Eligible, when set,
+// runs BEFORE any dedup layer (mapping item 5: "apply eligibility before
+// dedup/caps, so forbidden hits do not suppress eligible results") and, if
+// it leaves fewer than limit results, Search widens its candidate pool and
+// retries rather than returning a short page while the store still holds
+// more to search -- exactly the "one public match remains visible below
+// many private/expired matches" guarantee the mapping doc names.
 //
 // embedder may be nil: Search then skips the vector channel entirely and
 // ranks on the FTS channel alone, through the same fusion and dedup
@@ -83,37 +109,64 @@ func Search(ctx context.Context, store Store, embedder embed.Embedder, query str
 	opts = opts.withDefaults()
 	pool := limit * candidatePoolMultiplier
 
-	var vectorHits []index.Hit
 	var pin string
 	if embedder != nil {
 		pin = embedder.ModelVersion()
-		qvec, err := embedder.Embed(ctx, query)
-		if err != nil {
-			return nil, fmt.Errorf("search: embed query: %w", err)
+	}
+
+	var results []Result
+	for attempt := 0; ; attempt++ {
+		var vectorHits []index.Hit
+		if embedder != nil {
+			qvec, err := embedder.Embed(ctx, query)
+			if err != nil {
+				return nil, fmt.Errorf("search: embed query: %w", err)
+			}
+			vectorHits, err = store.SearchVectors(ctx, pin, qvec, pool)
+			if err != nil {
+				return nil, fmt.Errorf("search: vector scan: %w", err)
+			}
 		}
-		vectorHits, err = store.SearchVectors(ctx, pin, qvec, pool)
+
+		ftsHits, err := store.SearchFTS(ctx, query, pool)
 		if err != nil {
-			return nil, fmt.Errorf("search: vector scan: %w", err)
+			return nil, fmt.Errorf("search: fts scan: %w", err)
 		}
-	}
 
-	ftsHits, err := store.SearchFTS(ctx, query, pool)
-	if err != nil {
-		return nil, fmt.Errorf("search: fts scan: %w", err)
-	}
+		fused := fuseRRF(vectorHits, ftsHits)
+		if opts.Eligible != nil {
+			fused = filterEligible(fused, opts.Eligible)
+		}
 
-	results := fuseRRF(vectorHits, ftsHits)
+		fused = dedupExactSource(fused)
+		fused, err = dedupNearDuplicates(ctx, store, pin, fused, opts.NearDupeCosine)
+		if err != nil {
+			return nil, fmt.Errorf("search: near-duplicate dedup: %w", err)
+		}
+		fused = capPerType(fused, opts.MaxPerType)
+		fused = capPerPage(fused, opts.MaxPerPage)
+		results = fused
 
-	results = dedupExactSource(results)
-	results, err = dedupNearDuplicates(ctx, store, pin, results, opts.NearDupeCosine)
-	if err != nil {
-		return nil, fmt.Errorf("search: near-duplicate dedup: %w", err)
+		exhausted := len(vectorHits) < pool && len(ftsHits) < pool
+		if len(results) >= limit || exhausted || attempt >= maxPoolWidenings {
+			break
+		}
+		pool *= poolWidenFactor
 	}
-	results = capPerType(results, opts.MaxPerType)
-	results = capPerPage(results, opts.MaxPerPage)
 
 	if len(results) > limit {
 		results = results[:limit]
 	}
 	return results, nil
+}
+
+// filterEligible keeps only results eligible passes, preserving order.
+func filterEligible(results []Result, eligible func(index.Hit) bool) []Result {
+	out := make([]Result, 0, len(results))
+	for _, r := range results {
+		if eligible(r.Hit) {
+			out = append(out, r)
+		}
+	}
+	return out
 }

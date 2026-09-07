@@ -3,110 +3,306 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"sort"
+	"strings"
 
-	"github.com/sirerun/serenity/internal/briefing"
+	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/search"
 	"github.com/sirerun/serenity/internal/server/mcp"
+	"github.com/sirerun/serenity/internal/store"
 )
 
-// defaultRecallBudgetTokens is recall's own default attention budget when
-// a caller omits budget_tokens -- there is no existing RFC-named default
-// for MEMORY_VERBS's recall the way briefing.DefaultMovedForwardLookback
-// exists for briefing's own "recent" window, so this task picks one:
-// RFC 0001 §7's own daily-briefing hard cap (800 words) times roughly 2.5,
-// generous enough that a caller exploring without an explicit budget
-// rarely sees drops, disclosed rather than silently unbounded.
-const defaultRecallBudgetTokens = 2000
+// defaultRecallLimit is recall's own per-arm cap when the caller omits
+// limit -- generous enough that a caller exploring without an explicit
+// limit rarely hits it, disclosed rather than silently unbounded.
+const defaultRecallLimit = 50
 
-// recallPoolSize bounds how many ranked, deduplicated hits recall asks
-// internal/search.Search for before budget-packing -- a fixed candidate
-// pool, the same bounded-prompt-size reasoning internal/compose's own
-// retrievalLimit/searchPoolMultiplier apply, sized generously enough that
-// a realistic budget_tokens value is very unlikely to still want a hit
-// recall never even considered.
-const recallPoolSize = 50
+// searchPoolMultiplier widens the search arm's own request beyond limit so
+// enough candidates survive eligibility filtering and dedup to fill limit
+// results.
+const searchPoolMultiplier = 5
 
 type recallRequest struct {
-	Query        string `json:"query"`
-	BudgetTokens int    `json:"budget_tokens"`
+	Query        string `json:"query,omitempty"`
+	Entity       string `json:"entity,omitempty"`
+	BudgetTokens *int   `json:"budget_tokens,omitempty"`
+	Since        string `json:"since,omitempty"`
+	SessionID    string `json:"session_id,omitempty"`
+	Limit        *int   `json:"limit,omitempty"`
+}
+
+type recallFact struct {
+	ID         int64   `json:"id"`
+	FactID     string  `json:"fact_id"`
+	Fact       string  `json:"fact"`
+	Kind       string  `json:"kind"`
+	EntitySlug *string `json:"entity_slug"`
+	Provenance string  `json:"provenance"`
+	ValidUntil *string `json:"valid_until"`
+	Visibility string  `json:"visibility"`
+}
+
+type recallResult struct {
+	Slug         string  `json:"slug"`
+	Title        *string `json:"title"`
+	Chunk        *string `json:"chunk"`
+	Evidence     string  `json:"evidence"`
+	CreateSafety string  `json:"create_safety"`
+	Provenance   string  `json:"provenance"`
 }
 
 type recallResponse struct {
-	Envelope
+	ProtocolVersion int            `json:"protocol_version"`
+	Facts           []recallFact   `json:"facts"`
+	Total           int            `json:"total"`
+	Results         []recallResult `json:"results,omitempty"`
+	SearchDegraded  string         `json:"search_degraded,omitempty"`
+	BudgetTokens    *int           `json:"budget_tokens,omitempty"`
+	BudgetUsed      *int           `json:"budget_used,omitempty"`
+	DroppedCount    *int           `json:"dropped_count,omitempty"`
 }
 
 func (h *Handlers) recallTool() mcp.Tool {
 	schema := `{
 		"type": "object",
 		"properties": {
-			"query": {"type": "string", "description": "What to recall."},
-			"budget_tokens": {"type": "integer", "minimum": 0, "description": "Attention budget in words (0 or omitted uses the default)."}
-		},
-		"required": ["query"]
+			"query": {"type": "string", "description": "Hybrid-search the brain's pages; omit to skip the search arm."},
+			"entity": {"type": "string", "description": "Scope the facts arm to one entity (name or type/slug)."},
+			"budget_tokens": {"type": "integer", "minimum": 0, "description": "Server-side char/4 packing budget; facts pack first."},
+			"since": {"type": "string", "description": "ISO 8601 date/datetime -- filters the facts arm only."},
+			"session_id": {"type": "string"},
+			"limit": {"type": "integer", "minimum": 0, "description": "Per-arm cap on candidates."}
+		}
 	}`
 	return mcp.Tool{
 		Name:        "recall",
-		Description: "Retrieve relevant memory for a query: ranked, deduplicated evidence packed within a token budget.",
+		Description: "Retrieve saved facts and (with query) budget-packed page snippets.",
 		InputSchema: json.RawMessage(schema),
 		Handler:     handle(h.recall),
 	}
 }
 
-// recall wraps internal/search.Search exactly as `serenity search` does
-// (internal/cli/search.go): the same hybrid-search/dedup pipeline, the
-// same honest FTS-only degradation when h.deps.Embedder is nil. What this
-// verb adds beyond the CLI's own wiring is budget-packing: RFC 0001 §8.1's
-// gbrain envelope names a "budget meta" field this task's own acc line
-// tests directly ("recall budget_used <= budget_tokens with dropped_count
-// consistent"). internal/briefing.Pack (T2.17) is the wrong primitive here
-// -- it drops whole SECTIONS, never individual items within one -- so this
-// walks the ranked pool in rank order, including each hit while it still
-// fits the remaining budget and counting every hit that does not as
-// dropped, using briefing.WordEstimator for the same word-count
-// convention T2.17/T4.6 already established for "budget_estimator: words".
-// A later, smaller hit can still be included after an earlier, larger one
-// was dropped -- a deliberate greedy-fit choice, not a bug: recall's own
-// acc line only requires budget_used <= budget_tokens and a consistent
-// dropped_count, not strict rank-order truncation.
+// recall implements the pinned contract's facts-first budget packing:
+// facts pack first (limit-capped, char/4 estimated), then the search arm
+// packs into whatever budget remains -- so search-arm starvation is
+// bounded, never total, when facts are cheap (memory-compat-mapping.md,
+// upstream-verbs.ts's own doc comment on recall's budget field).
+// budget_tokens/budget_used/dropped_count are emitted only when the
+// caller explicitly supplied budget_tokens -- BudgetTokens is a *int for
+// exactly this reason, distinguishing "omitted" from "explicitly zero."
 func (h *Handlers) recall(ctx context.Context, args json.RawMessage) (any, bool, error) {
 	var req recallRequest
 	if err := json.Unmarshal(args, &req); err != nil {
-		return recallResponse{errorEnvelope("invalid_argument", "recall: malformed request", "send a JSON object with a non-empty \"query\" string")}, true, nil
-	}
-	if req.Query == "" {
-		return recallResponse{errorEnvelope("invalid_argument", "recall: query is required", "pass a non-empty \"query\" string")}, true, nil
-	}
-	budget := req.BudgetTokens
-	if budget <= 0 {
-		budget = defaultRecallBudgetTokens
+		return verbError(ErrCodeInvalidParams, "recall: malformed request", "send a JSON object; every field is optional"), true, nil
 	}
 
-	results, err := search.Search(ctx, h.deps.Index, h.deps.Embedder, req.Query, recallPoolSize, search.Options{})
+	var sinceT struct{ ok bool }
+	_ = sinceT
+	since, err := parseSinceUntil(req.Since)
+	if err != nil {
+		return verbError(ErrCodeInvalidParams, "recall: since is not a valid ISO 8601 date/datetime", "pass an ISO 8601 date (\"2026-06-01\") or datetime (\"2026-06-01T00:00:00Z\")"), true, nil
+	}
+
+	var entitySlug string
+	scopedToEntity := false
+	if req.Entity != "" {
+		_, slug, ok := canonicalEntityRef(req.Entity)
+		if !ok {
+			return verbError(ErrCodeInvalidParams, "recall: entity is not a valid reference", "pass a plain name or a \"type/slug\" reference with no path separators beyond the one splitting them"), true, nil
+		}
+		entitySlug = slug
+		scopedToEntity = true
+	}
+
+	limit := defaultRecallLimit
+	if req.Limit != nil && *req.Limit > 0 {
+		limit = *req.Limit
+	}
+
+	now := h.deps.now()
+	proj, err := store.LoadMemoryProjection(h.deps.Sources)
 	if err != nil {
 		return nil, false, err
 	}
 
-	used, dropped := 0, 0
-	evidence := make([]Fact, 0, len(results))
-	for _, r := range results {
-		cost := briefing.WordEstimator(r.Text)
-		if used+cost > budget {
-			dropped++
+	var candidates []store.MemoryFactRecord
+	if scopedToEntity {
+		candidates = proj.ByEntity(entitySlug)
+	} else {
+		candidates = proj.All()
+	}
+	facts := make([]store.MemoryFactRecord, 0, len(candidates))
+	for _, rec := range candidates {
+		if rec.Expired(now) {
 			continue
 		}
-		used += cost
-		evidence = append(evidence, Fact{
-			ChunkRef:   r.ChunkRef,
-			EntitySlug: r.EntitySlug,
-			Kind:       r.Kind,
-			Text:       r.Text,
-			Score:      r.RRFScore,
-			SourceRef:  r.SourceSHA256,
-		})
+		if rec.Payload.Visibility != store.MemoryVisibilityWorld {
+			continue // recall is MCP-only -- always the remote audience
+		}
+		if !since.IsZero() && rec.Payload.CreatedAt.Before(since) {
+			continue
+		}
+		facts = append(facts, rec)
+	}
+	sort.Slice(facts, func(i, j int) bool { return facts[i].Payload.CreatedAt.After(facts[j].Payload.CreatedAt) })
+	if len(facts) > limit {
+		facts = facts[:limit]
 	}
 
-	env := newEnvelope()
-	env.Evidence = evidence
-	env.Budget = &BudgetMeta{BudgetTokens: budget, BudgetUsed: used, DroppedCount: dropped}
-	return recallResponse{env}, false, nil
+	var results []recallResult
+	var searchDegraded string
+	if req.Query != "" {
+		eligible := func(hit index.Hit) bool {
+			return store.MemoryEligible(proj, hit.SourceSHA256, true, now)
+		}
+		hits, err := search.Search(ctx, h.deps.Index, h.deps.Embedder, req.Query, limit*searchPoolMultiplier, search.Options{Eligible: eligible})
+		if err != nil {
+			return nil, false, err
+		}
+		if h.deps.Embedder == nil {
+			searchDegraded = "no embedding provider configured; results are keyword-only"
+		}
+		if len(hits) > limit {
+			hits = hits[:limit]
+		}
+		results = make([]recallResult, 0, len(hits))
+		for _, r := range hits {
+			results = append(results, recallResultOf(h.deps.Root, req.Query, r, h.deps.Embedder != nil))
+		}
+	}
+
+	env := recallResponse{ProtocolVersion: ProtocolVersion, Results: results, SearchDegraded: searchDegraded}
+	if req.BudgetTokens != nil {
+		budget := *req.BudgetTokens
+		used, dropped := 0, 0
+
+		packedFacts := make([]recallFact, 0, len(facts))
+		for _, rec := range facts {
+			cost := charEstimate(rec.Payload.Fact)
+			if used+cost > budget {
+				dropped++
+				continue
+			}
+			used += cost
+			packedFacts = append(packedFacts, recallFactOf(rec))
+		}
+
+		packedResults := make([]recallResult, 0, len(results))
+		for _, r := range results {
+			text := ""
+			if r.Chunk != nil {
+				text = *r.Chunk
+			}
+			cost := charEstimate(text)
+			if used+cost > budget {
+				dropped++
+				continue
+			}
+			used += cost
+			packedResults = append(packedResults, r)
+		}
+
+		env.Facts = packedFacts
+		env.Total = len(packedFacts)
+		if req.Query != "" {
+			env.Results = packedResults
+		}
+		env.BudgetTokens = &budget
+		env.BudgetUsed = &used
+		env.DroppedCount = &dropped
+		return env, false, nil
+	}
+
+	env.Facts = make([]recallFact, 0, len(facts))
+	for _, rec := range facts {
+		env.Facts = append(env.Facts, recallFactOf(rec))
+	}
+	env.Total = len(env.Facts)
+	return env, false, nil
+}
+
+// charEstimate is the pinned char/4 token estimator (±10-15%, upstream's
+// own disclosed tolerance) -- ceiling division so even a short, non-empty
+// string costs at least 1, never 0 (a budget of 1 must still be able to
+// force a drop against a real fact).
+func charEstimate(s string) int {
+	if s == "" {
+		return 0
+	}
+	return (len(s) + 3) / 4
+}
+
+func recallFactOf(rec store.MemoryFactRecord) recallFact {
+	return recallFact{
+		ID:         rec.Payload.LegacyID,
+		FactID:     rec.SHA256,
+		Fact:       rec.Payload.Fact,
+		Kind:       string(rec.Payload.Kind),
+		EntitySlug: stringPtr(rec.Payload.EntitySlug),
+		Provenance: rec.Payload.Provenance,
+		ValidUntil: isoPtr(rec.Payload.ValidUntil),
+		Visibility: string(rec.Payload.Visibility),
+	}
+}
+
+// highVectorMatchThreshold is the fused RRF score above which a hit --
+// under a live embedder -- is classified "high_vector_match" rather than
+// "weak_semantic": a real, if simple, implementation-defined derivation
+// (RFC's own allowance: "the derivation of both is implementation-defined
+// and may improve; the values are frozen"). RRFK=60 means a chunk ranked
+// #1 in BOTH channels contributes 2/61 ≈ 0.033; this threshold requires
+// roughly a top-3 rank in at least one channel.
+const highVectorMatchThreshold = 0.02
+
+// recallResultOf classifies one search hit into the pinned enum shapes
+// (evidence, create_safety) -- zero-LLM heuristics over real signals
+// (query/hit text overlap, whether the hit's own entity slug already has
+// a page on disk, whether an embedder actually ran), never a hardcoded
+// constant value.
+func recallResultOf(root, query string, r search.Result, hasEmbedder bool) recallResult {
+	slug := r.EntitySlug
+	if slug == "" {
+		if r.SourceSHA256 != "" && len(r.SourceSHA256) >= 8 {
+			slug = "source-" + r.SourceSHA256[:8]
+		} else {
+			slug = r.ChunkRef
+		}
+	}
+
+	var title *string
+	createSafety := "unknown"
+	if r.EntitySlug != "" {
+		if matches, _ := globEntityPage(root, r.EntitySlug); len(matches) > 0 {
+			createSafety = "exists"
+		} else {
+			createSafety = "probable"
+		}
+	} else if r.Kind == "entity_page" {
+		createSafety = "probable"
+	}
+
+	evidence := classifyEvidence(query, r, hasEmbedder)
+	chunk := r.Text
+	return recallResult{
+		Slug:         slug,
+		Title:        title,
+		Chunk:        stringPtr(chunk),
+		Evidence:     evidence,
+		CreateSafety: createSafety,
+		Provenance:   slug,
+	}
+}
+
+func classifyEvidence(query string, r search.Result, hasEmbedder bool) string {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q != "" && r.EntitySlug != "" && strings.EqualFold(r.EntitySlug, slugify(query)) {
+		return "exact_title_match"
+	}
+	if q != "" && strings.Contains(strings.ToLower(r.Text), q) {
+		return "keyword_exact"
+	}
+	if hasEmbedder && r.RRFScore >= highVectorMatchThreshold {
+		return "high_vector_match"
+	}
+	return "weak_semantic"
 }

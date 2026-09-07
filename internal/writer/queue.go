@@ -80,7 +80,7 @@ func (q *Queue) drain() {
 	for s := range q.jobs {
 		b, err := s.job.Render()
 		res := Result{Job: s.job, Seq: s.seq, Bytes: b, Err: err}
-		if err == nil {
+		if err == nil && s.job.Path != "" {
 			q.touchedMu.Lock()
 			q.touched[s.job.Path] = true
 			q.touchedMu.Unlock()
@@ -124,6 +124,26 @@ func (q *Queue) takeTouched() []string {
 	sort.Strings(paths)
 	q.touched = map[string]bool{}
 	return paths
+}
+
+// MarkTouched records path as an additional touched path from inside a
+// Job's Render callback -- safe without its own synchronization beyond
+// touchedMu (already required for every other touched-set access) because
+// Submit guarantees Render only ever runs on the single drain goroutine, so
+// two Renders can never call this concurrently. Exists for a Render that
+// writes more than one file, or whose final path is not knowable until
+// Render itself runs -- e.g. internal/writer's MemoryFact entry point,
+// where the content-addressed write's own path depends on a legacy id
+// Render allocates under this same single-writer guarantee (T4.20); Job.Path
+// alone cannot name it up front, so that Job leaves Path empty and calls
+// this instead.
+func (q *Queue) MarkTouched(path string) {
+	if path == "" {
+		return
+	}
+	q.touchedMu.Lock()
+	q.touched[path] = true
+	q.touchedMu.Unlock()
 }
 
 // Close stops accepting new jobs and waits for the drain goroutine to

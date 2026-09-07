@@ -3,120 +3,125 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"sort"
 
 	"github.com/sirerun/serenity/internal/compose"
 	"github.com/sirerun/serenity/internal/server/mcp"
 )
 
 type synthesizeRequest struct {
-	Query string `json:"query"`
+	Question string `json:"question"`
+	Since    string `json:"since,omitempty"`
+	Until    string `json:"until,omitempty"`
+}
+
+type synthesizeCost struct {
+	Model        string   `json:"model"`
+	InputTokens  *int     `json:"input_tokens"`
+	OutputTokens *int     `json:"output_tokens"`
+	UsdEstimate  *float64 `json:"usd_estimate"`
 }
 
 type synthesizeResponse struct {
-	Envelope
-	Text          string                `json:"text,omitempty"`
-	Gap           string                `json:"gap,omitempty"`
-	Supersessions []synthesizeSupersede `json:"supersessions,omitempty"`
-}
-
-type synthesizeSupersede struct {
-	Subject   string `json:"subject"`
-	Predicate string `json:"predicate"`
-	Chain     []Fact `json:"chain"`
+	ProtocolVersion int            `json:"protocol_version"`
+	Answer          string         `json:"answer"`
+	Sources         []string       `json:"sources"`
+	Gaps            []string       `json:"gaps,omitempty"`
+	Cost            synthesizeCost `json:"cost"`
 }
 
 func (h *Handlers) synthesizeTool() mcp.Tool {
 	schema := `{
 		"type": "object",
 		"properties": {
-			"query": {"type": "string", "description": "The question to answer from the brain's accumulated claims."}
+			"question": {"type": "string", "description": "The question to answer."},
+			"since": {"type": "string", "description": "Optional temporal window start (ISO 8601 date or datetime)."},
+			"until": {"type": "string", "description": "Optional temporal window end (ISO 8601 date or datetime)."}
 		},
-		"required": ["query"]
+		"required": ["question"]
 	}`
 	return mcp.Tool{
 		Name:        "synthesize",
-		Description: "Compose a cited answer to a question from the brain's accumulated claims, or an explicit gap statement if none answer it.",
+		Description: "[EXPENSIVE/SLOW] Answer a broad question using cross-page LLM reasoning with citations and gap analysis.",
 		InputSchema: json.RawMessage(schema),
 		Handler:     handle(h.synthesize),
 	}
 }
 
-// synthesize wraps internal/compose.Composer.Ask exactly as `serenity ask`
-// does (internal/cli/ask.go): the same claim retrieval, the same
-// structural whitelist-filtered citations, the same explicit gap
-// statement when nothing answers the question -- never a fabricated
-// answer, never a silent empty result (RFC §11). synthesize without a
-// model returns unavailable with a fix (this task's own pitfall note):
-// when h.deps.Composer is nil (providers.BuildComposerRouter's own
-// explicit-skip contract -- no composer model pinned, or its credential
-// is not configured), this verb returns VerbError{Code: "unavailable"}
-// with h.deps.ComposerUnavailableNote as Message (the identical text
-// `serenity ask` itself prints in that case) and a populated Suggestion,
-// rather than a bare error or a silent skip.
-//
-// Disclosed, not built here: Envelope.Cost is never populated.
-// internal/compose.Composer.Ask records its one judgment-tier call's
-// spend as a side effect, through the router.Router already wired into
-// h.deps.Composer at Deps-construction time -- production spend
-// accounting (`serenity status`, T4.10's ceiling/projection) is correct
-// and unaffected -- but Ask does not return the call's cost to its
-// caller, so this verb has nothing to put in Cost without either
-// changing Ask's signature (out of this task's scope: T1.12 has already
-// shipped and Ask has other, unrelated callers) or reconstructing a
-// second Router here with its own cost-observing ledger, double-recording
-// spend. No acc line for this task tests Cost.
+// synthesize wraps the shared internal/compose.Composer.AskWithOptions
+// (T4.20: "both CLI ask and MCP synthesize call the same implementation")
+// -- the same claim retrieval `serenity ask` uses, plus source-evidence
+// retrieval over MEMORY_VERBS facts, both date-bounded by since/until. No
+// composer configured returns VerbError{Error: "unavailable"} with a fix,
+// never a fake successful answer/model/cost (RFC §11, this task's own
+// pitfall note).
 func (h *Handlers) synthesize(ctx context.Context, args json.RawMessage) (any, bool, error) {
 	var req synthesizeRequest
 	if err := json.Unmarshal(args, &req); err != nil {
-		return synthesizeResponse{Envelope: errorEnvelope("invalid_argument", "synthesize: malformed request", "send a JSON object with a non-empty \"query\" string")}, true, nil
+		return verbError(ErrCodeInvalidParams, "synthesize: malformed request", "send a JSON object with a non-empty \"question\" string"), true, nil
 	}
-	if req.Query == "" {
-		return synthesizeResponse{Envelope: errorEnvelope("invalid_argument", "synthesize: query is required", "pass a non-empty \"query\" string")}, true, nil
+	question := trimmed(req.Question)
+	if question == "" {
+		return verbError(ErrCodeInvalidParams, "synthesize: question must be a non-empty string", "pass the question to synthesize an answer for, e.g. question: \"what is our payments strategy?\""), true, nil
 	}
+	since, err := parseSinceUntil(req.Since)
+	if err != nil {
+		return verbError(ErrCodeInvalidParams, "synthesize: since is not a valid ISO 8601 date/datetime", "pass an ISO 8601 date (\"2026-06-01\") or datetime (\"2026-06-01T00:00:00Z\")"), true, nil
+	}
+	until, err := parseSinceUntil(req.Until)
+	if err != nil {
+		return verbError(ErrCodeInvalidParams, "synthesize: until is not a valid ISO 8601 date/datetime", "pass an ISO 8601 date (\"2026-06-01\") or datetime (\"2026-06-01T00:00:00Z\")"), true, nil
+	}
+
 	if h.deps.Composer == nil {
 		note := h.deps.ComposerUnavailableNote
 		if note == "" {
-			note = "no composer model pinned"
+			note = "synthesize needs an LLM and none is configured"
 		}
-		return synthesizeResponse{Envelope: errorEnvelope("unavailable", note, "pin models.composer in serenity.yml and set the matching provider credential (ANTHROPIC_API_KEY, OPENAI_API_KEY, or OPENROUTER_API_KEY)")}, true, nil
+		return verbError(ErrCodeUnavailable, note, "set an API key (e.g. `serenity config` a provider credential) and retry -- recall and entity work without one"), true, nil
 	}
 
 	c := compose.New(h.deps.Root, h.deps.Config, h.deps.Index, h.deps.Embedder, h.deps.Composer, h.deps.ComposerModelVersion)
-	answer, err := c.Ask(ctx, req.Query)
+	answer, err := c.AskWithOptions(ctx, question, compose.AskOptions{Since: since, Until: until})
 	if err != nil {
 		return nil, false, err
 	}
 
-	env := newEnvelope()
-	resp := synthesizeResponse{Envelope: env}
+	resp := synthesizeResponse{
+		ProtocolVersion: ProtocolVersion,
+		Cost:            synthesizeCost{Model: h.deps.ComposerModelVersion},
+	}
+	if answer.Usage != nil {
+		in, out, usd := answer.Usage.InputTokens, answer.Usage.OutputTokens, answer.Usage.CostUSD
+		resp.Cost.InputTokens = &in
+		resp.Cost.OutputTokens = &out
+		resp.Cost.UsdEstimate = &usd
+	}
+
 	if answer.Gap != "" {
-		resp.Gap = answer.Gap
+		resp.Answer = answer.Gap
+		resp.Sources = []string{}
+		resp.Gaps = []string{answer.Gap}
 		return resp, false, nil
 	}
-	resp.Text = answer.Text
-	for _, cit := range answer.Citations {
-		env.Evidence = append(env.Evidence, factOfCitation(cit))
-	}
-	for _, s := range answer.Supersessions {
-		chain := make([]Fact, 0, len(s.Chain))
-		for _, cit := range s.Chain {
-			chain = append(chain, factOfCitation(cit))
-		}
-		resp.Supersessions = append(resp.Supersessions, synthesizeSupersede{Subject: s.Subject, Predicate: s.Predicate, Chain: chain})
-	}
-	resp.Envelope = env
-	return resp, false, nil
-}
 
-func factOfCitation(c compose.Citation) Fact {
-	conf := c.Confidence
-	return Fact{
-		Subject:    c.Subject,
-		Predicate:  c.Predicate,
-		Object:     c.Object,
-		ClaimID:    c.ClaimID,
-		SourceRef:  c.SourceRef,
-		Confidence: &conf,
-		Provenance: FactProvenance{ObservedAt: c.ObservedAt},
+	resp.Answer = answer.Text
+	seen := map[string]bool{}
+	for _, cit := range answer.Citations {
+		if cit.Subject != "" && !seen[cit.Subject] {
+			seen[cit.Subject] = true
+			resp.Sources = append(resp.Sources, cit.Subject)
+		}
 	}
+	for _, sc := range answer.SourceCitations {
+		if sc.EntitySlug != "" && !seen[sc.EntitySlug] {
+			seen[sc.EntitySlug] = true
+			resp.Sources = append(resp.Sources, sc.EntitySlug)
+		}
+	}
+	sort.Strings(resp.Sources)
+	if resp.Sources == nil {
+		resp.Sources = []string{}
+	}
+	return resp, false, nil
 }

@@ -10,9 +10,6 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/config"
-	"github.com/sirerun/serenity/internal/disposition"
-	"github.com/sirerun/serenity/internal/domain"
-	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
@@ -59,28 +56,41 @@ func gitRepoFixture(t *testing.T) string {
 // newTestHandlers builds a real Handlers over a fresh brain repo: a real
 // *index.SQLite (providers.OpenIndex only needs root/.serenity, which it
 // creates itself -- no serenity.yml required), the real writer queue, and
-// the real Fence/Shard stores -- deliberately not a hand-rolled double,
-// the same "test the real primitive" posture internal/supersede and
-// internal/reconcile's own test fixtures already take.
+// the real Fence/Shard/Sources stores -- deliberately not a hand-rolled
+// double, the same "test the real primitive" posture internal/supersede
+// and internal/reconcile's own test fixtures already take.
 func newTestHandlers(t *testing.T) (*Handlers, string) {
 	t.Helper()
 	root := gitRepoFixture(t)
+	deps, closeFn := testDeps(t, root)
+	t.Cleanup(closeFn)
+	return New(deps), root
+}
+
+// testDeps builds Deps over an already-prepared git repo root, letting a
+// caller (e.g. a test needing to reopen the same root after a restart)
+// control the fixture's lifetime independently of Handlers construction.
+func testDeps(t *testing.T, root string) (Deps, func()) {
+	t.Helper()
 	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		t.Fatalf("OpenIndex: %v", err)
 	}
-	t.Cleanup(func() { _ = eng.Close() })
+	q := writer.NewQueue(nil)
 	deps := Deps{
-		Root:        root,
-		Config:      config.Default(),
-		Index:       eng,
-		Disposition: disposition.NewStore(eng),
-		Queue:       writer.NewQueue(nil),
-		Fence:       store.NewFenceWriter(root),
-		Shard:       store.NewShardStore(root),
-		Clock:       fixedClock{testNow},
+		Root:    root,
+		Config:  config.Default(),
+		Index:   eng,
+		Queue:   q,
+		Sources: store.NewSourceStore(root),
+		Fence:   store.NewFenceWriter(root),
+		Shard:   store.NewShardStore(root),
+		Clock:   fixedClock{testNow},
 	}
-	return New(deps), root
+	return deps, func() {
+		q.Close()
+		_ = eng.Close()
+	}
 }
 
 func mustMarshal(t *testing.T, v any) json.RawMessage {
@@ -92,12 +102,31 @@ func mustMarshal(t *testing.T, v any) json.RawMessage {
 	return b
 }
 
-// TestRememberProvenanceRequired is this task's own acc line: "remember
-// with empty provenance -> provenance_required with a populated
-// suggestion." Both the wholly-absent-provenance and the
-// present-but-empty-actor shapes must trip it -- Provenance.Actor is the
-// field the doc comment names as the actual trigger, not mere presence of
-// the object.
+// asVerbError requires resp to be a VerbError and returns it, so every
+// test asserting a specific failure shape does so uniformly against the
+// new flat error type (T4.20 replaced the old nested Envelope.Error).
+func asVerbError(t *testing.T, resp any, isError bool) VerbError {
+	t.Helper()
+	if !isError {
+		t.Fatalf("want isError=true, got resp=%+v", resp)
+	}
+	ve, ok := resp.(VerbError)
+	if !ok {
+		t.Fatalf("response type = %T, want VerbError", resp)
+	}
+	if ve.Suggestion == "" {
+		t.Fatal("want a populated Suggestion, got empty string")
+	}
+	return ve
+}
+
+// TestRememberProvenanceRequired is this task's own acc line, re-targeted
+// at the pinned contract's own field: remember's REQUIRED field is
+// provenance (free text), not the old guessed subject/predicate/object
+// claim shape -- T4.20 replaced that guess wholesale (memory-compat-
+// mapping.md: the old Envelope read RFC 0001 §8.1's field list, not the
+// actual frozen gbrain contract). Both an absent and a blank-but-present
+// provenance must trip provenance_required with a populated suggestion.
 func TestRememberProvenanceRequired(t *testing.T) {
 	h, _ := newTestHandlers(t)
 	ctx := context.Background()
@@ -106,8 +135,8 @@ func TestRememberProvenanceRequired(t *testing.T) {
 		name string
 		req  rememberRequest
 	}{
-		{"absent provenance", rememberRequest{Subject: "acme-corp", Predicate: "has_balance", Object: "$500"}},
-		{"empty actor", rememberRequest{Subject: "acme-corp", Predicate: "has_balance", Object: "$500", Provenance: &rememberProvenance{Actor: ""}}},
+		{"absent provenance", rememberRequest{Fact: "picked Stripe over Adyen"}},
+		{"blank provenance", rememberRequest{Fact: "picked Stripe over Adyen", Provenance: "   "}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -115,105 +144,61 @@ func TestRememberProvenanceRequired(t *testing.T) {
 			if err != nil {
 				t.Fatalf("remember: %v", err)
 			}
-			if !isError {
-				t.Fatal("want isError=true for missing provenance")
-			}
-			rr, ok := resp.(rememberResponse)
-			if !ok {
-				t.Fatalf("response type = %T, want rememberResponse", resp)
-			}
-			if rr.Error == nil {
-				t.Fatal("want a populated Envelope.Error")
-			}
-			if rr.Error.Code != "provenance_required" {
-				t.Fatalf("Error.Code = %q, want %q", rr.Error.Code, "provenance_required")
-			}
-			if rr.Error.Suggestion == "" {
-				t.Fatal("want a populated Suggestion, got empty string")
+			ve := asVerbError(t, resp, isError)
+			if ve.Error != ErrCodeProvenanceRequired {
+				t.Fatalf("Error = %q, want %q", ve.Error, ErrCodeProvenanceRequired)
 			}
 		})
 	}
 }
 
-// TestRememberWriteThenReconcileConflict spot-checks remember's core
-// design (remember.go's own doc comment): a fresh claim writes straight
-// through (Status "remembered"), while a second claim on the same
-// (subject, predicate) with a differing object -- the textbook same-time
-// contradiction RFC §10.2 names -- runs into internal/reconcile.Engine
-// and stages a disposition item instead of writing (Status
-// "staged_for_review"), never overwriting the first claim.
-func TestRememberWriteThenReconcileConflict(t *testing.T) {
-	h, root := newTestHandlers(t)
+// TestRememberThenRecallRoundTrip spot-checks remember's core design: a
+// fresh fact writes straight through (Status "inserted"), lands on disk as
+// a real memory_fact source, and is visible via recall scoped to its own
+// entity -- the immediate world remember->recall round-trip the mapping
+// doc's own architecture note requires.
+func TestRememberThenRecallRoundTrip(t *testing.T) {
+	h, _ := newTestHandlers(t)
 	ctx := context.Background()
 
-	first := rememberRequest{
-		Subject: "acme-corp", Predicate: "has_balance", Object: "$500",
-		Provenance: &rememberProvenance{Actor: "human:tester"},
-	}
-	resp, isError, err := h.remember(ctx, mustMarshal(t, first))
+	resp, isError, err := h.remember(ctx, mustMarshal(t, rememberRequest{
+		Fact:       "Acme Corp has a $500 balance",
+		Provenance: "conformance run",
+		Entity:     "acme-corp",
+	}))
 	if err != nil {
-		t.Fatalf("remember (first): %v", err)
+		t.Fatalf("remember: %v", err)
 	}
 	if isError {
-		t.Fatalf("remember (first) unexpectedly errored: %+v", resp)
+		t.Fatalf("remember unexpectedly errored: %+v", resp)
 	}
 	rr := resp.(rememberResponse)
-	if rr.Status != "remembered" {
-		t.Fatalf("Status = %q, want %q", rr.Status, "remembered")
+	if rr.Status != "inserted" {
+		t.Fatalf("Status = %q, want %q", rr.Status, "inserted")
 	}
-	if len(rr.Evidence) != 1 || rr.Evidence[0].ClaimID == "" {
-		t.Fatalf("want one evidence fact with a claim id, got %+v", rr.Evidence)
+	if rr.ID == "" {
+		t.Fatal("want a populated opaque id")
 	}
-
-	// The write actually landed on disk, through the real shard store --
-	// not just reported success.
-	lines, err := store.NewShardStore(root).Lines("acme-corp", "has_balance")
-	if err != nil {
-		t.Fatalf("Lines: %v", err)
-	}
-	if len(lines) != 1 || lines[0].Object != "$500" {
-		t.Fatalf("shard lines = %+v, want one active $500 claim", lines)
+	if rr.EntitySlug == nil || *rr.EntitySlug != "acme-corp" {
+		t.Fatalf("EntitySlug = %v, want \"acme-corp\"", rr.EntitySlug)
 	}
 
-	second := rememberRequest{
-		Subject: "acme-corp", Predicate: "has_balance", Object: "$700",
-		Provenance: &rememberProvenance{Actor: "human:tester"},
-	}
-	resp, isError, err = h.remember(ctx, mustMarshal(t, second))
+	recallResp, isError, err := h.recall(ctx, mustMarshal(t, recallRequest{Entity: "acme-corp"}))
 	if err != nil {
-		t.Fatalf("remember (second): %v", err)
+		t.Fatalf("recall: %v", err)
 	}
 	if isError {
-		t.Fatalf("remember (second) unexpectedly errored: %+v", resp)
+		t.Fatalf("recall unexpectedly errored: %+v", recallResp)
 	}
-	rr2 := resp.(rememberResponse)
-	if rr2.Status != "staged_for_review" {
-		t.Fatalf("Status = %q, want %q", rr2.Status, "staged_for_review")
+	rec := recallResp.(recallResponse)
+	if rec.Total != 1 || len(rec.Facts) != 1 {
+		t.Fatalf("recall facts = %+v, want exactly 1", rec.Facts)
 	}
-	if rr2.DispositionItemID == "" {
-		t.Fatal("want a populated disposition_item_id")
+	if rec.Facts[0].FactID != rr.ID {
+		t.Fatalf("recall fact_id = %q, want the remembered id %q", rec.Facts[0].FactID, rr.ID)
 	}
-	if len(rr2.Evidence) != 2 {
-		t.Fatalf("want both the new and the conflicting claim as evidence, got %d", len(rr2.Evidence))
-	}
-
-	// The conflicting claim was never written -- the shard still holds
-	// exactly the first, $500 claim.
-	lines, err = store.NewShardStore(root).Lines("acme-corp", "has_balance")
-	if err != nil {
-		t.Fatalf("Lines: %v", err)
-	}
-	if len(lines) != 1 || lines[0].Object != "$500" {
-		t.Fatalf("shard lines after conflict = %+v, want the original $500 claim untouched", lines)
-	}
-
-	// And the disposition item is really there.
-	item, err := h.deps.Disposition.Get(ctx, rr2.DispositionItemID)
-	if err != nil {
-		t.Fatalf("Disposition.Get: %v", err)
-	}
-	if item.Kind != disposition.KindReconcile {
-		t.Fatalf("item.Kind = %q, want %q", item.Kind, disposition.KindReconcile)
+	if rec.Facts[0].Fact != "Acme Corp has a $500 balance" {
+		t.Fatalf("recall fact text = %q", rec.Facts[0].Fact)
 	}
 }
 
@@ -221,7 +206,7 @@ func TestRememberWriteThenReconcileConflict(t *testing.T) {
 // found:false not an error."
 func TestEntityMissFoundFalse(t *testing.T) {
 	h, _ := newTestHandlers(t)
-	resp, isError, err := h.entity(context.Background(), mustMarshal(t, entityRequest{Slug: "never-existed"}))
+	resp, isError, err := h.entity(context.Background(), mustMarshal(t, entityRequest{Name: "never-existed"}))
 	if err != nil {
 		t.Fatalf("entity: %v", err)
 	}
@@ -233,143 +218,79 @@ func TestEntityMissFoundFalse(t *testing.T) {
 		t.Fatalf("response type = %T, want entityResponse", resp)
 	}
 	if er.Found {
-		t.Fatal("Found = true, want false for a never-existing slug")
+		t.Fatal("Found = true, want false for a never-existing name")
 	}
-	if er.Error != nil {
-		t.Fatalf("want no Envelope.Error on a miss, got %+v", er.Error)
+	if er.Suggestions == nil {
+		t.Fatal("want a non-nil (possibly empty) suggestions array on a miss")
 	}
 }
 
 // TestForgetIdempotent is this task's own acc line: "forget is
-// idempotent." A never-existing claim id and a second forget call
-// against an already-retracted claim must both report Forgotten:true and
-// must not error -- a caller can retry blindly.
+// idempotent." A never-existing id and a second forget call against an
+// already-expired fact must both report Expired:false/true correctly per
+// the pinned semantics (fresh=true, repeat=false, unknown=not_found) and
+// must never error on the repeat path -- a caller can retry blindly.
 func TestForgetIdempotent(t *testing.T) {
-	h, root := newTestHandlers(t)
+	h, _ := newTestHandlers(t)
 	ctx := context.Background()
 
-	// Never-existing claim id.
-	resp, isError, err := h.forget(ctx, mustMarshal(t, forgetRequest{Subject: "charlie-fixture", ClaimID: "never-existed"}))
+	// Unknown id -> not_found.
+	resp, isError, err := h.forget(ctx, mustMarshal(t, forgetRequest{ID: "never-existed"}))
 	if err != nil {
 		t.Fatalf("forget (never existed): %v", err)
 	}
-	if isError {
-		t.Fatalf("forget (never existed) unexpectedly errored: %+v", resp)
-	}
-	if fr, ok := resp.(forgetResponse); !ok || !fr.Forgotten {
-		t.Fatalf("forget (never existed) = %+v, want Forgotten=true", resp)
+	ve := asVerbError(t, resp, isError)
+	if ve.Error != ErrCodeNotFound {
+		t.Fatalf("Error = %q, want %q", ve.Error, ErrCodeNotFound)
 	}
 
-	// Remember a real shard-tier claim to forget.
+	// Remember a real fact to forget.
 	rememberResp, isError, err := h.remember(ctx, mustMarshal(t, rememberRequest{
-		Subject: "charlie-fixture", Predicate: "has_balance", Object: "$100",
-		Provenance: &rememberProvenance{Actor: "human:tester"},
+		Fact: "Charlie has a $100 balance", Provenance: "conformance run",
 	}))
 	if err != nil || isError {
 		t.Fatalf("remember: err=%v isError=%v resp=%+v", err, isError, rememberResp)
 	}
-	claimID := rememberResp.(rememberResponse).Evidence[0].ClaimID
-	if claimID == "" {
-		t.Fatal("remember produced no claim id to forget")
+	id := rememberResp.(rememberResponse).ID
+	if id == "" {
+		t.Fatal("remember produced no id to forget")
 	}
 
-	// First forget: a genuine retraction.
-	resp, isError, err = h.forget(ctx, mustMarshal(t, forgetRequest{Subject: "charlie-fixture", ClaimID: claimID}))
+	// First forget: a genuine expiry.
+	resp, isError, err = h.forget(ctx, mustMarshal(t, forgetRequest{ID: id}))
 	if err != nil {
 		t.Fatalf("forget (first): %v", err)
 	}
 	if isError {
 		t.Fatalf("forget (first) unexpectedly errored: %+v", resp)
 	}
-	if fr, ok := resp.(forgetResponse); !ok || !fr.Forgotten {
-		t.Fatalf("forget (first) = %+v, want Forgotten=true", resp)
+	fr, ok := resp.(forgetResponse)
+	if !ok || !fr.Expired {
+		t.Fatalf("forget (first) = %+v, want Expired=true", resp)
 	}
 
-	lines, err := store.NewShardStore(root).Lines("charlie-fixture", "has_balance")
-	if err != nil {
-		t.Fatalf("Lines: %v", err)
-	}
-	if len(lines) == 0 || lines[len(lines)-1].State != domain.StateRetracted {
-		t.Fatalf("shard lines = %+v, want the head line retracted", lines)
-	}
-
-	// Second forget on the same, now-already-retracted claim id: still
-	// Forgotten=true, still no error, and no second retraction line is
-	// appended (idempotent by construction, not by luck).
-	resp, isError, err = h.forget(ctx, mustMarshal(t, forgetRequest{Subject: "charlie-fixture", ClaimID: claimID}))
+	// Second forget on the same, now-already-expired id: Expired=false,
+	// still no error.
+	resp, isError, err = h.forget(ctx, mustMarshal(t, forgetRequest{ID: id}))
 	if err != nil {
 		t.Fatalf("forget (second): %v", err)
 	}
 	if isError {
 		t.Fatalf("forget (second) unexpectedly errored: %+v", resp)
 	}
-	if fr, ok := resp.(forgetResponse); !ok || !fr.Forgotten {
-		t.Fatalf("forget (second) = %+v, want Forgotten=true", resp)
+	fr, ok = resp.(forgetResponse)
+	if !ok || fr.Expired {
+		t.Fatalf("forget (second) = %+v, want Expired=false (already expired)", resp)
 	}
-	linesAfter, err := store.NewShardStore(root).Lines("charlie-fixture", "has_balance")
-	if err != nil {
-		t.Fatalf("Lines: %v", err)
-	}
-	if len(linesAfter) != len(lines) {
-		t.Fatalf("second forget appended a line: before=%d after=%d", len(lines), len(linesAfter))
-	}
-}
 
-// TestRecallBudgetPacking is this task's own acc line: "recall
-// budget_used <= budget_tokens with dropped_count consistent." Two
-// distinct fence pages give recall at least two ranked hits; a budget
-// wide enough for both (observed, not hardcoded, so this stays robust to
-// chunking/word-count details) establishes a baseline, then a budget one
-// word short of that baseline must force at least one drop while the
-// invariant itself still holds and dropped_count plus what's still
-// included accounts for every hit the wide call found.
-func TestRecallBudgetPacking(t *testing.T) {
-	h, root := newTestHandlers(t)
-	ctx := context.Background()
-
-	for i, slug := range []string{"widget-alpha", "widget-beta"} {
-		p := store.NewEntityPage(domain.Entity{Type: "project", Slug: slug})
-		p.Summary = "Widget project number " + string(rune('0'+i)) + " is actively tracked, with a long summary describing its ongoing status and various details that add up to a meaningful word count for budget testing purposes here."
-		if _, _, err := writer.Fence(h.deps.Queue, h.deps.Fence, p); err != nil {
-			t.Fatalf("writer.Fence(%s): %v", slug, err)
+	// The fact no longer round-trips through recall.
+	recallResp, isError, err := h.recall(ctx, mustMarshal(t, recallRequest{}))
+	if err != nil || isError {
+		t.Fatalf("recall: err=%v isError=%v", err, isError)
+	}
+	for _, f := range recallResp.(recallResponse).Facts {
+		if f.FactID == id {
+			t.Fatalf("forgotten fact %s still visible via recall", id)
 		}
-	}
-	if err := index.Rebuild(ctx, root, h.deps.Config, h.deps.Index); err != nil {
-		t.Fatalf("index.Rebuild: %v", err)
-	}
-
-	wideResp, isError, err := h.recall(ctx, mustMarshal(t, recallRequest{Query: "widget", BudgetTokens: 100000}))
-	if err != nil {
-		t.Fatalf("recall (wide): %v", err)
-	}
-	if isError {
-		t.Fatalf("recall (wide) unexpectedly errored: %+v", wideResp)
-	}
-	wide := wideResp.(recallResponse)
-	if wide.Budget.DroppedCount != 0 {
-		t.Fatalf("wide budget dropped %d hits, want 0", wide.Budget.DroppedCount)
-	}
-	if len(wide.Evidence) < 2 {
-		t.Skipf("only %d hit(s) found for \"widget\" -- not enough to test packing", len(wide.Evidence))
-	}
-
-	tightBudget := wide.Budget.BudgetUsed - 1
-	tightResp, isError, err := h.recall(ctx, mustMarshal(t, recallRequest{Query: "widget", BudgetTokens: tightBudget}))
-	if err != nil {
-		t.Fatalf("recall (tight): %v", err)
-	}
-	if isError {
-		t.Fatalf("recall (tight) unexpectedly errored: %+v", tightResp)
-	}
-	tight := tightResp.(recallResponse)
-	if tight.Budget.BudgetUsed > tightBudget {
-		t.Fatalf("budget_used %d exceeds budget_tokens %d", tight.Budget.BudgetUsed, tightBudget)
-	}
-	if tight.Budget.DroppedCount == 0 {
-		t.Fatal("want at least one drop under a budget one word short of the wide baseline")
-	}
-	if tight.Budget.DroppedCount+len(tight.Evidence) != len(wide.Evidence) {
-		t.Fatalf("dropped_count inconsistent: dropped=%d included=%d, want dropped+included = %d (the wide call's own hit count)",
-			tight.Budget.DroppedCount, len(tight.Evidence), len(wide.Evidence))
 	}
 }
