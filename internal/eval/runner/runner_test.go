@@ -340,12 +340,13 @@ func TestRunScoresReconcileSectionAlongsidePrimaryCorpus(t *testing.T) {
 	if len(report.Reconcile.VerdictConfusion) == 0 {
 		t.Error("Reconcile.VerdictConfusion is empty, want per-verdict P/R/F1")
 	}
-	// The corpus's own R-014 fixture (RFC3339 valid_from) is a real,
-	// deliberately-included false negative on window_close -- this must
-	// survive the full Run wiring, not just internal/eval/reconcile's own
+	// The corpus's own R-014 fixture (RFC3339 valid_from) was a real,
+	// deliberately-included false negative on window_close until T2.23
+	// fixed parseValidFrom to accept RFC3339 -- confirm the fix survives
+	// the full Run wiring, not just internal/eval/reconcile's own
 	// package-level test.
-	if got := report.Reconcile.VerdictConfusion["window_close"].FN; got < 1 {
-		t.Errorf("Reconcile.VerdictConfusion[window_close].FN = %d, want >= 1", got)
+	if got := report.Reconcile.VerdictConfusion["window_close"].FN; got != 0 {
+		t.Errorf("Reconcile.VerdictConfusion[window_close].FN = %d, want 0", got)
 	}
 }
 
