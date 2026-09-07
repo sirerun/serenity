@@ -3,9 +3,15 @@ package cron
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
+	"github.com/sirerun/serenity/internal/config"
+	"github.com/sirerun/serenity/internal/consolidate"
 	"github.com/sirerun/serenity/internal/disposition"
+	"github.com/sirerun/serenity/internal/embed"
+	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/providers"
+	"github.com/sirerun/serenity/internal/writer"
 )
 
 // Sweep runs the expiry-sweeper pass (plan T2.6, RFC §0001 §8.2): pending
@@ -34,9 +40,31 @@ func Sweep(ctx context.Context, root string, clock Clock) error {
 
 // Consolidate runs the nightly consolidate pass (plan T2.14): summary
 // fences with freshness banners, shard-head refresh, and re-embedding of
-// changed chunks. Placeholder until T2.14 lands — see the package doc
-// comment.
-func Consolidate(_ context.Context, root string, clock Clock) error {
+// changed chunks. Unpinned embeddings explicitly select FTS-only operation;
+// configured-but-unavailable providers fail instead of claiming completion.
+func Consolidate(ctx context.Context, root string, clock Clock) error {
+	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	if err != nil {
+		return err
+	}
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = eng.Close() }()
+	var embedder index.Embedder
+	if cfg.Models.Embedding != "" && cfg.Models.Embedding != "none@v0" {
+		r, ok, note := providers.BuildEmbeddingRouter(cfg, &providers.IndexSpendLedger{Eng: eng})
+		if !ok {
+			return fmt.Errorf("cron: consolidate: %s", note)
+		}
+		embedder = &embed.RouterEmbedder{Router: r, Pin: cfg.Models.Embedding}
+	}
+	q := writer.NewQueue(nil)
+	defer q.Close()
+	if _, err := consolidate.Run(ctx, root, cfg, q, eng, embedder, clock.Now()); err != nil {
+		return fmt.Errorf("cron: consolidate: %w", err)
+	}
 	return recordRun(root, "consolidate", clock.Now())
 }
 
