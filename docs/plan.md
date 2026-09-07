@@ -242,7 +242,7 @@ gap, fixed same day) -- v0.1.0 itself was left untouched, not retagged.
 - [ ] T5.1 gbrain importer: page frontmatter, facts fence, takes fence, timeline, links -> entity pages, claims, timeline fences, graph edges (`internal/import/gbrain`)
 - [ ] T5.2 Field-level round-trip test + unmapped-field report
 - [ ] T5.3 Resumable import: per-(page,row) checkpoint in .serenity/import/gbrain.json written after the batch is durable
-- [ ] T5.4 Docs site (mkdocs-material): install, operator manual (config, cron/serve, scheduling units, backup and recovery, keychain, upgrades, git gc guidance), connector guide, protocol specs, RFC process, threat model by build-time include
+- [x] T5.4 Docs site (mkdocs-material): install, operator manual (config, cron/serve, scheduling units, backup and recovery, keychain, upgrades, git gc guidance), connector guide, protocol specs, RFC process, threat model by build-time include (merged PR #175, 2026-09-07, `470f57e` -- see docs/plans/E5-m5-migration-launch.md for the full annotation)
 - [ ] T5.5 Adversarial corpus release gate (`evals/adversarial`, required check on release.yml): injected instructions, contradictory and stale sources, false claims, entity collisions, poisoned documents, precept-fabrication attempts, effect-request forgery
 - [ ] T5.9 10K-message synthetic corpus generator (seeded, deterministic) for the import budget benchmark
 
