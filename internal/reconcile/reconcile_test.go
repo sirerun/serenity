@@ -138,6 +138,68 @@ func TestOverlappingWindowFixtureProposesWindowCloseNotRefutation(t *testing.T) 
 	}
 }
 
+// TestParseValidFromAcceptsRFC3339 is T2.23's acc-line clause directly:
+// "an input with a RFC3339 valid_from (e.g. 2026-09-07T00:00:00Z) parses
+// successfully." Before this task, parseValidFrom only accepted
+// validDateLayout ("2006-01-02"); an RFC3339 string with a time-of-day
+// and "Z" suffix failed to parse at all.
+func TestParseValidFromAcceptsRFC3339(t *testing.T) {
+	got, ok := parseValidFrom("2026-09-07T00:00:00Z")
+	if !ok {
+		t.Fatal("parseValidFrom(RFC3339 input) ok = false, want true")
+	}
+	want := time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("parseValidFrom(RFC3339 input) = %v, want %v", got, want)
+	}
+}
+
+// TestParseValidFromStillRejectsGarbage guards against a fix that widens
+// parseValidFrom into accepting anything -- only the two named layouts
+// (validDateLayout and RFC3339) are valid; an unrelated string must still
+// fail closed exactly as before.
+func TestParseValidFromStillRejectsGarbage(t *testing.T) {
+	if _, ok := parseValidFrom("not-a-date"); ok {
+		t.Fatal("parseValidFrom(garbage) ok = true, want false")
+	}
+	if _, ok := parseValidFrom(""); ok {
+		t.Fatal("parseValidFrom(empty) ok = true, want false")
+	}
+}
+
+// TestRFC014FixtureNowProducesWindowCloseNotConflict reproduces T2.18's
+// own deliberately-included R-014 fixture
+// (evals/corpora/reconcile/labels/R-014.yaml) at the Detect/Engine level:
+// the same job-change scenario as
+// TestOverlappingWindowFixtureProposesWindowCloseNotRefutation, but with
+// ValidFrom written in RFC3339 (time-of-day + "Z" suffix) instead of
+// validDateLayout's calendar-day-only format. Before T2.23, parseValidFrom
+// rejected this format outright, so Detect fell through to
+// VerdictConflict instead of the temporally-correct VerdictWindowClose --
+// exactly the false negative T2.18's reconcile eval reported honestly as
+// report.VerdictConfusion["window_close"].FN == 1.
+func TestRFC014FixtureNowProducesWindowCloseNotConflict(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	existing := claimFixture("claim-b", "alice-tan", "works_at", "initech")
+	existing.ValidFrom = "2023-01-01T00:00:00Z"
+	newClaim := claimFixture("claim-a", "alice-tan", "works_at", "acme-corp")
+	newClaim.ValidFrom = "2025-06-01T00:00:00Z"
+
+	eng := NewEngine(s)
+	detection, item, err := eng.Process(ctx, newClaim, []domain.Claim{existing}, reconcileFixedNow)
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if detection.Verdict != VerdictWindowClose {
+		t.Fatalf("Verdict = %q, want %q (R-014's RFC3339 valid_from must parse and be recognized as a temporally distinct window, not fall through to %q)", detection.Verdict, VerdictWindowClose, VerdictConflict)
+	}
+	if item == nil {
+		t.Fatal("item is nil, want a staged proposal")
+	}
+}
+
 // TestProjectScopedFixtureReturnsScopedVerdict is T2.2's acc-line clause:
 // "project-scoped fixture -> scoped verdict." Two active claims, same
 // (subject, predicate), each carrying a distinct explicit scope

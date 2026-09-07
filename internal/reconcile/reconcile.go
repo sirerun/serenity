@@ -137,15 +137,31 @@ func scopeOf(c domain.Claim) string {
 // the first reader to give ValidFrom/ValidTo real temporal meaning.
 const validDateLayout = "2006-01-02"
 
+// validDateLayouts is every layout parseValidFrom accepts, tried in
+// order. validDateLayout (calendar-day only) is tried first since it's
+// this engine's own canonical layout and every existing fixture/writer
+// uses it; time.RFC3339 is the second, added by T2.23 to close a real,
+// disclosed gap: T2.18's own reconcile eval corpus included a
+// deliberately-RFC3339 fixture (R-014, evals/corpora/reconcile/labels/)
+// that parseValidFrom rejected outright, silently falling through
+// Detect's temporal branch to a flat VerdictConflict instead of the
+// temporally-correct VerdictWindowClose -- no upstream writer normalizes
+// ValidFrom to one canonical layout before Detect sees it, so a
+// timestamped source (or a human-edited claim) that happens to write
+// full RFC3339 must still parse, not silently mis-route to the wrong
+// verdict.
+var validDateLayouts = []string{validDateLayout, time.RFC3339}
+
 func parseValidFrom(s string) (time.Time, bool) {
 	if s == "" {
 		return time.Time{}, false
 	}
-	t, err := time.Parse(validDateLayout, s)
-	if err != nil {
-		return time.Time{}, false
+	for _, layout := range validDateLayouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
 	}
-	return t, true
+	return time.Time{}, false
 }
 
 // Detection is Detect's outcome: the routing verdict plus, for every

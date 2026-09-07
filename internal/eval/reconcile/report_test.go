@@ -56,26 +56,32 @@ func TestScorePerfectRowsYieldAllTruePositivesAndFullContradictionRecall(t *test
 // as a false negative." A row genuinely expects window_close (two claims
 // with distinct, determinable validity windows) but is deliberately
 // constructed so the real production detectPair/parseValidFrom cannot
-// parse ValidFrom (a non-validDateLayout string) -- the same real,
-// currently-existing gap the corpus's own R-temporal-format-gap fixture
-// exercises: the row falls through to VerdictConflict instead, which must
-// show up as report.VerdictConfusion["window_close"].FN == 1 (a real
-// classification miss, not swept under an inflated pass rate) and as a
-// contradiction-recall true positive still (conflict is also
+// parse ValidFrom -- the row falls through to VerdictConflict instead,
+// which must show up as report.VerdictConfusion["window_close"].FN == 1
+// (a real classification miss, not swept under an inflated pass rate) and
+// as a contradiction-recall true positive still (conflict is also
 // contradiction-shaped) -- this test isolates the verdict-confusion
-// consequence specifically, independent of the corpus's actual committed
-// fixture file.
+// consequence specifically, independent of any specific corpus fixture.
+//
+// Uses a garbage date string, not RFC3339: T2.18 originally used an
+// RFC3339 ValidFrom here because that was, at the time, a real gap
+// parseValidFrom rejected (see git history / docs/roadmap.md's T2.18
+// entry). T2.23 closed that gap -- parseValidFrom now accepts RFC3339
+// (validDateLayouts) -- so this test was updated to a format neither
+// layout parses, to keep testing Score's FN-detection machinery itself
+// rather than accidentally re-testing (and now contradicting) the fixed
+// bug.
 func TestScoreMisclassifiedRowAppearsAsFalseNegative(t *testing.T) {
 	rows := []Row{
 		{
 			ID: "R-unparseable-window",
 			NewClaim: ClaimFixture{
 				ID: "claim-a", Subject: "alice-tan", Predicate: "works_at", Object: "acme-corp",
-				ValidFrom: "2025-06-01T00:00:00Z", // RFC3339, not validDateLayout -- parseValidFrom rejects this
+				ValidFrom: "06/01/2025", // garbage format -- neither validDateLayout nor RFC3339 -- parseValidFrom rejects this
 			},
 			Active: []ClaimFixture{{
 				ID: "claim-b", Subject: "alice-tan", Predicate: "works_at", Object: "initech",
-				ValidFrom: "2023-01-01T00:00:00Z",
+				ValidFrom: "01/01/2023",
 			}},
 			ExpectedVerdict: "window_close",
 		},
@@ -100,15 +106,21 @@ func TestScoreMisclassifiedRowAppearsAsFalseNegative(t *testing.T) {
 	}
 }
 
-// TestScoreCommittedCorpusHasReconcileSectionAndRealFalseNegative is
+// TestScoreCommittedCorpusHasReconcileSectionAndNoFalseNegatives is
 // T2.18's acc line run against the actual shipped corpus (not a synthetic
-// fixture): "report has a reconcile section with per-verdict P/R/F1; a
-// deliberately missed temporal fixture appears as a false negative."
-// Loads evals/corpora/reconcile/labels/ for real and confirms R-014 (the
-// RFC3339-valid_from row) genuinely produces the false negative the
-// corpus's own rationale documents, rather than trusting the synthetic
-// unit test above to stand in for the real committed data.
-func TestScoreCommittedCorpusHasReconcileSectionAndRealFalseNegative(t *testing.T) {
+// fixture): "report has a reconcile section with per-verdict P/R/F1."
+// Loads evals/corpora/reconcile/labels/ for real and confirms every row,
+// including R-014, now scores correctly.
+//
+// R-014 (RFC3339 valid_from) was deliberately included by T2.18 as a real,
+// disclosed false negative: parseValidFrom rejected RFC3339 outright, so
+// Detect fell through to VerdictConflict instead of the temporally-correct
+// VerdictWindowClose. T2.23 fixed parseValidFrom to accept RFC3339
+// (validDateLayouts) -- this test was updated accordingly, per T2.23's own
+// acc line ("T2.18's eval-runner re-run shows window_close.FN == 0"), and
+// now guards the fix as a regression test: R-014 must stay a true
+// positive, not silently regress back to a false negative.
+func TestScoreCommittedCorpusHasReconcileSectionAndNoFalseNegatives(t *testing.T) {
 	rows, err := LoadRows(filepath.Join(corpusDir(t), "labels"))
 	if err != nil {
 		t.Fatalf("LoadRows: %v", err)
@@ -126,11 +138,11 @@ func TestScoreCommittedCorpusHasReconcileSectionAndRealFalseNegative(t *testing.
 	}
 
 	wc := report.VerdictConfusion["window_close"]
-	if wc.FN < 1 {
-		t.Fatalf("VerdictConfusion[window_close].FN = %d, want >= 1 -- R-014's RFC3339 valid_from is a real, currently-existing parseValidFrom gap that must surface as a false negative, not be silently absorbed", wc.FN)
+	if wc.FN != 0 {
+		t.Fatalf("VerdictConfusion[window_close].FN = %d, want 0 -- R-014's RFC3339 valid_from must parse correctly post-T2.23, not regress to a false negative", wc.FN)
 	}
-	if report.Matrix["window_close"]["conflict"] < 1 {
-		t.Fatalf("Matrix[window_close][conflict] = %d, want >= 1 -- R-014 must be confused as conflict", report.Matrix["window_close"]["conflict"])
+	if report.Matrix["window_close"]["conflict"] != 0 {
+		t.Fatalf("Matrix[window_close][conflict] = %d, want 0 -- no window_close row should be confused as conflict", report.Matrix["window_close"]["conflict"])
 	}
 }
 
