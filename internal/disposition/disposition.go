@@ -135,6 +135,14 @@ type Item struct {
 	// that share the same underlying verdict (note and claim-batch both
 	// accept) so the recorded outcome stays observable after the fact.
 	Route DistillRoute `json:"route,omitempty"`
+
+	// Resurfaced is set once Resurface (expiry.go, T2.6) has moved this
+	// item from parked back to pending. RFC 0001 §8.2: a parked item is
+	// "resurfaced only by explicit filter or by new evidence... Nothing
+	// resurfaces forever" -- Resurface refuses a second call once this is
+	// true, enforcing the one-time cap structurally rather than trusting
+	// callers not to invoke it twice.
+	Resurfaced bool `json:"resurfaced,omitempty"`
 }
 
 // HistoryEntry is one append-only disposition_history row (RFC 0001 §8.2:
