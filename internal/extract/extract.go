@@ -41,7 +41,15 @@ import (
 // v2 (T1.28): added familyGuidance, a per-predicate disambiguation line
 // with a worked example for the four families that scored TP=0 across
 // every held-out span in T1.23's live eval.
-const PromptVersion = "v2"
+//
+// v3 (T1.29): added familyGuidance entries for deadline_on, relates_to,
+// belongs_to_project, has_role, and prefers, plus a new has_balance entry
+// and refined the pre-existing committed_to/owns_account/said entries --
+// coordinator-approved scope expansion, see T1.29's acc: line in
+// docs/plans/E1-m1-ingest.md for why those three were folded in.
+// has_condition, takes_medication, and works_at deliberately have no new
+// entry -- see the doc comment above familyGuidance's T1.29 block for why.
+const PromptVersion = "v3"
 
 // familyGuidance supplies extra per-predicate disambiguation for the four
 // families T1.28 root-caused: TP=0 across every held-out span in T1.23's
@@ -67,15 +75,91 @@ const PromptVersion = "v2"
 // be trained or tuned against, so no in-prompt example may leak a
 // held-out span's own golden answer.
 //
-// T1.29 covers the same style of prompt refinement for the remaining,
-// partially-scoring families (has_condition, takes_medication, works_at,
-// prefers, relates_to, has_role, belongs_to_project, deadline_on) --
-// deliberately out of scope here; this map only covers T1.28's four.
+// T1.29 (v3 block below) covers 9 of the 12 families named in its
+// coordinator-approved acc line (docs/plans/E1-m1-ingest.md): the 8
+// originally named plus committed_to/owns_account/said (T1.28 pushed these
+// into partial-scoring territory but never named them here) and
+// has_balance (found genuinely unowned by any task's acc line -- 13 total
+// ava predicate families, T1.28 claimed 4, this line originally claimed 8,
+// leaving has_balance claimed by nothing). Root cause for each, found by
+// diagnostic live calls against the real DGX endpoint (each held-out span
+// run individually, raw model output compared to its golden label) rather
+// than assumed from the family name -- the same rigor T1.28 used, extended
+// here with an actual per-span diff since most of these families' golden
+// objects are NOT a distilled action slug (T1.28's gap) but each still has
+// its own distinct bare-object convention buildPrompt's plain predicate
+// name doesn't teach:
+//   - deadline_on: golden object is the bare date ("2026-04-15") only,
+//     never a description of what the deadline is for. The live model
+//     sometimes prepended/appended descriptive text ("tax-filing") or
+//     dropped the date entirely, folding it into a non-date slug instead.
+//   - relates_to: golden object is the OTHER PERSON's name as a slug
+//     ("lily-chen"), never the relationship label. The live model
+//     sometimes emitted the relationship type instead of the name
+//     ("ava-sister" for a span naming "Lily Chen").
+//   - belongs_to_project: golden object is the project/initiative slug
+//     even when the span never uses the literal word "Project" or
+//     "Operation" (e.g. "the Aurora migration"). The live model
+//     misclassified this shape as relates_to when no such literal cue
+//     word was present.
+//   - has_role: the live model emitted nothing at all (not even a
+//     Distill-tier candidate) for phrasings like "Ava Standardo's job
+//     title is Staff Engineer" and "In her performance review, Ava is
+//     listed as a Backend Engineer" -- a real recall gap, not a
+//     formatting one; the bare predicate name apparently reads as
+//     narrower than the corpus's actual phrasing variety.
+//   - prefers: mostly correct already; the live model occasionally kept
+//     a context word the golden slug drops ("remote-work-fridays" vs.
+//     "remote-fridays").
+//   - committed_to (refining T1.28's existing entry): the live model kept
+//     gerund verb forms ("mentoring-new-hire-onboarding") and incidental
+//     time/manner modifiers ("run-fall-half-marathon") the golden slugs
+//     drop in most (not all) of this family's clusters -- disclosed below
+//     as a case where the corpus's own labeling isn't fully self-
+//     consistent (one held-out cluster, "review-pr-by-friday", keeps a
+//     deadline word every other cluster drops), so a ceiling below 4/4
+//     held-out is possible here even with a correct, evidence-based fix.
+//   - owns_account (refining T1.28's existing entry): the live model
+//     appended a redundant "-account" suffix when the account-type word
+//     alone already implied it ("chase-checking-account" vs. golden
+//     "chase-checking") and spelled "organization" in full instead of the
+//     corpus's "org" abbreviation.
+//   - said (refining T1.28's existing entry): the live model classified
+//     one held-out span as "prefers" instead of "said" when the quoted
+//     content itself sounded like a preference ("she'd rather use feature
+//     flags..."), even though the span frames it as something Ava said in
+//     a meeting -- a real family-confusion error, not a formatting one.
+//   - has_balance: mostly correct already (same "<amount>-<currency-code>"
+//     convention costs already uses cleanly); added the same guidance
+//     shape as costs for consistency, no diagnosed failure mode beyond
+//     ordinary sampling noise.
+//
+// has_condition, takes_medication, and works_at deliberately have no new
+// entry: a diagnostic live run against every held-out span for these three
+// (T1.29, 2026-09) scored 4/4 exact-match for each, both predicate and
+// object -- T1.23's original partial P/R for them looks like sampling
+// noise from that run's much larger 52-span/13-family batch, not a
+// systematic prompt gap this map can fix. Left as-is rather than adding
+// guidance with no diagnosed problem to address; the acc-line re-run below
+// is the real measurement of whether they hold up.
+//
+// Every example below (T1.28's and T1.29's) is pulled from a span
+// evals/corpora/ava/split.yaml does NOT list under held_out, and its
+// object does not appear on any held-out span of the same family either
+// (checked by hand against split.yaml) -- RFC 0001 SS16 requires the
+// held-out set to never be trained or tuned against.
 var familyGuidance = map[string]string{
-	"committed_to": `object is a short kebab-case slug for WHAT was promised, not a quote of the sentence. Example -- chunk: "Ava committed to paying off her credit card balance this quarter." -> {"subject":"ava","predicate":"committed_to","object":"pay-off-credit-card","confidence":0.9}`,
+	"committed_to": `object is a short kebab-case slug: base/imperative verb form (ship, mentor, run, pay-off -- not shipping/mentoring/running/paying-off) plus only the core direct object, dropping incidental time/manner modifiers ("this quarter", "in the fall", "through onboarding") unless the deadline itself is the entire point of the promise. Example -- chunk: "Ava committed to paying off her credit card balance this quarter." -> {"subject":"ava","predicate":"committed_to","object":"pay-off-credit-card","confidence":0.9}`,
 	"costs":        `object is "<amount>-<currency-code>" (lowercase currency code, digits only, no symbol or thousands separator). Example -- chunk: "Ava's gym membership costs $65.00." -> {"subject":"ava","predicate":"costs","object":"65.00-usd","confidence":0.9}`,
-	"owns_account": `object is a short kebab-case slug naming the specific account (institution or product), not a full sentence. Example -- chunk: "Ava Standardo owns a AWS billing account." -> {"subject":"ava","predicate":"owns_account","object":"aws-billing-account","confidence":0.9}`,
-	"said":         `object is a short kebab-case slug summarizing WHAT was said, not a verbatim quote. Example -- chunk: "In the vendor sync, Ava said the vendor's SLA response times are unacceptable." -> {"subject":"ava","predicate":"said","object":"vendor-sla-unacceptable","confidence":0.9}`,
+	"owns_account": `object is a short kebab-case slug naming institution + account type, in the shortest form that stays unambiguous -- drop the generic word "account" when the account-type word alone already implies it ("checking", "401k", "wallet"), but keep "account" (abbreviating a long modifier, e.g. "organization"->"org") when the modifier alone would be ambiguous. Examples -- chunk: "Ava Standardo owns a Chase checking account." -> {"subject":"ava","predicate":"owns_account","object":"chase-checking","confidence":0.9}; chunk: "Ava Standardo owns a GitHub organization account." -> {"subject":"ava","predicate":"owns_account","object":"github-org-account","confidence":0.9}`,
+	"said":         `object is a short kebab-case slug summarizing WHAT was said, not a verbatim quote. Use "said" (not "prefers") whenever the span frames it as something Ava said/stated/was quoted saying, even when the content itself sounds like a preference. Examples -- chunk: "In the vendor sync, Ava said the vendor's SLA response times are unacceptable." -> {"subject":"ava","predicate":"said","object":"vendor-sla-unacceptable","confidence":0.9}; chunk: "In the sprint planning session, Ava said she'd rather use feature flags than a hard cutover." -> {"subject":"ava","predicate":"said","object":"prefer-feature-flags","confidence":0.9}`,
+
+	"deadline_on":        `object is ONLY the date in YYYY-MM-DD form -- never a description of what the deadline is for, and never omit the date itself. Example -- chunk: "Ava's deadline for the Q3 report is 2026-07-31." -> {"subject":"ava","predicate":"deadline_on","object":"2026-07-31","confidence":0.9}`,
+	"relates_to":         `object is the OTHER PERSON'S NAME as a kebab-case slug (e.g. "lily-chen"), never the relationship label itself (not "sister" or "ava-sister"). Example -- chunk: "Ava's sister is Lily Chen." -> {"subject":"ava","predicate":"relates_to","object":"lily-chen","confidence":0.9}`,
+	"belongs_to_project": `object is the project/initiative slug, even when the span never uses the literal word "Project" or "Operation" -- never relates_to (that predicate is for other people, not projects). Example -- chunk: "Ava belongs to the Aurora migration." -> {"subject":"ava","predicate":"belongs_to_project","object":"aurora-migration","confidence":0.9}`,
+	"has_role":           `object is a short kebab-case slug for Ava's job title or role -- extract this from any phrasing that states her title, role, or how she introduced herself professionally, not only "holds the role of X" wording. Examples -- chunk: "Ava Standardo's job title is QA Analyst." -> {"subject":"ava","predicate":"has_role","object":"qa-analyst","confidence":0.9}; chunk: "In her performance review, Ava is listed as a QA Analyst." -> {"subject":"ava","predicate":"has_role","object":"qa-analyst","confidence":0.9}`,
+	"prefers":            `object is a short kebab-case slug, dropping words already implied by context (e.g. "remote work on Fridays" -> "remote-fridays", not "remote-work-fridays"). Example -- chunk: "Ava prefers remote work on Fridays." -> {"subject":"ava","predicate":"prefers","object":"remote-fridays","confidence":0.9}`,
+	"has_balance":        `object is "<amount>-<currency-code>" (lowercase currency code, digits only, no symbol or thousands separator) -- just the balance value, nothing else. Example -- chunk: "Ava's Chase checking balance is $4,230.18." -> {"subject":"ava","predicate":"has_balance","object":"4230.18-usd","confidence":0.9}`,
 }
 
 // DistillThreshold is RFC 0001 §10.1's reconcile floor: an observation at
