@@ -92,8 +92,14 @@ func startTestServer(t *testing.T, tokenSource func() (string, error)) (baseURL 
 		cancel()
 		select {
 		case <-done:
-		case <-time.After(2 * time.Second):
-			t.Fatal("server did not shut down within 2s")
+		case <-time.After(8 * time.Second):
+			// Server's own shutdownGrace is 5s; a 2s cleanup margin
+			// (tighter than the thing it's waiting on) is an
+			// intermittent flake under load or -race, verified while
+			// building T4.4: reproduced ~2/3 of standalone runs with
+			// -race. Give real headroom above shutdownGrace instead of
+			// racing it.
+			t.Fatal("server did not shut down within 8s")
 		}
 	})
 	return "http://" + s.Addr()
