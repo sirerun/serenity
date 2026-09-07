@@ -59,7 +59,7 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 ### E1 -- M1: ingest spine + honest evals  -> docs/plans/E1-m1-ingest.md  (24/25, T1.23 -- David's own Gmail/repo exit verification -- remains for the RFC M1 AC; T1.24/T1.25 (wave 1e, OpenRouter provider configurability, ADR 013) both shipped 2026-09-05 (PR #63, PR #66), additional, not part of the RFC AC)
 ### E2 -- M2: reconcile + entities + disposition queue + ladder calibration  -> docs/plans/E2-m2-reconcile.md  (7/22 checked in the epic file as of this pass -- T2.16 shipped 2026-09-07 (PR #77, code merged 2026-09-07 but its mark-done was outstanding until this pass), T2.6 shipped 2026-09-07 (PR #85), T2.8 shipped 2026-09-07 (PR #84), T2.20 shipped 2026-09-07 (PR #82), T2.12 shipped 2026-09-06 (PR #78), T2.19 shipped 2026-09-06/07 (PR #75), T2.10 shipped 2026-09-06 (PR #74); wave-2a's blocked-by: [T1.23] was dropped 2026-09-05, see section 5. T2.1 also merged this session per docs/roadmap.md Shipped but its own mark-done is a separate task's responsibility, not yet flipped here)
 ### E3 -- M3: direction (dira vendored, interview wizard, plan check, orphan detector)  -> docs/plans/E3-m3-direction.md  (12/17, remaining: T3.4, T3.9, T3.10, T3.11, T3.17 -- deps-blocked on E2 tasks (T2.1, T2.5, T2.17, T2.19); the 2026-08-29 "not blocked" note was an error, corrected 2026-08-30 -- ADR 011)
-### E4 -- M4: serve + protocols  -> docs/plans/E4-m4-serve-protocols.md  (2/19, gated behind M2+M3; T4.3 and T4.18 were the cross-epic-startable tasks during E3 and both have now shipped -- ADR 011; T4.10 and T4.12 become cross-epic-startable the moment T2.1 lands, needing no other E2 wave-2a task -- see section 5; T4.18/T4.19 added 2026-09-02, ADR 012)
+### E4 -- M4: serve + protocols  -> docs/plans/E4-m4-serve-protocols.md  (3/19, gated behind M2+M3; T4.3 and T4.18 were the cross-epic-startable tasks during E3 and both have now shipped -- ADR 011; T4.12 shipped 2026-09-07 (PR #88), cross-epic-startable the moment T2.1 landed, needing no other E2 wave-2a task -- see section 5; T4.10 (the other cross-epic-startable task) remains open; T4.18/T4.19 added 2026-09-02, ADR 012)
 ### E5 -- M5: migration + launch  -> docs/plans/E5-m5-migration-launch.md  (0/15, gated behind M1+M4; T5.1 and T5.9 carry blocked-by: [T4.17] mechanically -- ADR 011)
 ### E6 -- M6: hardening soak (outline, post-code-complete)  -> docs/plans/E6-m6-hardening.md  (0/1)
 
@@ -214,7 +214,7 @@ gap, fixed same day) -- v0.1.0 itself was left untouched, not retagged.
 - [x] T4.3 HTTP transport bound to loopback with bearer auth from the keychain; explicit LAN/Tailscale config with token + optional mTLS (merged PR #56, 2026-09-03/04)
 - [ ] T4.10 Spend ceiling + projection (`internal/spend`): per-day aggregation, monthly ceiling default $50, transactional check-and-record, approval item on trip, projection in status and briefing Watched
 - [ ] T4.7 JSON Schemas for every protocol object + `serenity protocol --json`
-- [ ] T4.12 Event log with persisted monotonic cursors (`internal/events`) shared by SSE and stdio notifications
+- [x] T4.12 Event log with persisted monotonic cursors (`internal/events`) shared by SSE and stdio notifications (merged PR #88, 2026-09-07)
 - [ ] T4.13 Conformance fixture set under testdata/conformance/: vendored gbrain memory-verbs cases.json plus Serenity DISPOSITION and DIRECTION transcripts, checksum-frozen
 
 ### Wave 4b: E4 protocol servers, connect, security (6 agents)
