@@ -32,14 +32,14 @@ func TestAppendAllocatesMonotonicCursorsStartingAtOne(t *testing.T) {
 	ctx := context.Background()
 	s := openTestStore(t)
 
-	first, err := s.Append(ctx, "kind-a", json.RawMessage(`{"n":1}`))
+	first, err := s.AppendEvent(ctx, "kind-a", json.RawMessage(`{"n":1}`))
 	if err != nil {
 		t.Fatalf("Append: %v", err)
 	}
 	if first.Cursor != 1 {
 		t.Fatalf("first Cursor = %d, want 1", first.Cursor)
 	}
-	second, err := s.Append(ctx, "kind-b", nil)
+	second, err := s.AppendEvent(ctx, "kind-b", nil)
 	if err != nil {
 		t.Fatalf("Append: %v", err)
 	}
@@ -65,17 +65,17 @@ func TestCursorsSurviveARestart(t *testing.T) {
 	defer func() { _ = eng.Close() }()
 
 	s1 := NewStore(eng, WithClock(fakeClock{fixedNow}))
-	if _, err := s1.Append(ctx, "kind-a", nil); err != nil {
+	if _, err := s1.AppendEvent(ctx, "kind-a", nil); err != nil {
 		t.Fatalf("Append (before restart): %v", err)
 	}
-	if _, err := s1.Append(ctx, "kind-a", nil); err != nil {
+	if _, err := s1.AppendEvent(ctx, "kind-a", nil); err != nil {
 		t.Fatalf("Append (before restart): %v", err)
 	}
 
 	// "Restart": a brand new Store instance over the same backend, the
 	// same as a fresh process opening the same on-disk database.
 	s2 := NewStore(eng, WithClock(fakeClock{fixedNow.Add(time.Hour)}))
-	third, err := s2.Append(ctx, "kind-b", nil)
+	third, err := s2.AppendEvent(ctx, "kind-b", nil)
 	if err != nil {
 		t.Fatalf("Append (after restart): %v", err)
 	}
@@ -100,7 +100,7 @@ func TestReplayFromCursorReturnsExactlyEventsAfterIt(t *testing.T) {
 
 	var cursors []int64
 	for i := range 5 {
-		ev, err := s.Append(ctx, "kind", json.RawMessage(fmt.Sprintf(`{"i":%d}`, i)))
+		ev, err := s.AppendEvent(ctx, "kind", json.RawMessage(fmt.Sprintf(`{"i":%d}`, i)))
 		if err != nil {
 			t.Fatalf("Append %d: %v", i, err)
 		}
@@ -144,7 +144,7 @@ func TestDroppedConsumerReplayLosesNoEvents(t *testing.T) {
 	s := openTestStore(t)
 
 	for i := 0; i < 3; i++ {
-		if _, err := s.Append(ctx, "before-drop", nil); err != nil {
+		if _, err := s.AppendEvent(ctx, "before-drop", nil); err != nil {
 			t.Fatalf("Append: %v", err)
 		}
 	}
@@ -160,7 +160,7 @@ func TestDroppedConsumerReplayLosesNoEvents(t *testing.T) {
 	// Consumer "drops" here -- no call into Store, simulating a closed
 	// connection. More events land while it is gone.
 	for i := 0; i < 2; i++ {
-		if _, err := s.Append(ctx, "while-dropped", nil); err != nil {
+		if _, err := s.AppendEvent(ctx, "while-dropped", nil); err != nil {
 			t.Fatalf("Append: %v", err)
 		}
 	}
@@ -197,7 +197,7 @@ func TestConcurrentAppendNeverCollidesOrSkipsACursor(t *testing.T) {
 	for i := range n {
 		go func() {
 			defer wg.Done()
-			ev, err := s.Append(ctx, "concurrent", nil)
+			ev, err := s.AppendEvent(ctx, "concurrent", nil)
 			cursors[i] = ev.Cursor
 			errs[i] = err
 		}()

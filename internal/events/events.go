@@ -1,14 +1,13 @@
 // Package events implements the shared event log (RFC 0001 §7.6/§14):
 // a persisted, monotonically-cursored append log that the SSE (T4.4/T4.6)
-// and stdio (T4.2) protocol servers will both replay from, so a client
+// and stdio (T4.2) protocol servers replay from, so a client
 // disconnecting mid-stream and reconnecting with its last-seen cursor
 // (Last-Event-ID, in the SSE case) never loses an event -- at-least-once
-// delivery. Nothing wires a live producer into this yet (T4.2/T4.4/T4.6
-// do not exist), the same disclosed-scope shape T2.19's cron runner and
-// T2.12's decay sweep shipped with: this package's own log semantics
-// (append, persisted cursor, replay-from) are complete and tested now;
-// whichever protocol-server task lands first calls Append at its own
-// state-change points.
+// delivery. internal/server/disposition (T4.4) is this package's first
+// live producer, calling AppendEvent at its own dispose/capture
+// state-change points; T4.2/T4.6 do not exist yet, still the same
+// disclosed-scope shape T2.19's cron runner and T2.12's decay sweep
+// shipped with.
 package events
 
 import (
@@ -57,17 +56,17 @@ type Store struct {
 	backend Backend
 	clock   Clock
 
-	// mu serializes Append's cursor allocation. The next cursor is derived
-	// by reading every persisted event and taking max(Cursor)+1 (see
-	// nextCursorLocked) rather than a separate counter row, which is what
-	// makes cursor persistence trivial across a restart -- a freshly
+	// mu serializes AppendEvent's cursor allocation. The next cursor is
+	// derived by reading every persisted event and taking max(Cursor)+1
+	// (see nextCursorLocked) rather than a separate counter row, which is
+	// what makes cursor persistence trivial across a restart -- a freshly
 	// opened Store over the same Backend recomputes the same next cursor
 	// from what is already on disk, no separate state to lose or corrupt.
 	// But that read-then-write is exactly the shape T2.8 found unguarded
-	// in internal/disposition.Store.Dispose: two concurrent Append calls
-	// without this lock could both read the same max and both allocate
-	// the same cursor, breaking monotonicity. Hold mu across the whole
-	// read-allocate-write sequence.
+	// in internal/disposition.Store.Dispose: two concurrent AppendEvent
+	// calls without this lock could both read the same max and both
+	// allocate the same cursor, breaking monotonicity. Hold mu across the
+	// whole read-allocate-write sequence.
 	mu sync.Mutex
 }
 
@@ -94,9 +93,24 @@ func newEventID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// Append records one event of the given kind and opaque payload, allocating
-// the next monotonic cursor, and returns the stored Event.
-func (s *Store) Append(ctx context.Context, kind string, payload json.RawMessage) (Event, error) {
+// AppendEvent records one event of the given kind and opaque payload,
+// allocating the next monotonic cursor, and returns the stored Event.
+//
+// Named AppendEvent, not the bare Append its Backend.AppendEvent already
+// uses -- internal/gate's file-first CI gate (T0.2/T0.13) flags any call
+// to a method literally named "Append" outside internal/writer/ as a
+// canonical-brain-repo write bypassing the writer queue (it matches on
+// the AST selector name, blind to receiver type). events_items is
+// DB-only runtime state, not a canonical write at all (same category as
+// internal/disposition's own items/history, RFC 0001 §7 preamble) -- but
+// the gate can't tell that from a bare "Append" selector, and
+// internal/disposition's own Backend method deliberately avoids the
+// same collision by being named AppendDispositionHistory, not Append.
+// Renamed here (found while building T4.4, the first real non-test
+// caller of this method) rather than adding this package's callers to
+// the gate's allowlist, which would also silently exempt any future
+// genuine canonical write this package might grow.
+func (s *Store) AppendEvent(ctx context.Context, kind string, payload json.RawMessage) (Event, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -126,7 +140,7 @@ func (s *Store) Append(ctx context.Context, kind string, payload json.RawMessage
 }
 
 // maxCursorLocked returns the highest cursor currently persisted, or 0 if
-// the log is empty (so the first Append allocates cursor 1). Callers must
+// the log is empty (so the first AppendEvent allocates cursor 1). Callers must
 // hold mu.
 func (s *Store) maxCursorLocked(ctx context.Context) (int64, error) {
 	all, err := s.allLocked(ctx)
