@@ -86,15 +86,31 @@ func (h *Handlers) recall(ctx context.Context, args json.RawMessage) (any, bool,
 		return nil, false, err
 	}
 
-	used, dropped := 0, 0
-	evidence := make([]Fact, 0, len(results))
+	evidence, used, dropped := PackFacts(results, budget)
+
+	env := newEnvelope()
+	env.Evidence = evidence
+	env.Budget = &BudgetMeta{BudgetTokens: budget, BudgetUsed: used, DroppedCount: dropped}
+	return recallResponse{env}, false, nil
+}
+
+// PackFacts converts ranked search.Results into recall's own Fact/budget
+// projection (RFC 0001 section 8.1's own gbrain "budget meta" field),
+// exactly as recall itself does. Exported (T4.9) so a CLI vs protocol
+// drift test can build recall's own evidence/budget projection from the
+// exact search results `serenity search`'s own code path
+// (internal/cli.searchResults) produces, without reimplementing this
+// mapping -- a hand-rolled duplicate in a test would not catch a real
+// one-sided change to it.
+func PackFacts(results []search.Result, budgetTokens int) (evidence []Fact, budgetUsed, dropped int) {
+	evidence = make([]Fact, 0, len(results))
 	for _, r := range results {
 		cost := briefing.WordEstimator(r.Text)
-		if used+cost > budget {
+		if budgetUsed+cost > budgetTokens {
 			dropped++
 			continue
 		}
-		used += cost
+		budgetUsed += cost
 		evidence = append(evidence, Fact{
 			ChunkRef:   r.ChunkRef,
 			EntitySlug: r.EntitySlug,
@@ -104,9 +120,5 @@ func (h *Handlers) recall(ctx context.Context, args json.RawMessage) (any, bool,
 			SourceRef:  r.SourceSHA256,
 		})
 	}
-
-	env := newEnvelope()
-	env.Evidence = evidence
-	env.Budget = &BudgetMeta{BudgetTokens: budget, BudgetUsed: used, DroppedCount: dropped}
-	return recallResponse{env}, false, nil
+	return evidence, budgetUsed, dropped
 }
