@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/sirerun/serenity/internal/domain"
+	"github.com/sirerun/serenity/internal/eval"
 	"github.com/sirerun/serenity/internal/extract/chunk"
 	"github.com/sirerun/serenity/internal/router"
 )
@@ -438,5 +440,61 @@ func TestBuildPromptOmitsGuidanceForFamiliesWithoutIt(t *testing.T) {
 	prompt := buildPrompt([]string{"works_at"}, "irrelevant chunk text")
 	if !strings.Contains(prompt, "- works_at\n") {
 		t.Fatalf("expected a bare \"- works_at\" bullet with no guidance suffix, got:\n%s", prompt)
+	}
+}
+
+// TestBuildPromptIncludesSaidIsLastResortInstruction is T1.29 v4's
+// acc-line-adjacent unit test for the new cross-cutting instruction in
+// buildPrompt's preamble: a real diagnostic run against the live DGX
+// endpoint found prefers and committed_to spans misclassified as "said"
+// purely because the span used a reporting verb, even with no more
+// specific familyGuidance change able to fix it (it isn't specific to
+// either family). This must render regardless of which families are in
+// the vocabulary -- it is not gated by familyGuidance the way a
+// per-predicate bullet is.
+func TestBuildPromptIncludesSaidIsLastResortInstruction(t *testing.T) {
+	prompt := buildPrompt([]string{"said", "prefers"}, "irrelevant chunk text")
+	if !strings.Contains(prompt, "not itself evidence for the \"said\" predicate") {
+		t.Fatalf("expected buildPrompt to render the said-is-last-resort instruction, got:\n%s", prompt)
+	}
+}
+
+// TestFamilyGuidanceExamplesAreNeverHeldOut is a permanent regression
+// guard for T1.35: a familyGuidance worked example's chunk text must
+// never be a held-out span in evals/corpora/ava/split.yaml (RFC 0001
+// SS16 -- the held-out set must never be trained or tuned against).
+// Before this test, that check was done by hand each time a new example
+// was added (T1.28, T1.29's v3 and v4 blocks) -- and one leak (prefers'
+// v3 example, "Ava prefers remote work on Fridays.") slipped through a
+// hand check anyway, found later by T1.32's own author and fixed here.
+// This parses every guidance string's `chunk: "..."` occurrences and
+// checks each one against the REAL corpus's real held-out set (loaded
+// via the same internal/eval.LoadSplit production code every other
+// consumer of split.yaml uses), not a hardcoded copy of it, so this
+// keeps working if the corpus is ever regenerated (T1.32's gen_corpus.go
+// is deterministic but not guaranteed stable in span wording forever).
+func TestFamilyGuidanceExamplesAreNeverHeldOut(t *testing.T) {
+	split, err := eval.LoadSplit("../../evals/corpora/ava/split.yaml")
+	if err != nil {
+		t.Fatalf("load split.yaml: %v", err)
+	}
+	heldOut := make(map[string]bool, len(split.HeldOut))
+	for _, span := range split.HeldOut {
+		heldOut[span] = true
+	}
+
+	chunkRx := regexp.MustCompile(`chunk: "((?:[^"\\]|\\.)*)"`)
+	for family, guidance := range familyGuidance {
+		matches := chunkRx.FindAllStringSubmatch(guidance, -1)
+		if len(matches) == 0 {
+			t.Errorf("family %q guidance has no chunk: \"...\" worked example for this test to check -- update the regex or the guidance", family)
+			continue
+		}
+		for _, m := range matches {
+			chunkText := m[1]
+			if heldOut[chunkText] {
+				t.Errorf("family %q guidance's worked example is a held-out span (RFC 0001 SS16 leak): %q", family, chunkText)
+			}
+		}
 	}
 }
