@@ -95,12 +95,12 @@ func (h *Handlers) synthesize(ctx context.Context, args json.RawMessage) (any, b
 	}
 	resp.Text = answer.Text
 	for _, cit := range answer.Citations {
-		env.Evidence = append(env.Evidence, factOfCitation(cit))
+		env.Evidence = append(env.Evidence, FactOfCitation(cit))
 	}
 	for _, s := range answer.Supersessions {
 		chain := make([]Fact, 0, len(s.Chain))
 		for _, cit := range s.Chain {
-			chain = append(chain, factOfCitation(cit))
+			chain = append(chain, FactOfCitation(cit))
 		}
 		resp.Supersessions = append(resp.Supersessions, synthesizeSupersede{Subject: s.Subject, Predicate: s.Predicate, Chain: chain})
 	}
@@ -108,7 +108,13 @@ func (h *Handlers) synthesize(ctx context.Context, args json.RawMessage) (any, b
 	return resp, false, nil
 }
 
-func factOfCitation(c compose.Citation) Fact {
+// FactOfCitation converts one compose.Citation into synthesize's own
+// Fact shape. Exported (T4.9) so a CLI vs protocol drift test can build
+// the exact same evidence projection this handler uses from the same
+// compose.Answer.Citations a `serenity ask`-equivalent call produces,
+// without reimplementing the mapping -- a hand-rolled duplicate in a
+// test would not catch a real one-sided change to this mapping.
+func FactOfCitation(c compose.Citation) Fact {
 	conf := c.Confidence
 	return Fact{
 		Subject:    c.Subject,

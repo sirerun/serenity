@@ -37,27 +37,44 @@ func newSearchCmd() *cobra.Command {
 // with no way to call it degrades to full-text-only search, stated
 // plainly, rather than erroring or silently pretending to search vectors.
 // This mirrors runExtract's precedent for an unpinned/unreachable model.
-func runSearch(ctx context.Context, root, query string, limit int, out io.Writer) error {
+// searchResults runs the exact search runSearch prints, returning the raw
+// ranked results plus the human-readable degrade note runSearch would
+// otherwise print directly. Split out so a drift test (T4.9, CLI vs
+// protocol) can invoke the identical code path `search` runs and compare
+// its output against MEMORY_VERBS's recall verb (internal/server/memory)
+// without reimplementing runSearch's own logic -- a genuine drift test has
+// to exercise the real CLI function, not a hand-rolled duplicate of it.
+func searchResults(ctx context.Context, root, query string, limit int) ([]search.Result, string, error) {
 	cfg, err := config.Load(filepath.Join(root, config.FileName))
 	if err != nil {
-		return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
+		return nil, "", fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
 	}
 	eng, err := providers.OpenIndex(root)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	defer func() { _ = eng.Close() }()
 
+	var note string
 	if cfg.Models.Embedding == "" || cfg.Models.Embedding == "none@v0" {
-		_, _ = fmt.Fprintln(out, "no embedding model pinned; running full-text-only search")
+		note = "no embedding model pinned; running full-text-only search"
 	} else {
-		_, _ = fmt.Fprintf(out, "embedding model %s pinned; live embedding calls land with real extraction wiring (T1.15) -- running full-text-only search\n", cfg.Models.Embedding)
+		note = fmt.Sprintf("embedding model %s pinned; live embedding calls land with real extraction wiring (T1.15) -- running full-text-only search", cfg.Models.Embedding)
 	}
 
 	results, err := search.Search(ctx, eng, nil, query, limit, search.Options{})
 	if err != nil {
+		return nil, "", err
+	}
+	return results, note, nil
+}
+
+func runSearch(ctx context.Context, root, query string, limit int, out io.Writer) error {
+	results, note, err := searchResults(ctx, root, query, limit)
+	if err != nil {
 		return err
 	}
+	_, _ = fmt.Fprintln(out, note)
 	if len(results) == 0 {
 		_, _ = fmt.Fprintln(out, "no results")
 		return nil
