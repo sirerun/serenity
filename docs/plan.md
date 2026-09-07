@@ -220,7 +220,7 @@ gap, fixed same day) -- v0.1.0 itself was left untouched, not retagged.
 - [ ] T4.13 Conformance fixture set under testdata/conformance/: vendored gbrain memory-verbs cases.json plus Serenity DISPOSITION and DIRECTION transcripts, checksum-frozen
 
 ### Wave 4b: E4 protocol servers, connect, security (6 agents)
-- [ ] T4.2 MCP stdio transport (`internal/server/mcp`): initialize handshake, JSON-RPC framing, logs to stderr only
+- [x] T4.2 MCP stdio transport (`internal/server/mcp`): initialize handshake, JSON-RPC framing, logs to stderr only
 - [ ] T4.5 MEMORY_VERBS v1 server: recall, remember, entity, synthesize, forget with the gbrain envelope (protocol_version, evidence, provenance, budget meta, cost, enumerated errors with suggestion) plus optional confidence, claim_id, superseded_by
 - [x] T4.4 DISPOSITION v1 server: list_pending (kinds, expiring_before, group), dispose (idempotency_key, already_disposed), capture, subscribe (SSE + long-poll, Last-Event-ID resume)
 - [ ] T4.6 DIRECTION v1 server: brief (token budget governs, caps 12/8/8/5, omitted counts, budget_estimator named), check_plan (schema-primary verdict), propose (lands in the queue, never mutates a precept)
