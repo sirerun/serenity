@@ -245,14 +245,19 @@ Error codes:
   reflection test (`docs/protocol/schemas/schemas_test.go`) fails CI if
   the two drift apart.
 - **Conformance fixtures:** RFC 0001 §3 names `testdata/conformance/` as
-  the fixture location for all three protocols. That directory does not
-  exist yet — T4.13 (in flight as of this writing) is building the
-  MEMORY_VERBS/DISPOSITION/DIRECTION conformance fixture set there. Until
-  it lands, MEMORY_VERBS v1 conformance is exercised by
-  `internal/server/memory`'s own test suite (17 pinned MCP request/response
-  cases plus 14 schema-mutation tests against the gbrain contract, per
-  T4.20) and by `gbrain protocol conformance` itself, run against a live
-  Serenity endpoint as a release gate.
+  the fixture location for all three protocols; `testdata/conformance/memory_verbs/`
+  (T4.13) vendors gbrain's own 17 pinned `cases.json` request/response
+  scenarios verbatim, checksum-pinned by a `MANIFEST`
+  (`internal/conformance.VerifyManifest`, run on every `go test ./...`).
+  `serenity protocol conformance --target <url>` (T4.15) replays them over
+  MCP Streamable HTTP against a live server, resolving `{{marker}}`/
+  `{{id:key}}` templating and evaluating each case's `expect`/
+  `expectErrorCode` assertions (`internal/conformance`); it is this
+  package's own external, wire-level counterpart to `internal/server/memory`'s
+  in-process pinned suite (17 pinned MCP request/response cases plus 14
+  schema-mutation tests against the gbrain contract, T4.20) and to
+  `gbrain protocol conformance` itself, run against a live Serenity
+  endpoint as a release gate (T4.14).
 - **Kill criterion:** if real-world trials show users do not repeatedly
   exercise plan-check (DIRECTION) or conflict review (DISPOSITION), the
   protocol surface stops expanding until they do (RFC 0001 §3). This

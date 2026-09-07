@@ -255,9 +255,24 @@ Error codes:
   (`docs/protocol/schemas/schemas_test.go`) fails CI if the two drift
   apart.
 - **Conformance fixtures:** RFC 0001 §3 names `testdata/conformance/` as
-  the fixture location for all three protocols. That directory does not
-  exist yet — T4.13 (in flight as of this writing) is building the
-  fixture set there. Until it lands, DISPOSITION v1 is exercised by
+  the fixture location for all three protocols; `testdata/conformance/disposition/`
+  (T4.13) holds real HTTP-recorded transcripts for `list_pending`,
+  `dispose`, `capture`, and long-poll `subscribe`, checksum-pinned by a
+  `MANIFEST`. `serenity protocol conformance --target <url>` (T4.15)
+  replays them against a live server, normalizing dynamic fields (ids,
+  timestamps) by shape rather than byte-comparing them
+  (`internal/conformance.CompareBodies`) — see
+  `testdata/conformance/README.md` for the disclosed gap this closes
+  (item ids are `crypto/rand`, never reproducible run to run) and for the
+  two the command still discloses: `list_pending`/`dispose` seed their
+  items via an internal `Store.Create` call the generator makes before its
+  transcript's own steps run, so their happy-path cases only pass against
+  a `--target` independently seeded with matching items — replayed against
+  a bare/fresh target, this command reports that plainly as a failed case
+  rather than skipping it silently; and `subscribe`'s SSE mode has no
+  transcript at all, only its long-poll fallback — `disposition_test.go`'s own
+  `TestSubscribeSSEDropAndResumeReplaysExactlyMissedEvents` remains SSE's
+  authoritative coverage. DISPOSITION v1 is also exercised by
   `internal/server/disposition`'s own test suite (fourteen tests over a
   real HTTP listener, covering pagination termination, replay
   byte-identity, reject-without-note, mid-stream SSE resume, and the
