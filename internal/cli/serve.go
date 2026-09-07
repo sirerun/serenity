@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,8 @@ import (
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/embed"
 	"github.com/sirerun/serenity/internal/providers"
+	"github.com/sirerun/serenity/internal/secrets"
+	"github.com/sirerun/serenity/internal/server"
 	"github.com/sirerun/serenity/internal/server/mcp"
 	"github.com/sirerun/serenity/internal/server/memory"
 	"github.com/sirerun/serenity/internal/store"
@@ -23,58 +26,136 @@ import (
 )
 
 func newServeCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "serve", Short: "Serve MCP over standard input and output", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) (runErr error) {
+	cmd := &cobra.Command{Use: "serve", Short: "Serve MCP over stdio or authenticated Streamable HTTP", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) (runErr error) {
 		stdio, err := cmd.Flags().GetBool("stdio")
 		if err != nil {
 			return err
 		}
-		if !stdio {
-			return fmt.Errorf("choose --stdio to serve MCP")
-		}
-		tools, closeDeps, err := memoryTools(flagRoot, cmd.ErrOrStderr())
+		httpMode, err := cmd.Flags().GetBool("http")
 		if err != nil {
 			return err
 		}
-		if closeDeps != nil {
-			defer func() { runErr = errors.Join(runErr, closeDeps()) }()
+		if !stdio && !httpMode {
+			return fmt.Errorf("choose --stdio or --http to serve MCP")
 		}
-		server, err := mcp.New(Version, tools)
-		if err != nil {
-			return err
+		if stdio {
+			return runServeStdio(cmd)
 		}
-		input := cmd.InOrStdin()
-		output := cmd.OutOrStdout()
-		if file, ok := input.(*os.File); ok {
-			prepared, cleanup, err := pollableMCPFile(file)
-			if err != nil {
-				return err
-			}
-			defer func() { runErr = errors.Join(runErr, cleanup()) }()
-			input = prepared
-		}
-		if file, ok := output.(*os.File); ok {
-			prepared, cleanup, err := pollableMCPFile(file)
-			if err != nil {
-				return err
-			}
-			defer func() { runErr = errors.Join(runErr, cleanup()) }()
-			output = prepared
-		}
-		closer, ok := input.(io.ReadCloser)
-		if !ok {
-			// In-memory readers used by embedded callers are finite. Arbitrary blocking
-			// readers must expose Close so cancellation can unblock them.
-			if _, finite := input.(interface{ Len() int }); !finite {
-				return fmt.Errorf("MCP input must be closeable or an in-memory reader")
-			}
-			closer = io.NopCloser(input)
-		}
-		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-		defer stop()
-		return server.Serve(ctx, closer, output)
+		return runServeHTTP(cmd)
 	}}
 	cmd.Flags().Bool("stdio", false, "read and write newline-delimited MCP JSON-RPC")
+	cmd.Flags().Bool("http", false, "serve authenticated MCP Streamable HTTP at /mcp (RFC 0001 section 14)")
+	cmd.MarkFlagsMutuallyExclusive("stdio", "http")
 	return cmd
+}
+
+// runServeStdio is `serenity serve --stdio` (T4.1/T4.5): the original
+// newline-delimited JSON-RPC transport over the process's own stdin/
+// stdout, unchanged by T4.21.
+func runServeStdio(cmd *cobra.Command) (runErr error) {
+	tools, closeDeps, err := memoryTools(flagRoot, cmd.ErrOrStderr())
+	if err != nil {
+		return err
+	}
+	if closeDeps != nil {
+		defer func() { runErr = errors.Join(runErr, closeDeps()) }()
+	}
+	mcpServer, err := mcp.New(Version, tools)
+	if err != nil {
+		return err
+	}
+	input := cmd.InOrStdin()
+	output := cmd.OutOrStdout()
+	if file, ok := input.(*os.File); ok {
+		prepared, cleanup, err := pollableMCPFile(file)
+		if err != nil {
+			return err
+		}
+		defer func() { runErr = errors.Join(runErr, cleanup()) }()
+		input = prepared
+	}
+	if file, ok := output.(*os.File); ok {
+		prepared, cleanup, err := pollableMCPFile(file)
+		if err != nil {
+			return err
+		}
+		defer func() { runErr = errors.Join(runErr, cleanup()) }()
+		output = prepared
+	}
+	closer, ok := input.(io.ReadCloser)
+	if !ok {
+		// In-memory readers used by embedded callers are finite. Arbitrary blocking
+		// readers must expose Close so cancellation can unblock them.
+		if _, finite := input.(interface{ Len() int }); !finite {
+			return fmt.Errorf("MCP input must be closeable or an in-memory reader")
+		}
+		closer = io.NopCloser(input)
+	}
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return mcpServer.Serve(ctx, closer, output)
+}
+
+// runServeHTTP is `serenity serve --http` (T4.21): the authenticated MCP
+// Streamable HTTP transport at /mcp. It reuses internal/server's existing
+// loopback-by-default listener with bearer auth and optional mTLS (RFC
+// 0001 section 14) wholesale -- no bespoke auth or listener path -- and
+// the exact same memoryTools registry construction --stdio uses, so a
+// client sees the same five MEMORY_VERBS tools over either transport.
+func runServeHTTP(cmd *cobra.Command) (runErr error) {
+	stderr := cmd.ErrOrStderr()
+	tools, closeDeps, err := memoryTools(flagRoot, stderr)
+	if err != nil {
+		return err
+	}
+	if closeDeps != nil {
+		defer func() { runErr = errors.Join(runErr, closeDeps()) }()
+	}
+	mcpServer, err := mcp.New(Version, tools)
+	if err != nil {
+		return err
+	}
+
+	if _, err := secrets.DaemonToken(); err != nil {
+		return fmt.Errorf("serve --http: daemon auth token missing -- run `serenity init` first: %w", err)
+	}
+
+	srv := server.New(server.FromBrainConfig(loadServerConfig(flagRoot)))
+	httpHandler := mcp.NewHTTPHandler(mcpServer)
+	srv.Handle("/mcp", httpHandler)
+	if err := srv.Listen(); err != nil {
+		return fmt.Errorf("serve --http: %w", err)
+	}
+	// Report the bound endpoint without secrets (acc: "reports its bound
+	// endpoint without secrets") -- the address only, never the bearer
+	// token, which stays in the OS keychain.
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "serenity MCP HTTP listening on http://%s/mcp\n", srv.Addr())
+
+	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	serveErr := srv.Serve(ctx)
+	// Cancel and join every in-flight tool call before the deferred
+	// closeDeps above drains the writer queue and closes the index (acc:
+	// "process shutdown closes the listener and joins workers before
+	// draining the shared writer queue and closing the index").
+	httpHandler.Close()
+	if serveErr != nil && !errors.Is(serveErr, context.Canceled) && !errors.Is(serveErr, context.DeadlineExceeded) {
+		return serveErr
+	}
+	return nil
+}
+
+// loadServerConfig loads serenity.yml's server: section for --http's
+// listener config. Mirrors memoryTools' own "not a brain repo" tolerance
+// (T4.1's bare-transport-smoke-test posture): outside a brain repo, or
+// with no server: section, --http still starts, on the transport's own
+// secure loopback-port-zero default.
+func loadServerConfig(root string) config.Server {
+	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	if err != nil {
+		return config.Server{}
+	}
+	return cfg.Server
 }
 
 // memoryTools builds MEMORY_VERBS v1's five tool registrations
