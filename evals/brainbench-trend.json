@@ -352,5 +352,359 @@
         "f1": 0.8235294117647058
       }
     }
+  },
+  {
+    "schema_version": 1,
+    "ts": "2026-09-07T22:57:26Z",
+    "commit": "49bd2cf",
+    "gbrain_pin": "d35c9c9e441e6cfc86dd5e84b0b168c6b18ee775",
+    "adapter": "serenity-search-fts-only-v1",
+    "budget_usd": 0,
+    "spent_usd": 0,
+    "limit": 10,
+    "fixtures_total": 141,
+    "fixtures_scored": 69,
+    "fixtures_skipped": [
+      {
+        "fixture_id": "cont-001-widget-pass-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "cont-001-widget-pass-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-adv-002",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-adv-007",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-adv-012",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-001-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-001-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-002-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-002-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-003-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-003-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-004-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-004-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-005-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-005-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-006-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-006-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-007-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-007-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-008-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-008-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-009-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-009-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-010-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-010-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-011-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-011-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-012-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-012-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-013-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-013-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-014-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-014-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-cont-015-reader",
+        "reason": "no seed_pages (requires a write-back pipeline not yet wired, T1.9)"
+      },
+      {
+        "fixture_id": "gen-cont-015-writer",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-001",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-002",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-003",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-004",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-005",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-006",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-007",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-008",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-009",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-010",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-011",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-012",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-013",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-014",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-kta-neg-015",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-001",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-002",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-003",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-004",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-005",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-006",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-007",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-008",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-009",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-010",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-011",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-012",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-013",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-014",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-015",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-016",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-017",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-018",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-019",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "gen-wb-020",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "kta-002-quiet-smalltalk",
+        "reason": "no should_retrieve:true gold turns"
+      },
+      {
+        "fixture_id": "wb-001-pricing-concern",
+        "reason": "no should_retrieve:true gold turns"
+      }
+    ],
+    "overall": {
+      "queries": 70,
+      "precision_hits": 133,
+      "false_positives": 13,
+      "recall_hits": 98,
+      "missed": 18,
+      "precision": 0.910958904109589,
+      "recall": 0.8448275862068966,
+      "f1": 0.8766478342749529
+    },
+    "by_category": {
+      "adversarial": {
+        "queries": 12,
+        "precision_hits": 12,
+        "false_positives": 6,
+        "recall_hits": 12,
+        "missed": 0,
+        "precision": 0.6666666666666666,
+        "recall": 1,
+        "f1": 0.8
+      },
+      "kta-pos": {
+        "queries": 27,
+        "precision_hits": 50,
+        "false_positives": 6,
+        "recall_hits": 33,
+        "missed": 0,
+        "precision": 0.8928571428571429,
+        "recall": 1,
+        "f1": 0.9433962264150945
+      },
+      "multi-source": {
+        "queries": 11,
+        "precision_hits": 11,
+        "false_positives": 1,
+        "recall_hits": 11,
+        "missed": 0,
+        "precision": 0.9166666666666666,
+        "recall": 1,
+        "f1": 0.9565217391304348
+      },
+      "push": {
+        "queries": 20,
+        "precision_hits": 60,
+        "false_positives": 0,
+        "recall_hits": 42,
+        "missed": 18,
+        "precision": 1,
+        "recall": 0.7,
+        "f1": 0.8235294117647058
+      }
+    }
   }
 ]
