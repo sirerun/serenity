@@ -185,71 +185,14 @@ func writeCheckText(out io.Writer, result check.Result, matched []check.MatchedA
 	}
 }
 
-// checkJSONOutput is `serenity check --json`'s response shape, field names
-// mirroring RFC 0001 §8.3's own vocabulary (precept_id, why_not,
-// revisit_if, matched_actions, spans) rather than inventing new ones.
-type checkJSONOutput struct {
-	Status          string                   `json:"status"`
-	ConsideredCount int                      `json:"considered_count"`
-	Constraints     []checkJSONConstraint    `json:"constraints,omitempty"`
-	Warnings        []checkJSONWarning       `json:"warnings,omitempty"`
-	MatchedActions  []checkJSONMatchedAction `json:"matched_actions,omitempty"`
-	Confidence      *float64                 `json:"confidence,omitempty"`
-}
-
-type checkJSONConstraint struct {
-	PreceptID string `json:"precept_id"`
-	Outcome   string `json:"outcome"`
-	WhyNot    string `json:"why_not,omitempty"`
-	RevisitIf string `json:"revisit_if,omitempty"`
-}
-
-type checkJSONWarning struct {
-	PreceptID string `json:"precept_id"`
-	Title     string `json:"title"`
-	Action    string `json:"action"`
-}
-
-type checkJSONSpan struct {
-	Start int    `json:"start"`
-	End   int    `json:"end"`
-	Text  string `json:"text"`
-}
-
-type checkJSONMatchedAction struct {
-	Action string         `json:"action"`
-	Params map[string]any `json:"params,omitempty"`
-	Span   checkJSONSpan  `json:"span"`
-}
-
+// writeCheckJSON renders `serenity check --json`'s response via
+// check.ToWire (internal/direction/check/wire.go) -- the same converter
+// DIRECTION v1's check_plan HTTP handler (internal/server/direction,
+// T4.6) uses, so the two surfaces can never drift on field names or
+// omission rules. This package no longer declares its own copy of the
+// wire shape.
 func writeCheckJSON(out io.Writer, result check.Result, matched []check.MatchedAction, confidence float64, haveConfidence bool) {
-	o := checkJSONOutput{
-		Status:          string(result.Status),
-		ConsideredCount: result.ConsideredCount,
-	}
-	for _, c := range result.Constraints {
-		o.Constraints = append(o.Constraints, checkJSONConstraint{
-			PreceptID: c.PreceptID,
-			Outcome:   string(c.Outcome),
-			WhyNot:    c.WhyNot,
-			RevisitIf: c.RevisitIf,
-		})
-	}
-	for _, w := range result.Warnings {
-		o.Warnings = append(o.Warnings, checkJSONWarning{PreceptID: w.PreceptID, Title: w.Title, Action: w.Action})
-	}
-	if haveConfidence {
-		o.Confidence = &confidence
-		for _, ma := range matched {
-			o.MatchedActions = append(o.MatchedActions, checkJSONMatchedAction{
-				Action: ma.Action.Action,
-				Params: ma.Action.Params,
-				Span:   checkJSONSpan{Start: ma.Span.Start, End: ma.Span.End, Text: ma.Span.Text},
-			})
-		}
-	}
-
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
-	_ = enc.Encode(o)
+	_ = enc.Encode(check.ToWire(result, matched, confidence, haveConfidence))
 }
