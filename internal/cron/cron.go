@@ -56,9 +56,10 @@ var RealClock Clock = realClock{}
 type Job func(ctx context.Context, root string, clock Clock) error
 
 // registry is the fixed set of jobs ADR 006 names: sweep, consolidate,
-// decay, slo. serenity cron accepts no other job name.
+// decay, slo, plus the T3.10 revisit sweep. serenity cron accepts no other job name.
 var registry = map[string]Job{
 	"sweep":       Sweep,
+	"revisit":     Revisit,
 	"consolidate": Consolidate,
 	"decay":       Decay,
 	"slo":         SLO,

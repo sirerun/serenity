@@ -32,6 +32,14 @@ func newCronCmd() *cobra.Command {
 // unchanged from internal/cron.Run, so `serenity cron bogus` exits non-zero
 // with a message naming every valid job.
 func runCron(ctx context.Context, root, job string, out io.Writer) error {
+	if job == "revisit" {
+		result, err := cron.RunRevisit(ctx, root, cron.RealClock)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(out, "cron revisit: ok (created=%d unsupported=%d)\n", result.Created, result.Unsupported)
+		return err
+	}
 	if err := cron.Run(ctx, job, root, cron.RealClock); err != nil {
 		return err
 	}

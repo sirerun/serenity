@@ -21,7 +21,7 @@ type fakeClock struct{ at time.Time }
 func (f fakeClock) Now() time.Time { return f.at }
 
 func TestNamesIsSortedAndComplete(t *testing.T) {
-	want := []string{"consolidate", "decay", "slo", "sweep"}
+	want := []string{"consolidate", "decay", "revisit", "slo", "sweep"}
 	got := Names()
 	if len(got) != len(want) {
 		t.Fatalf("Names() = %v, want %v", got, want)
