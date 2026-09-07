@@ -80,8 +80,28 @@ keychain and the `Authorization` header a client sends.
 
 This transport implements MEMORY_VERBS v1 only. The `--http` flag does not
 serve DISPOSITION or DIRECTION over HTTP -- their own live daemon assembly
-is separate, still-outstanding work, tracked in the E4 plan alongside full
-upstream conformance (`gbrain protocol conformance`, a separate CI task).
+is separate, still-outstanding work, tracked in the E4 plan.
+
+### Upstream conformance
+
+Every push and PR runs the `gbrain-protocol-conformance` CI job
+(`.github/workflows/ci.yml`): gbrain's own `protocol conformance` certifier
+(github.com/dndungu/gbrain, pinned commit
+`d35c9c9e441e6cfc86dd5e84b0b168c6b18ee775`) against a live `serve --http`
+endpoint on a throwaway fixture brain, over gbrain's real TypeScript SDK
+`StreamableHTTPClientTransport` client -- not a Go-side simulation of it.
+`internal/cli/gbrain_conformance_test.go`'s `TestGbrainProtocolConformance`
+drives it: `serve --http` runs in-process against a real TCP loopback
+listener (the same harness `TestServeHTTPEndToEnd` uses), so gbrain's CLI
+is the only genuine external process. The run passes gbrain's SHAPE,
+CONTRACT BEHAVIOR, and ROUND-TRIP case categories with zero failures; the
+two entity-hit cases skip honestly (`requiresSeededEntity`) since this
+transport advertises no gbrain-specific `put_page` tool to seed an entity
+page with. The run's marker-suffixed synthetic data
+(`people/conformance-<marker>`, plus any `remember`ed facts scoped to that
+entity) lives only in the run's own throwaway fixture brain, discarded with
+the test's temp directory when the job ends -- there is nothing durable
+left to clean up separately.
 
 ### Session lifecycle
 
