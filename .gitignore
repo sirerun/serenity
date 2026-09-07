@@ -27,3 +27,7 @@ testdata/brain-fixture/.dira/cache/
 # artifact, never committed. T5.10 is what persists a trend across runs.
 evals/brainbench-trend.json
 ajent.social
+
+# Python authoring and chat verification
+__pycache__/
+*.pyc

@@ -1,5 +1,9 @@
 # Serenity
 
+<p><img src="site/assets/brand.svg" width="64" height="64" alt="Serenity logo"></p>
+
+[Website](https://serenity.sire.run) · [Get started](https://serenity.sire.run/get-started/) · [Documentation](https://serenity.sire.run/docs/) · [Ask about Serenity](https://serenity.sire.run/chat/)
+
 Serenity turns your notes, repository documentation, and email into searchable
 personal memory. It extracts claims from your sources, answers questions with
 citations, and checks structured plans against your recorded constraints.
