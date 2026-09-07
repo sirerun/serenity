@@ -2,8 +2,8 @@
 // §10.2, §10.3, ADR 004): the human-in-the-loop approval queue that every
 // consequential machine proposal -- a reconcile A/B pair, a precept draft,
 // an effect request, a distill candidate, a source tombstone cascade, a
-// dirty-tree conflict, or an ambiguous entity-merge candidate -- lands in
-// before it can change canonical state.
+// dirty-tree conflict, an ambiguous entity-merge candidate, or a shard
+// compaction pass -- lands in before it can change canonical state.
 //
 // disposition_items and disposition_history are runtime-only state (RFC §7
 // preamble: "DB-only by design, enumerated in an allowlist"), seeded as
@@ -55,6 +55,20 @@ const (
 	// internal/entities defines the payload shape and never auto-applies a
 	// merge for an item of this kind.
 	KindEntityMerge Kind = "entity_merge"
+	// KindCompact authorizes a `serenity compact` pass (internal/store's
+	// ShardStore.Compact, T0.9/T2.9, RFC 0001 §7.7: "an explicit,
+	// disposition-approved `serenity compact` run -- never silently").
+	// T0.9 originally gated this behind a bare `--confirm` flag "until M2
+	// replaces this gate with an approved disposition item"; T2.9 is that
+	// replacement. Payload is internal/cli's CompactPayload -- today an
+	// empty struct, since there is exactly one compaction scope (every
+	// shard family across every entity, T0.9's original sweep). Unlike
+	// KindReconcile/KindEntityMerge, nothing in this codebase proposes a
+	// KindCompact item automatically -- compaction is periodic
+	// maintenance, not a classifier's verdict on new evidence -- so the
+	// CLI itself stages one on request (`serenity compact --propose`)
+	// for a human to review before accepting it.
+	KindCompact Kind = "compact"
 )
 
 // State enumerates disposition item lifecycle states (RFC 0001 §8.2/ADR
