@@ -1,0 +1,7 @@
+span: Ava's AWS billing account balance is $312.00 owed.
+expected:
+    predicate: owns_account
+    object: aws-billing-account
+    valid_from: 2021-11
+labeler: human-reviewer
+adjudicated: true

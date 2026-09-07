@@ -1,0 +1,7 @@
+span: Ava's monthly reconciliation spreadsheet records her Coinbase wallet at $2,015.67.
+expected:
+    predicate: owns_account
+    object: coinbase-wallet
+    valid_from: 2022-04
+labeler: human-reviewer
+adjudicated: true

@@ -414,6 +414,60 @@ was committed, not left as the original (wrong) draft. Whether
 outside eval-runner, where `disable_thinking` legitimately does vary) is
 separately unmeasured and would need its own task.
 
+## L-0012: An `eval` corpus span CAN and, for a genuinely overlapping fact, MUST carry more than one predicate's golden `Label` -- three test helpers assumed span text was globally unique across the whole corpus and silently miscounted when it wasn't
+
+**Tags:** #eval #gotcha #test-coverage
+**Date:** 2026-09-07
+**Repo:** sirerun/serenity
+
+**Rule:** `internal/eval.Split.Filter` (and the scoring pipeline built on
+it) key held-out membership by span TEXT alone, with no assumption that a
+span maps to exactly one `Label`. A real span of text asserting two
+different facts (e.g. "Ava's Chase checking balance is $4,230.18."
+asserts both `has_balance` and, via its possessive framing, `owns_account`
+ownership of the same account) is meant to carry two `Label` records, one
+per predicate, both sharing the exact same `Span` string. Any new code
+that builds a `map[string]<single value>` keyed by span text to look up a
+label's family, or that treats "one entry in `split.yaml`'s `held_out`
+list" as "one scored unit," is reintroducing this bug. The correct
+pattern: key by `(span, predicate)`, or iterate `Label`s directly against
+a `map[string]bool` held-out SPAN set (never a single-value map from span
+to family/label).
+**Why:** T1.33 (`evals/corpora/ava/gen_corpus.go`) fixed a real scoring
+artifact T1.32's live run exposed: `owns_account` P=0.511 with FP=23 out
+of 24 TP, because every held-out `has_balance` span's possessive phrasing
+already asserts account ownership with no matching `owns_account` golden
+label, so a model correctly extracting both facts from that span scored
+an unmatched `owns_account` false positive purely from a corpus gap, not
+a prompt or model defect. The fix adds a matching `owns_account` `Label`
+for every `has_balance` span (all 44, not only the 24 currently held
+out, so a future re-split doesn't reopen the same gap), reusing each
+span's own rendered text verbatim rather than a separately re-templated
+string (T1.35's own worked-example leak in this same corpus is exactly
+the failure mode of two independently-typed strings drifting apart).
+This is the corpus's first span with two golden `Label`s, and it broke
+three tests in `internal/eval/ava_corpus_test.go` that had never been
+exercised against that shape before: `TestAvaCorpusNoDuplicateSpans`
+(checked global span-text uniqueness, not `(span, predicate)`
+uniqueness -- the actual invariant the scoring pipeline depends on),
+`TestAvaCorpusSplitFileValid` and `TestAvaCorpusHeldOutMeetsT132Floor`
+(both built a `spanFamily map[string]string`, silently dropping one
+family's count every time two labels shared a span since a Go map has
+one value per key). All three were fixed to operate on
+`(span, predicate)` pairs or to iterate labels directly against a
+held-out span SET, matching what `Split.Filter` itself actually does.
+Separately, `gen_corpus.go`'s own `split.yaml` writer needed a dedupe
+pass: appending a held-out span once per family that holds it out (as
+the generator naturally does, looping family by family) produced
+literal duplicate strings in `held_out` once a span could belong to two
+families -- `Split.Filter` doesn't care (`held` is itself a
+`map[string]bool`), but the file should still list each span once.
+**Trigger:** Any future change to `evals/corpora/*/gen_corpus.go` (or a
+hand-edited label file) that gives a second family a golden label on a
+span already used by another family. Also a general caution for any new
+`internal/eval`-adjacent test or tool: check whether it assumes
+"span text" is a unique key into the corpus before relying on that.
+
 ## L-0013: A GitHub PR that dispatches zero CI runs is very likely `mergeable: CONFLICTING`, not a platform dispatch failure -- check `gh pr view <n> --json mergeable,mergeStateStatus` before assuming a GitHub-side bug
 
 **Tags:** #ci #github-actions #pool #gotcha

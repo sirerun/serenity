@@ -1,0 +1,7 @@
+span: Ava's monthly reconciliation spreadsheet records her GitHub organization account at $0.00.
+expected:
+    predicate: owns_account
+    object: github-org-account
+    valid_from: 2020-09
+labeler: human-reviewer
+adjudicated: true
