@@ -133,7 +133,39 @@ func buildProvider(name, model, versionTag string) (router.Provider, string, err
 		// openai always went to the real OpenAI API regardless of any
 		// local server configured elsewhere -- found running T1.23's
 		// live eval against the DGX Qwen endpoint.
-		p := &router.OpenAICompatibleProvider{APIKey: os.Getenv("OPENAI_API_KEY"), BaseURL: os.Getenv("OPENAI_BASE_URL"), Model: model, Version: versionTag}
+		//
+		// ExtraBody pins temperature=0 (T1.29, found running this task's
+		// own acc-line re-verification): the server's default (unset)
+		// sampling temperature is non-zero on the DGX endpoint, and
+		// repeated live runs against the identical held-out spans and
+		// code showed individual spans flipping outcome run to run
+		// (e.g. one span's predicate misclassified as "prefers" instead
+		// of "said" in one run, correct in the next, no code change
+		// between them). Pinning temperature=0 is kept as sound eval
+		// methodology -- reproducible scoring is unambiguously wanted
+		// here -- but it is NOT a proven fix for the pass/fail bar
+		// itself: a controlled same-conditions rerun (identical prompt,
+		// identical thinking-mode setting, differing only in this pin)
+		// passed the exact same 5 of 12 target families both times. An
+		// earlier draft of this comment and docs/lore.md L-0011 claimed
+		// a 5/12-to-7/12 swing; that compared two runs that also
+		// differed in thinking-mode (a separate, T1.31 setting) --
+		// confounded, and corrected once caught. "temperature" is a
+		// standard OpenAI chat-completions field (not a local-server-only
+		// extension like disable_thinking's chat_template_kwargs), so it
+		// is safe to send unconditionally to a real OpenAI/OpenRouter
+		// endpoint too -- unlike disable_thinking, this needs no opt-in
+		// flag. Deliberately scoped to eval-runner's own provider only:
+		// it does NOT touch internal/providers.buildChatProvider's
+		// production extraction path, which was not measured here and
+		// would need its own task to evaluate (docs/lore.md L-0011).
+		p := &router.OpenAICompatibleProvider{
+			APIKey:    os.Getenv("OPENAI_API_KEY"),
+			BaseURL:   os.Getenv("OPENAI_BASE_URL"),
+			Model:     model,
+			Version:   versionTag,
+			ExtraBody: map[string]any{"temperature": 0},
+		}
 		return p, p.ModelVersion(), nil
 	default:
 		return nil, "", fmt.Errorf("unknown -provider %q (want anthropic or openai)", name)
