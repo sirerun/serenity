@@ -184,18 +184,18 @@ func (h *Handlers) Register(s Registrar) {
 	s.Handle("/direction/propose", http.HandlerFunc(h.handlePropose))
 }
 
-// protoError mirrors internal/server/disposition.protoError: a stable
+// ProtoError mirrors internal/server/disposition.ProtoError: a stable
 // machine-checkable code plus a human message, for every 4xx/5xx this
 // package emits. Each protocol package keeps its own copy rather than
 // sharing one across a boundary neither owns -- disposition.go's own
 // identical types make the same choice.
-type protoError struct {
+type ProtoError struct {
 	Code    string `json:"error"`
 	Message string `json:"message"`
 }
 
 func writeError(w http.ResponseWriter, status int, code, msg string) {
-	writeJSON(w, status, protoError{Code: code, Message: msg})
+	writeJSON(w, status, ProtoError{Code: code, Message: msg})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -211,19 +211,19 @@ func decodeJSON(r *http.Request, v any) error {
 
 // --- check_plan -------------------------------------------------------
 
-// checkPlanRequest is check_plan's request body (RFC 0001 §8.3:
+// CheckPlanRequest is check_plan's request body (RFC 0001 §8.3:
 // "check_plan(plan_text, actions?)"). Exactly one of PlanText or Actions
 // is required -- the same mutual-exclusivity rule
 // internal/cli.runCheck enforces for `serenity check`'s own two input
 // forms.
-type checkPlanRequest struct {
+type CheckPlanRequest struct {
 	PlanText string            `json:"plan_text,omitempty"`
-	Actions  []checkPlanAction `json:"actions,omitempty"`
+	Actions  []CheckPlanAction `json:"actions,omitempty"`
 }
 
-// checkPlanAction is one structured action, decoded before conversion to
+// CheckPlanAction is one structured action, decoded before conversion to
 // check.Action.
-type checkPlanAction struct {
+type CheckPlanAction struct {
 	Action string         `json:"action"`
 	Params map[string]any `json:"params,omitempty"`
 }
@@ -239,7 +239,7 @@ func (h *Handlers) handleCheckPlan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "check_plan requires POST")
 		return
 	}
-	var req checkPlanRequest
+	var req CheckPlanRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "decode request: "+err.Error())
 		return
@@ -301,16 +301,16 @@ func writeCheckPlanError(w http.ResponseWriter, err error) {
 
 // --- propose ------------------------------------------------------------
 
-// proposeRequest is propose's request body (RFC 0001 §8.3:
+// ProposeRequest is propose's request body (RFC 0001 §8.3:
 // "propose(kind, payload)"). Payload is opaque to the wire layer -- its
 // shape depends on Kind, validated by validateProposePayload below before
 // anything is staged.
-type proposeRequest struct {
+type ProposeRequest struct {
 	Kind    string          `json:"kind"`
 	Payload json.RawMessage `json:"payload"`
 }
 
-type proposeResponse struct {
+type ProposeResponse struct {
 	ItemID string `json:"item_id"`
 }
 
@@ -334,7 +334,7 @@ func (h *Handlers) handlePropose(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "propose requires POST")
 		return
 	}
-	var req proposeRequest
+	var req ProposeRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "decode request: "+err.Error())
 		return
@@ -358,7 +358,7 @@ func (h *Handlers) handlePropose(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, proposeResponse{ItemID: item.ID})
+	writeJSON(w, http.StatusOK, ProposeResponse{ItemID: item.ID})
 }
 
 // validateProposePayload rejects a malformed payload before it is ever
@@ -402,27 +402,27 @@ func validateProposePayload(kind coredisp.Kind, payload json.RawMessage) error {
 
 // --- brief --------------------------------------------------------------
 
-// briefRequest is brief's request body (RFC 0001 §8.3:
+// BriefRequest is brief's request body (RFC 0001 §8.3:
 // "brief(task_hint?, token_budget)").
-type briefRequest struct {
+type BriefRequest struct {
 	TaskHint    string `json:"task_hint,omitempty"`
 	TokenBudget int    `json:"token_budget"`
 }
 
-// briefResponse is brief's wire object (RFC 0001 §12): the four fixed
+// BriefResponse is brief's wire object (RFC 0001 §12): the four fixed
 // sections in priority order, plus the estimator name every caller needs
 // to interpret token_budget correctly (T4.6's own acc line:
 // "budget_estimator named").
-type briefResponse struct {
+type BriefResponse struct {
 	BudgetEstimator string             `json:"budget_estimator"`
-	Sections        []briefSectionWire `json:"sections"`
+	Sections        []BriefSectionWire `json:"sections"`
 }
 
-// briefSectionWire is one packed section's wire form. Items is always a
+// BriefSectionWire is one packed section's wire form. Items is always a
 // non-nil (possibly empty) array -- never included and omitted at once --
 // mirroring briefing.PackedSection's own "included whole XOR dropped
 // whole" invariant: Omitted > 0 implies Items is empty, and vice versa.
-type briefSectionWire struct {
+type BriefSectionWire struct {
 	Name    string   `json:"name"`
 	Items   []string `json:"items"`
 	Omitted int      `json:"omitted"`
@@ -442,7 +442,7 @@ func (h *Handlers) handleBrief(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "brief requires POST")
 		return
 	}
-	var req briefRequest
+	var req BriefRequest
 	if err := decodeJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "decode request: "+err.Error())
 		return
@@ -500,14 +500,14 @@ func (h *Handlers) BuildBrief(ctx context.Context, taskHint string, tokenBudget 
 	return json.Marshal(toBriefWire(packed))
 }
 
-func toBriefWire(b briefing.Briefing) briefResponse {
-	resp := briefResponse{BudgetEstimator: briefBudgetEstimatorName}
+func toBriefWire(b briefing.Briefing) BriefResponse {
+	resp := BriefResponse{BudgetEstimator: briefBudgetEstimatorName}
 	for _, sec := range b.Sections {
 		items := make([]string, len(sec.Items))
 		for i, it := range sec.Items {
 			items[i] = it.Text
 		}
-		resp.Sections = append(resp.Sections, briefSectionWire{
+		resp.Sections = append(resp.Sections, BriefSectionWire{
 			Name:    string(sec.Name),
 			Items:   items,
 			Omitted: sec.Omitted,

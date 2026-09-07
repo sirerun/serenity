@@ -34,12 +34,12 @@ func TestDisposeIdempotencyReplayIgnoresMutatedPayload(t *testing.T) {
 	base, token := startTestServer(t, env)
 
 	const key = "adversarial-replay-key"
-	original := disposeRequest{
+	original := DisposeRequest{
 		ItemID: items[0].ID, Verdict: string(coredisp.VerdictAccept),
 		IdempotencyKey: key, Actor: "tester-original",
 	}
 	origBody := readBody(t, postJSON(t, base, token, "/disposition/dispose", original))
-	var origOut disposeResponse
+	var origOut DisposeResponse
 	if err := json.Unmarshal(origBody, &origOut); err != nil {
 		t.Fatalf("decode original: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestDisposeIdempotencyReplayIgnoresMutatedPayload(t *testing.T) {
 	// pre-idempotency validation (a non-empty note, so "reject requires
 	// note" does not itself short-circuit this call before the replay
 	// branch is even reached).
-	mutated := disposeRequest{
+	mutated := DisposeRequest{
 		ItemID:         items[0].ID,
 		Verdict:        string(coredisp.VerdictReject),
 		Note:           "attacker-supplied rejection note",
@@ -63,7 +63,7 @@ func TestDisposeIdempotencyReplayIgnoresMutatedPayload(t *testing.T) {
 		IdempotencyKey: key,
 	}
 	mutatedBody := readBody(t, postJSON(t, base, token, "/disposition/dispose", mutated))
-	var mutatedOut disposeResponse
+	var mutatedOut DisposeResponse
 	if err := json.Unmarshal(mutatedBody, &mutatedOut); err != nil {
 		t.Fatalf("decode replay: %v", err)
 	}
