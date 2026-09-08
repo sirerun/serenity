@@ -3,10 +3,13 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sirerun/serenity/internal/import/gbrain"
 
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/providers"
@@ -34,6 +37,21 @@ func TestImportCLIRebuildsCanonicalFixture(t *testing.T) {
 	if !strings.Contains(out.String(), "2 page(s), 8 claim(s)") {
 		t.Fatalf("unexpected output: %s", out.String())
 	}
+	out.Reset()
+	repeat := newRootCmd()
+	repeat.SetOut(&out)
+	repeat.SetArgs([]string{"-C", root, "import", "--from-gbrain", "../../testdata/gbrain-fixture", "--json"})
+	if err := repeat.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var report gbrain.Result
+	if err := json.Unmarshal(out.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Skipped != 2 || report.Audit.Rows != 8 || report.Audit.Fields != 74 || len(report.Audit.Unmapped) != 0 {
+		t.Fatalf("incorrect JSON report: %+v", report)
+	}
+
 	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		t.Fatal(err)
