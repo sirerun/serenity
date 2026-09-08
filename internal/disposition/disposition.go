@@ -201,6 +201,8 @@ type Item struct {
 	// a cross-reference into the canonical repo's own claim id space, not
 	// a second place canonical state lives.
 	AppliedClaimID string `json:"applied_claim_id,omitempty"`
+	// AppliedPublicationID identifies a committed dirty-edit receipt (zero or more claims).
+	AppliedPublicationID string `json:"applied_publication_id,omitempty"`
 }
 
 // HistoryEntry is one append-only disposition_history row (RFC 0001 §8.2:
@@ -534,6 +536,30 @@ func (s *Store) RecordResultClaimID(ctx context.Context, id, claimID string, now
 			return false, fmt.Errorf("disposition: result already recorded as %s", item.AppliedClaimID)
 		}
 		item.AppliedClaimID = claimID
+		if now.After(item.UpdatedAt) {
+			item.UpdatedAt = now.UTC()
+		}
+		return true, nil
+	})
+	return err
+}
+
+// RecordPublicationID marks a committed dirty edit without inventing a claim ID.
+func (s *Store) RecordPublicationID(ctx context.Context, id, publicationID string, now time.Time) error {
+	if publicationID == "" {
+		return errors.New("disposition: empty publication id")
+	}
+	_, _, err := s.updateItem(ctx, id, func(item *Item) (bool, error) {
+		if item.Kind != KindDirtyEdit || item.State != StateDisposed || item.Verdict != VerdictAccept {
+			return false, errors.New("disposition: accepted dirty edit required")
+		}
+		if item.AppliedPublicationID == publicationID {
+			return false, nil
+		}
+		if item.AppliedPublicationID != "" {
+			return false, errors.New("disposition: different publication already recorded")
+		}
+		item.AppliedPublicationID = publicationID
 		if now.After(item.UpdatedAt) {
 			item.UpdatedAt = now.UTC()
 		}
