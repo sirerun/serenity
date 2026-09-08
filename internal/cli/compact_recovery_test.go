@@ -289,3 +289,45 @@ func TestApprovedCompactIsVisibleUntilPublication(t *testing.T) {
 		t.Fatal("completed compaction still unapplied")
 	}
 }
+
+func TestApprovedCompactHonorsEditedScope(t *testing.T) {
+	for _, payload := range []string{`{}`, `{"slug":"ava"}`, `null`} {
+		t.Run(payload, func(t *testing.T) {
+			root, _, path := approvedCompactFixture(t)
+			ctx := context.Background()
+			eng, err := providers.OpenIndex(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = eng.Close() }()
+			ds := disposition.NewStore(eng)
+			now := time.Now()
+			item, err := ds.Create(ctx, disposition.KindCompact, json.RawMessage(`{}`), "", now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ds.Dispose(ctx, item.ID, disposition.VerdictEditAccept, json.RawMessage(payload), "", "human:test", "", now); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out bytes.Buffer
+			err = runCompactCmd(ctx, root, false, item.ID, &out, now)
+			if payload == `{}` {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err == nil {
+					t.Fatal("unsupported edited scope ignored")
+				}
+				after, err := os.ReadFile(path)
+				if err != nil || !bytes.Equal(before, after) {
+					t.Fatal("unsupported scope changed canonical bytes")
+				}
+			}
+		})
+	}
+}
