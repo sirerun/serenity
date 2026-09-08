@@ -241,11 +241,10 @@ func (c *Composer) AskWithOptions(ctx context.Context, query string, opts AskOpt
 	if err != nil {
 		return Answer{}, fmt.Errorf("compose: source policy: %w", err)
 	}
-	restricted, err := index.RestrictedSummaryEntities(c.Root, proj, now)
+	eligible, err := index.RetrievalEligibility(c.Root, proj, true, true, now)
 	if err != nil {
-		return Answer{}, fmt.Errorf("compose: summary policy: %w", err)
+		return Answer{}, fmt.Errorf("compose: retrieval policy: %w", err)
 	}
-	eligible := index.SourceEligibility(proj, true, true, now, restricted)
 	bySubject, err := AllClaims(c.Root, c.Config)
 	if err != nil {
 		return Answer{}, fmt.Errorf("compose: %w", err)
@@ -328,27 +327,7 @@ func PublicClaims(root string, cfg *config.Config, proj *store.MemoryProjection,
 }
 
 func claimCurrent(cl domain.Claim, now time.Time) bool {
-	parse := func(value string) (time.Time, bool) {
-		for _, layout := range []string{time.RFC3339Nano, "2006-01-02", "2006-01", "2006"} {
-			if t, err := time.Parse(layout, value); err == nil {
-				return t, true
-			}
-		}
-		return time.Time{}, false
-	}
-	if cl.ValidFrom != "" {
-		from, ok := parse(cl.ValidFrom)
-		if !ok || now.Before(from) {
-			return false
-		}
-	}
-	if cl.ValidTo != "" {
-		until, ok := parse(cl.ValidTo)
-		if !ok || !now.Before(until) {
-			return false
-		}
-	}
-	return true
+	return cl.CurrentAt(now)
 }
 
 // Resolve lifecycle before applying visibility: removing a private replacement
@@ -780,6 +759,9 @@ func buildPrompt(query string, candidates []liveClaim) string {
 	for _, lc := range candidates {
 		fmt.Fprintf(&b, "[claim:%s] %s %s %s (confidence %.2f, observed %s)\n",
 			lc.ID, lc.SubjectSlug, lc.Predicate, lc.Object, lc.Confidence, formatObservedAt(lc.Provenance.ObservedAt))
+		if lc.Review {
+			b.WriteString("This is an imported semantic translation requiring human review. Attribute it as imported evidence; do not present it as a verified belief.\n")
+		}
 	}
 	b.WriteString("\nAnswer:")
 	return b.String()
