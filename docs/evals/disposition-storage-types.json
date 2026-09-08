@@ -1,0 +1,50 @@
+{
+  "task": "T19.1",
+  "date": "2026-09-08",
+  "source_revision": "2b108e401c9b8eb929eabe08a0a38cf8da227669",
+  "change": "Compare exact stored payload bytes across SQLite TEXT/BLOB storage classes; preserve transactional CAS and history.",
+  "race": {
+    "command": "go test -race -json -timeout 600s ./...",
+    "passing_cases": 1742,
+    "passing_packages": 58,
+    "skipped_cases": 6,
+    "packages_without_tests": 4,
+    "failures": 0
+  },
+  "vet": "both changed packages passed",
+  "lint": "both changed packages: 0 issues",
+  "negative_controls": [
+    {
+      "fault": "storage-class",
+      "detected": true
+    },
+    {
+      "fault": "semantic-json",
+      "detected": true
+    }
+  ],
+  "real_cli": [
+    {
+      "mode": "baseline",
+      "bounded_timeout": true,
+      "state": "pending",
+      "history_entries": 0,
+      "payload_preserved": true,
+      "elapsed_seconds": 3.01,
+      "live_model_calls": 0
+    },
+    {
+      "mode": "fixed",
+      "bounded_timeout": false,
+      "state": "disposed",
+      "history_entries": 1,
+      "payload_preserved": true,
+      "elapsed_seconds": 0.594,
+      "live_model_calls": 0
+    }
+  ],
+  "limitations": [
+    "Normal application writes were already BLOB; this fixes valid TEXT rows such as SQL JSON edits.",
+    "Byte comparison remains strict; semantic JSON equality is insufficient."
+  ]
+}
