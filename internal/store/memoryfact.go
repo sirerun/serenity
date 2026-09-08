@@ -396,6 +396,10 @@ func (p *MemoryProjection) IsLifecycle(sha string) bool { return p.lifecycle[sha
 // SourceIndexOnly preserves ordinary source egress policy in the same snapshot.
 func (p *MemoryProjection) SourceIndexOnly(sha string) bool { return p.indexOnly[sha] }
 
+// SourceKnown reports whether canonical source metadata exists. Native claims
+// with dangling source attribution cannot authorize remote/provider disclosure.
+func (p *MemoryProjection) SourceKnown(sha string) bool { _, ok := p.indexOnly[sha]; return ok }
+
 // DedupKey is the exact-duplicate identity for a candidate remember call --
 // same entity + kind + visibility + attribution + effective expiry + fact
 // text (mapping item 6: "Define exact dedup key including attribution/

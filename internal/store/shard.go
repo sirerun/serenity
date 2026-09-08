@@ -454,12 +454,20 @@ func (s *ShardStore) Families(slug string) ([]string, error) {
 		return nil, err
 	}
 	var out []string
+	seen := map[string]bool{}
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, ".jsonl") || strings.HasSuffix(name, ".archive.jsonl") {
 			continue
 		}
-		out = append(out, strings.TrimSuffix(name, ".jsonl"))
+		family := strings.TrimSuffix(name, ".jsonl")
+		if match := segmentPattern.FindStringSubmatch(name); match != nil {
+			family = match[1]
+		}
+		if !seen[family] {
+			out = append(out, family)
+			seen[family] = true
+		}
 	}
 	sort.Strings(out)
 	return out, nil
