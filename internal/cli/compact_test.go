@@ -153,6 +153,8 @@ func TestCompactCLIItemAccepted(t *testing.T) {
 		t.Fatalf("init: %v\n%s", err, initOut.String())
 	}
 
+	configureGitIdentity(t, root)
+
 	const slug, family = "acct-42", "has_balance"
 	ss := store.NewShardStore(root)
 	q := writer.NewQueue(nil)

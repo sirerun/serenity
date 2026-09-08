@@ -25,6 +25,7 @@ func approvedCompactFixture(t *testing.T) (string, string, string) {
 	if err := runInit(root, &out); err != nil {
 		t.Fatal(err)
 	}
+	configureGitIdentity(t, root)
 	ss := store.NewShardStore(root)
 	ss.RolloverBytes = 1
 	old := domain.Claim{ID: "old", SubjectSlug: "ava", Family: "has_balance", Predicate: "has_balance", Object: "100", ObjectKey: "balance", State: domain.StateActive, Confidence: .9}
