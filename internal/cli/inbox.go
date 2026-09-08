@@ -148,7 +148,11 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 			if err != nil {
 				return fmt.Errorf("inbox: publication incomplete for %s: %w; resolve the target and retry with inbox --apply %s", item.ID, err, item.ID)
 			}
-			_, _ = fmt.Fprintf(out, "applied %s -> claim %s committed to brain repo\n", item.ID, id)
+			kind := "claim"
+			if item.Kind == disposition.KindDirtyEdit {
+				kind = "publication"
+			}
+			_, _ = fmt.Fprintf(out, "applied %s -> %s %s committed to brain repo\n", item.ID, kind, id)
 			return nil
 		}
 		if err := runListUnapplied(ctx, dispStore, out); err != nil {
@@ -173,6 +177,8 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 
 // reconcilePublisher separates interactive review from publication bookkeeping.
 type reconcilePublisher interface {
+	PreviewDirtyEdit(disposition.Item, string, time.Time) (string, error)
+	ApplyAndCommitDirtyEdit(context.Context, *disposition.Store, disposition.Item, time.Time) (string, error)
 	ApplyAndCommitReconcile(context.Context, *disposition.Store, disposition.Item, time.Time) (string, error)
 	PreviewDistillAssertion(context.Context, disposition.Item, string, string, time.Time) (supersede.DistillDecision, error)
 	ApplyAndCommitDistill(context.Context, *disposition.Store, disposition.Item, time.Time) (string, error)
@@ -203,7 +209,22 @@ func (p *inboxPublisher) ApplyAndCommitDistill(ctx context.Context, ds *disposit
 	return id, err
 }
 
+func (p *inboxPublisher) PreviewDirtyEdit(item disposition.Item, actor string, now time.Time) (string, error) {
+	return p.writer.PreviewDirtyEdit(item, actor, now)
+}
+
+func (p *inboxPublisher) ApplyAndCommitDirtyEdit(ctx context.Context, ds *disposition.Store, item disposition.Item, now time.Time) (string, error) {
+	id, err := p.writer.ApplyAndCommitDirtyEdit(ctx, ds, item, now)
+	if err == nil && item.AppliedPublicationID == "" {
+		p.published = true
+	}
+	return id, err
+}
+
 func applyInboxDecision(ctx context.Context, sw reconcilePublisher, ds *disposition.Store, item disposition.Item, now time.Time) (string, error) {
+	if item.Kind == disposition.KindDirtyEdit {
+		return sw.ApplyAndCommitDirtyEdit(ctx, ds, item, now)
+	}
 	if item.Kind == disposition.KindDistill {
 		return sw.ApplyAndCommitDistill(ctx, ds, item, now)
 	}
@@ -475,6 +496,32 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 				_, _ = fmt.Fprintln(out, "inbox: low-confidence evidence stays pending; use e to type a human assertion and confirm its canonical effect, or d/r to defer/reject")
 				continue
 			}
+			if verdict == disposition.VerdictAccept {
+				dirty := false
+				for _, it := range row.Items {
+					if it.Kind == disposition.KindDirtyEdit {
+						dirty = true
+					}
+				}
+				if dirty {
+					if len(row.Items) != 1 {
+						return fmt.Errorf("inbox: review paused edits individually")
+					}
+					preview, err := sw.PreviewDirtyEdit(row.Items[0], actor, now)
+					if err != nil {
+						return fmt.Errorf("inbox: paused edit remains pending: %w", err)
+					}
+					_, _ = fmt.Fprint(out, preview, "Commit this human copy and its listed shard corrections? [y/N]: ")
+					answer, err := r.ReadString('\n')
+					if err != nil && err != io.EOF {
+						return err
+					}
+					if strings.TrimSpace(answer) != "y" {
+						_, _ = fmt.Fprintln(out, "inbox: paused edit stays pending")
+						continue
+					}
+				}
+			}
 			for _, it := range row.Items {
 				res, err := dispStore.Dispose(ctx, it.ID, verdict, nil, note, actor, "", now)
 				if err != nil {
@@ -484,6 +531,12 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 				// Publish only the recorded winning acceptance.
 
 				switch {
+				case verdict == disposition.VerdictAccept && res.Item.Verdict == disposition.VerdictAccept && it.Kind == disposition.KindDirtyEdit:
+					id, aerr := sw.ApplyAndCommitDirtyEdit(ctx, dispStore, res.Item, now)
+					if aerr != nil {
+						return fmt.Errorf("inbox: publication incomplete for %s: %w; retry with inbox --apply %s", it.ID, aerr, it.ID)
+					}
+					_, _ = fmt.Fprintf(out, "applied %s -> publication %s committed to brain repo\n", it.ID, id)
 				case verdict == disposition.VerdictAccept && res.Item.Verdict == disposition.VerdictAccept && it.Kind == disposition.KindReconcile:
 					id, aerr := sw.ApplyAndCommitReconcile(ctx, dispStore, res.Item, now)
 					if aerr != nil {
@@ -648,15 +701,15 @@ func runListUnapplied(ctx context.Context, dispStore *disposition.Store, out io.
 		if err != nil {
 			return err
 		}
-		supported := item.Kind == disposition.KindReconcile || (extracted && item.Verdict == disposition.VerdictEditAccept)
-		if !supported || item.State != disposition.StateDisposed || (item.Verdict != disposition.VerdictAccept && item.Verdict != disposition.VerdictEditAccept) || item.AppliedClaimID != "" {
+		supported := item.Kind == disposition.KindDirtyEdit || item.Kind == disposition.KindReconcile || (extracted && item.Verdict == disposition.VerdictEditAccept)
+		if !supported || item.State != disposition.StateDisposed || (item.Verdict != disposition.VerdictAccept && item.Verdict != disposition.VerdictEditAccept) || item.AppliedClaimID != "" || item.AppliedPublicationID != "" {
 			continue
 		}
 		_, _ = fmt.Fprintf(out, "unapplied %s verdict=%s — retry: serenity inbox --apply %s\n", item.ID, item.Verdict, item.ID)
 		count++
 	}
 	if count > 0 {
-		_, _ = fmt.Fprintf(out, "inbox: %d accepted claim decision(s) await publication\n", count)
+		_, _ = fmt.Fprintf(out, "inbox: %d accepted decision(s) await publication\n", count)
 	}
 	return nil
 }
