@@ -35,17 +35,21 @@ const (
 // Provenance points at the observation-bearing source span with the model
 // pin that produced it (§7.5). Actor is "machine" or "human:<id>".
 type Provenance struct {
-	SourceSHA256 string    `json:"source_sha256,omitempty"`
-	Span         string    `json:"span,omitempty"`
-	Model        string    `json:"model,omitempty"`
-	ObservedAt   time.Time `json:"observed_at,omitzero"`
-	Actor        string    `json:"actor,omitempty"`
+	// Meta preserves source-specific attribution without semantic reinterpretation.
+	Meta         map[string]string `json:"meta,omitempty"`
+	SourceSHA256 string            `json:"source_sha256,omitempty"`
+	Span         string            `json:"span,omitempty"`
+	Model        string            `json:"model,omitempty"`
+	ObservedAt   time.Time         `json:"observed_at,omitzero"`
+	Actor        string            `json:"actor,omitempty"`
 }
 
 // Claim is the atomic unit: subject–predicate–object with confidence,
 // validity window, and supersession chain (§7.2). IDs are content-derived
 // short hashes, stable across rebuilds.
 type Claim struct {
+	// Review marks an imported semantic translation requiring human review.
+	Review      bool    `json:"review,omitempty"`
 	ID          string  `json:"id"`
 	SubjectSlug string  `json:"subject"`
 	Predicate   string  `json:"predicate"`
