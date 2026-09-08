@@ -4,6 +4,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-09-08 T7.2 adoption events: deployed fixed-schema browser-local install/docs/chat events and Playwright CI (28 passing cases, seven flows at four viewports, zero skips). A live mobile session observed all five event names, including a real cited answer and an explicitly intercepted error/retry case. No analytics transport, visitor identifiers or conversion baseline is claimed. URL-leak and zero-case negative controls failed correctly. Evidence: docs/launch/checklist.md.
+
 - 2026-09-08 T7.3 chat operations: deployed five owner/runbook-linked alarms and fixed-schema privacy-preserving metrics with 14-day log retention. Twenty-one Python tests passed, zero skipped; fallback/logging negative controls failed correctly. Four live health/CORS/cited-answer checks passed, and CloudWatch extracted two latency samples (maximum 5,786.077 ms). No visitor content or credentials are logged; no pager subscription or live fault injection is claimed. Evidence: docs/launch/checklist.md.
 
 - 2026-09-08 T7.5 HTTPS enforcement: Pages reports the correct custom domain and `https_enforced=true`; authoritative DNS resolves to GitHub Pages, HTTP redirects 301 to HTTPS, and HTTPS returns 200 with normal certificate validation. Only the Pages enforcement setting changed. Before/after evidence and rollback owner are in docs/launch/checklist.md.
