@@ -28,6 +28,10 @@ type Result struct {
 // Parse/map/vocabulary/destination-collision checks finish before any writes.
 // Changed existing pages require an explicit migration resolution, never overwrite.
 func Import(ctx context.Context, source, target string, cfg *config.Config) (Result, error) {
+	return importObserved(ctx, source, target, cfg, nil)
+}
+
+func importObserved(ctx context.Context, source, target string, cfg *config.Config, observer importObserver) (Result, error) {
 	result := Result{Audit: FieldReport{Unmapped: []FieldLoss{}}}
 	if cfg == nil {
 		return result, fmt.Errorf("gbrain import: missing target config")
@@ -51,6 +55,21 @@ func Import(ctx context.Context, source, target string, cfg *config.Config) (Res
 	if source == target || strings.HasPrefix(target, source+string(filepath.Separator)) || strings.HasPrefix(source, target+string(filepath.Separator)) {
 		return result, fmt.Errorf("gbrain import: source and target must be separate directories")
 	}
+
+	runtime, err := openRuntime(target)
+	if err != nil {
+		return result, err
+	}
+	defer func() { _ = runtime.Close() }()
+	lock, err := lockRuntime(runtime)
+	if err != nil {
+		return result, err
+	}
+	defer func() { _ = lock.Close() }()
+	cp, err := loadCheckpoint(runtime)
+	if err != nil {
+		return result, err
+	}
 	srcRoot, err := os.OpenRoot(source)
 	if err != nil {
 		return result, err
@@ -60,6 +79,8 @@ func Import(ctx context.Context, source, target string, cfg *config.Config) (Res
 	seen := map[string]string{}
 	targets := map[string]string{}
 	sourcePages := map[string]Page{}
+	sourceHashes := map[string]string{}
+	expected := map[string]pageCheckpoint{}
 	err = filepath.WalkDir(source, func(name string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -117,6 +138,7 @@ func Import(ctx context.Context, source, target string, cfg *config.Config) (Res
 			}
 		}
 		sourcePages[mapped.Entity.Slug] = p
+		sourceHashes[p.Path] = contentHash(raw)
 		targets[p.Slug] = mapped.Entity.Slug
 		targets[mapped.Entity.Slug] = mapped.Entity.Slug
 		pages = append(pages, mapped)
@@ -180,15 +202,62 @@ func Import(ctx context.Context, source, target string, cfg *config.Config) (Res
 			}
 		}
 	}
+
+	for _, p := range pages {
+		sourcePage := sourcePages[p.Entity.Slug]
+		data, err := fw.RenderEntity(p)
+		if err != nil {
+			return result, err
+		}
+		rows := map[string]string{}
+		for _, c := range p.Claims {
+			rows[c.Provenance.Meta["gbrain_fence"]+"#"+c.Provenance.Meta["#"]] = c.ID
+		}
+		expected[sourcePage.Path] = pageCheckpoint{SourceSHA256: sourceHashes[sourcePage.Path], Target: filepath.ToSlash(filepath.Join("brain", "entities", p.Entity.Type, p.Entity.Slug+".md")), TargetSHA256: contentHash(data), Rows: rows}
+	}
+	for name, entry := range cp.Pages {
+		wanted, ok := expected[name]
+		if !ok {
+			return result, fmt.Errorf("gbrain checkpoint: source page %s is missing from this run", name)
+		}
+		if _, err := checkpointComplete(ctx, target, dstRoot, entry, wanted); err != nil {
+			return result, err
+		}
+	}
 	q := writer.NewQueue(nil)
 	defer q.Close()
 	for _, p := range pages {
+		sourcePage := sourcePages[p.Entity.Slug]
+		wanted := expected[sourcePage.Path]
+		if entry, ok := cp.Pages[sourcePage.Path]; ok {
+			complete, err := checkpointComplete(ctx, target, dstRoot, entry, wanted)
+			if err != nil {
+				return result, err
+			}
+			if complete {
+				result.Pages++
+				result.Claims += len(p.Claims)
+				result.Skipped++
+				continue
+			}
+		}
 		changed, err := writer.ImportEntity(ctx, q, fw, p)
 		if err != nil {
 			return result, err
 		}
+		if err := observe(observer, "page_published", sourcePage.Path); err != nil {
+			return result, err
+		}
 		if _, err := writer.Flush(q, target); err != nil {
 			return result, fmt.Errorf("gbrain import: commit page %s: %w", p.Entity.Slug, err)
+		}
+
+		if err := observe(observer, "page_committed", sourcePage.Path); err != nil {
+			return result, err
+		}
+		cp.Pages[sourcePage.Path] = wanted
+		if err := saveCheckpoint(ctx, runtime, cp, observer, sourcePage.Path); err != nil {
+			return result, err
 		}
 		result.Pages++
 		result.Claims += len(p.Claims)
