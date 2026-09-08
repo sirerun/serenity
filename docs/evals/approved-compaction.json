@@ -84,9 +84,19 @@
   ],
   "fixture_correction": "The first Linux CI run failed on missing fixture Git identity; the corrected fixtures passed under explicit local identity and in CI.",
   "limitations": [
-    "No final full Darwin suite was run while the shared build lease was occupied; the full Linux CI and local targeted recovery runs are the verification evidence.",
+    "At compaction merge time the shared lease was occupied. The later final-main Darwin run passed 1,779 cases across 58 packages, with six explicit test skips; see final_main_darwin_followup.",
     "Cross-build jobs compile target platforms; they do not claim runtime execution there.",
     "Canonical publication retains the project single-writer contract; ordinary publication still refuses deletion.",
     "A completed approval authorizes no future compaction pass."
-  ]
+  ],
+  "final_main_darwin_followup": {
+    "revision": "12548bdb19e51da4471a8ea50504f91cefd4fe88",
+    "passing_test_and_subtest_cases": 1779,
+    "passing_packages": 58,
+    "skipped_tests": 6,
+    "packages_without_tests": 4,
+    "vet": "pass",
+    "lint_issues": 0,
+    "evidence": "overnight-final-verification.json"
+  }
 }
