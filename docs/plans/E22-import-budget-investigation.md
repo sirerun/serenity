@@ -14,10 +14,14 @@ were absent from the original artifact, so the cause remains unproven.
 
 PR #218 added allowlisted environment metadata without changing the benchmark or
 gate. One subsequent production run failed at 68.124 seconds (+35.58%), preserving
-the baseline again. The task remains open. Next work should isolate the dominant
-source-storage/Git stage on a controlled runner and demonstrate a reproducible
+the baseline again. The task remains open. A read-only CPU/Git profile then measured the 31.426-second source stage
+with 8.583 seconds in Git add and 4.388 seconds in Git commit; automatic
+maintenance/repack was observed, with nested intervals that cannot be added.
+Next work should isolate durable source writes, exact-path Git staging and
+automatic maintenance on a controlled runner, then demonstrate a reproducible
 remedy. Similar CPU labels alone do not prove equivalent performance; do not
 bootstrap or loosen the gate merely to clear this failure.
 
-Evidence: `docs/evals/final-import-budget.json`. The isolated diagnostic branch
+Evidence: `docs/evals/final-import-budget.json` and
+`docs/evals/import-budget-profile.json`. The isolated diagnostic branch
 was removed after its reports were retained; no diagnostic workflow was merged.
