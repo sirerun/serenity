@@ -13,7 +13,7 @@ Inventory taken 2026-09-08, 12:45–12:55 UTC for T7.1. Owner and rollback coord
 
 Chat code SHA-256 (AWS base64): `wGw1t54u7WIpmwrIMZNxsVVRuyTQiAVWYAIY+3BAz+4=`. Deployed handler SHA-256: `caa4c6f855ca2e8f04a3e0782fde3f864748c7520cc4c400d2651f40d7b0f49a`. CloudFormation was `UPDATE_COMPLETE`, last updated 2026-09-08 09:00:06 UTC. These identify the mutable deployment without falsely calling `$LATEST` an immutable release.
 
-The public endpoint is recorded in [chat-config.js](https://github.com/sirerun/serenity/blob/58f58cfb78981b931a9cc7ddebb5d8f1f4140ba8/site/assets/chat-config.js). GET currently returns **405**, `{"error":"Use POST."}`; T7.3 owns the missing health route and operational alarms. This inventory made no model request and did not read or record secret values.
+The public endpoint is recorded in [chat-config.js](https://github.com/sirerun/serenity/blob/58f58cfb78981b931a9cc7ddebb5d8f1f4140ba8/site/assets/chat-config.js). GET `/healthz` returns **200**, `{"status":"ok","documents":13}`. GET `/` correctly returns **405**, `{"error":"Use POST."}`; T7.3 owns explicit health-route CI coverage and operational alarms. This inventory made no model request and did not read or record secret values.
 
 ## Ajent sign-in destination
 

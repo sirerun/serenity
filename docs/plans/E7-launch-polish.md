@@ -6,7 +6,7 @@ Fidelity: executable. Frontier: unblocked after the current Ajent and Serenity r
 
 ## Current fleet state (checked 2026-09-08)
 
-The dated [launch checklist](../launch/checklist.md) records the exact Pages and Lambda revisions, authoritative DNS and certificate state, observed Ajent login asset, PR classifications, owners and rollback routes. HTTPS enforcement and the chat health route remain open. M4 is complete; M5 is 11/15 with its human release gates preserved. Ajent deployment provenance remains its owner's responsibility.
+The dated [launch checklist](../launch/checklist.md) records the exact Pages and Lambda revisions, authoritative DNS and certificate state, observed Ajent login asset, PR classifications, owners and rollback routes. HTTPS enforcement and chat operational monitoring remain open; the live `/healthz` route returns 200. M4 is complete; M5 is 11/15 with its human release gates preserved. Ajent deployment provenance remains its owner's responsibility.
 
 ## Tasks
 
