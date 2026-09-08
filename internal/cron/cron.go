@@ -12,22 +12,9 @@
 // wall-clock dependence — the same shape as internal/connector/file's
 // Clock/WithClock and internal/index's Clock.
 //
-// Consolidate, Decay, and SLO are still placeholder bodies until their
-// owning tasks land (T2.14 consolidate, T2.15 queue SLOs —
-// docs/plans/E2-m2-reconcile.md; T2.12 decay shipped its real logic in
-// internal/reconcile/decay.go but, as of that task, had not yet wired this
-// job to call it — a disclosed gap for whoever picks that up next, not
-// this package's own scope). T2.19's own acceptance bar only required the
-// runner scaffold, the CLI surface, and idempotent run-record semantics to
-// be real and tested; each remaining placeholder only records that it ran
-// (recordRun) so `serenity cron <job>` on a fixture exits 0 and a second
-// run is a genuine no-op rather than an error. Sweep (T2.6, expiry
-// sweeper) is real: it opens the brain's derived index, runs
-// disposition.Sweep, then records the run exactly like every other job.
-// Whoever ships T2.14/T2.15 (and whoever closes T2.12's wiring gap)
-// replaces the matching function body in place — same name, same
-// signature, same registry entry — and this package needs no other
-// change.
+// Every registered job invokes its shipped behavior before recording success.
+// Decay stages deduplicated human review without changing canonical confidence;
+// SLO records the same queue snapshot status computes directly.
 package cron
 
 import (

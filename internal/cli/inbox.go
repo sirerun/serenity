@@ -266,6 +266,9 @@ func currentActor() string {
 // add its own case here without changing bulkDefer's or the interactive
 // loop's own logic.
 func itemFamily(item disposition.Item) (string, bool) {
+	if p, ok := disposition.DecayedClaim(item); ok {
+		return p.Claim.Family, p.Claim.Family != ""
+	}
 	if observation, extracted, err := disposition.ExtractionObservation(item); err == nil && extracted {
 		return observation.Predicate, true
 	}
@@ -296,6 +299,9 @@ func itemSummary(item disposition.Item) string {
 				item.Kind, p.Verdict, p.A.SubjectSlug, p.A.Predicate, p.A.Object, p.B.Predicate, p.B.Object)
 		}
 	case disposition.KindDistill:
+		if p, ok := disposition.DecayedClaim(item); ok {
+			return fmt.Sprintf("distill stale %s %s=%q; stored confidence=%.2f aged confidence=%.2f; review only, canonical claim unchanged", p.Claim.SubjectSlug, p.Claim.Predicate, p.Claim.Object, p.Claim.Confidence, p.DecayedConfidence)
+		}
 		observation, extracted, err := disposition.ExtractionObservation(item)
 		if err != nil {
 			return "distill: malformed extraction evidence: " + err.Error()
@@ -313,6 +319,11 @@ func itemSummary(item disposition.Item) string {
 				text = text[:77] + "..."
 			}
 			return fmt.Sprintf("%s %q", item.Kind, text)
+		}
+	case disposition.KindEntityMerge:
+		var p disposition.LexicalAliasPayload
+		if json.Unmarshal(item.Payload, &p) == nil && p.Origin == disposition.LexicalAliasOrigin {
+			return fmt.Sprintf("entity_merge %s / %s: %s", p.A, p.B, p.Reason)
 		}
 	case disposition.KindDirtyEdit:
 		var rec writer.PendingRecord

@@ -1,0 +1,62 @@
+{
+  "task": "T20.1",
+  "date": "2026-09-08",
+  "source_revision": "9c2751ec8863755b36ea422df9781dbf65a08353",
+  "race": {
+    "command": "go test -race -json -timeout 600s ./...",
+    "passing_cases": 1752,
+    "passing_packages": 58,
+    "skipped_cases": 6,
+    "packages_without_tests": 4,
+    "failures": 0
+  },
+  "vet": "full repository passed",
+  "lint": "full repository: 0 issues",
+  "negative_controls": [
+    {
+      "fault": "skip-decay",
+      "test": "TestDecayStagesCanonicalReviewWithoutChangingClaims",
+      "detected": true
+    },
+    {
+      "fault": "time-in-identity",
+      "test": "TestDecayStagesCanonicalReviewWithoutChangingClaims",
+      "detected": true
+    },
+    {
+      "fault": "skip-slo",
+      "test": "TestSLOJobComputesRealQueue",
+      "detected": true
+    }
+  ],
+  "real_cli_revision": "8f2582c47758a1516609e1620b97c43cc7be9846",
+  "real_cli": {
+    "first_decay": "cron decay: ok (claims=2 distill_created=2 alias_created=1 existing=0)",
+    "repeat_decay": "cron decay: ok (claims=2 distill_created=0 alias_created=0 existing=3)",
+    "review_cards": 3,
+    "human_rejections": 3,
+    "decision_history_per_card": 1,
+    "canonical_bytes_unchanged": true,
+    "git_clean": true,
+    "slo_depth": 0,
+    "slo_disposition_timing_available": true,
+    "live_model_calls": 0,
+    "verdict": "pass"
+  },
+  "crash": {
+    "signal": "SIGKILL after observed partial SQLite staging",
+    "observed_cards_at_cut": 19,
+    "success_record_absent_at_cut": true,
+    "final_unique_cards": 2001,
+    "repeat_existing": 2001,
+    "canonical_bytes_unchanged": true,
+    "live_model_calls": 0,
+    "verdict": "pass"
+  },
+  "final_followup": "Canceled empty scans now return cancellation before recording success; baseline regression reproduced, focused and final full suites passed.",
+  "limitations": [
+    "Review acceptance does not replace facts, upgrade confidence or merge entities.",
+    "Lexical aliases are spelling heuristics; no embedding/model calls.",
+    "Status computes fresh metrics; scheduled snapshots are runtime evidence, not canonical state."
+  ]
+}

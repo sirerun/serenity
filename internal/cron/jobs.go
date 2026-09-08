@@ -11,6 +11,7 @@ import (
 	"github.com/sirerun/serenity/internal/embed"
 	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/providers"
+	"github.com/sirerun/serenity/internal/queue"
 	"github.com/sirerun/serenity/internal/writer"
 )
 
@@ -68,16 +69,17 @@ func Consolidate(ctx context.Context, root string, clock Clock) error {
 	return recordRun(root, "consolidate", clock.Now())
 }
 
-// Decay runs the weekly decay and alias sweep (plan T2.12): read-time
-// confidence decay, alias candidates, and low-confidence-to-distill.
-// Placeholder until T2.12 lands — see the package doc comment.
-func Decay(_ context.Context, root string, clock Clock) error {
-	return recordRun(root, "decay", clock.Now())
-}
-
-// SLO computes queue SLOs for `serenity status` (plan T2.15): depth, p50
-// age, time-to-dispose, and abandonment. Placeholder until T2.15 lands —
-// see the package doc comment.
-func SLO(_ context.Context, root string, clock Clock) error {
-	return recordRun(root, "slo", clock.Now())
+// SLO computes the same live queue metrics used by status and persists the result.
+func SLO(ctx context.Context, root string, clock Clock) error {
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = eng.Close() }()
+	now := clock.Now().UTC()
+	snapshot, err := queue.Compute(ctx, disposition.NewStore(eng), queue.Config{}, now)
+	if err != nil {
+		return err
+	}
+	return recordDetails(root, "slo", now, snapshot)
 }

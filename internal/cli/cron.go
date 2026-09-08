@@ -32,6 +32,14 @@ func newCronCmd() *cobra.Command {
 // unchanged from internal/cron.Run, so `serenity cron bogus` exits non-zero
 // with a message naming every valid job.
 func runCron(ctx context.Context, root, job string, out io.Writer) error {
+	if job == "decay" {
+		result, err := cron.RunDecay(ctx, root, cron.RealClock)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintf(out, "cron decay: ok (claims=%d distill_created=%d alias_created=%d existing=%d)\n", result.Claims, result.DistillCreated, result.AliasCreated, result.Existing)
+		return err
+	}
 	if job == "revisit" {
 		result, err := cron.RunRevisit(ctx, root, cron.RealClock)
 		if err != nil {
