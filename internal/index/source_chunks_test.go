@@ -206,7 +206,7 @@ func TestRawSourceEligibilityPreventsEmbeddingEgress(t *testing.T) {
 					t.Fatal(err)
 				}
 				h := all[0]
-				if err := eng.InsertChunk(ctx, h.ChunkRef, h.EntitySlug, "FORGED-PROVIDER-CONTENT", h.SourceSHA256, h.Kind); err != nil {
+				if _, err := eng.db.ExecContext(ctx, `UPDATE chunks SET text = ? WHERE chunk_ref = ?`, "FORGED-PROVIDER-CONTENT", h.ChunkRef); err != nil {
 					t.Fatal(err)
 				}
 			}
