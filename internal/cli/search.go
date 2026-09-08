@@ -71,11 +71,11 @@ func searchResults(ctx context.Context, root, query string, limit int) ([]search
 		return nil, "", fmt.Errorf("search: source policy: %w", err)
 	}
 	now := time.Now()
-	restricted, err := index.RestrictedSummaryEntities(root, proj, now)
+	eligible, err := index.RetrievalEligibility(root, proj, false, false, now)
 	if err != nil {
-		return nil, "", fmt.Errorf("search: summary policy: %w", err)
+		return nil, "", fmt.Errorf("search: retrieval policy: %w", err)
 	}
-	results, err := search.Search(ctx, eng, nil, query, limit, search.Options{Eligible: index.SourceEligibility(proj, false, false, now, restricted)})
+	results, err := search.Search(ctx, eng, nil, query, limit, search.Options{Eligible: eligible})
 	if err != nil {
 		return nil, "", err
 	}
