@@ -185,6 +185,11 @@ func TestCompactCLIItemAccepted(t *testing.T) {
 	}
 	headID := lines[1].ID
 
+	// Canonical producer writes must be committed before a destructive pass.
+	if _, err := writer.Flush(q, root); err != nil {
+		t.Fatal(err)
+	}
+
 	if out, err := exec.Command(bin, "-C", root, "sync").CombinedOutput(); err != nil {
 		t.Fatalf("pre-compact sync: %v\n%s", err, out)
 	}
