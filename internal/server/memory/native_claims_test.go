@@ -2,6 +2,8 @@ package memory
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -40,5 +42,49 @@ func TestRecallNativeHumanClaimRechecksCanonicalPrivacy(t *testing.T) {
 	}
 	if stale := recall(); len(stale.Results) != 0 {
 		t.Fatalf("stale index leaked newly private assertion: %+v", stale)
+	}
+}
+
+func TestRecallRawSourceRechecksDeletionAndIndexOnly(t *testing.T) {
+	for _, mode := range []string{"deleted", "index-only"} {
+		t.Run(mode, func(t *testing.T) {
+			h, _ := newTestHandlers(t)
+			ss := store.NewSourceStore(h.deps.Root)
+			src, err := ss.Write([]byte("Blue Heron source evidence."), domain.Source{Kind: "file", URI: "fixture:source"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := index.Rebuild(context.Background(), h.deps.Root, h.deps.Config, h.deps.Index); err != nil {
+				t.Fatal(err)
+			}
+			recall := func() recallResponse {
+				t.Helper()
+				value, isError, err := h.recall(context.Background(), mustMarshal(t, recallRequest{Query: "Blue Heron"}))
+				if err != nil || isError {
+					t.Fatalf("recall: %v %+v", err, value)
+				}
+				return value.(recallResponse)
+			}
+			if got := recall(); len(got.Results) != 1 || got.Results[0].Chunk == nil || *got.Results[0].Chunk != "Blue Heron source evidence." {
+				t.Fatalf("positive raw-source control absent: %+v", got)
+			}
+			if mode == "deleted" {
+				if err := os.RemoveAll(ss.DirFor(src.SHA256)); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				path := filepath.Join(ss.DirFor(src.SHA256), "meta.yaml")
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, append(raw, []byte("index_only: true\n")...), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := recall(); len(got.Results) != 0 {
+				t.Fatalf("stale raw source disclosed: %+v", got)
+			}
+		})
 	}
 }

@@ -51,7 +51,13 @@ func setup(t *testing.T) *fixture {
 	}
 	f := &fixture{root: root, cfg: cfg, q: writer.NewQueue(nil), fw: store.NewFenceWriter(root)}
 	var err error
-	f.eng, err = index.Open(filepath.Join(t.TempDir(), "index.db"))
+	if err := os.MkdirAll(filepath.Join(root, ".serenity"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".serenity/\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	f.eng, err = index.Open(filepath.Join(root, ".serenity", "index.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,16 +229,16 @@ func (e *testEmbedder) Embed(_ context.Context, text string) ([]float32, error) 
 func TestConsolidateChangedEmbeddings(t *testing.T) {
 	f := setup(t)
 	e := &testEmbedder{pin: "test@1"}
-	if r := f.run(t, e); r.Embedded != 1 {
+	if r := f.run(t, e); r.Embedded != 2 {
 		t.Fatalf("first %+v", r)
 	}
 	f.run(t, e)
-	if e.calls != 1 {
+	if e.calls != 2 {
 		t.Fatalf("unchanged called %d", e.calls)
 	}
 	other := &testEmbedder{pin: "test@2"}
 	f.run(t, other)
-	if other.calls != 1 {
+	if other.calls != 2 {
 		t.Fatal("new pin not embedded")
 	}
 	f.page.Claims[0].Object = "Architect"
@@ -249,7 +255,7 @@ func TestConsolidateChangedEmbeddings(t *testing.T) {
 	}
 	e.fail = false
 	f.run(t, e)
-	if e.calls != 3 {
+	if e.calls != 5 {
 		t.Fatalf("retry calls %d", e.calls)
 	}
 	git(t, f.root, "rm", "brain/entities/person/alice.md")

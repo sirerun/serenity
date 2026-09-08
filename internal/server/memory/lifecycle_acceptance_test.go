@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
@@ -119,7 +120,10 @@ func TestMemoryV1FactsFirstBudget(t *testing.T) {
 	h, _ := newTestHandlers(t)
 	fact := strings.Repeat("budgetmarker", 20)
 	acceptanceCall(t, h, "remember", map[string]any{"fact": fact, "provenance": "budget fixture", "entity": "people/alice"})
-	if err := h.deps.Index.InsertChunk(t.Context(), "source:budget", "", "budgetmarker second result", "", "note"); err != nil {
+	if _, err := store.NewSourceStore(h.deps.Root).Write([]byte("budgetmarker second result"), domain.Source{Kind: "file", URI: "fixture:budget"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := index.Rebuild(t.Context(), h.deps.Root, h.deps.Config, h.deps.Index); err != nil {
 		t.Fatal(err)
 	}
 	all := acceptanceCall(t, h, "recall", map[string]any{"query": "budgetmarker"})

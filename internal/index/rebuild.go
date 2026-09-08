@@ -400,7 +400,7 @@ func SourceEligibility(proj *store.MemoryProjection, remote, egress bool, now ti
 				return false
 			}
 		}
-		if egress && proj.SourceIndexOnly(h.SourceSHA256) {
+		if (remote || egress) && proj.SourceIndexOnly(h.SourceSHA256) {
 			return false
 		}
 		return store.MemoryEligible(proj, h.SourceSHA256, remote || egress, now)
