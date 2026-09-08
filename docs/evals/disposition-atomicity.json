@@ -1,0 +1,92 @@
+{
+  "date": "2026-09-08",
+  "revision": "538149b9a9675a5148ffeae56dc592aaf9b1da92",
+  "scope": "Runtime disposition transactions, competing store handles, aging/result bookkeeping and internal capture-route recovery",
+  "full_race": {
+    "command": "GOMAXPROCS=2 go test -race -p 2 -json ./...",
+    "passed_cases": 1655,
+    "passed_packages": 58,
+    "skipped_cases": [
+      "TestImportBudget10K",
+      "TestBootDeliberatelyBrokenBuildFailsDisposeConformance",
+      "TestImportCrashHelper",
+      "TestGbrainProtocolConformance",
+      "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request",
+      "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+    ]
+  },
+  "lint": {
+    "issues": 0
+  },
+  "real_sigkill": [
+    {
+      "cut": "mid-transaction",
+      "actual_signal": "SIGKILL",
+      "state_after_restart": "pending",
+      "history_after_restart": 0,
+      "recovery_history_count": 1,
+      "recovery_replayed": false,
+      "second_retry_replayed": true,
+      "original_payload_and_actor_preserved": true,
+      "verdict": "pass"
+    },
+    {
+      "cut": "after-commit",
+      "actual_signal": "SIGKILL",
+      "state_after_restart": "disposed",
+      "history_after_restart": 1,
+      "recovery_history_count": 1,
+      "recovery_replayed": true,
+      "second_retry_replayed": true,
+      "original_payload_and_actor_preserved": true,
+      "verdict": "pass"
+    }
+  ],
+  "negative_controls": [
+    {
+      "fault": "remove-snapshot-guard",
+      "suite": "TestIndependentStoresCannotBothWinDisposition",
+      "exit": 1,
+      "detected": true
+    },
+    {
+      "fault": "split-history-state-writes",
+      "suite": "TestDisposeStorageFailureCannotLeaveOrphanHistory",
+      "exit": 1,
+      "detected": true
+    },
+    {
+      "fault": "drop-replayed-follow-on-recovery",
+      "suite": "TestDistillDraftFailureRecoversRecordedRouteOnce",
+      "exit": 1,
+      "detected": true
+    }
+  ],
+  "baseline_failures": [
+    "SQLite rejected state update but left one accepted history row for a pending item",
+    "Two synchronized independent handles both reported fresh conflicting terminal decisions",
+    "Queue aging overwrote a newer human rejection with deferred state",
+    "Capture route was absent during the initial decision write",
+    "Unmarked legacy completed route acquired a duplicate child under naive replay recovery"
+  ],
+  "limitations": [
+    "The canonical filesystem still has one writer; this is a runtime database guarantee.",
+    "Existing orphan history is not automatically repaired.",
+    "Unmarked legacy incomplete route effects cannot be safely inferred.",
+    "Capture routing is an internal Store API, with no new CLI route command."
+  ],
+  "focused_suites": [
+    {
+      "suite": "internal/disposition",
+      "pass": 42,
+      "fail": 0,
+      "skip": 0
+    },
+    {
+      "suite": "TestCommitDisposition",
+      "pass": 2,
+      "fail": 0,
+      "skip": 0
+    }
+  ]
+}
