@@ -4,6 +4,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-09-08 T5.13 public gbrain fixture: `sirerun/serenity-gbrain-fixture` publishes only invented fixture data, upstream credit, and an Apache-2.0 license. CI clones pinned SHA `d577f013f795e22557dea9b5ef4ed55d46f618d4`, compares both entity pages with the local fixture, and verifies nine executed passing cases (parent plus eight field-expectation rows) with zero skips. An actual anonymous clone passed the same race-tested round trip locally.
+
 - 2026-09-08 T5.3 resumable gbrain import: per-page and fence-qualified row checkpoints advance after Git commits, verify source/canonical/committed hashes before skipping, and recover after three real SIGKILL cut points without duplicate claims or commits. Kernel locking excludes simultaneous importers. Source changes, corrupt checkpoints, and human deletions fail explicitly. Full race suite: 1,461 passing cases across 54 passing packages, five explicit test skips. The copied-checkpoint test fails when committed-byte verification is deliberately removed; restored code passes. Changed-package lint/vet are clean.
 
 - 2026-09-08 T5.2 field-level gbrain round trip: eight persisted rows checked against independent hand-written field expectations; real CLI JSON report shows 8 rows, 74 source cells, and zero unmapped fields. Preflight audits parsed canonical output before any page publication. Typed-fact and resolved-take extension columns are retained exactly. The importer suite passed 24 test/subtest cases under race detection; the CLI JSON check also passed. A mapper mutation dropping context failed before publication. Changed-package lint/vet and a real CLI build are clean.
