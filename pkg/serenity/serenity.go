@@ -35,9 +35,11 @@ import (
 	"github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/direction/check"
 	"github.com/sirerun/serenity/internal/embed"
+	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/search"
 	serverdirection "github.com/sirerun/serenity/internal/server/direction"
+	"github.com/sirerun/serenity/internal/store"
 )
 
 // Option configures Open. No Option values ship at T4.18; the parameter
@@ -272,7 +274,17 @@ func (b *Brain) Recall(ctx context.Context, q string, budget Budget) (RecallResu
 	}
 	defer func() { _ = eng.Close() }()
 
-	results, err := search.Search(ctx, eng, nil, q, limit, search.Options{})
+	// The embedded facade mirrors local-owner CLI search, including fresh
+	// canonical eligibility. Provider composition separately applies egress policy.
+	proj, err := store.LoadMemoryProjection(store.NewSourceStore(b.root))
+	if err != nil {
+		return RecallResult{}, fmt.Errorf("serenity: recall: source policy: %w", err)
+	}
+	eligible, err := index.RetrievalEligibility(b.root, proj, false, false, time.Now())
+	if err != nil {
+		return RecallResult{}, fmt.Errorf("serenity: recall: retrieval policy: %w", err)
+	}
+	results, err := search.Search(ctx, eng, nil, q, limit, search.Options{Eligible: eligible})
 	if err != nil {
 		return RecallResult{}, fmt.Errorf("serenity: recall: %w", err)
 	}
