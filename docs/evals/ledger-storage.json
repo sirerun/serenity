@@ -1,0 +1,146 @@
+{
+  "task": "T17.1",
+  "date": "2026-09-08",
+  "verified_code_tree": "f51898a36802e106efafac53c4c9b132f3b74a2b",
+  "baseline": {
+    "boundaries": "Traversal reads/deletes and symlink-directed reads/writes succeeded; filename/payload identity mismatch was accepted.",
+    "concurrent_read": "Reader observed 98,092 body bytes where 1,310,720 complete bytes were expected.",
+    "cli": "Symlinked ledger produced exit zero instead of an integrity error."
+  },
+  "full_race": {
+    "command": "go test -race -json -timeout 600s ./...",
+    "passed_cases": 1714,
+    "passed_packages": 58,
+    "skipped_cases": [
+      {
+        "package": "github.com/sirerun/serenity/evals/importbudget",
+        "test": "TestImportBudget10K"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/conformance",
+        "test": "TestBootDeliberatelyBrokenBuildFailsDisposeConformance"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/import/gbrain",
+        "test": "TestImportCrashHelper"
+      },
+      {
+        "package": "github.com/sirerun/serenity/pkg/serenity",
+        "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request"
+      },
+      {
+        "package": "github.com/sirerun/serenity/pkg/serenity",
+        "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/cli",
+        "test": "TestGbrainProtocolConformance"
+      }
+    ],
+    "packages_without_tests": 4
+  },
+  "direction_race": {
+    "command": "go test -race -json ./internal/direction",
+    "passed_cases": 92,
+    "skipped_cases": 0
+  },
+  "storage_membership": {
+    "source": "Selected from executed full-race cases; not an additional claimed run.",
+    "passed_cases": 24,
+    "tests": [
+      "TestLedgerStorageRejectsTraversalAndMismatchedIdentity/read-traversal",
+      "TestLedgerStorageRejectsTraversalAndMismatchedIdentity/delete-traversal",
+      "TestLedgerStorageRejectsTraversalAndMismatchedIdentity/mismatched-file",
+      "TestLedgerStorageRejectsTraversalAndMismatchedIdentity",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/leaf/get",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/leaf/list",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/leaf/put",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/leaf/create",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/leaf/delete",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/entries/get",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/entries/list",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/entries/put",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/entries/create",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/entries/delete",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/dira/get",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/dira/list",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/dira/put",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/dira/create",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside/dira/delete",
+      "TestLedgerStorageRejectsSymlinksWithoutTouchingOutside",
+      "TestLedgerPutPublishesOnlyCompleteEntries",
+      "TestLedgerAtomicCreateAcrossIndependentQueuesHasOneWinner",
+      "TestLedgerStoragePreservesModeAndIgnoresIncompleteTemps",
+      "TestLedgerStorageRejectsInvalidWritesWithoutCreatingDirectories"
+    ]
+  },
+  "vet": "passed",
+  "lint": "0 issues",
+  "negative_controls": [
+    {
+      "fault": "restore-unbounded-read",
+      "suite": "./internal/direction",
+      "filter": "^TestLedgerStorageRejectsTraversalAndMismatchedIdentity$/read-traversal$",
+      "detected": true
+    },
+    {
+      "fault": "ignore-file-identity",
+      "suite": "./internal/direction",
+      "filter": "^TestLedgerStorageRejectsTraversalAndMismatchedIdentity$/mismatched-file$",
+      "detected": true
+    },
+    {
+      "fault": "follow-ledger-directory-link",
+      "suite": "./internal/direction",
+      "filter": "^TestLedgerStorageRejectsSymlinksWithoutTouchingOutside$/dira/get$",
+      "detected": true
+    },
+    {
+      "fault": "replace-entry-in-place",
+      "suite": "./internal/direction",
+      "filter": "^TestLedgerPutPublishesOnlyCompleteEntries$",
+      "detected": true
+    }
+  ],
+  "executable": [
+    {
+      "flow": "create-kill-before-publication",
+      "signal": "SIGSTOP to verify staging artifact, then SIGKILL of synthetic process group",
+      "staging_file_sizes_at_cut": [
+        0
+      ],
+      "canonical_entry_count": 1,
+      "canonical_entry_complete": true,
+      "unpublished_temporary_file_ignored_by_reader": true,
+      "verdict": "pass"
+    },
+    {
+      "flow": "put-kill-before-publication",
+      "signal": "SIGSTOP to verify staging artifact, then SIGKILL of synthetic process group",
+      "staging_file_sizes_at_cut": [
+        31457469
+      ],
+      "canonical_entry_count": 1,
+      "canonical_entry_complete": true,
+      "unpublished_temporary_file_ignored_by_reader": true,
+      "verdict": "pass"
+    },
+    {
+      "flow": "real-cli-symlinked-ledger",
+      "baseline_exit": 0,
+      "fixed_exit": 1,
+      "unsafe_directory_reported": true,
+      "external_bytes_unchanged": true,
+      "live_model_calls": 0,
+      "verdict": "pass"
+    }
+  ],
+  "scope": [
+    "Individual ledger file operations, not a multi-file transaction or Git/inbox lifecycle recovery.",
+    "Existing file permissions are preserved on replacement.",
+    "New entries use exclusive hard-link publication; replacements use atomic rename after file sync.",
+    "Reader bytes and opaque version come from one descriptor.",
+    "Only synthetic files/processes were used for boundary and SIGKILL tests.",
+    "Single canonical writer remains required by ADR 012."
+  ]
+}
