@@ -98,3 +98,17 @@ func (s *SQLite) DispositionHistory(ctx context.Context) ([][]byte, error) {
 	}
 	return out, rows.Err()
 }
+
+// InsertDispositionItem creates a producer-keyed item without overwriting a
+// pending review or an existing human decision, including across processes.
+func (s *SQLite) InsertDispositionItem(ctx context.Context, id string, payload []byte) (bool, error) {
+	if id == "" {
+		return false, errors.New("index: insert disposition item: empty id")
+	}
+	result, err := s.db.ExecContext(ctx, `INSERT INTO disposition_items(id, payload) VALUES(?, ?) ON CONFLICT(id) DO NOTHING`, id, payload)
+	if err != nil {
+		return false, fmt.Errorf("index: insert disposition item: %w", err)
+	}
+	count, err := result.RowsAffected()
+	return count == 1, err
+}

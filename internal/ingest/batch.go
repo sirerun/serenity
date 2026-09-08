@@ -19,62 +19,7 @@ func (w *Writer) Write(obs []domain.Observation) (Stats, error) {
 	if len(obs) == 0 {
 		return Stats{}, nil
 	}
-	types := map[string]string{}
-	paths := []string{}
-	for _, o := range obs {
-		if !safePart(o.SubjectSlug) || !safePart(o.Predicate) {
-			return Stats{}, fmt.Errorf("ingest: unsafe observation identity")
-		}
-		if _, ok := types[o.SubjectSlug]; ok {
-			continue
-		}
-		pages, err := filepath.Glob(filepath.Join(w.Fence.Root, "brain", "entities", "*", o.SubjectSlug+".md"))
-		if err != nil {
-			return Stats{}, err
-		}
-		if len(pages) > 1 {
-			return Stats{}, fmt.Errorf("ingest: ambiguous entity type for %s", o.SubjectSlug)
-		}
-		entityType := DefaultEntityType
-		if w.EntityType != nil {
-			if named := w.EntityType(o.SubjectSlug); named != "" {
-				entityType = named
-			}
-		}
-		if len(pages) == 1 {
-			entityType = filepath.Base(filepath.Dir(pages[0]))
-			paths = append(paths, pages[0])
-		}
-		if !safePart(entityType) {
-			return Stats{}, fmt.Errorf("ingest: unsafe entity type")
-		}
-		types[o.SubjectSlug] = entityType
-		shardDir := filepath.Join(w.Fence.Root, "brain", "claims", o.SubjectSlug)
-		err = filepath.WalkDir(shardDir, func(path string, entry fs.DirEntry, walkErr error) error {
-			if errors.Is(walkErr, fs.ErrNotExist) && path == shardDir {
-				return nil
-			}
-			if walkErr != nil {
-				return walkErr
-			}
-			if !entry.IsDir() {
-				paths = append(paths, path)
-			}
-			return nil
-		})
-		if err != nil {
-			return Stats{}, err
-		}
-	}
-	rels := make([]string, 0, len(paths))
-	for _, path := range paths {
-		rel, err := filepath.Rel(w.Fence.Root, path)
-		if err != nil {
-			return Stats{}, err
-		}
-		rels = append(rels, filepath.ToSlash(rel))
-	}
-	snapshot, err := writer.SnapshotFiles(w.Fence.Root, rels)
+	types, snapshot, err := w.snapshotObservations(obs)
 	if err != nil {
 		return Stats{}, err
 	}
@@ -99,6 +44,66 @@ func (w *Writer) Write(obs []domain.Observation) (Stats, error) {
 		return Stats{}, err
 	}
 	return stats, nil
+}
+
+func (w *Writer) snapshotObservations(obs []domain.Observation) (map[string]string, map[string][]byte, error) {
+	types := map[string]string{}
+	paths := []string{}
+	for _, o := range obs {
+		if !safePart(o.SubjectSlug) || !safePart(o.Predicate) {
+			return nil, nil, fmt.Errorf("ingest: unsafe observation identity")
+		}
+		if _, ok := types[o.SubjectSlug]; ok {
+			continue
+		}
+		pages, err := filepath.Glob(filepath.Join(w.Fence.Root, "brain", "entities", "*", o.SubjectSlug+".md"))
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(pages) > 1 {
+			return nil, nil, fmt.Errorf("ingest: ambiguous entity type for %s", o.SubjectSlug)
+		}
+		entityType := DefaultEntityType
+		if w.EntityType != nil {
+			if named := w.EntityType(o.SubjectSlug); named != "" {
+				entityType = named
+			}
+		}
+		if len(pages) == 1 {
+			entityType = filepath.Base(filepath.Dir(pages[0]))
+			paths = append(paths, pages[0])
+		}
+		if !safePart(entityType) {
+			return nil, nil, fmt.Errorf("ingest: unsafe entity type")
+		}
+		types[o.SubjectSlug] = entityType
+		shardDir := filepath.Join(w.Fence.Root, "brain", "claims", o.SubjectSlug)
+		err = filepath.WalkDir(shardDir, func(path string, entry fs.DirEntry, walkErr error) error {
+			if errors.Is(walkErr, fs.ErrNotExist) && path == shardDir {
+				return nil
+			}
+			if walkErr != nil {
+				return walkErr
+			}
+			if !entry.IsDir() {
+				paths = append(paths, path)
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	rels := make([]string, 0, len(paths))
+	for _, path := range paths {
+		rel, err := filepath.Rel(w.Fence.Root, path)
+		if err != nil {
+			return nil, nil, err
+		}
+		rels = append(rels, filepath.ToSlash(rel))
+	}
+	snapshot, err := writer.SnapshotFiles(w.Fence.Root, rels)
+	return types, snapshot, err
 }
 
 func safePart(value string) bool {

@@ -12,7 +12,7 @@ observations are counted and dropped; an otherwise successful update drops
 committed prose outside managed fences.
 
 - [x] T11.1 Publish extraction batches without losing canonical content  Owner: pool  Est: 90m  verifies: [UC-005, UC-016]  deps: []  acc: [multiple observations and sources update existing fence/shard files successfully and commit all actual segment paths; exact repeats add no claims; committed human prose and metadata survive; dirty, corrupt, ambiguous or unsafe targets fail without being replaced]
-- [ ] T11.2 Route extracted contradictions through human review  Owner: pool  Est: 90m  verifies: [UC-005, UC-014, UC-015]  deps: [T11.1]  acc: [real extraction stages a conflicting proposal instead of activating it; unchanged repeated extraction does not duplicate pending or rejected decisions; acceptance through the real inbox supersedes the canonical prior claim; candidate selection uses current canonical state and preserves unrelated claims]
+- [x] T11.2 Route extracted contradictions through human review  Owner: pool  Est: 90m  verifies: [UC-005, UC-014, UC-015]  deps: [T11.1]  acc: [real extraction stages a conflicting proposal instead of activating it; unchanged repeated extraction does not duplicate pending or rejected decisions; acceptance through the real inbox supersedes the canonical prior claim; candidate selection uses current canonical state and preserves unrelated claims]
 - [ ] T11.3 Retain and review low-confidence extraction observations  Owner: pool  Est: 90m  verifies: [UC-005, UC-012]  deps: [T11.1]  acc: [low-confidence observations remain discoverable with their source provenance; repeats do not duplicate queue records; review actions have explicit effects and never silently promote a low-confidence observation or discard an accepted effect; rejection/defer preserve canonical state and operator guidance documents the supported approval path]
 
 Each task requires real CLI evidence, meaningful failure cases and a detected
@@ -49,3 +49,33 @@ Publication preflights the whole batch, but individual file replacements are not
 a multi-file filesystem transaction. Extraction does not yet persist an inbox-style
 crash-recovery receipt. Existing dirty files are preserved and reported for operator
 resolution; no automatic cleanup or force-overwrite is performed.
+
+## T11.2 verification — 2026-09-08
+
+Ready observations now use canonical file candidates and stage contradictions or
+window replacements for review. Stable keyed insertion keeps pending and deferred
+reviews, while terminal decisions govern unchanged source assertions, including
+human edits and rejections. Safe additions from the same batch must commit before
+a proposal can reference them. The real CLI now retains the prior active fact and
+stages one review in the originally failing conflict scenario.
+
+A clean Git-configuration integration suite executed accept, edit-and-accept and
+reject through extraction, SQLite, the provider HTTP adapter and the interactive
+inbox. Two subsequent extractions retained each decision, its one history entry,
+the resulting canonical value and an unrelated claim. Separate tests exercise
+fence/shard candidates, committed human changes, retractions, absent/uncommitted
+same-batch priors and 32 concurrent insertions over two SQLite handles. Deliberate
+conflict bypass and review-upsert faults were both detected. Final full race run:
+1,554 passing cases, 58 packages, six explicit skips. Changed-package lint: zero
+issues. See [review receipt](../evals/extraction-review.json) and
+[operator workflow](../operator/extraction.md).
+
+The five-scenario executable audit is now four passing and one unresolved:
+low-confidence observations still require T11.3. Keyed insertion does not claim
+general multi-process arbitration of disposal, and the existing single-writer
+canonical convention remains. Old active contradictions written by previous
+versions are not automatically retracted by this repair.
+
+A follow-up compacted-shard regression failed before repair. Archive rows now
+retain historical identity for deduplication but never enter active candidates.
+The focused `TestReview` race suite passed six cases with zero skips.

@@ -127,26 +127,10 @@ func PlanFiles(root string, snapshot map[string][]byte, build func(preview strin
 		}
 	}
 	sort.Strings(names)
-	// Git failures are errors, not evidence of a clean tree. Check every existing
-	// read dependency, including unchanged files that informed the plan.
-	for path, raw := range snapshot {
-		actual, err := readPublicationFile(dir, path)
-		if err != nil {
-			return nil, err
-		}
-		if !sameFileBytes(actual, raw) {
-			return nil, fmt.Errorf("writer: canonical file changed while planning: %s", path)
-		}
-		cmd := exec.Command("git", "--literal-pathspecs", "status", "--porcelain", "--", path)
-		cmd.Dir = root
-		out, err := cmd.Output()
-		if err != nil {
-			return nil, fmt.Errorf("writer: cannot verify canonical Git state: %w", err)
-		}
-		if len(bytes.TrimSpace(out)) != 0 {
-			return nil, fmt.Errorf("%w: %s", ErrDirtyTree, path)
-		}
+	if err := CheckSnapshot(root, snapshot); err != nil {
+		return nil, err
 	}
+
 	if !changed {
 		return nil, nil
 	}
@@ -155,4 +139,38 @@ func PlanFiles(root string, snapshot map[string][]byte, build func(preview strin
 		changes = append(changes, FileChange{Path: path, Before: snapshot[path], After: after[path]})
 	}
 	return changes, nil
+}
+
+// CheckSnapshot requires unchanged bytes and clean Git state for every canonical
+// dependency. It also guards staging decisions against an uncommitted prior.
+func CheckSnapshot(root string, snapshot map[string][]byte) error {
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+	// Git failures are errors, not evidence of a clean tree. Check every existing
+	// read dependency, including unchanged files that informed the plan.
+	for path, raw := range snapshot {
+		if err := publicationPath(dir, path); err != nil {
+			return err
+		}
+		actual, err := readPublicationFile(dir, path)
+		if err != nil {
+			return err
+		}
+		if !sameFileBytes(actual, raw) {
+			return fmt.Errorf("writer: canonical file changed while planning: %s", path)
+		}
+		cmd := exec.Command("git", "--literal-pathspecs", "status", "--porcelain", "--", path)
+		cmd.Dir = root
+		out, err := cmd.Output()
+		if err != nil {
+			return fmt.Errorf("writer: cannot verify canonical Git state: %w", err)
+		}
+		if len(bytes.TrimSpace(out)) != 0 {
+			return fmt.Errorf("%w: %s", ErrDirtyTree, path)
+		}
+	}
+	return nil
 }

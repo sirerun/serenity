@@ -2,9 +2,11 @@ package store
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -353,8 +355,18 @@ func readShardFile(path string) ([]domain.Claim, error) {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
+	return scanShard(f, path)
+}
+
+// ParseShardBytes reads canonical JSONL using the same parser as disk-backed
+// shard reads. It supports callers working from a validated byte snapshot.
+func ParseShardBytes(raw []byte) ([]domain.Claim, error) {
+	return scanShard(bytes.NewReader(raw), "snapshot")
+}
+
+func scanShard(reader io.Reader, path string) ([]domain.Claim, error) {
 	var out []domain.Claim
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(reader)
 	sc.Buffer(make([]byte, 64*1024), 16*1024*1024)
 	for sc.Scan() {
 		ln := strings.TrimSpace(sc.Text())
