@@ -13,7 +13,7 @@
           },
           "response": {
             "status": 200,
-            "body": "{\"item_id\":\"436b31e2a8def6a04cbd29b058571852\"}\n"
+            "body": "{\"item_id\":\"e5f390a16248762d57ea0db06240e23d\"}\n"
           }
         },
         {
@@ -21,7 +21,7 @@
           "path": "/disposition/subscribe?cursor=0",
           "response": {
             "status": 200,
-            "body": "{\"events\":[{\"cursor\":1,\"kind\":\"disposition.item_created\",\"payload\":{\"item_id\":\"436b31e2a8def6a04cbd29b058571852\",\"kind\":\"distill\",\"state\":\"pending\"},\"occurred_at\":\"2026-09-07T20:01:55.949781Z\"}]}\n"
+            "body": "{\"events\":[{\"cursor\":1,\"kind\":\"disposition.item_created\",\"payload\":{\"item_id\":\"e5f390a16248762d57ea0db06240e23d\",\"kind\":\"distill\",\"state\":\"pending\"},\"occurred_at\":\"2026-09-08T18:16:48.251546Z\"}]}\n"
           }
         }
       ]
