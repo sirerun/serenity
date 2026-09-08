@@ -42,3 +42,24 @@ The importer publishes and git-commits one complete page at a time, then the CLI
 rebuilds its disposable SQLite index. Checkpointed interruption/resume support
 is tracked separately by T5.3; this initial command makes no full incremental
 update or checkpoint guarantee.
+
+## Field-level report
+
+```sh
+serenity -C ./my-serenity-brain import --from-gbrain ./my-gbrain-checkout --json
+```
+
+JSON output includes page/claim counts and `audit.rows`, `audit.fields`, and
+`audit.unmapped_fields`. The synthetic fixture reports 8 rows, 74 source cells,
+and an empty unmapped-field list. The importer audits claims parsed back from
+the rendered canonical page before publishing any pages. A missing/different
+source cell, source reference, claim text, validity window, visibility, take
+actor, or review flag aborts the import; JSON mode returns the field diagnostics
+alongside the nonzero exit. Diagnostics contain source values and should be
+kept local when importing private material.
+
+`TestGBrainFieldRoundTrip` separately checks all fixture rows against hand-written
+expectations, including lifecycle, superseded pointers, confidence and who/weight.
+Extended typed-fact and resolved-take columns are retained verbatim and covered
+by a second fixture test. Predicate inference and calibration are still semantic
+interpretations requiring review; an empty report does not certify their truth.
