@@ -66,7 +66,7 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 ### E7 -- Launch polish and adoption loop  -> docs/plans/E7-launch-polish.md  (4/6; T7.1 inventory, T7.2 deployed browser events, T7.3 chat operations and T7.5 HTTPS enforcement completed 2026-09-08; content cross-site link and human go/no-go remain; docs/launch/checklist.md)
 ### E9 -- Migration verification remediation -> docs/plans/E9-migration-verification.md (2/2; completed 2026-09-08; imported-claim retrieval repaired with canonical privacy checks, seven CLI flows and real MCP stdio verified)
 ### E10 -- Inbox reconciliation verification -> docs/plans/E10-inbox-verification.md (2/2; verified canonical approval and interruption recovery, 2026-09-08)
-### E11 -- Extraction-to-review verification -> docs/plans/E11-extraction-verification.md (1/3; batch publication verified; conflict and low-confidence review remain open, 2026-09-08)
+### E11 -- Extraction-to-review verification -> docs/plans/E11-extraction-verification.md (2/3; batch publication and conflict review verified; low-confidence retention remains open, 2026-09-08)
 
 Decisions confirmed by David on 2026 08 27 (no open decisions remain):
 - OD-1 Second labeler for golden sets: two independent frontier-model passes from different families with David adjudicating (ADR 005).

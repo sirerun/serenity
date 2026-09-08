@@ -1,20 +1,12 @@
-// Package ingest is the observation-to-claim write path (RFC 0001 §7.6,
-// §9, §10.1; T1.9): the seam between extraction (internal/extract, T1.8)
-// and reconciliation (internal/reconcile, T2.2, E2).
+// Package ingest prepares observation batches for canonical publication and human
+// reconciliation review. ReviewObservations separates safe additions from
+// conflicting proposals using current canonical files; StageReview persists those
+// proposals after their prior claims are committed. Write itself consumes only the
+// caller's approved Ready slice and enforces the extraction confidence floor.
 //
-// Trust 0, by design (RFC §10.3's starting posture): every Ready
-// observation becomes its own claim. There is no merging, no conflict
-// detection, and no supersession here -- that is the reconcile engine's
-// job, deferred to E2. The only dedup this package performs is
-// identity-level, not semantic: a derived claim id already present in its
-// target fence page or shard file is skipped rather than re-appended, so
-// re-ingesting an unchanged source through T1.8's deterministic pipeline
-// (its own output cache, keyed by chunk content, plus this package's
-// content-derived ids) never grows the brain repo. The same logical claim
-// observed from two different sources still gets two distinct ids --
-// that is corroboration, not a bug (§7.2) -- collapsing those into one
-// belief is exactly the semantic dedup E2's reconcile engine performs at
-// (subject, predicate) plus embedding-similarity neighbors, never here.
+// Canonical dedup is identity-based: an unchanged source assertion is not appended
+// again. Corroborating observations from different sources retain distinct IDs.
+// Human review decisions are retained separately through stable staging identities.
 package ingest
 
 import (
