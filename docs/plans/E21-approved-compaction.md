@@ -22,6 +22,8 @@ Actual pre/post-commit SIGKILL recovered one history entry, one live claim and o
 archive row without duplicate commits; current facts stayed searchable without
 rebuilding the index. The first CI run exposed a test-fixture dependency on Git
 identity; fixtures now set their own local identity and the corrected run passed.
-A separate final full Darwin run was not required for this verdict and remained
-unrun while the shared build lease was occupied. Evidence:
-`docs/evals/approved-compaction.json`.
+At merge time the shared build lease was occupied. The later final-main Darwin
+run passed 1,779 cases across 58 packages, with six explicit test skips and four
+packages without tests; full vet passed and lint reported zero issues. The lease
+was released after the run. Evidence: `docs/evals/approved-compaction.json` and
+`docs/evals/overnight-final-verification.json`.
