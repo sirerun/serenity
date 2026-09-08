@@ -18,6 +18,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/connector"
+	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/embed"
 	"github.com/sirerun/serenity/internal/extract"
@@ -219,7 +220,7 @@ func runExtract(ctx context.Context, root string, out io.Writer) error {
 
 	ledger := &providers.IndexSpendLedger{Eng: eng}
 
-	if err := extractClaims(ctx, root, cfg, ledger, out); err != nil {
+	if err := extractClaims(ctx, root, cfg, ledger, disposition.NewStore(eng), out); err != nil {
 		return err
 	}
 	if err := rebuildTimed(ctx, root, cfg, eng); err != nil {
@@ -243,7 +244,7 @@ func runExtract(ctx context.Context, root string, out io.Writer) error {
 // contract already forbids writing a Distill observation to a fence or
 // shard, so v1's honest behavior is "counted, not silently lost, not
 // silently promoted."
-func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger router.SpendLedger, out io.Writer) error {
+func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger router.SpendLedger, ds *disposition.Store, out io.Writer) error {
 	r, ok, note := providers.BuildExtractionRouter(cfg, ledger)
 	if !ok {
 		_, _ = fmt.Fprintln(out, note)
@@ -312,18 +313,28 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 
 		ready = append(ready, result.Ready...)
 	}
-	stats, err := iw.Write(ready)
+	reviewNow := time.Now()
+	review, err := iw.ReviewObservations(ctx, ds, ready, reviewNow)
+	if err != nil {
+		return fmt.Errorf("extract: reconcile observations: %w", err)
+	}
+	stats, err := iw.Write(review.Ready)
 	if err != nil {
 		return fmt.Errorf("extract: publish observation batch: %w", err)
 	}
-	written, skipped = stats.Written, stats.Skipped
+	written, skipped = stats.Written, stats.Skipped+review.AlreadyPresent
 
 	committed, err := writer.Flush(q, root)
 	if err != nil {
 		return fmt.Errorf("extract: commit new claims: %w", err)
 	}
+	staged, existing, err := iw.StageReview(ctx, ds, review.Proposals, reviewNow)
+	if err != nil {
+		return fmt.Errorf("extract: canonical additions committed but review staging incomplete; rerun extraction: %w", err)
+	}
 	_, _ = fmt.Fprintf(out, "extraction: %d claim(s) written, %d skipped (already present), %d rejected, %d below distill threshold, %d source(s) skipped (index_only)\n",
 		written, skipped, rejected, distilled, indexOnlySkipped)
+	_, _ = fmt.Fprintf(out, "reconciliation: %d proposal(s) staged, %d existing reviews preserved, %d prior human decisions retained\n", staged, existing, review.PriorDecision)
 	if committed {
 		_, _ = fmt.Fprintln(out, "committed new claims")
 	}

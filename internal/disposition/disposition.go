@@ -225,6 +225,7 @@ type HistoryEntry struct {
 // direction -- the same asymmetric-dependency shape internal/connector's
 // JobStore takes over internal/index/jobs.go.
 type Backend interface {
+	InsertDispositionItem(ctx context.Context, id string, payload []byte) (bool, error)
 	PutDispositionItem(ctx context.Context, id string, payload []byte) error
 	DispositionItem(ctx context.Context, id string) (payload []byte, found bool, err error)
 	DispositionItems(ctx context.Context) ([][]byte, error)
