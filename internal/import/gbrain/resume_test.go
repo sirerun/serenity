@@ -359,3 +359,21 @@ func TestCheckpointRejectsChangedSourceBytes(t *testing.T) {
 		t.Fatal("modified target after source changed")
 	}
 }
+
+func TestCheckpointPreservesCommittedHumanDeletion(t *testing.T) {
+	root := resumeBrain(t)
+	source := sourceFixture(t)
+	if _, err := Import(context.Background(), source, root, config.Default()); err != nil {
+		t.Fatal(err)
+	}
+	gitOutput(t, root, "rm", "brain/entities/person/ava.md")
+	gitOutput(t, root, "commit", "-qm", "Remove imported person intentionally")
+	before := snapshot(t, root)
+	head := gitOutput(t, root, "rev-parse", "HEAD")
+	if _, err := Import(context.Background(), source, root, config.Default()); err == nil {
+		t.Fatal("resurrected committed human deletion")
+	}
+	if !reflect.DeepEqual(before, snapshot(t, root)) || head != gitOutput(t, root, "rev-parse", "HEAD") {
+		t.Fatal("changed canonical state after human deletion")
+	}
+}
