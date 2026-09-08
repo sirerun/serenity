@@ -1,0 +1,160 @@
+{
+  "task": "T16.1",
+  "date": "2026-09-08",
+  "full_race_tree": "ecc05447333ed887085f4a24b72086fe76af375f",
+  "final_code_tree": "f617c292f91bf0b42a31dc051b2e56ab0bb83216",
+  "baseline": {
+    "real_cli": "Acceptance recorded a decision but left the original single shard line unchanged.",
+    "lower_level_helper": "Committed current bytes without checking captured human content; replaced with shared exact-byte journal."
+  },
+  "full_race": {
+    "command": "go test -race -json -timeout 600s ./...",
+    "passed_cases": 1690,
+    "passed_packages": 58,
+    "skipped_cases": [
+      {
+        "package": "github.com/sirerun/serenity/evals/importbudget",
+        "test": "TestImportBudget10K"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/conformance",
+        "test": "TestBootDeliberatelyBrokenBuildFailsDisposeConformance"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/import/gbrain",
+        "test": "TestImportCrashHelper"
+      },
+      {
+        "package": "github.com/sirerun/serenity/pkg/serenity",
+        "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request"
+      },
+      {
+        "package": "github.com/sirerun/serenity/pkg/serenity",
+        "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/cli",
+        "test": "TestGbrainProtocolConformance"
+      }
+    ],
+    "packages_without_tests": 4
+  },
+  "focused_membership": {
+    "source": "Executed cases selected from the full race JSON; not a separate claimed run.",
+    "passed_cases": 27,
+    "tests": [
+      "TestApplyDisposedDirtyEditShardGainsLineHeadRegeneratesAndSurvivesRebuild",
+      "TestApplyDisposedDirtyEditSkipsFenceTierRows",
+      "TestApplyDisposedDirtyEditRejectsUndisposedItem",
+      "TestApplyDisposedDirtyEditRejectsWrongKind",
+      "TestDirtyPublicationCommitsExactHumanEditAndRetries/works_at",
+      "TestDirtyPublicationCommitsExactHumanEditAndRetries/has_balance",
+      "TestDirtyPublicationCommitsExactHumanEditAndRetries",
+      "TestDirtyPublicationCommitFailureResumesWithoutDuplicate/resume",
+      "TestDirtyPublicationCommitFailureResumesWithoutDuplicate/intervening-edit",
+      "TestDirtyPublicationCommitFailureResumesWithoutDuplicate",
+      "TestDirtyPublicationRefusesUnsafeOrStaleInputsBeforeCommit/newer-human-edit",
+      "TestDirtyPublicationRefusesUnsafeOrStaleInputsBeforeCommit/newer-shard-head",
+      "TestDirtyPublicationRefusesUnsafeOrStaleInputsBeforeCommit/dirty-shard",
+      "TestDirtyPublicationRefusesUnsafeOrStaleInputsBeforeCommit/outside-path",
+      "TestDirtyPublicationRefusesUnsafeOrStaleInputsBeforeCommit/symlink",
+      "TestDirtyPublicationRefusesUnsafeOrStaleInputsBeforeCommit/missing-head",
+      "TestDirtyPublicationRefusesUnsafeOrStaleInputsBeforeCommit/changed-state",
+      "TestDirtyPublicationRefusesUnsafeOrStaleInputsBeforeCommit/unknown-row",
+      "TestDirtyPublicationRefusesUnsafeOrStaleInputsBeforeCommit",
+      "TestDirtyPublicationPromotesExplicitConcurrentHeadsWithRotation",
+      "TestDirtyPublicationMarkerFailureRetriesCompletedReceipt",
+      "TestInboxDirtyEditApprovalPublishesCanonicalShard",
+      "TestInboxDirtyEditRequiresConfirmationAndPreservesNewerEdit/cancel",
+      "TestInboxDirtyEditRequiresConfirmationAndPreservesNewerEdit/reject",
+      "TestInboxDirtyEditRequiresConfirmationAndPreservesNewerEdit/newer-edit",
+      "TestInboxDirtyEditRequiresConfirmationAndPreservesNewerEdit",
+      "TestInboxDirtyEditUnappliedRetryCommitsAndClearsListing"
+    ],
+    "skipped_cases": 0
+  },
+  "validation": {
+    "vet": "passed",
+    "final_lint": "0 issues",
+    "lint_correction": "Only a test branch changed from if/else to switch; affected nine-case stale-input regression rerun successfully.",
+    "docs": "mkdocs build --strict passed"
+  },
+  "negative_controls": [
+    {
+      "fault": "disconnect-inbox",
+      "suite": "./internal/cli",
+      "filter": "^TestInboxDirtyEditApprovalPublishesCanonicalShard$",
+      "detected": true
+    },
+    {
+      "fault": "skip-confirmation",
+      "suite": "./internal/cli",
+      "filter": "^TestInboxDirtyEditRequiresConfirmationAndPreservesNewerEdit$/cancel$",
+      "detected": true
+    },
+    {
+      "fault": "allow-dirty-shard",
+      "suite": "./internal/supersede",
+      "filter": "^TestDirtyPublicationRefusesUnsafeOrStaleInputsBeforeCommit$/dirty-shard$",
+      "detected": true
+    },
+    {
+      "fault": "skip-receipt-recovery",
+      "suite": "./internal/supersede",
+      "filter": "^TestDirtyPublicationCommitFailureResumesWithoutDuplicate$/resume$",
+      "detected": true
+    },
+    {
+      "fault": "omit-prose-commit",
+      "suite": "./internal/supersede",
+      "filter": "^TestDirtyPublicationCommitsExactHumanEditAndRetries$/works_at$",
+      "detected": true
+    }
+  ],
+  "actual_cli_crash_recovery": [
+    {
+      "cut": "pre-commit",
+      "signal": "SIGKILL of synthetic process group",
+      "receipt_incomplete_at_cut": true,
+      "marker_empty_at_cut": true,
+      "unapplied_visible": true,
+      "retry_committed": true,
+      "repeated_retry_no_new_commit": true,
+      "original_payload_unchanged": true,
+      "canonical_shard_lines": 2,
+      "active_human_corrections": 1,
+      "decision_history_entries": 1,
+      "human_prose_preserved": true,
+      "search_before_and_after_index_wipe": true,
+      "synthetic_orphan_git_lock_removed": true,
+      "live_model_calls": 0,
+      "verdict": "pass"
+    },
+    {
+      "cut": "post-commit",
+      "signal": "SIGKILL of synthetic process group",
+      "receipt_incomplete_at_cut": true,
+      "marker_empty_at_cut": true,
+      "unapplied_visible": true,
+      "retry_committed": true,
+      "repeated_retry_no_new_commit": true,
+      "original_payload_unchanged": true,
+      "canonical_shard_lines": 2,
+      "active_human_corrections": 1,
+      "decision_history_entries": 1,
+      "human_prose_preserved": true,
+      "search_before_and_after_index_wipe": true,
+      "synthetic_orphan_git_lock_removed": false,
+      "live_model_calls": 0,
+      "verdict": "pass"
+    }
+  ],
+  "scope": [
+    "Local-owner CLI acceptance and existing internal dirty-edit API.",
+    "Exact entity page review; prose/fence truth and object corrections to current shard heads.",
+    "Direct shard JSONL edits, new/removed shard rows and shard metadata changes require explicit resolution.",
+    "Legacy absolute paths from a moved brain are refused rather than remapped.",
+    "Single canonical writer remains required; no arbitrary concurrent human-write filesystem transaction.",
+    "Synthetic SIGKILL fixtures only; orphan Git lock removal was confined to the killed synthetic process group."
+  ]
+}
