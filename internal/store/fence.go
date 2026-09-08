@@ -7,12 +7,15 @@ package store
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/sirerun/serenity/internal/domain"
 )
@@ -52,6 +55,11 @@ type EntityPage struct {
 	Summary  string
 	Claims   []domain.Claim
 	Timeline []TimelineEntry
+	// OriginalBody preserves source prose as historical provenance, not summary.
+	OriginalBody string
+	// Frontmatter preserves imported source metadata, including external IDs.
+	Frontmatter map[string]any
+	Links       []EntityLink
 }
 
 // NewEntityPage builds an empty page with the title derived from the slug.
@@ -100,7 +108,11 @@ func (w *FenceWriter) RenderEntity(p *EntityPage) ([]byte, error) {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "---\ntype: %s\nslug: %s\n", p.Entity.Type, p.Entity.Slug)
 	if len(p.Entity.Aliases) > 0 {
-		fmt.Fprintf(&b, "aliases: [%s]\n", strings.Join(p.Entity.Aliases, ", "))
+		encoded, err := json.Marshal(p.Entity.Aliases)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(&b, "aliases: %s\n", encoded)
 	}
 	b.WriteString("---\n")
 
@@ -184,6 +196,9 @@ func (w *FenceWriter) RenderEntity(p *EntityPage) ([]byte, error) {
 		fmt.Fprintf(&b, "- %s: %s\n", t.Date, t.Text)
 	}
 	b.WriteString(endTL + "\n")
+	if err := renderPageMetadata(&b, p); err != nil {
+		return nil, err
+	}
 	return b.Bytes(), nil
 }
 
@@ -206,6 +221,13 @@ func ParseEntityBytes(raw []byte) (*EntityPage, error) {
 	if err != nil {
 		return nil, err
 	}
+	var front struct {
+		Aliases []string `yaml:"aliases"`
+	}
+	if err := yaml.Unmarshal([]byte(fm), &front); err != nil {
+		return nil, fmt.Errorf("entity frontmatter: %w", err)
+	}
+	p.Entity.Aliases = front.Aliases
 	for _, ln := range strings.Split(fm, "\n") {
 		key, val, ok := strings.Cut(ln, ": ")
 		if !ok {
@@ -216,11 +238,6 @@ func ParseEntityBytes(raw []byte) (*EntityPage, error) {
 			p.Entity.Type = val
 		case "slug":
 			p.Entity.Slug = val
-		case "aliases":
-			val = strings.TrimPrefix(strings.TrimSuffix(val, "]"), "[")
-			if val != "" {
-				p.Entity.Aliases = strings.Split(val, ", ")
-			}
 		}
 	}
 
@@ -299,6 +316,9 @@ func ParseEntityBytes(raw []byte) (*EntityPage, error) {
 				}
 			}
 		}
+	}
+	if err := parsePageMetadata(s, p); err != nil {
+		return nil, err
 	}
 	return p, nil
 }
