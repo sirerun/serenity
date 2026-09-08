@@ -302,3 +302,18 @@ func TestSLOFailureDoesNotAdvanceSuccess(t *testing.T) {
 		t.Fatalf("record %+v %v", record, err)
 	}
 }
+
+func TestDecayCanceledEmptyBrainDoesNotRecordSuccess(t *testing.T) {
+	root := t.TempDir()
+	if err := config.Default().Save(filepath.Join(root, config.FileName)); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := Run(ctx, "decay", root, fakeClock{time.Now()}); err == nil {
+		t.Fatal("canceled empty scan reported success")
+	}
+	if _, err := ReadRecord(root, "decay"); !os.IsNotExist(err) {
+		t.Fatalf("success record exists: %v", err)
+	}
+}

@@ -35,8 +35,12 @@ func Decay(ctx context.Context, root string, clock Clock) error {
 	return err
 }
 
+// RunDecay exposes review counts to CLI clients without changing canonical data.
 func RunDecay(ctx context.Context, root string, clock Clock) (DecayResult, error) {
 	var result DecayResult
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
 	cfg, err := config.Load(filepath.Join(root, config.FileName))
 	if err != nil {
 		return result, err
@@ -122,6 +126,9 @@ func RunDecay(ctx context.Context, root string, clock Clock) (DecayResult, error
 		} else {
 			result.Existing++
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return result, err
 	}
 	return result, recordDetails(root, "decay", now, result)
 }
