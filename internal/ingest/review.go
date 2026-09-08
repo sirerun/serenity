@@ -234,7 +234,8 @@ func (w *Writer) canonicalReviewClaims(snapshot map[string][]byte, now time.Time
 				continue
 			}
 			name := filepath.Base(path)
-			if name != claim.Family+".jsonl" {
+			archived := name == claim.Family+".archive.jsonl"
+			if name != claim.Family+".jsonl" && !archived {
 				prefix := claim.Family + "."
 				segment := strings.TrimSuffix(strings.TrimPrefix(name, prefix), ".jsonl")
 				number, err := strconv.Atoi(segment)
@@ -243,6 +244,9 @@ func (w *Writer) canonicalReviewClaims(snapshot map[string][]byte, now time.Time
 				}
 			}
 			all[claim.SubjectSlug+"\x00"+claim.ID] = true
+			if archived {
+				continue
+			}
 			key := claim.SubjectSlug + "\x00" + claim.Family
 			shards[key] = append(shards[key], claim)
 		}

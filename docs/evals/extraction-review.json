@@ -134,5 +134,15 @@
       "exit": 1,
       "detected": true
     }
-  ]
+  ],
+  "compacted_shard_followup": {
+    "suite": "TestReview",
+    "passed_cases": 6,
+    "skipped_cases": 0,
+    "negative_control": "TestReviewCompactedShardDoesNotReactivateArchivedObservation failed before the archive-aware fix",
+    "assertions": [
+      "archived identity suppresses reactivation",
+      "only live shard head is a conflict candidate"
+    ]
+  }
 }

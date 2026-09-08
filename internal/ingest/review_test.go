@@ -180,3 +180,43 @@ func TestReviewUsesHumanCanonicalChangeAndRejectsLaterMutation(t *testing.T) {
 		t.Fatalf("reintroduced a retracted source claim: %+v", repeated)
 	}
 }
+
+func TestReviewCompactedShardDoesNotReactivateArchivedObservation(t *testing.T) {
+	w, closeQ := newTestWriter(t)
+	defer closeQ()
+	ctx := context.Background()
+	now := time.Now().UTC()
+	old := obs("demo-person", "has_balance", "100 USD", "old-source", "0-10", .9, now)
+	if _, err := w.Write([]domain.Observation{old}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Flush(w.Queue, w.Fence.Root); err != nil {
+		t.Fatal(err)
+	}
+	replacement := ClaimFromObservation(obs("demo-person", "has_balance", "200 USD", "new-source", "0-10", .9, now))
+	replacement.Supersedes = ClaimFromObservation(old).ID
+	if err := w.Shard.Append(replacement); err != nil {
+		t.Fatal(err)
+	}
+	if moved, err := w.Shard.Compact("demo-person", "has_balance"); err != nil || moved != 1 {
+		t.Fatalf("compact: moved=%d err=%v", moved, err)
+	}
+	batchGit(t, w.Fence.Root, "add", "brain")
+	batchGit(t, w.Fence.Root, "commit", "--quiet", "-m", "reviewed replacement and compaction")
+	ds := reviewStore(t, w)
+	plan, err := w.ReviewObservations(ctx, ds, []domain.Observation{old}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.AlreadyPresent != 1 || len(plan.Ready) != 0 || len(plan.Proposals) != 0 {
+		t.Fatalf("archived evidence reactivated: %+v", plan)
+	}
+	incoming := obs("demo-person", "has_balance", "300 USD", "third-source", "0-10", .9, now)
+	plan, err = w.ReviewObservations(ctx, ds, []domain.Observation{incoming}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Proposals) != 1 || plan.Proposals[0].B.ID != replacement.ID {
+		t.Fatalf("wrong compacted canonical prior: %+v", plan)
+	}
+}

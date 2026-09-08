@@ -75,3 +75,7 @@ low-confidence observations still require T11.3. Keyed insertion does not claim
 general multi-process arbitration of disposal, and the existing single-writer
 canonical convention remains. Old active contradictions written by previous
 versions are not automatically retracted by this repair.
+
+A follow-up compacted-shard regression failed before repair. Archive rows now
+retain historical identity for deduplication but never enter active candidates.
+The focused `TestReview` race suite passed six cases with zero skips.
