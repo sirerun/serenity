@@ -62,6 +62,7 @@ rather than redeclared.
 | `route` | enum: `claim-batch`, `precept-draft`, `note`, `trash` | no | Set only for a distill item disposed through the capture routing path. |
 | `route_effect_pending` | boolean | no | Recovery marker for a committed precept-draft route whose follow-on staging has not completed. Absent on legacy and completed routes. |
 | `resurfaced` | boolean | no | `true` once a parked item has been resurfaced back to pending — a one-time transition. |
+| `applied_publication_id` | string | no | Committed dirty-edit receipt ID; a publication may contain zero or more claims. |
 | `applied_claim_id` | string | no | The claim id a reconcile item's accept/edit_accept verdict wrote to the canonical brain repo, once applied. |
 
 ## Operations
