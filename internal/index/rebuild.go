@@ -120,23 +120,20 @@ func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) e
 		}
 	}
 
-	// Imported rows have no raw Source record. Index their canonical claim text
-	// as derived chunks, with per-request privacy/lifecycle checks on every read.
-	imported, err := importedClaims(root, now, cfg)
+	// Canonical claims may have no matching source text (notably human edits).
+	// Their derived chunks are revalidated against canonical state on every read.
+	canonical, err := canonicalClaims(root, now, cfg)
 	if err != nil {
 		return err
 	}
-	refs := make([]string, 0, len(imported))
-	for ref := range imported {
+	refs := make([]string, 0, len(canonical))
+	for ref := range canonical {
 		refs = append(refs, ref)
 	}
 	sort.Strings(refs)
 	for _, ref := range refs {
-		rec := imported[ref]
-		if cfg.TierOf(rec.claim.Family) != domain.TierFence {
-			continue
-		}
-		if err := eng.InsertChunk(ctx, ref, rec.slug, importedClaimText(rec.slug, rec.claim), rec.claim.Provenance.SourceSHA256, GBrainClaimChunkKind); err != nil {
+		rec := canonical[ref]
+		if err := eng.InsertChunk(ctx, ref, rec.slug, rec.text, rec.claim.Provenance.SourceSHA256, rec.kind); err != nil {
 			return err
 		}
 	}
@@ -382,7 +379,7 @@ func Refresh(ctx context.Context, root string, cfg *config.Config, eng *SQLite) 
 func SourceEligibility(proj *store.MemoryProjection, remote, egress bool, now time.Time, restricted ...map[string]bool) func(Hit) bool {
 	return func(h Hit) bool {
 		// Only RetrievalEligibility can validate this reserved canonical projection.
-		if strings.HasPrefix(h.Kind, "gbrain_") {
+		if strings.HasPrefix(h.Kind, "gbrain_") || strings.HasPrefix(h.Kind, "canonical_") || strings.HasPrefix(h.ChunkRef, "gbrain-claim:") || strings.HasPrefix(h.ChunkRef, "canonical-claim:") {
 			return false
 		}
 		if h.Kind == "entity_page" {

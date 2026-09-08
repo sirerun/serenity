@@ -250,7 +250,7 @@ func (c *Composer) AskWithOptions(ctx context.Context, query string, opts AskOpt
 		return Answer{}, fmt.Errorf("compose: %w", err)
 	}
 
-	live := filterEvidence(resolveLive(groupBySubjectFamily(bySubject)), opts, eligible, now)
+	live := filterEvidence(resolveLive(groupBySubjectFamily(bySubject)), opts, func(cl domain.Claim) bool { return index.ClaimDisclosureEligible(proj, cl, true, true, now) }, now)
 	bySubject = make(map[string][]domain.Claim)
 	for _, lc := range live {
 		bySubject[lc.SubjectSlug] = append(bySubject[lc.SubjectSlug], lc.Claim)
@@ -317,7 +317,7 @@ func PublicClaims(root string, cfg *config.Config, proj *store.MemoryProjection,
 	if err != nil {
 		return nil, err
 	}
-	eligible := index.SourceEligibility(proj, true, false, now)
+	eligible := func(cl domain.Claim) bool { return index.ClaimDisclosureEligible(proj, cl, true, false, now) }
 	live := filterEvidence(resolveLive(groupBySubjectFamily(bySubject)), AskOptions{}, eligible, now)
 	result := make(map[string][]domain.Claim)
 	for _, cl := range live {
@@ -332,9 +332,9 @@ func claimCurrent(cl domain.Claim, now time.Time) bool {
 
 // Resolve lifecycle before applying visibility: removing a private replacement
 // first would accidentally resurrect its public predecessor.
-func filterEvidence(live []liveClaim, opts AskOptions, eligible func(index.Hit) bool, now time.Time) []liveClaim {
+func filterEvidence(live []liveClaim, opts AskOptions, eligible func(domain.Claim) bool, now time.Time) []liveClaim {
 	allowed := func(cl domain.Claim) bool {
-		return cl.Visibility != domain.VisibilityPrivate && opts.includes(cl.Provenance.ObservedAt) && eligible(index.Hit{SourceSHA256: cl.Provenance.SourceSHA256})
+		return opts.includes(cl.Provenance.ObservedAt) && eligible(cl)
 	}
 	out := make([]liveClaim, 0, len(live))
 	for _, lc := range live {

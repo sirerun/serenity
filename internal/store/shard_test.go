@@ -582,3 +582,31 @@ func TestShardDefaultRolloverNotTriggeredByOrdinaryUse(t *testing.T) {
 		t.Fatalf("50 small claims should not trigger the default rollover threshold, but segment 1 exists (err=%v)", err)
 	}
 }
+
+func TestShardFamiliesDeduplicatesNumberedSegments(t *testing.T) {
+	s := NewShardStore(t.TempDir())
+	s.RolloverBytes = 1
+	for i := 0; i < 3; i++ {
+		c := domain.Claim{ID: fmt.Sprintf("c%d", i), SubjectSlug: "account", Predicate: "has_balance", Family: "has_balance", Object: fmt.Sprintf("balance%d", i), State: domain.StateActive}
+		if err := s.Append(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	families, err := s.Families("account")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(families) != 1 || families[0] != "has_balance" {
+		t.Fatalf("segments reported as families: %v", families)
+	}
+	if err := os.Remove(s.PathFor("account", "has_balance")); err != nil {
+		t.Fatal(err)
+	}
+	families, err = s.Families("account")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(families) != 1 || families[0] != "has_balance" {
+		t.Fatalf("remaining segments lost their family: %v", families)
+	}
+}

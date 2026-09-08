@@ -172,6 +172,13 @@ func TestExtractLowConfidenceRetainedAndExplicitlyReviewed(t *testing.T) {
 				if len(claims) != 1 || claims[0].Object != "Human Company" || claims[0].Confidence != 1 || !strings.HasPrefix(claims[0].Provenance.Actor, "human:") || claims[0].Provenance.SourceSHA256 != "" || claims[0].Provenance.Model != "" || claims[0].Provenance.Meta["distill_item_id"] != items[0].ID || items[0].AppliedClaimID != claims[0].ID {
 					t.Fatalf("incorrect human effect: %+v item=%+v", claims, items[0])
 				}
+				var searchOut bytes.Buffer
+				if err := runSearch(ctx, root, "Human Company", 10, &searchOut); err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(searchOut.String(), "Human Company") {
+					t.Fatalf("confirmed assertion is not retrievable: %s", searchOut.String())
+				}
 				if items[0].Verdict != disposition.VerdictEditAccept {
 					t.Fatal("explicit assertion not recorded")
 				}

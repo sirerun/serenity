@@ -133,13 +133,22 @@ func runImport(t *testing.T, count int, output string) {
 	git(t, root, "config", "user.name", "Benchmark")
 	git(t, root, "config", "user.email", "benchmark@example.invalid")
 	cfg := config.Default()
-	eng, err := index.Open(filepath.Join(workspace, "index.db"))
+	// Match the production layout so embedding resolves canonical eligibility
+	// against this brain, rather than the unrelated benchmark workspace.
+	if err := os.MkdirAll(filepath.Join(root, ".serenity"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".serenity/\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	eng, err := index.Open(filepath.Join(root, ".serenity", "index.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = eng.Close() }()
 	q := writer.NewQueue(nil)
 	defer q.Close()
+	q.MarkTouched(filepath.Join(root, ".gitignore"))
 	ss := store.NewSourceStore(root)
 	report := budget.Report{Version: budget.Version, Revision: git(t, ".", "rev-parse", "HEAD"), Environment: fmt.Sprintf("%s/%s-%s-procs%d", runtime.GOOS, runtime.GOARCH, runtime.Version(), runtime.GOMAXPROCS(0)), CorpusSHA256: hash(rawManifest), CacheVersion: cacheVersion, Messages: count}
 	if env := os.Getenv("SERENITY_IMPORT_BUDGET_ENVIRONMENT"); env != "" {
@@ -263,7 +272,7 @@ func runImport(t *testing.T, count int, output string) {
 	report.CacheHits = cache.hits
 	report.ModelCalls = live.calls
 	if reconciled != count || stats["vectors"] != int64(report.Vectors) || report.Vectors != len(chunks) {
-		t.Fatal("incomplete reconcile/index/vector path")
+		t.Fatalf("incomplete reconcile/index/vector path: reconciled=%d/%d persisted_vectors=%d written_vectors=%d eligible_chunks=%d", reconciled, count, stats["vectors"], report.Vectors, len(chunks))
 	}
 	stored, err := ss.All()
 	if err != nil {

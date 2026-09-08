@@ -90,3 +90,6 @@ supported canonical approval path here is the local CLI.
 Keep the runtime database and publication receipts when recovering an interrupted
 review. Rebuilding the search index preserves inbox rows; deleting `.serenity`
 removes runtime review history and is not an inbox-recovery procedure.
+
+Confirmed facts are searchable through derived canonical claim entries. See
+[search policy](search.md) for local/remote visibility and stale-index behavior.

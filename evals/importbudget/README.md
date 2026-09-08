@@ -47,3 +47,11 @@ JSON test evidence and the timing table, then appends successful reports to the
 separate `results/import-budget` branch. Failed regressions retain their artifacts
 and do not replace the last accepted baseline. An unavailable remote is an error,
 not permission to bootstrap. Workflow concurrency serializes baseline updates.
+
+
+The benchmark database uses `<brain>/.serenity/index.db`, matching production, so
+embedding checks the correct brain's canonical eligibility. Native claim projection
+adds per-claim search entries to the raw-source and entity-page entries; reports
+therefore count the actual increased vector workload. The vector cache algorithm,
+corpus and model pins are unchanged. Performance comparisons retain their baseline
+and disclose this added work rather than resetting the gate to hide it.

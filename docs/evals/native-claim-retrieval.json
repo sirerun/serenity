@@ -1,0 +1,69 @@
+{
+  "date": "2026-09-08",
+  "revision": "ebb370ecf49ab1f9775b88df1d1898e8e41235a1",
+  "scope": "native canonical fence/shard claim projection, retrieval, embedding and direct composition",
+  "full_race": {
+    "command": "GOMAXPROCS=2 go test -race -p 2 -timeout 600s -json ./...",
+    "passed_cases": 1611,
+    "passed_packages": 58,
+    "skipped_cases": 6
+  },
+  "lint": {
+    "issues": 0
+  },
+  "policy_suite": {
+    "name": "Test(Native|ImportedClaims)",
+    "passed_cases": 54,
+    "skipped_cases": 0
+  },
+  "repaired_focused_suite": {
+    "name": "Test(Native|ImportedClaims|ExtractLow|Ask|RebuildOmits|ImportBudgetSmoke)",
+    "passed_cases": 69,
+    "skipped_cases": 0
+  },
+  "real_cli_and_mcp": {
+    "cli_search": {
+      "exit": 0,
+      "confirmed_human_value_found": true
+    },
+    "mcp_stdio": {
+      "public_human_assertion_returned": true,
+      "newly_private_claim_excluded_without_rebuild": true,
+      "deleted_claim_excluded_without_rebuild": true,
+      "keyword_only": true
+    },
+    "model_calls": 0,
+    "verdict": "pass"
+  },
+  "negative_controls": [
+    {
+      "fault": "disable-visibility-policy",
+      "suite": "TestNativeClaim",
+      "exit": 1,
+      "detected": true
+    },
+    {
+      "fault": "trust-forged-cached-text",
+      "suite": "TestNativeClaim",
+      "exit": 1,
+      "detected": true
+    },
+    {
+      "fault": "trust-dangling-source",
+      "suite": "TestNativeClaim",
+      "exit": 1,
+      "detected": true
+    }
+  ],
+  "budget": {
+    "previous_seconds": 171.649080499,
+    "current_seconds": 176.927,
+    "change_percent": 3.07,
+    "previous_vectors": 10050,
+    "current_vectors": 20050,
+    "same_environment_corpus_and_cache": true,
+    "production_database_layout_now_exercised": true,
+    "baseline_reset": false
+  },
+  "separate_unresolved_finding": "Deleted raw-source chunks remain searchable with stale generic source index entries; E13."
+}

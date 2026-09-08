@@ -67,7 +67,8 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 ### E9 -- Migration verification remediation -> docs/plans/E9-migration-verification.md (2/2; completed 2026-09-08; imported-claim retrieval repaired with canonical privacy checks, seven CLI flows and real MCP stdio verified)
 ### E10 -- Inbox reconciliation verification -> docs/plans/E10-inbox-verification.md (2/2; verified canonical approval and interruption recovery, 2026-09-08)
 ### E11 -- Extraction-to-review verification -> docs/plans/E11-extraction-verification.md (3/3; extraction batches, conflicts and explicit low-confidence review verified, 2026-09-08)
-### E12 -- Native canonical claim retrieval -> docs/plans/E12-canonical-retrieval.md (0/1; confirmed human claim is absent from real CLI search, 2026-09-08)
+### E12 -- Native canonical claim retrieval -> docs/plans/E12-canonical-retrieval.md (1/1; native canonical claim search, recall and disclosure verified, 2026-09-08)
+### E13 -- Raw source retrieval consistency -> docs/plans/E13-source-retrieval.md (0/1; deleted raw source remains in stale CLI search, 2026-09-08)
 
 Decisions confirmed by David on 2026 08 27 (no open decisions remain):
 - OD-1 Second labeler for golden sets: two independent frontier-model passes from different families with David adjudicating (ADR 005).
