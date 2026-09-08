@@ -1,16 +1,16 @@
 # Serenity
 
-Personal memory in a Git repository you own. Current-source documentation; packaged release v0.1.1 differs.
+Memory and context for agents and embedded systems, in a brain Git repository you own. Start Codex CLI in that repository or integrate Serenity into your own system. No standalone Brain app is available today. Inspired by and building on Garry Tan’s gbrain. Current-source documentation; packaged release v0.1.1 differs.
 
-- [A little setup. A lasting memory.](https://serenity.sire.run/get-started/): Install Serenity, connect a small folder of notes, and make your first search. No account is needed for local full-text search.
-- [Your first local memory.](https://serenity.sire.run/docs/quickstart/): Start with files you already have. Search them before adding models or connecting a mailbox.
-- [Less rebuilding context. More moving forward.](https://serenity.sire.run/product/): Serenity turns your notes, repository documentation, and email into searchable personal memory.
-- [A clear path from install to useful.](https://serenity.sire.run/docs/): Practical guides for building a personal memory, finding answers, and understanding what Serenity does with your data.
+- [Set up the brain. Work through your agent.](https://serenity.sire.run/get-started/): Install Serenity behind your agent or application. Start with a separate brain Git repository and a small set of sources.
+- [Create your agent’s brain.](https://serenity.sire.run/docs/quickstart/): Create a separate brain repository, verify a small set of sources, then open your agent in that repository.
+- [The brain behind your agent.](https://serenity.sire.run/product/): Serenity is a memory and context layer for agents and the systems you build. Your brain lives in a Git repository you own.
+- [A clear path from install to useful.](https://serenity.sire.run/docs/): Set up a brain for Codex CLI, integrate Serenity into another system, and understand how context is stored and retrieved.
 - [Bring your sources.](https://serenity.sire.run/docs/connectors/): Start narrow, verify what was imported, then expand your memory one source at a time.
 - [Find the source. Then ask the question.](https://serenity.sire.run/docs/models/): Local search is useful on its own. Add model-assisted extraction and composition when you want cited answers.
-- [Make memory a habit.](https://serenity.sire.run/docs/workflows/): A few deliberate commands keep your context searchable without turning setup into another project.
+- [Memory in your workflow.](https://serenity.sire.run/docs/workflows/): These commands are building blocks for your agent or integrating system. Run them directly when setting up or checking a brain.
 - [Your memory. Your repository.](https://serenity.sire.run/docs/ownership/): Know what stays on disk, what can leave your machine, and what you need to back up.
-- [Context for your tools.](https://serenity.sire.run/docs/agents/): Use Serenity’s verified interfaces deliberately while agent integrations continue to develop.
+- [Run behind your agent. Embed in your system.](https://serenity.sire.run/docs/agents/): Use Codex CLI in your brain repository, or connect your own system to Serenity’s memory and context interfaces.
 - [Get back to the useful part.](https://serenity.sire.run/docs/troubleshooting/): Start with the smallest reproducible setup: one brain, one folder, and one known phrase.
 - [Good questions. Plain answers.](https://serenity.sire.run/docs/faq/): The practical details before you add Serenity to your workflow.
 - [Website and chat privacy.](https://serenity.sire.run/docs/privacy/): This public website helps you understand and install Serenity. It is separate from any personal brain you create.
