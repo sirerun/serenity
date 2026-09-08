@@ -2,6 +2,12 @@
 
 Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/plan.md (epic files under docs/plans/). Update on every merge, lane claim/finish, blocker, and decision.
 
+## Current verification follow-up
+
+- 2026-09-08 T22.1 remains open: main cached 10K runs failed the unchanged timing gate at 66.298 seconds (+31.94%) and 68.124 seconds (+35.58%) versus the accepted 50.248-second baseline. Both completed all counts with zero model calls; artifacts were retained and the baseline did not advance. A four-run same-runner ABBA comparison did not reproduce a code slowdown. PR #218 now records runner/tool metadata. Evidence: docs/evals/final-import-budget.json.
+- Final application correctness verification passed 1,779 Darwin race-test cases across 58 packages, with six explicit test skips and four packages without tests. Full vet passed, lint reported zero issues, and the shared lease was released. This does not override the timing failure. Receipt: docs/evals/overnight-final-verification.json.
+- The consolidated work and owner gates are in docs/evals/overnight-2026-09-08.md.
+
 ## Shipped
 
 - 2026-09-08 T21.1 approved compaction: exact durable plans guard clean shard inputs, write archives/live heads before numbered-segment deletion, and commit only owned paths. Retries preserve human edits, one archive copy and one decision; completed approvals cannot sweep new data. Corrected Linux CI passed all 12 checks and 58 race-test packages; local Darwin suites passed 18 CLI and 13 writer cases with no skips. Four fault controls and real pre/post-commit SIGKILL verified recovery and current-fact search. Evidence: docs/evals/approved-compaction.json.
