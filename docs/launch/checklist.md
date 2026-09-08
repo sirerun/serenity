@@ -33,7 +33,30 @@ Ajent rollback belongs to David in that repository: use the reviewed deployment 
 - [ ] T7.2: document and verify `install_cta`, `docs_open`, `chat_started`, `chat_answered`, `chat_failed`; browser coverage and production event observation, excluding prompts and secrets.
 - [ ] T7.3: health/CORS/outage/rate-limit CI coverage and an actionable deployed error/latency signal.
 - [ ] T7.4: reviewed launch content packet with canonical installation walkthrough; publication remains a separate action.
-- [ ] T7.5: enforce HTTPS and retain authoritative DNS, certificate, redirect and Pages API evidence.
+- [x] T7.5: HTTPS enforced; authoritative DNS, certificate, redirect and Pages API evidence recorded below.
 - [ ] T7.6: David's go/no-go decision, adoption baseline, known limitations and next review date.
 
 The M4 external-session exit is complete ([report](../evals/m4-report.md)). M5 remains 11/15: naming, the real-mailbox laptop run, name-dependent README, and human release decision remain open ([report](../evals/m5-report.md)).
+
+
+## T7.5 domain/security completion — 2026-09-08 13:02 UTC
+
+After confirming the existing approved certificate and authoritative DNS, updated only the Pages `https_enforced` setting to `true` using the [Pages API](https://docs.github.com/en/rest/pages/pages#update-information-about-a-github-pages-site). The earlier inventory above preserves the before-state.
+
+```text
+dig @ns-cloud-b1.googledomains.com serenity.sire.run CNAME +noall +answer
+serenity.sire.run. 300 IN CNAME sirerun.github.io.
+
+GET http://serenity.sire.run/
+HTTP/1.1 301 Moved Permanently
+Location: https://serenity.sire.run/
+
+GET https://serenity.sire.run/ (normal certificate validation)
+HTTP/2 200
+
+GET /repos/sirerun/serenity/pages (selected fields)
+{"cname":"serenity.sire.run","https_enforced":true,
+ "https_certificate":{"state":"approved","domains":["serenity.sire.run"],"expires_at":"2026-12-06"}}
+```
+
+All four acceptance checks passed. No DNS record or site source changed. David owns the setting; rollback is the same Pages update with `https_enforced=false` only if necessary to recover a verified HTTPS incident. Normal operation keeps enforcement enabled.

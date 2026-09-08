@@ -4,6 +4,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-09-08 T7.5 HTTPS enforcement: Pages reports the correct custom domain and `https_enforced=true`; authoritative DNS resolves to GitHub Pages, HTTP redirects 301 to HTTPS, and HTTPS returns 200 with normal certificate validation. Only the Pages enforcement setting changed. Before/after evidence and rollback owner are in docs/launch/checklist.md.
+
 - 2026-09-08 T7.1 launch inventory: recorded exact deployed Pages/Lambda hashes, authoritative DNS and certificate state, observed Ajent login asset, named owners and rollback routes in docs/launch/checklist.md. Ajent #15 is already merged; #24 and draft #25 are deferred to David’s Ajent review. HTTPS enforcement and chat operational monitoring are concrete pending gates; no Ajent deployment is claimed.
 
 - 2026-09-08 T9.1/T9.2 migration retrieval remediation: an end-to-end CLI audit found that imported claims were counted but absent from search chunks. Derived imported-claim chunks now retain review labels and check canonical privacy, lifecycle, validity, text, source, entity, and storage tier at every read. Local private search works; remote recall and providers exclude private or stale evidence. All seven scoped CLI flows pass, including real SIGKILL/resume, and an actual MCP stdio session verifies public/private and post-edit stale-index behavior. Full race suite: 1,510 passing cases across 58 packages, six explicit test skips; focused suite: 28 passing cases, zero skips. Privacy and canonical-text negative controls both failed and restored code passed.
