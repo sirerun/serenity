@@ -126,7 +126,7 @@ func seedInboxCanonical(t *testing.T, root string, items ...disposition.Item) {
 			t.Fatal(err)
 		}
 	}
-	for _, args := range [][]string{{"add", "brain"}, {"commit", "--quiet", "-m", "seed canonical review targets"}} {
+	for _, args := range [][]string{{"config", "user.email", "inbox-test@example.invalid"}, {"config", "user.name", "Inbox fixture"}, {"add", "brain"}, {"commit", "--quiet", "-m", "seed canonical review targets"}} {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {
