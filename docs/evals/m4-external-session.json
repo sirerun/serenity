@@ -1,0 +1,97 @@
+{
+  "date": "2026-09-08",
+  "build": "a258f1da5d9e42cf453bd177eb04757487f1810f",
+  "client_version": "2.1.263",
+  "session_id": "cca129c5-afd4-4b3f-8fb7-270bb6ccc9be",
+  "successful_recall_calls": 3,
+  "tool_transcript": [
+    {
+      "type": "tool_use",
+      "id": "toolu_01G6zpnWx2TKiHfdLJ8TEZTh",
+      "name": "mcp__serenity__recall",
+      "input": {
+        "query": "sprint-planning cutover approach Ava",
+        "limit": 25,
+        "budget_tokens": 3000
+      },
+      "caller": {
+        "type": "direct"
+      }
+    },
+    {
+      "tool_use_id": "toolu_01G6zpnWx2TKiHfdLJ8TEZTh",
+      "type": "tool_result",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"protocol_version\":1,\"facts\":[{\"id\":3840220520147742,\"fact_id\":\"d7ce240edfeb9933e18c984ee9c417c28ef56531be50d12119a41a5aa276fdc7\",\"fact\":\"Ava's email after the sprint planning session stated she'd rather use feature flags than a hard cutover.\",\"kind\":\"fact\",\"entity_slug\":\"ava\",\"provenance\":\"evals/corpora/ava/labels/ava-said-07.yaml\",\"valid_until\":null,\"visibility\":\"world\"},{\"id\":7673890208911007,\"fact_id\":\"7f041ab903e036d7fa8597f3824a7be12c608876f803377d7a9810853f6d98c1\",\"fact\":\"In the sprint planning session, Ava said she'd rather use feature flags than a hard cutover.\",\"kind\":\"fact\",\"entity_slug\":\"ava\",\"provenance\":\"evals/corpora/ava/labels/ava-said-05.yaml\",\"valid_until\":null,\"visibility\":\"world\"}],\"total\":2,\"results\":[],\"search_degraded\":\"no embedding provider configured; results are keyword-only\",\"budget_tokens\":3000,\"budget_used\":49,\"dropped_count\":0}"
+        }
+      ]
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_01SyFBibm7LGkxRPVJvh6Dwr",
+      "name": "mcp__serenity__entity",
+      "input": {
+        "name": "Ava"
+      },
+      "caller": {
+        "type": "direct"
+      }
+    },
+    {
+      "type": "tool_result",
+      "content": "Claude requested permissions to use mcp__serenity__entity, but you haven't granted it yet.",
+      "is_error": true,
+      "tool_use_id": "toolu_01SyFBibm7LGkxRPVJvh6Dwr"
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_017pmcWb7cSuGkMBjwtuSbtT",
+      "name": "mcp__serenity__recall",
+      "input": {
+        "entity": "ava",
+        "limit": 50,
+        "budget_tokens": 3000
+      },
+      "caller": {
+        "type": "direct"
+      }
+    },
+    {
+      "tool_use_id": "toolu_017pmcWb7cSuGkMBjwtuSbtT",
+      "type": "tool_result",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"protocol_version\":1,\"facts\":[{\"id\":3840220520147742,\"fact_id\":\"d7ce240edfeb9933e18c984ee9c417c28ef56531be50d12119a41a5aa276fdc7\",\"fact\":\"Ava's email after the sprint planning session stated she'd rather use feature flags than a hard cutover.\",\"kind\":\"fact\",\"entity_slug\":\"ava\",\"provenance\":\"evals/corpora/ava/labels/ava-said-07.yaml\",\"valid_until\":null,\"visibility\":\"world\"},{\"id\":7673890208911007,\"fact_id\":\"7f041ab903e036d7fa8597f3824a7be12c608876f803377d7a9810853f6d98c1\",\"fact\":\"In the sprint planning session, Ava said she'd rather use feature flags than a hard cutover.\",\"kind\":\"fact\",\"entity_slug\":\"ava\",\"provenance\":\"evals/corpora/ava/labels/ava-said-05.yaml\",\"valid_until\":null,\"visibility\":\"world\"}],\"total\":2,\"budget_tokens\":3000,\"budget_used\":49,\"dropped_count\":0}"
+        }
+      ]
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_014ShemGW9EA1b551agrbyLw",
+      "name": "mcp__serenity__recall",
+      "input": {
+        "query": "cutover decision approved feature flags rollout",
+        "limit": 50,
+        "budget_tokens": 3000
+      },
+      "caller": {
+        "type": "direct"
+      }
+    },
+    {
+      "tool_use_id": "toolu_014ShemGW9EA1b551agrbyLw",
+      "type": "tool_result",
+      "content": [
+        {
+          "type": "text",
+          "text": "{\"protocol_version\":1,\"facts\":[{\"id\":3840220520147742,\"fact_id\":\"d7ce240edfeb9933e18c984ee9c417c28ef56531be50d12119a41a5aa276fdc7\",\"fact\":\"Ava's email after the sprint planning session stated she'd rather use feature flags than a hard cutover.\",\"kind\":\"fact\",\"entity_slug\":\"ava\",\"provenance\":\"evals/corpora/ava/labels/ava-said-07.yaml\",\"valid_until\":null,\"visibility\":\"world\"},{\"id\":7673890208911007,\"fact_id\":\"7f041ab903e036d7fa8597f3824a7be12c608876f803377d7a9810853f6d98c1\",\"fact\":\"In the sprint planning session, Ava said she'd rather use feature flags than a hard cutover.\",\"kind\":\"fact\",\"entity_slug\":\"ava\",\"provenance\":\"evals/corpora/ava/labels/ava-said-05.yaml\",\"valid_until\":null,\"visibility\":\"world\"}],\"total\":2,\"results\":[],\"search_degraded\":\"no embedding provider configured; results are keyword-only\",\"budget_tokens\":3000,\"budget_used\":49,\"dropped_count\":0}"
+        }
+      ]
+    }
+  ],
+  "answer": "**No decision was recorded \u2014 only a stated preference.**\n\nWhat the memory supports: Ava expressed a preference for feature flags over a hard cutover, twice \u2014 once in the sprint planning session itself, and again in a follow-up email afterward. There is nothing in the retrieved facts indicating that this preference was ratified, approved, or adopted as the team's plan. No fact names a decision-maker, an approval, or a cutover date.\n\n**Sources**\n\n1. `fact_id: 7f041ab903e036d7fa8597f3824a7be12c608876f803377d7a9810853f6d98c1`\n   provenance: `evals/corpora/ava/labels/ava-said-05.yaml`\n   > \"In the sprint planning session, Ava said she'd rather use feature flags than a hard cutover.\"\n\n2. `fact_id: d7ce240edfeb9933e18c984ee9c417c28ef56531be50d12119a41a5aa276fdc7`\n   provenance: `evals/corpora/ava/labels/ava-said-07.yaml`\n   > \"Ava's email after the sprint planning session stated she'd rather use feature flags than a hard cutover.\"\n\n**Caveats on the retrieval:** both facts are typed `kind: fact` and are the *only* two results \u2014 I ran three queries (keyword search on the topic, an entity-scoped pull on `ava`, and a search for approval/decision language) and all returned the same pair, `total: 2`. The search arm also reported `search_degraded: \"no embedding provider configured; results are keyword-only\"`, so a page recording a formal approval in different wording could exist and not surface. The two facts are also consistent restatements of the same position, not independent corroboration of an outcome \u2014 so the absence of an approval here is suggestive, not proof that none was made.",
+  "scope": "Two verbatim Ava corpus spans seeded through remember into a fresh throwaway brain; not a full-corpus ingestion test."
+}

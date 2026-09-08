@@ -4,6 +4,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-09-08 T4.17 / M4 exit complete: Claude Code 2.1.263 completed a real external MCP session with three successful recall calls and two exact Ava corpus citations. The prior spending-ceiling and endpoint-authentication evidence remains recorded in `docs/evals/m4-report.md`; the new tool transcript is `docs/evals/m4-external-session.json`. E4 is 21/21 complete; the T4.17 dependency gate on T5.1/T5.9 is satisfied. The 2026-09-07 login blocker below is historical and resolved.
+
 - 2026-09-07 T1.29 Close the gap to the recall floor for the ava extraction families still failing it, closing T1.29/T1.35 (`internal/extract/extract.go`, `PromptVersion` v3->v4) -- PR #179. **All 12 families named in T1.29's acc line now pass.** Starting scope was the 4 families T1.32/T1.33 left failing: `belongs_to_project`, `committed_to`, `prefers`, `said`. A 5th (`takes_medication`) came back into scope mid-task when a live re-run showed it newly failing -- the acc line names all 12, so this is not a unilateral scope expansion.
 
   Root-caused each via a fast disable-thinking diagnostic tool (real DGX `qwen3.8-27b` calls, per-span predicted-vs-golden against every held-out span, same method T1.28/T1.29/T1.32 used, just faster iteration -- not part of the acceptance gate itself, gitignored under `.claude/scratch/`): each family's recall gap concentrated in one specific phrasing cluster the model got wrong on every held-out instance, not a diffuse problem across the whole family. One gap (`belongs_to_project`'s second cluster, below) was invisible to that fast method entirely and was found only by a real thinking-on acceptance run.

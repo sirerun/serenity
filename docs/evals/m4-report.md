@@ -70,6 +70,62 @@ after the sweep.
 go test -race -count=1 ./internal/spend ./internal/server ./internal/server/mcp  PASS
 ```
 
-T4.17 remains open until a human logs Claude Code in and records the real
-external-session answer. The machine-side MCP, ceiling, and auth evidence
-above is complete.
+At the end of the 2026-09-07 run, T4.17 remained open pending the external
+session. The 2026-09-08 follow-up below completes that remaining clause.
+
+## External-session completion — 2026-09-08
+
+T4.17 is complete. David requested this verification; his existing Claude Code
+login was available. A fresh CLI was built from `a258f1da5d9e42cf453bd177eb04757487f1810f`
+(the unrelated uncommitted website changes do not affect the Go binary).
+Claude Code 2.1.263 ran a real external session against `serenity serve --stdio`
+in a fresh throwaway brain. Two original Ava corpus spans (`ava-said-05.yaml`
+and `ava-said-07.yaml`) were seeded verbatim through `remember`, with their
+repository paths as provenance. Neither the facts nor their IDs were supplied
+in the question.
+
+Invocation (paths abbreviated):
+
+```sh
+claude -p 'What did we decide about the sprint-planning cutover approach involving Ava? Use Serenity recall to retrieve the evidence. Answer only what the sources support; distinguish a stated preference from a formally approved decision. Include two source citations with their exact fact_id values and provenance paths from the tool response.' \
+  --strict-mcp-config --mcp-config <client>/mcp.json \
+  --setting-sources '' --tools '' --allowedTools mcp__serenity__recall \
+  --output-format json
+```
+
+The MCP configuration names the freshly built Serenity executable with
+`-C <throwaway-brain> serve --stdio`. Built-in tools were disabled and only
+Serenity recall was preapproved. Session `cca129c5-afd4-4b3f-8fb7-270bb6ccc9be`
+completed with three successful recall calls, each returning the two seeded
+facts. One attempted `entity` call was permission-denied; it was not needed
+for the answer. Keyword queries reported degraded search because no embedding
+provider was configured; entity recall returned both facts directly.
+
+Transcript excerpt:
+
+> No decision was recorded — only a stated preference.
+>
+> What the memory supports: Ava expressed a preference for feature flags over
+> a hard cutover, twice — once in the sprint planning session itself, and
+> again in a follow-up email afterward.
+
+Citations in the actual answer:
+
+- `7f041ab903e036d7fa8597f3824a7be12c608876f803377d7a9810853f6d98c1` —
+  `evals/corpora/ava/labels/ava-said-05.yaml`
+- `d7ce240edfeb9933e18c984ee9c417c28ef56531be50d12119a41a5aa276fdc7` —
+  `evals/corpora/ava/labels/ava-said-07.yaml`
+
+The answer also explicitly limits the absence-of-approval conclusion to the
+retrieved evidence. These are two source entries restating one preference,
+not evidence of two independent decisions.
+
+Verification: one external session completed; three successful recall tool
+responses inspected; two of two cited IDs and provenance paths matched those
+responses; two of two returned texts matched the original corpus spans.
+The actual tool transcript and full answer are preserved in
+[m4-external-session.json](m4-external-session.json), without authentication
+material or model reasoning. This verifies external MCP retrieval and cited
+answering over a two-entry Ava fixture, not whole-corpus extraction or semantic
+search. The spending-ceiling item and full registered-endpoint authentication
+sweep remain the separately dated evidence above; they were not rerun here.
