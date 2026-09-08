@@ -30,7 +30,7 @@ Ajent rollback belongs to David in that repository: use the reviewed deployment 
 ## Next acceptance gates
 
 - [x] T7.1: inventory live URLs, exact known deployment/asset revisions, owners, rollback routes, and Ajent PR classifications.
-- [ ] T7.2: document and verify `install_cta`, `docs_open`, `chat_started`, `chat_answered`, `chat_failed`; browser coverage and production event observation, excluding prompts and secrets.
+- [x] T7.2: documented browser-local adoption events, browser CI and production event observation; receipt below.
 - [x] T7.3: health/CORS/outage/rate-limit CI coverage and deployed error/latency signals; receipt below.
 - [ ] T7.4: reviewed launch content packet with canonical installation walkthrough; publication remains a separate action.
 - [x] T7.5: HTTPS enforced; authoritative DNS, certificate, redirect and Pages API evidence recorded below.
@@ -73,3 +73,28 @@ All four acceptance checks passed. No DNS record or site source changed. David o
 - CloudWatch extracted actual `ChatLatencyMs` data at 13:09 UTC: **2 samples, maximum 5,786.077 ms**. This verifies the log-to-metric wiring beyond merely observing an `OK` alarm. The two POST records were the foreign-origin rejection and the successful public question, not two visitors.
 
 The runbook records five-minute thresholds, owner checks, missing-data limits and rollback. Operational counters are not adoption conversion metrics. Provider/storage faults and rate-limit rejection are verified in CI; deliberate live failure injection is not claimed.
+
+
+## T7.2 adoption events completion — 2026-09-08 13:20 UTC
+
+[PR #200](https://github.com/sirerun/serenity/pull/200) passed all 12 core checks plus Website verification/browser coverage. [Website deployment 34231099162](https://github.com/sirerun/serenity/actions/runs/34231099162) succeeded at revision `938f7c32d423f1c5f72e8c12a28fdba4d747dfa1`, superseding the Pages inventory above.
+
+The browser suite executed **28 passing cases, zero skips**: seven distinct flows at 390/1024/1440/2880 pixels. CI independently checks case/project membership and uploads screenshots/results. A URL-leaking event mutation failed the privacy test; a zero-case result failed the evidence gate. Restored code/report passed. A long-answer laptop focus issue found by the suite was repaired; visible copy matched the prior revision on all 16 pages and CSS styling values were unchanged.
+
+A fresh mobile Chromium session on the deployed HTTPS site observed:
+
+```json
+[
+  {"version":1,"name":"install_cta","page":"home"},
+  {"version":1,"name":"docs_open","page":"install"},
+  {"version":1,"name":"docs_open","page":"docs"},
+  {"version":1,"name":"chat_started","page":"chat"},
+  {"version":1,"name":"chat_answered","page":"chat","outcome":"answer"},
+  {"version":1,"name":"chat_started","page":"chat"},
+  {"version":1,"name":"chat_failed","page":"chat","outcome":"unavailable"}
+]
+```
+
+The first question received a real generated, cited public-documentation answer. The final failure used a **browser-only 503 interception** and displayed Try again; no production outage was induced. The transcript above contains fixed event fields only, not prompt or answer text.
+
+[The event contract](adoption-events.md) is browser-local with no transport, persistent storage, identifiers or cross-page visitor tracking. It proves event behavior, **not a conversion baseline**. The human launch decision must retain that limitation. Application operational metrics remain separate from adoption counts.
