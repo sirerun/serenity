@@ -14,12 +14,16 @@ import (
 // refused at each boundary; os.Root also confines any subsequent resolution.
 // Reads never create directories. A missing read directory remains NotExist.
 func (s *Store) openEntries(create bool) (*os.Root, error) {
-	root, err := os.OpenRoot(s.root)
+	return openDirectories(s.root, []string{".dira", ".dira/entries"}, create)
+}
+
+func openDirectories(brain string, paths []string, create bool) (*os.Root, error) {
+	root, err := os.OpenRoot(brain)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = root.Close() }()
-	for _, path := range []string{".dira", ".dira/entries"} {
+	for _, path := range paths {
 		info, err := root.Lstat(path)
 		if os.IsNotExist(err) && create {
 			if err := root.Mkdir(path, 0755); err != nil && !os.IsExist(err) {
@@ -46,7 +50,7 @@ func (s *Store) openEntries(create bool) (*os.Root, error) {
 			return nil, fmt.Errorf("direction: unsafe ledger directory %s", path)
 		}
 	}
-	return root.OpenRoot(".dira/entries")
+	return root.OpenRoot(paths[len(paths)-1])
 }
 
 func entryName(id string) (string, error) {
@@ -96,6 +100,10 @@ func readEntry(root *os.Root, name string) ([]byte, os.FileInfo, error) {
 // exclusive create; rename is an atomic replacement. The temporary name is not
 // a ledger entry and is ignored by List if a process dies before cleanup.
 func writeEntry(root *os.Root, name string, raw []byte, exclusive bool) error {
+	return writeLedgerFile(root, name, raw, exclusive, 0644)
+}
+
+func writeLedgerFile(root *os.Root, name string, raw []byte, exclusive bool, defaultMode os.FileMode) error {
 	info, err := regularEntry(root, name, true)
 	if err != nil {
 		return err
@@ -103,7 +111,7 @@ func writeEntry(root *os.Root, name string, raw []byte, exclusive bool) error {
 	if exclusive && info != nil {
 		return fmt.Errorf("%w: %s", ledger.ErrExists, name)
 	}
-	mode := os.FileMode(0644)
+	mode := defaultMode
 	if info != nil {
 		mode = info.Mode().Perm()
 	}
