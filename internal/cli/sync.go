@@ -268,6 +268,7 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 	iw := ingest.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg)
 
 	var written, skipped, distilled, rejected, indexOnlySkipped int
+	var ready []domain.Observation
 	for _, src := range sources {
 		if src.Kind == store.SourceKindMemoryFact || src.Kind == store.SourceKindMemoryExpiry {
 			continue
@@ -309,13 +310,13 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 			continue
 		}
 
-		stats, err := iw.Write(result.Ready)
-		if err != nil {
-			return fmt.Errorf("extract: write claims for source %s: %w", src.SHA256, err)
-		}
-		written += stats.Written
-		skipped += stats.Skipped
+		ready = append(ready, result.Ready...)
 	}
+	stats, err := iw.Write(ready)
+	if err != nil {
+		return fmt.Errorf("extract: publish observation batch: %w", err)
+	}
+	written, skipped = stats.Written, stats.Skipped
 
 	committed, err := writer.Flush(q, root)
 	if err != nil {

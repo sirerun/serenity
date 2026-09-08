@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -295,5 +296,89 @@ func TestExtractSkipsIndexOnlySourceWithoutAborting(t *testing.T) {
 	// indexing), so this test does not assert on that table.
 	if stats["claims"] != 1 {
 		t.Fatalf("claims = %d, want exactly 1 -- the index_only source must never be extracted", stats["claims"])
+	}
+}
+
+func TestExtractMultipleSourcesPreservesExistingHumanPage(t *testing.T) {
+	ctx := context.Background()
+	root := initBrainRepo(t)
+	configureGitIdentity(t, root)
+	server := fakeExtractionServer(t)
+	t.Setenv("OPENAI_BASE_URL", server.URL)
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("OPENROUTER_API_KEY", "")
+	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Models.Provider = ""
+	cfg.Models.Extraction = "test-extract@v1"
+	cfg.Models.Embedding = "none@v0"
+	if err := cfg.Save(filepath.Join(root, config.FileName)); err != nil {
+		t.Fatal(err)
+	}
+	fw := store.NewFenceWriter(root)
+	page := store.NewEntityPage(domain.Entity{Type: "topic", Slug: "acme"})
+	page.Claims = []domain.Claim{{ID: "prior-claim", SubjectSlug: "acme", Predicate: "works_at", Family: "works_at", Object: "Acme Corp", State: domain.StateActive, Confidence: .9}}
+	path, err := fw.WriteEntity(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("\nHuman explanation outside the managed fences.\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ss := store.NewSourceStore(root)
+	for _, text := range []string{"First source: Alice works at Acme Corp.", "Second source: Alice works at Acme Corp."} {
+		if _, err := ss.Write([]byte(text), domain.Source{Kind: "file", URI: "fixture:" + text, OccurredAt: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{{"add", "."}, {"commit", "--quiet", "-m", "canonical sources and human page"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if raw, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("fixture commit: %v %s", err, raw)
+		}
+	}
+	var out bytes.Buffer
+	if err := runExtract(ctx, root, &out); err != nil {
+		t.Fatalf("extract: %v %s", err, out.String())
+	}
+	page, err = fw.ParseEntity(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Claims) != 3 {
+		t.Fatalf("claims=%d, want prior plus two sources", len(page.Claims))
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "Human explanation outside the managed fences.") {
+		t.Fatal("extraction removed human prose")
+	}
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = root
+	if raw, err := cmd.CombinedOutput(); err != nil || len(raw) != 0 {
+		t.Fatalf("extraction left uncommitted output: %v %s", err, raw)
+	}
+	if err := runExtract(ctx, root, &out); err != nil {
+		t.Fatal(err)
+	}
+	page, err = fw.ParseEntity(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Claims) != 3 {
+		t.Fatalf("repeat duplicated claims: %d", len(page.Claims))
 	}
 }
