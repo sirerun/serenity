@@ -47,10 +47,46 @@ publication preflights dependencies but is not a multi-file filesystem transacti
 If source publication commits and queue staging then fails, the command reports
 that boundary and asks for a rerun; unchanged queue inputs are deduplicated.
 
-Low-confidence observations still need the separate retention and review work in
-T11.3. Until that repair lands, the extraction count alone is not evidence that a
-low-confidence candidate has been saved to the inbox. The verification fixtures
-use deterministic local HTTP responses and invented data, not live model-quality
-measurements. The synthetic 10K timing harness measures pipeline components and
-writes its golden observations; it does not assert that the CLI would automatically
-accept every potentially conflicting observation in that corpus.
+The verification fixtures use deterministic local HTTP responses and invented
+data, not live model-quality measurements. The synthetic 10K timing harness
+measures pipeline components and writes its golden observations; it does not
+assert that the CLI would automatically accept every potentially conflicting
+observation in that corpus.
+
+## Low-confidence observations
+
+Observations below confidence 0.6 are retained as distill inbox items. Their
+original source digest, span, pinned model, confidence and text remain unchanged
+through review. Repeated extraction keeps one item and its decision. Even a later
+model response above the threshold cannot bypass the retained review.
+
+In `serenity inbox`, a low-confidence item displays its assertion and source
+provenance. `d` defers and `r` rejects it without changing canonical claims. Space
+leaves it pending and explains that a typed human assertion is required.
+
+To publish a fact you have personally verified:
+
+1. Press `e`, type the value you assert, and press Enter.
+2. Read the proposed subject, predicate and value. If a canonical prior would be
+   superseded, its ID and value are shown before confirmation.
+3. Type `y` and Enter to record the decision and commit its canonical effect.
+   Any other response cancels and leaves the item pending.
+
+This creates an explicit human assertion at confidence 1, attributed to the
+recorded human actor. It does not relabel the original model response as certain.
+The new claim links back to the distill item; the queue retains the original
+machine provenance. A dirty, malformed or ambiguous target, or multiple conflicting
+priors, requires resolution before the decision can be recorded. A later change
+to the confirmed prior is preserved rather than overwritten.
+
+Publication uses the same durable receipt and recovery path as reconciliation.
+If the commit fails or the process stops, the accepted decision remains visible
+in `inbox --unapplied`; retry with `inbox --apply ID` after resolving the reported
+problem. Repeating a completed application does not create another claim or commit.
+This repair covers extraction-produced distill items, not arbitrary captured text
+or other distill producers. HTTP disposition calls still record decisions; the
+supported canonical approval path here is the local CLI.
+
+Keep the runtime database and publication receipts when recovering an interrupted
+review. Rebuilding the search index preserves inbox rows; deleting `.serenity`
+removes runtime review history and is not an inbox-recovery procedure.

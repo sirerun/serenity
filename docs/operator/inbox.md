@@ -70,3 +70,9 @@ versions' premature `AppliedClaimID` markers are separate surfaces. Receipts do
 not provide a multi-file filesystem transaction against arbitrary simultaneous
 human writes; byte checks reject observed intervening changes, and each file is
 replaced atomically.
+
+
+Extraction-produced low-confidence items have an explicit typed-assertion and
+confirmation flow. They share `--unapplied` / `--apply ID` recovery after a confirmed
+human decision. See [extraction review](extraction.md#low-confidence-observations)
+for provenance, cancellation and replacement behavior.
