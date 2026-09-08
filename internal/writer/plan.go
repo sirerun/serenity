@@ -39,6 +39,20 @@ func SnapshotFiles(root string, paths []string) (map[string][]byte, error) {
 // The caller must publish the returned plan with PublishFiles; approval flows
 // additionally persist it first so an interrupted application can be resumed.
 func PlanFiles(root string, snapshot map[string][]byte, build func(preview string) error) ([]FileChange, error) {
+	return planFiles(root, snapshot, "", nil, build)
+}
+
+// PlanReviewedFiles permits exactly one reviewed entity page to be Git-dirty.
+// Its bytes must match the captured human edit; all other dependencies stay clean.
+// An unchanged page remains in the plan so its eventual commit is guarded.
+func PlanReviewedFiles(root string, snapshot map[string][]byte, path string, human []byte, build func(string) error) ([]FileChange, error) {
+	if !strings.HasPrefix(path, "brain/entities/") || human == nil || !sameFileBytes(snapshot[path], human) {
+		return nil, fmt.Errorf("writer: reviewed page does not match snapshot")
+	}
+	return planFiles(root, snapshot, path, human, build)
+}
+
+func planFiles(root string, snapshot map[string][]byte, reviewed string, human []byte, build func(string) error) ([]FileChange, error) {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, err
@@ -127,11 +141,11 @@ func PlanFiles(root string, snapshot map[string][]byte, build func(preview strin
 		}
 	}
 	sort.Strings(names)
-	if err := CheckSnapshot(root, snapshot); err != nil {
+	if err := checkSnapshot(root, snapshot, reviewed, human); err != nil {
 		return nil, err
 	}
 
-	if !changed {
+	if !changed && reviewed == "" {
 		return nil, nil
 	}
 	changes := make([]FileChange, 0, len(names))
@@ -144,6 +158,10 @@ func PlanFiles(root string, snapshot map[string][]byte, build func(preview strin
 // CheckSnapshot requires unchanged bytes and clean Git state for every canonical
 // dependency. It also guards staging decisions against an uncommitted prior.
 func CheckSnapshot(root string, snapshot map[string][]byte) error {
+	return checkSnapshot(root, snapshot, "", nil)
+}
+
+func checkSnapshot(root string, snapshot map[string][]byte, reviewed string, human []byte) error {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
 		return err
@@ -167,6 +185,9 @@ func CheckSnapshot(root string, snapshot map[string][]byte) error {
 		out, err := cmd.Output()
 		if err != nil {
 			return fmt.Errorf("writer: cannot verify canonical Git state: %w", err)
+		}
+		if path == reviewed && sameFileBytes(actual, human) {
+			continue
 		}
 		if len(bytes.TrimSpace(out)) != 0 {
 			return fmt.Errorf("%w: %s", ErrDirtyTree, path)
