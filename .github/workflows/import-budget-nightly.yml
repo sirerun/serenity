@@ -30,6 +30,26 @@ jobs:
         with:
           go-version-file: code/go.mod
           cache-dependency-path: code/go.sum
+      - name: Record runner environment for timing diagnosis
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python3 - <<'PYTHON'
+          import json, os, pathlib, subprocess
+          def output(*args):
+              return subprocess.check_output(args, text=True).strip()
+          report = {
+              "go_version": output("go", "version"),
+              "git_version": output("git", "--version"),
+              "cpu": json.loads(output("lscpu", "--json")),
+              "image_os": os.environ.get("ImageOS", ""),
+              "image_version": os.environ.get("ImageVersion", ""),
+              "gomaxprocs": os.environ["GOMAXPROCS"],
+              "benchmark_environment": os.environ["SERENITY_IMPORT_BUDGET_ENVIRONMENT"],
+          }
+          pathlib.Path("artifacts/environment.json").write_text(json.dumps(report, indent=2) + "\n")
+          PYTHON
       - name: Read previous recorded run
         working-directory: code
         shell: bash
