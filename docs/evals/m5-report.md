@@ -53,6 +53,14 @@ cases fail. Corrupting an extraction cache key makes the smoke run fail with
 race suites pass 21 test/subtest cases, with one explicit 10K test skip in the
 ordinary suite; the dedicated 10K job above executes that test separately.
 
+### Subsequent normal comparison
+
+[The second normal nightly run](https://github.com/sirerun/serenity/actions/runs/34225863225)
+loaded the previous accepted report and passed at 180.023 measured seconds
+(+0.554%), with the same complete counts and zero model calls. Artifact upload
+and baseline publication both succeeded. This verifies the normal comparison
+path as well as first-run bootstrap and deliberate rejection.
+
 ### Local receipt
 
 A committed-harness run on macOS ARM64 with three Go processors measured 341.323
