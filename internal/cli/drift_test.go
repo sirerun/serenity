@@ -385,6 +385,7 @@ func TestDriftInboxDisposeMatchesDispose(t *testing.T) {
 
 	item1 := seedReconcileItem(t, dispStore, ctx, driftNow, "acme-corp", "works_at", "acme", "initech", "")
 	item2 := seedReconcileItem(t, dispStore, ctx, driftNow, "acme-corp", "works_at", "acme", "initech", "")
+	seedInboxCanonical(t, root, item1)
 
 	// CLI path: feed runInteractive a single space keystroke (accept the
 	// row under the cursor) via a synthetic io.Reader, the same
@@ -450,6 +451,13 @@ func TestDriftInboxDisposeMatchesDispose(t *testing.T) {
 	// genuine, disclosed asymmetry between the two entrypoints, not
 	// something either side's mapping could ever make equal, so it is
 	// cleared here rather than silently left to fail the comparison.
+	// The local-owner CLI now also publishes canonical claims. This protocol
+	// fixture deliberately registers only the decision store, so compare the
+	// shared decision contract while asserting that distinct effect explicitly.
+	if cliResult.AppliedClaimID == "" || httpResult.AppliedClaimID != "" {
+		t.Fatalf("unexpected publication boundary: CLI=%q HTTP=%q", cliResult.AppliedClaimID, httpResult.AppliedClaimID)
+	}
+	cliResult.AppliedClaimID = ""
 	cliResult.ID, httpResult.ID = "", ""
 	cliResult.IdempotencyKey, httpResult.IdempotencyKey = "", ""
 	if !reflect.DeepEqual(cliResult, httpResult) {

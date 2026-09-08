@@ -54,29 +54,48 @@ import (
 // than silently reinterpreted (the same convention Apply's own
 // subject/predicate mismatch check uses).
 func (w *Writer) ApplyDisposedReconcile(ctx context.Context, dispStore *disposition.Store, item disposition.Item, now time.Time) (Result, error) {
+	a, b, err := acceptedReconcileClaims(item, now)
+	if err != nil {
+		return Result{}, err
+	}
+	res, err := w.Apply(a, b)
+	if err != nil {
+		return Result{}, err
+	}
+
+	if err := dispStore.RecordResultClaimID(ctx, item.ID, a.ID, now); err != nil {
+		return Result{}, fmt.Errorf("supersede: apply disposed reconcile: record result claim id: %w", err)
+	}
+	return res, nil
+}
+
+func acceptedReconcileClaims(item disposition.Item, now time.Time) (domain.Claim, domain.Claim, error) {
 	if item.Kind != disposition.KindReconcile {
-		return Result{}, fmt.Errorf("supersede: apply disposed reconcile: item %s is kind %q, not %q", item.ID, item.Kind, disposition.KindReconcile)
+		return domain.Claim{}, domain.Claim{}, fmt.Errorf("supersede: apply disposed reconcile: item %s is kind %q, not %q", item.ID, item.Kind, disposition.KindReconcile)
 	}
 	if item.State != disposition.StateDisposed || (item.Verdict != disposition.VerdictAccept && item.Verdict != disposition.VerdictEditAccept) {
-		return Result{}, fmt.Errorf("supersede: apply disposed reconcile: item %s is state=%q verdict=%q, want disposed with accept or edit_accept",
+		return domain.Claim{}, domain.Claim{}, fmt.Errorf("supersede: apply disposed reconcile: item %s is state=%q verdict=%q, want disposed with accept or edit_accept",
 			item.ID, item.State, item.Verdict)
 	}
 
 	var payload reconcile.ReconcilePayload
 	if err := json.Unmarshal(item.Payload, &payload); err != nil {
-		return Result{}, fmt.Errorf("supersede: apply disposed reconcile: decode payload: %w", err)
+		return domain.Claim{}, domain.Claim{}, fmt.Errorf("supersede: apply disposed reconcile: decode payload: %w", err)
 	}
 	a := payload.A
 
 	if item.Verdict == disposition.VerdictEditAccept {
 		var edited domain.Claim
 		if err := json.Unmarshal(item.EditedPayload, &edited); err != nil {
-			return Result{}, fmt.Errorf("supersede: apply disposed reconcile: decode edited payload: %w", err)
+			return domain.Claim{}, domain.Claim{}, fmt.Errorf("supersede: apply disposed reconcile: decode edited payload: %w", err)
 		}
 		edited.Provenance.SourceSHA256 = ""
 		edited.Provenance.Span = ""
 		edited.Provenance.Model = ""
-		edited.Provenance.ObservedAt = now.UTC()
+		edited.Provenance.ObservedAt = item.DisposedAt.UTC()
+		if item.DisposedAt.IsZero() {
+			edited.Provenance.ObservedAt = now.UTC()
+		}
 		a = edited
 	}
 	if item.Actor != "" {
@@ -89,13 +108,5 @@ func (w *Writer) ApplyDisposedReconcile(ctx context.Context, dispStore *disposit
 	a.ObjectKey = store.NormalizeKey(a.Object)
 	a.ID = store.DerivedID(a.SubjectSlug, a.Predicate, a.ObjectKey, a.ValidFrom, a.Provenance.SourceSHA256, store.DefaultIDWidth)
 
-	res, err := w.Apply(a, payload.B)
-	if err != nil {
-		return Result{}, err
-	}
-
-	if err := dispStore.RecordResultClaimID(ctx, item.ID, a.ID, now); err != nil {
-		return Result{}, fmt.Errorf("supersede: apply disposed reconcile: record result claim id: %w", err)
-	}
-	return res, nil
+	return a, payload.B, nil
 }

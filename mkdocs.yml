@@ -22,6 +22,7 @@ nav:
       - Connectors: operator/connect.md
       - Scheduling: operator/scheduling.md
       - Import gbrain: operator/gbrain-import.md
+      - Inbox recovery: operator/inbox.md
       - Conformance: operator/conformance.md
       - Threat model: operator/threat-model.md
   - Connectors:

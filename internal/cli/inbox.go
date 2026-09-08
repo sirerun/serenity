@@ -55,6 +55,8 @@ import (
 func newInboxCmd() *cobra.Command {
 	var bulkDefer string
 	var parked bool
+	var unapplied bool
+	var applyID string
 	cmd := &cobra.Command{
 		Use:   "inbox",
 		Short: "Review the DISPOSITION queue: j/k navigate, space/d/r dispose, grouped items dispose together",
@@ -62,26 +64,33 @@ func newInboxCmd() *cobra.Command {
 			"0001 section 8.2). With no flags it drives an interactive j/k/space\n" +
 			"loop over every pending or deferred item, oldest first, grouped by\n" +
 			"GroupID so a group's members are reviewed and disposed together.\n" +
+			"Accepted reconciliation claims are committed before moving on.\n" +
+			"Use --unapplied to find unfinished publications and --apply <id> to retry.\n" +
 			"--bulk-defer and --parked are non-interactive one-shot modes.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runInbox(cmd.Context(), flagRoot, cmd.InOrStdin(), cmd.OutOrStdout(),
-				inboxOptions{BulkDefer: bulkDefer, Parked: parked}, time.Now())
+				inboxOptions{BulkDefer: bulkDefer, Parked: parked, Unapplied: unapplied, ApplyID: applyID}, time.Now())
 		},
 	}
 	cmd.Flags().StringVar(&bulkDefer, "bulk-defer", "",
 		`non-interactively defer every pending/deferred item matching filter (only "family=<value>" is supported)`)
 	cmd.Flags().BoolVar(&parked, "parked", false, "list parked items only -- read-only, no interactive review")
+	cmd.Flags().BoolVar(&unapplied, "unapplied", false, "list accepted reconciliation decisions awaiting canonical publication")
+	cmd.Flags().StringVar(&applyID, "apply", "", "retry canonical publication of an already accepted reconciliation item")
+	cmd.MarkFlagsMutuallyExclusive("bulk-defer", "parked", "unapplied", "apply")
 	return cmd
 }
 
 type inboxOptions struct {
 	BulkDefer string
 	Parked    bool
+	Unapplied bool
+	ApplyID   string
 }
 
 // runInbox opens root's derived index (creating it if needed, same as
-// runCapture/runStatus) and dispatches to one of the three modes. now is
+// runCapture/runStatus) and dispatches to interactive review or a one-shot mode. now is
 // injected -- the same single-snapshot convention runCapture/runStatus and
 // internal/reconcile/decay.go's Sweep already use -- rather than read live
 // per dispose call: a review session's disposals sharing one timestamp is
@@ -89,7 +98,7 @@ type inboxOptions struct {
 // depends on sub-session dispose-time precision -- the expiry sweeper
 // T2.6 built operates on day-granularity thresholds), not a new gap this
 // task introduces.
-func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opts inboxOptions, now time.Time) error {
+func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opts inboxOptions, now time.Time) (resultErr error) {
 	cfg, err := config.Load(filepath.Join(root, config.FileName))
 	if err != nil {
 		return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
@@ -106,25 +115,46 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 		return runBulkDefer(ctx, dispStore, opts.BulkDefer, currentActor(), out, now)
 	case opts.Parked:
 		return runListParked(ctx, dispStore, out)
+	case opts.Unapplied:
+		return runListUnapplied(ctx, dispStore, out)
 	default:
 		q := writer.NewQueue(nil)
 		defer q.Close()
-		sw := supersede.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg)
-		// dirStore shares q with sw: a Queue is subsystem-agnostic (any
-		// Path+Render job), so a decompose accept's .dira write and an
-		// edit_accept's brain-repo write land in the same session-ending
-		// Flush below, exactly like the "one commit per review session"
-		// comment already promises for edit_accept alone.
+		sw := &inboxPublisher{writer: supersede.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg)}
+		defer func() {
+			if !sw.published {
+				return
+			}
+			if err := rebuildTimed(ctx, root, cfg, eng); err != nil {
+				resultErr = errors.Join(resultErr, fmt.Errorf("inbox: canonical changes committed but index refresh failed; run serenity sync: %w", err))
+				return
+			}
+			_, _ = fmt.Fprintln(out, "inbox: refreshed derived index; run serenity extract to regenerate embeddings")
+		}()
+		// Direction writes use the session queue; reconciliation commits each
+		// durable publication independently before reviewing another item.
 		dirStore := direction.NewStore(root, q)
+		if opts.ApplyID != "" {
+			item, err := dispStore.Get(ctx, opts.ApplyID)
+			if err != nil {
+				return err
+			}
+			id, err := sw.ApplyAndCommitReconcile(ctx, dispStore, item, now)
+			if err != nil {
+				return fmt.Errorf("inbox: publication incomplete for %s: %w; resolve the target and retry with inbox --apply %s", item.ID, err, item.ID)
+			}
+			_, _ = fmt.Fprintf(out, "applied %s -> claim %s committed to brain repo\n", item.ID, id)
+			return nil
+		}
+		if err := runListUnapplied(ctx, dispStore, out); err != nil {
+			return err
+		}
+
 		if err := runInteractive(ctx, dispStore, sw, dirStore, in, out, currentActor(), now); err != nil {
 			return err
 		}
-		// One commit per review session (RFC 0001 section 7.7's Flush --
-		// "commits every path the queue has written since the last
-		// Flush"), not one per write-through: batching every write-through
-		// this session made (edit_accept, T2.7; a decompose accept, T3.11)
-		// into a single commit is Flush's own intended shape, the same one
-		// internal/writer's own tests exercise.
+		// Reconciliation decisions already committed through their publication
+		// receipts. Flush the remaining direction writes for this review session.
 		committed, ferr := writer.Flush(q, root)
 		if ferr != nil {
 			return fmt.Errorf("inbox: flush: %w", ferr)
@@ -134,6 +164,24 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 		}
 		return nil
 	}
+}
+
+// reconcilePublisher separates interactive review from publication bookkeeping.
+type reconcilePublisher interface {
+	ApplyAndCommitReconcile(context.Context, *disposition.Store, disposition.Item, time.Time) (string, error)
+}
+
+type inboxPublisher struct {
+	writer    *supersede.Writer
+	published bool
+}
+
+func (p *inboxPublisher) ApplyAndCommitReconcile(ctx context.Context, ds *disposition.Store, item disposition.Item, now time.Time) (string, error) {
+	id, err := p.writer.ApplyAndCommitReconcile(ctx, ds, item, now)
+	if err == nil && item.AppliedClaimID == "" {
+		p.published = true
+	}
+	return id, err
 }
 
 // currentActor reports the local human identity used as Dispose's actor
@@ -259,8 +307,8 @@ func describeRow(row inboxRow) string {
 }
 
 // reviewableItems returns every pending or deferred item, oldest first --
-// parked and disposed items are excluded (parked review is --parked's own
-// read-only mode; disposed items are terminal, nothing left to review).
+// parked and disposed items are excluded. Recorded acceptances that still need
+// publication are listed separately by --unapplied.
 func reviewableItems(ctx context.Context, dispStore *disposition.Store) ([]disposition.Item, error) {
 	items, err := dispStore.List(ctx)
 	if err != nil {
@@ -275,47 +323,12 @@ func reviewableItems(ctx context.Context, dispStore *disposition.Store) ([]dispo
 	return out, nil
 }
 
-// runInteractive drives the j/k/space(/d/r/e) review loop, reading one raw
-// byte at a time from in so a scripted test can supply exactly the bytes
-// it wants to exercise with no line buffering in between (see newInboxCmd's
-// doc comment for the real-terminal raw-mode disclosure). Unrecognized
-// bytes (a stray newline from a hand-written test script, an unmapped
-// key) are silently ignored rather than erroring.
-//
-// space/d/r dispose the whole current row (accept/defer/reject) without
-// ever touching the brain repo, for every Kind except KindDecompose --
-// exactly T2.5's original behavior, unchanged for KindReconcile,
-// KindEntityMerge, KindTombstone, KindDirtyEdit, KindCompact, and every
-// other kind. e (edit_accept, T2.7) is the one key that writes through sw
-// to the canonical brain repo for a KindReconcile row (internal/supersede's
-// tier-dispatching Apply, T2.3), because unlike a plain accept an edited
-// value has no earlier write anywhere to fall back on. Wiring space's own
-// accept to also write through sw for those other kinds is a disclosed,
-// deliberately separate gap this package still does not close:
-// internal/supersede's Apply has had no real caller at all until T2.7, and
-// folding that wiring in silently would go beyond each task's own acc
-// line and this session's established practice of disclosing rather than
-// silently absorbing adjacent gaps.
-//
-// KindDecompose (T3.11) and KindPreceptDraft (T3.4) are the two
-// deliberate exceptions: a plain accept on either ALSO writes through
-// dirStore to .dira (direction.Store.ApplyDisposedDecompose /
-// ApplyDisposedPreceptDraft) -- not e, plain space. This is not the same
-// gap as the others, and closing it here is not scope creep: neither
-// proposal has a meaningful "accepted but not yet written" state the way
-// a reconcile item does (space there stops short of a write on purpose,
-// since a human may still want to edit first via e). A decompose child is
-// already the complete proposed content -- title plus rationale -- with
-// nothing left to edit, so accepting it and writing it are the same human
-// decision; deferring the write to some other, not-yet-built keystroke
-// would leave "confirming writes valid dira entries with the edge"
-// (T3.11's own acc line) permanently unmet by design, not merely unwired
-// yet. A precept draft is the same shape: title, body, and its "do not
-// adopt this" floor alternative are already the complete proposed
-// content (T3.4's own interview.Run synthesized all of it before
-// staging), so there is nothing an edit_accept would let a human change
-// that a plain accept does not already carry.
-func runInteractive(ctx context.Context, dispStore *disposition.Store, sw *supersede.Writer, dirStore *direction.Store, in io.Reader, out io.Writer, actor string, now time.Time) error {
+// runInteractive reviews staged decisions. Accept and edit_accept publish
+// reconciliation effects through a durable before/after receipt and commit each
+// accepted item before moving on. Other kinds retain their existing handlers.
+// A failed publication keeps its recorded decision discoverable via --unapplied;
+// --apply retries that decision without disposing it again.
+func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconcilePublisher, dirStore *direction.Store, in io.Reader, out io.Writer, actor string, now time.Time) error {
 	items, err := reviewableItems(ctx, dispStore)
 	if err != nil {
 		return err
@@ -416,19 +429,22 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw *super
 					return fmt.Errorf("inbox: dispose %s: %w", it.ID, err)
 				}
 				_, _ = fmt.Fprintf(out, "disposed %s verdict=%s\n", it.ID, res.Item.Verdict)
-				// KindDecompose (T3.11) and KindPreceptDraft (T3.4): a
-				// plain accept also writes through -- see
-				// runInteractive's own doc comment for why these two
-				// Kinds are the deliberate exception to "space never
-				// touches the brain repo". defer/reject never reach here.
+				// Publish only the recorded winning acceptance.
+
 				switch {
-				case verdict == disposition.VerdictAccept && it.Kind == disposition.KindDecompose:
+				case verdict == disposition.VerdictAccept && res.Item.Verdict == disposition.VerdictAccept && it.Kind == disposition.KindReconcile:
+					id, aerr := sw.ApplyAndCommitReconcile(ctx, dispStore, res.Item, now)
+					if aerr != nil {
+						return fmt.Errorf("inbox: publication incomplete for %s: %w; resolve the target and retry with inbox --apply %s", it.ID, aerr, it.ID)
+					}
+					_, _ = fmt.Fprintf(out, "applied %s -> claim %s committed to brain repo\n", it.ID, id)
+				case verdict == disposition.VerdictAccept && res.Item.Verdict == disposition.VerdictAccept && it.Kind == disposition.KindDecompose:
 					entry, aerr := dirStore.ApplyDisposedDecompose(ctx, res.Item, now)
 					if aerr != nil {
 						return fmt.Errorf("inbox: apply decompose %s: %w", it.ID, aerr)
 					}
 					_, _ = fmt.Fprintf(out, "applied %s -> %s written to ledger (%s)\n", it.ID, entry.ID, entry.Title)
-				case verdict == disposition.VerdictAccept && it.Kind == disposition.KindPreceptDraft:
+				case verdict == disposition.VerdictAccept && res.Item.Verdict == disposition.VerdictAccept && it.Kind == disposition.KindPreceptDraft:
 					entry, aerr := dirStore.ApplyDisposedPreceptDraft(ctx, res.Item, now)
 					if aerr != nil {
 						return fmt.Errorf("inbox: apply precept draft %s: %w", it.ID, aerr)
@@ -480,11 +496,11 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw *super
 				return fmt.Errorf("inbox: dispose %s: %w", it.ID, err)
 			}
 			_, _ = fmt.Fprintf(out, "disposed %s verdict=%s\n", it.ID, res.Item.Verdict)
-			applyRes, err := sw.ApplyDisposedReconcile(ctx, dispStore, res.Item, now)
+			claimID, err := sw.ApplyAndCommitReconcile(ctx, dispStore, res.Item, now)
 			if err != nil {
-				return fmt.Errorf("inbox: apply %s: %w", it.ID, err)
+				return fmt.Errorf("inbox: publication incomplete for %s: %w; resolve the target and retry with inbox --apply %s", it.ID, err, it.ID)
 			}
-			_, _ = fmt.Fprintf(out, "applied %s -> claim written to brain repo (tier=%s)\n", it.ID, applyRes.Tier)
+			_, _ = fmt.Fprintf(out, "applied %s -> claim written to brain repo and committed (id=%s)\n", it.ID, claimID)
 			if advance() {
 				return nil
 			}
@@ -549,6 +565,25 @@ func runListParked(ctx context.Context, dispStore *disposition.Store, out io.Wri
 	}
 	if n == 0 {
 		_, _ = fmt.Fprintln(out, "inbox: no parked items")
+	}
+	return nil
+}
+
+func runListUnapplied(ctx context.Context, dispStore *disposition.Store, out io.Writer) error {
+	items, err := dispStore.List(ctx)
+	if err != nil {
+		return err
+	}
+	count := 0
+	for _, item := range items {
+		if item.Kind != disposition.KindReconcile || item.State != disposition.StateDisposed || (item.Verdict != disposition.VerdictAccept && item.Verdict != disposition.VerdictEditAccept) || item.AppliedClaimID != "" {
+			continue
+		}
+		_, _ = fmt.Fprintf(out, "unapplied %s verdict=%s — retry: serenity inbox --apply %s\n", item.ID, item.Verdict, item.ID)
+		count++
+	}
+	if count > 0 {
+		_, _ = fmt.Fprintf(out, "inbox: %d accepted reconciliation decision(s) await publication\n", count)
 	}
 	return nil
 }

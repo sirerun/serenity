@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -95,6 +97,44 @@ func seedReconcileItem(t *testing.T, dispStore *disposition.Store, ctx context.C
 	return item
 }
 
+// seedInboxCanonical gives accepted proposals real, committed prior claims.
+func seedInboxCanonical(t *testing.T, root string, items ...disposition.Item) {
+	t.Helper()
+	fw, ss := store.NewFenceWriter(root), store.NewShardStore(root)
+	pages := map[string]*store.EntityPage{}
+	for _, item := range items {
+		var payload reconcile.ReconcilePayload
+		if err := json.Unmarshal(item.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		b := payload.B
+		page := pages[b.SubjectSlug]
+		if page == nil {
+			page = store.NewEntityPage(domain.Entity{Type: "topic", Slug: b.SubjectSlug})
+			pages[b.SubjectSlug] = page
+		}
+		if config.Default().TierOf(b.Family) == domain.TierShard {
+			if err := ss.Append(b); err != nil {
+				t.Fatal(err)
+			}
+			b.SourceRef = "shard"
+		}
+		page.Claims = append(page.Claims, b)
+	}
+	for _, page := range pages {
+		if _, err := fw.WriteEntity(page); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{{"add", "brain"}, {"commit", "--quiet", "-m", "seed canonical review targets"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("seed Git: %v: %s", err, out)
+		}
+	}
+}
+
 // TestInboxInteractiveDrivesJKSpaceRecordsOneDispositionPerGroupMember is
 // T2.5's acc line, word for word: "a scripted-TTY test drives J/K/space
 // and records one disposition per group member." Four reviewable rows are
@@ -110,8 +150,10 @@ func TestInboxInteractiveDrivesJKSpaceRecordsOneDispositionPerGroupMember(t *tes
 
 	untouchedBefore := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "alice-tan", "works_at", "acme-corp", "initech", "")
 	groupA := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "acme-corp", "has_balance", "$700", "$500", "g1")
-	groupB := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "acme-corp", "has_balance", "$900", "$500", "g1")
+	groupB := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "acme-corp", "has_balance", "$900", "$600", "g1")
 	untouchedAfter := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "bob-lee", "works_at", "globex", "initrode", "")
+
+	seedInboxCanonical(t, root, groupA, groupB)
 
 	var out bytes.Buffer
 	in := strings.NewReader("jjk ") // down to group row, down to last row, back up to group row, dispose
@@ -129,6 +171,9 @@ func TestInboxInteractiveDrivesJKSpaceRecordsOneDispositionPerGroupMember(t *tes
 		}
 		if got.Verdict != disposition.VerdictAccept {
 			t.Errorf("group member %s Verdict = %q, want accept", id, got.Verdict)
+		}
+		if got.AppliedClaimID == "" {
+			t.Fatalf("group member %s was disposed without publishing", id)
 		}
 		hist, err := dispStore.HistoryFor(ctx, id)
 		if err != nil {
@@ -164,6 +209,7 @@ func TestInboxInteractiveGroupOfOneRecordsExactlyOneDisposition(t *testing.T) {
 	ctx := context.Background()
 
 	item := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "carol-diaz", "works_at", "umbrella", "oscorp", "")
+	seedInboxCanonical(t, root, item)
 
 	var out bytes.Buffer
 	if err := runInteractive(ctx, dispStore, sw, dirStore, strings.NewReader(" "), &out, "human:test", inboxFixedNow); err != nil {
@@ -175,6 +221,30 @@ func TestInboxInteractiveGroupOfOneRecordsExactlyOneDisposition(t *testing.T) {
 	}
 	if got.State != disposition.StateDisposed || got.Verdict != disposition.VerdictAccept {
 		t.Fatalf("item State=%q Verdict=%q, want disposed/accept", got.State, got.Verdict)
+	}
+	if got.AppliedClaimID == "" {
+		t.Fatal("plain accept recorded a decision without publishing")
+	}
+	page, err := sw.Fence.ParseEntity(sw.Fence.PathFor("topic", "carol-diaz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := 0
+	for _, claim := range page.Claims {
+		if claim.State == domain.StateActive {
+			if claim.ID != got.AppliedClaimID || claim.Object != "umbrella" {
+				t.Fatalf("wrong active claim: %+v", claim)
+			}
+			active++
+		}
+	}
+	if active != 1 || len(page.Claims) != 2 {
+		t.Fatalf("canonical acceptance did not supersede B: %+v", page.Claims)
+	}
+	cmd := exec.Command("git", "status", "--porcelain", "--", "brain")
+	cmd.Dir = root
+	if raw, err := cmd.CombinedOutput(); err != nil || len(raw) != 0 {
+		t.Fatalf("accepted canonical claim not committed: %v %s", err, raw)
 	}
 	if n := strings.Count(out.String(), "disposed "); n != 1 {
 		t.Fatalf("expected exactly 1 \"disposed\" line, got %d:\n%s", n, out.String())
@@ -317,6 +387,7 @@ func TestInboxInteractiveEKeyEditAcceptWritesThroughToBrainRepo(t *testing.T) {
 	}
 
 	item := seedReconcileItem(t, dispStore, ctx, inboxFixedNow, "alice-tan", "works_at", "acme-corp", "initech", "")
+	seedInboxCanonical(t, root, item)
 
 	var out bytes.Buffer
 	// 'e', then the replacement object, then Enter -- runInteractive's
@@ -444,5 +515,139 @@ func TestInboxInteractiveSpaceAcceptWritesDecomposedChildIntoLedger(t *testing.T
 	}
 	if len(newTitles) != 2 {
 		t.Fatalf("ledger has %d new child entries, want 2 (got titles: %v)", len(newTitles), newTitles)
+	}
+}
+
+func TestInboxFailedEditRemainsDiscoverableAndRetryable(t *testing.T) {
+	ds, root := openInboxTestStore(t)
+	ctx := context.Background()
+	item := seedReconcileItem(t, ds, ctx, inboxFixedNow, "demo-person", "works_at", "New company", "Old company", "")
+	seedInboxCanonical(t, root, item)
+	path := store.NewFenceWriter(root).PathFor("topic", "demo-person")
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("\nHuman prose awaiting commit.\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	err = runInbox(ctx, root, strings.NewReader("eEdited company\n"), &out, inboxOptions{}, inboxFixedNow)
+	if err == nil || !strings.Contains(err.Error(), "inbox --apply "+item.ID) {
+		t.Fatalf("expected actionable error, got %v", err)
+	}
+	out.Reset()
+	if err := runInbox(ctx, root, strings.NewReader(""), &out, inboxOptions{Unapplied: true}, inboxFixedNow); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), item.ID) || !strings.Contains(out.String(), "edit_accept") {
+		t.Fatalf("missing unfinished decision: %s", out.String())
+	}
+	out.Reset()
+	if err := runInbox(ctx, root, strings.NewReader(""), &out, inboxOptions{}, inboxFixedNow); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), item.ID) {
+		t.Fatalf("default inbox hid unfinished decision: %s", out.String())
+	}
+	// A human commits the prose without changing the staged prior claim.
+	for _, args := range [][]string{{"add", "brain"}, {"commit", "--quiet", "-m", "human prose"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if raw, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("human commit: %v: %s", err, raw)
+		}
+	}
+	out.Reset()
+	if err := runInbox(ctx, root, strings.NewReader(""), &out, inboxOptions{ApplyID: item.ID}, inboxFixedNow.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ds.Get(ctx, item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AppliedClaimID == "" || got.Verdict != disposition.VerdictEditAccept || !got.DisposedAt.Equal(inboxFixedNow) {
+		t.Fatalf("retry lost recorded decision: %+v", got)
+	}
+	history, err := ds.HistoryFor(ctx, item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("retry created history: %d", len(history))
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "Human prose awaiting commit.") || !strings.Contains(string(raw), "Edited company") {
+		t.Fatalf("retry lost canonical content: %s", raw)
+	}
+	eng, err := providers.OpenIndex(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dump bytes.Buffer
+	if err := eng.Dump(ctx, &dump); err != nil {
+		_ = eng.Close()
+		t.Fatal(err)
+	}
+	if err := eng.Close(); err != nil {
+		t.Fatal(err)
+	}
+	indexed := false
+	for _, line := range strings.Split(dump.String(), "\n") {
+		cells := strings.Split(line, "\t")
+		if len(cells) == 13 && cells[0] == "claims" && cells[2] == got.AppliedClaimID && cells[5] == "Edited company" && cells[11] == "active" {
+			indexed = true
+		}
+	}
+	if !indexed {
+		t.Fatalf("canonical acceptance did not refresh derived claims: %s", dump.String())
+	}
+	out.Reset()
+	if err := runListUnapplied(ctx, ds, &out); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), item.ID) {
+		t.Fatal("completed decision still listed as unapplied")
+	}
+}
+
+func TestInboxCommittedApprovalReportsIndexFailure(t *testing.T) {
+	ds, root := openInboxTestStore(t)
+	ctx := context.Background()
+	item := seedReconcileItem(t, ds, ctx, inboxFixedNow, "demo-person", "works_at", "New company", "Old company", "")
+	seedInboxCanonical(t, root, item)
+	// An unrelated invalid page prevents derived rebuilding, after the target's
+	// exact-path commit succeeds. It must not be swept into that commit.
+	broken := filepath.Join(root, "brain/entities/topic/broken.md")
+	if err := os.WriteFile(broken, []byte("not an entity page\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	err := runInbox(ctx, root, strings.NewReader(" "), &out, inboxOptions{}, inboxFixedNow)
+	if err == nil || !strings.Contains(err.Error(), "canonical changes committed but index refresh failed") || !strings.Contains(err.Error(), "serenity sync") {
+		t.Fatalf("missing truthful recovery error: %v", err)
+	}
+	got, err := ds.Get(ctx, item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.AppliedClaimID == "" {
+		t.Fatal("index failure lost successful canonical publication")
+	}
+	cmd := exec.Command("git", "status", "--porcelain", "--", "brain/entities/topic/demo-person.md")
+	cmd.Dir = root
+	if raw, err := cmd.CombinedOutput(); err != nil || len(raw) != 0 {
+		t.Fatalf("canonical target was not committed: %v %s", err, raw)
+	}
+	cmd = exec.Command("git", "ls-files", "--", "brain/entities/topic/broken.md")
+	cmd.Dir = root
+	if raw, err := cmd.CombinedOutput(); err != nil || len(raw) != 0 {
+		t.Fatalf("unrelated invalid page entered commit: %v %s", err, raw)
 	}
 }

@@ -1,0 +1,73 @@
+{
+  "date": "2026-09-08",
+  "scope": "local-owner CLI reconciliation review",
+  "synthetic_data_only": true,
+  "cli_flows_passed": 5,
+  "full_race": {
+    "passed_test_cases": 1536,
+    "passed_packages": 58,
+    "skipped_test_cases": 6,
+    "failed": 0
+  },
+  "focused_race": {
+    "passed_test_cases": 36,
+    "passed_packages": 3,
+    "skipped_test_cases": 0,
+    "failed": 0
+  },
+  "human_edit_recovery": {
+    "flow": "dirty edit, normal inbox discovery, human commit, explicit retry",
+    "initial_exit": 1,
+    "human_bytes_unchanged_on_failure": true,
+    "default_inbox_exposes_retry": true,
+    "retry_exit": 0,
+    "original_actor_time_verdict_preserved": true,
+    "human_prose_preserved_after_retry": true,
+    "active_edited_claims": 1,
+    "index_refresh_reported": true
+  },
+  "actual_process_kills": [
+    {
+      "cut": "pre-commit",
+      "signal": "SIGKILL",
+      "exit": -9,
+      "commit_existed_at_cut": false,
+      "owned_test_locks_removed": [
+        "index.lock"
+      ],
+      "unapplied_visible": true,
+      "retry_exit": 0,
+      "active_edited_claims": 1,
+      "total_claims": 2,
+      "repeat_new_commit": false,
+      "git_clean": true
+    },
+    {
+      "cut": "post-commit",
+      "signal": "SIGKILL",
+      "exit": -9,
+      "commit_existed_at_cut": true,
+      "owned_test_locks_removed": [],
+      "unapplied_visible": true,
+      "retry_exit": 0,
+      "active_edited_claims": 1,
+      "total_claims": 2,
+      "repeat_new_commit": false,
+      "git_clean": true
+    }
+  ],
+  "negative_controls": [
+    {
+      "fault": "plain-accept-no-publication",
+      "suite": "TestInboxInteractiveGroupOfOneRecordsExactlyOneDisposition",
+      "exit": 1,
+      "detected": true
+    },
+    {
+      "fault": "drop-human-prose",
+      "suite": "TestMergeClaimFencesPreservesUnmanagedBytes",
+      "exit": 1,
+      "detected": true
+    }
+  ]
+}
