@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/sirerun/serenity/internal/index"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/writer"
 )
 
@@ -235,6 +235,37 @@ func TestPendingLegacyReviewSurvivesMovedBrain(t *testing.T) {
 	items, err = s.List(ctx)
 	if err != nil || len(items) != 2 {
 		t.Fatalf("new proposal lost: count=%d err=%v", len(items), err)
+	}
+}
+
+func TestPendingContentIdentitySurvivesBrainMove(t *testing.T) {
+	s := openTestStore(t)
+	parent := t.TempDir()
+	oldRoot := filepath.Join(parent, "before")
+	newRoot := filepath.Join(parent, "after")
+	rec := writer.PendingRecord{Path: filepath.Join(oldRoot, "page.md"), Human: "Human content.", Machine: "Paused proposal.", DetectedAt: fixedNow.Format(time.RFC3339)}
+	writePendingFixture(t, oldRoot, "page", rec)
+	if _, err := s.ImportPending(context.Background(), oldRoot, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	items, err := s.List(context.Background())
+	if err != nil || len(items) != 1 {
+		t.Fatalf("initial stage: %v %v", items, err)
+	}
+	id := items[0].ID
+	if _, err := s.Dispose(context.Background(), id, VerdictReject, nil, "retain decision across move", "human:reviewer", "moved", fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(oldRoot, newRoot); err != nil {
+		t.Fatal(err)
+	}
+	writePendingFixture(t, newRoot, "page", rec)
+	if _, err := s.ImportPending(context.Background(), newRoot, fixedNow.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	items, err = s.List(context.Background())
+	if err != nil || len(items) != 1 || items[0].ID != id || items[0].Verdict != VerdictReject {
+		t.Fatalf("move changed producer identity: %+v %v", items, err)
 	}
 }
 
