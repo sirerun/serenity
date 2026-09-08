@@ -67,19 +67,33 @@ func (s *Store) PathFor(id string) string {
 
 // Get reads one entry by id, satisfying ledger.Store.
 func (s *Store) Get(_ context.Context, id string) (*ledger.Entry, error) {
-	path := s.PathFor(id)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%w: %s", ledger.ErrNotFound, id)
-		}
-		return nil, err
-	}
-	info, err := os.Stat(path)
+	name, err := entryName(id)
 	if err != nil {
 		return nil, err
 	}
-	return ledger.DecodeStored(data, versionOf(info))
+	entries, err := s.openEntries(false)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("%w: %s", ledger.ErrNotFound, id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = entries.Close() }()
+	data, info, err := readEntry(entries, name)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("%w: %s", ledger.ErrNotFound, id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	entry, err := ledger.DecodeStored(data, versionOf(info))
+	if err != nil {
+		return nil, err
+	}
+	if entry.ID != id {
+		return nil, fmt.Errorf("direction: file %s contains entry %s", name, entry.ID)
+	}
+	return entry, nil
 }
 
 // List returns every entry in the ledger, id and version only, sorted by
@@ -87,27 +101,40 @@ func (s *Store) Get(_ context.Context, id string) (*ledger.Entry, error) {
 // no entries directory yet is an empty slice and a nil error, matching
 // ledger.Store's "an empty ledger is an empty slice" rule.
 func (s *Store) List(_ context.Context) ([]ledger.EntryInfo, error) {
-	dir := filepath.Join(s.root, ".dira", "entries")
-	des, err := os.ReadDir(dir)
+	entries, err := s.openEntries(false)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
+		return nil, err
+	}
+	defer func() { _ = entries.Close() }()
+	dir, err := entries.Open(".")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = dir.Close() }()
+	des, err := dir.ReadDir(-1)
+	if err != nil {
 		return nil, err
 	}
 	var out []ledger.EntryInfo
 	for _, de := range des {
-		if de.IsDir() || !strings.HasSuffix(de.Name(), ".md") {
+		if !strings.HasSuffix(de.Name(), ".md") {
 			continue
 		}
-		info, err := de.Info()
+		id := strings.TrimSuffix(de.Name(), ".md")
+		if _, err := entryName(id); err != nil {
+			return nil, err
+		}
+		info, err := regularEntry(entries, de.Name(), false)
+		if os.IsNotExist(err) {
+			continue
+		} // A concurrent deletion is absent, not corrupt.
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, ledger.EntryInfo{
-			ID:      strings.TrimSuffix(de.Name(), ".md"),
-			Version: versionOf(info),
-		})
+		out = append(out, ledger.EntryInfo{ID: id, Version: versionOf(info)})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
@@ -115,34 +142,38 @@ func (s *Store) List(_ context.Context) ([]ledger.EntryInfo, error) {
 
 // Create writes a new entry through the writer queue, failing with an
 // error wrapping ledger.ErrExists if the id is already taken. It is
-// exclusive by construction (O_EXCL) -- the same native primitive dira's
+// exclusive by construction (atomic link) -- the same native primitive dira's
 // own local backend uses -- which is what lets ledger.Add (write.go) retry
 // the next candidate id on a losing race instead of clobbering the winner.
 func (s *Store) Create(_ context.Context, e *ledger.Entry) error {
 	if err := s.writable("create"); err != nil {
 		return err
 	}
-	path := s.PathFor(e.ID)
-	res := s.queue.Submit(writer.Job{Path: path, Render: func() ([]byte, error) {
+	return s.write(e, true)
+}
+
+func (s *Store) write(e *ledger.Entry, exclusive bool) error {
+	if e == nil {
+		return errors.New("direction: nil ledger entry")
+	}
+	name, err := entryName(e.ID)
+	if err != nil {
+		return err
+	}
+	res := s.queue.Submit(writer.Job{Path: s.PathFor(e.ID), Render: func() ([]byte, error) {
 		data, err := ledger.Encode(e)
 		if err != nil {
 			return nil, err
 		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return nil, err
-		}
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		entries, err := s.openEntries(true)
 		if err != nil {
-			if errors.Is(err, os.ErrExist) {
-				return nil, fmt.Errorf("%w: %s", ledger.ErrExists, e.ID)
-			}
 			return nil, err
 		}
-		defer func() { _ = f.Close() }()
-		if _, err := f.Write(data); err != nil {
+		defer func() { _ = entries.Close() }()
+		if err := writeEntry(entries, name, data, exclusive); err != nil {
 			return nil, err
 		}
-		return data, f.Close()
+		return data, nil
 	}})
 	return res.Err
 }
@@ -159,18 +190,7 @@ func (s *Store) Put(_ context.Context, e *ledger.Entry) error {
 	if err := s.writable("put"); err != nil {
 		return err
 	}
-	path := s.PathFor(e.ID)
-	res := s.queue.Submit(writer.Job{Path: path, Render: func() ([]byte, error) {
-		data, err := ledger.Encode(e)
-		if err != nil {
-			return nil, err
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return nil, err
-		}
-		return data, os.WriteFile(path, data, 0o644)
-	}})
-	return res.Err
+	return s.write(e, false)
 }
 
 // Delete removes an entry through the writer queue, satisfying
@@ -181,15 +201,32 @@ func (s *Store) Delete(_ context.Context, id string) error {
 	if err := s.writable("delete"); err != nil {
 		return err
 	}
-	path := s.PathFor(id)
-	res := s.queue.Submit(writer.Job{Path: path, Render: func() ([]byte, error) {
-		if _, err := os.Stat(path); err != nil {
+	name, err := entryName(id)
+	if err != nil {
+		return err
+	}
+	res := s.queue.Submit(writer.Job{Path: s.PathFor(id), Render: func() ([]byte, error) {
+		entries, err := s.openEntries(false)
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("%w: %s", ledger.ErrNotFound, id)
+		}
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = entries.Close() }()
+		if _, err := regularEntry(entries, name, false); err != nil {
 			if os.IsNotExist(err) {
 				return nil, fmt.Errorf("%w: %s", ledger.ErrNotFound, id)
 			}
 			return nil, err
 		}
-		return nil, os.Remove(path)
+		if err := entries.Remove(name); err != nil {
+			if os.IsNotExist(err) {
+				return nil, fmt.Errorf("%w: %s", ledger.ErrNotFound, id)
+			}
+			return nil, err
+		}
+		return nil, syncEntries(entries)
 	}})
 	return res.Err
 }
