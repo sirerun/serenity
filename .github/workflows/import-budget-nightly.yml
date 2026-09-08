@@ -1,0 +1,93 @@
+name: import-budget-nightly
+
+on:
+  schedule:
+    - cron: "19 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: import-budget-nightly
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 260
+    permissions:
+      contents: write
+    env:
+      GOMAXPROCS: '2'
+      GH_TOKEN: ${{ github.token }}
+      SERENITY_IMPORT_BUDGET_ENVIRONMENT: github-ubuntu-24.04-amd64-2procs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: code
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: code/go.mod
+          cache-dependency-path: code/go.sum
+      - name: Read previous recorded run
+        working-directory: code
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ../results ../artifacts
+          git -C ../results init -q
+          git -C ../results remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          set +e
+          git -C ../results -c credential.helper='!gh auth git-credential' ls-remote --exit-code origin refs/heads/results/import-budget > ../artifacts/remote-ref.txt
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            git -C ../results -c credential.helper='!gh auth git-credential' fetch --depth=1 origin results/import-budget
+            git -C ../results checkout -q -B results/import-budget FETCH_HEAD
+            test -f ../results/latest.json
+            cp ../results/latest.json ../artifacts/previous.json
+          elif [ "$status" -eq 2 ]; then
+            git -C ../results checkout -q --orphan results/import-budget
+            echo 'First run: no prior baseline; absolute four-hour budget still applies.'
+          else
+            echo 'Cannot read baseline ref; refusing to treat a network/auth error as bootstrap.' >&2
+            exit "$status"
+          fi
+      - name: Import 10000 synthetic messages through the cached pipeline
+        working-directory: code
+        env:
+          SERENITY_IMPORT_BUDGET_OUTPUT: ${{ github.workspace }}/artifacts/current.json
+        run: |
+          set -euo pipefail
+          go test -p 1 -count=1 -timeout 4h -json -run '^TestImportBudget10K$' ./evals/importbudget | tee ../artifacts/test.jsonl
+          test -s ../artifacts/current.json
+      - name: Enforce completeness and performance budget
+        working-directory: code
+        run: |
+          set -euo pipefail
+          args=(-current ../artifacts/current.json -markdown ../artifacts/timing.md)
+          if [ -f ../artifacts/previous.json ]; then
+            args+=(-previous ../artifacts/previous.json)
+          fi
+          go run ./evals/importbudget/check "${args[@]}"
+      - name: Upload timings and executed-test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: import-budget-${{ github.run_id }}
+          path: artifacts/
+          if-no-files-found: error
+      - name: Record successful baseline
+        working-directory: results
+        run: |
+          set -euo pipefail
+          mkdir -p runs
+          cp ../artifacts/current.json "runs/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+          cp ../artifacts/current.json latest.json
+          cp ../artifacts/timing.md latest.md
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add runs latest.json latest.md
+          git commit -m "Record import budget run ${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git -c credential.helper='!gh auth git-credential' push origin HEAD:refs/heads/results/import-budget
