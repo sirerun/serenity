@@ -61,7 +61,12 @@ also failed: **68.124 seconds (+35.58%)**. Its single workload test passed with
 zero skips and all counts complete; the baseline again remained unchanged.
 The environment artifact was captured successfully. **T22.1 remains open**;
 no additional retries were used to select a passing sample.
-[Exact receipt](final-import-budget.json).
+[Exact receipt](final-import-budget.json). A subsequent [read-only profile](import-budget-profile.json)
+measured 31.426 seconds in the source stage, including 8.583 seconds in Git add
+and 4.388 seconds in Git commit. Automatic Git maintenance was also observed;
+nested times overlap. This identifies source durability and Git staging/maintenance
+as concrete follow-up areas without establishing the original cause or changing
+the production verdict.
 
 ## Remaining owner gates
 
