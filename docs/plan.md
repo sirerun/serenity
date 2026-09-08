@@ -64,7 +64,6 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 ### E6 -- M6: hardening soak (outline, post-code-complete)  -> docs/plans/E6-m6-hardening.md  (0/1)
 
 ### E7 -- Launch polish and adoption loop  -> docs/plans/E7-launch-polish.md  (4/6; T7.1 inventory, T7.2 deployed browser events, T7.3 chat operations and T7.5 HTTPS enforcement completed 2026-09-08; content cross-site link and human go/no-go remain; docs/launch/checklist.md)
-### E8 -- Ajent agent readiness  -> docs/plans/E8-ajent-agent-readiness.md  (0/7; executable; coordinated external epic, newly planned 2026-09-08)
 ### E9 -- Migration verification remediation -> docs/plans/E9-migration-verification.md (2/2; completed 2026-09-08; imported-claim retrieval repaired with canonical privacy checks, seven CLI flows and real MCP stdio verified)
 
 Decisions confirmed by David on 2026 08 27 (no open decisions remain):
@@ -311,8 +310,7 @@ Rules: one worktree per task on `/Volumes/BuildOffload/wt/serenity-<task>`; smal
 
 ## 9. Progress log
 
-- 2026-09-08 Launch-polish planning pass: checked live Ajent/Serenity work, recorded E7 tasks T7.1-T7.6 for release coordination, privacy-preserving adoption measurement, chat operations, launch content, HTTPS/DNS completion, and the human go/no-go gate.
-- 2026-09-08 Ajent-readiness planning pass: added E8/A8.1-A8.7 from the Ora 98/100 audit, ordered failures before warnings, and made package distribution, rate-limit headers, discoverability, docs bridging, versioning policy, endpoint tests, browser tests, and live evidence explicit. David chose multi-channel distribution, agent plus human workflows, public self-serve signup, authenticated/versioned-only rate headers, and the 12-month/90-day deprecation policy in ADR 014.
+- 2026-09-08 Launch-polish planning pass: checked live Serenity and external dependency work, recorded E7 tasks T7.1-T7.6 for release coordination, privacy-preserving adoption measurement, chat operations, launch content, HTTPS/DNS completion, and the human go/no-go gate.
 
 - 2026 08 27 Initial plan: E0-E6 created (108 tasks, 108 with acc:, 6 kind: human, 2 kind: any, 7 lane: agent), ADRs 001-010 written, use-case manifest (46) written, roadmap seeded. OD-1..OD-4 confirmed by David (recommended options); ADR 005 moved to Accepted.
 - 2026 08 29 Trim pass (no new scope): E0 is fully shipped (13/13) -- its wave 0a/0b task list removed from this file per the plan skill's trim step (full detail stays in docs/plans/E0-m0-residuals.md and docs/roadmap.md, never trimmed there). Synced this file's stale wave checkboxes to the epic files' real state: 22 E1 tasks and 12 E3 tasks flipped to [x] (34 total) -- only T1.23 (E1, David-only) and T3.4/T3.9/T3.10/T3.11/T3.17 (E3, pool-dispatchable, unclaimed) remain open on the frontier. No epic changed fidelity tier: E4/E5 were already decomposed to executable in the initial pass (a deliberate original choice, section 1) despite being beyond the current frontier -- left as-is rather than retroactively demoted, since that would discard already-verified planning work for no benefit. E2/E4/E5/E6 unchanged (0 done each).

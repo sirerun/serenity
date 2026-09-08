@@ -1,17 +1,17 @@
 # E7 — Launch polish and adoption loop
 
-Purpose: turn the already deployed Serenity website and adoption chat into a measured, reliable launch surface. This epic coordinates Serenity with the Ajent work that owns the sign-in destination; it does not reopen the shipped visual direction or rewrite the product roadmap.
+Purpose: turn the already deployed Serenity website and adoption chat into a measured, reliable launch surface. Adjacent product-owned release surfaces are tracked in their own private repositories; this epic covers only Serenity's public dependencies and launch work.
 
-Fidelity: executable. Frontier: unblocked after the current Ajent and Serenity release surfaces are inventoried.
+Fidelity: executable. Frontier: unblocked after the current Serenity and external dependency release surfaces are inventoried.
 
 ## Current fleet state (checked 2026-09-08)
 
-The dated [launch checklist](../launch/checklist.md) records the exact Pages and Lambda revisions, authoritative DNS and certificate state, observed Ajent login asset, PR classifications, owners and rollback routes. HTTPS enforcement and chat operational monitoring are verified complete. The live `/healthz` route returns 200; CloudWatch received application latency samples. M4 is complete; M5 is 11/15 with its human release gates preserved. Ajent deployment provenance remains its owner's responsibility.
+The dated [launch checklist](../launch/checklist.md) records the exact Pages and Lambda revisions, authoritative DNS and certificate state, external dependency status, owners and rollback routes. HTTPS enforcement and chat operational monitoring are verified complete. The live `/healthz` route returns 200; CloudWatch received application latency samples. M4 is complete; M5 is 11/15 with its human release gates preserved. External deployment provenance remains each release owner's responsibility.
 
 ## Tasks
 
-- [x] T7.1 Release-surface inventory and coordination  Owner: David  Est: 30m  kind: operations  delivers: [single launch checklist naming the exact Serenity Pages revision, DNS state, Lambda version, Ajent logo revision, owners, and rollback links]  deps: []
-  - Acceptance: checklist records live URLs and current CI/deployment evidence; Ajent PRs #15, #24, and #25 are classified as merge, defer, or reject with one named owner for each.
+- [x] T7.1 Release-surface inventory and coordination  Owner: David  Est: 30m  kind: operations  delivers: [single launch checklist naming the exact Serenity Pages revision, DNS state, Lambda version, adjacent-product dependency status, owners, and rollback links]  deps: []
+  - Acceptance: checklist records live URLs and current CI/deployment evidence; external changes remain deferred to their release owner until reviewed and verified in their own repository.
 - [x] T7.2 Adoption event contract and browser coverage  Owner: pool  Est: 90m  verifies: [UC-039, infrastructure]  deps: [T7.1]  acc: [Playwright covers landing-page install CTA, docs/get-started navigation, chat happy path, chat error path, and mobile layout; production verification observes the documented events without recording prompt text or secrets]
   - Scope: define a small event vocabulary (`install_cta`, `docs_open`, `chat_started`, `chat_answered`, `chat_failed`) and a privacy-preserving implementation for the static site. Keep the chat transcript out of analytics.
 - [x] T7.3 Chat reliability and operations  Owner: pool  Est: 90m  verifies: [UC-039, infrastructure]  deps: [T7.1]  acc: [Lambda health check, allowed-origin request, rejected-origin request, model-outage fallback, and rate-limit behavior are covered in CI; production has an actionable error/latency signal and no API key or prompt transcript is logged]
@@ -27,6 +27,6 @@ The dated [launch checklist](../launch/checklist.md) records the exact Pages and
 
 ## Risks and boundaries
 
-- Ajent is a separate release surface. Serenity can link to it, but cannot merge or deploy Ajent changes without that repository's normal review gate.
+- External products are separate release surfaces. Serenity can link to them, but cannot merge or deploy their changes without their repository's normal review gate.
 - Analytics must measure adoption without collecting chat contents, credentials, IP addresses, or model prompts.
 - The launch packet must preserve the existing early-access and human-control claims; no performance or customer-result claims are introduced without evidence.

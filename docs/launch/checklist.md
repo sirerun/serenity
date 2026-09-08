@@ -15,21 +15,18 @@ Chat code SHA-256 (AWS base64): `wGw1t54u7WIpmwrIMZNxsVVRuyTQiAVWYAIY+3BAz+4=`. 
 
 The public endpoint is recorded in [chat-config.js](https://github.com/sirerun/serenity/blob/58f58cfb78981b931a9cc7ddebb5d8f1f4140ba8/site/assets/chat-config.js). GET `/healthz` returns **200**, `{"status":"ok","documents":13}`. GET `/` correctly returns **405**, `{"error":"Use POST."}`; T7.3 owns explicit health-route CI coverage and operational alarms. This inventory made no model request and did not read or record secret values.
 
-## Ajent sign-in destination
+## External release dependencies
 
-Public browser inspection reached [human sign-in](https://ajent.social/human/login) and its [legacy access-key page](https://ajent.social/login), without signing in. The legacy page renders `/static/juice.png` in a 36×36 header box; its SHA-256 is `4952c76d4cf070e0a3b4d971139516abd2e2366b8937b8e1febee3b60211f267`. The wordmark is visible, but the orange artwork appears clipped in the inspected desktop page. This is an observed asset revision, **not a claim that PR #24 is deployed**. GitHub's repository deployment API returned no deployment records; the exact running Ajent commit remains unverified and belongs to its release owner.
-
-| Change | Classification | Named owner and reason |
-| --- | --- | --- |
-| [PR #15: contrast](https://github.com/ajent-social/ajent-social/pull/15) | **Merge — already merged** | David Ndungu. Merged 2026-09-07 21:25:41 UTC at `2e3aa5a9b5178bc9bcf1e9407e84d511100fd689`. Live inclusion has no commit attestation in the inspected deployment records; verify it before claiming deployed. |
-| [PR #24: browser-login logo](https://github.com/ajent-social/ajent-social/pull/24) | **Defer** | David Ndungu, Ajent release review. Open head `554659e2e343059b19a58c1f3be46601d38b30f4`; 66 changed files, +4,105/−149 lines, including API/infrastructure/schema changes. Requires review of its actual scope and a deployment/rollback revision, not approval based on the logo title or CI alone. |
-| [PR #25: consulting footer](https://github.com/ajent-social/ajent-social/pull/25) | **Defer** | David Ndungu. Still draft at `583dcfa93c002af33483d343d6aeceafefeddeab`; one file, +1/−1 line. Await its author's readiness and Ajent review. |
-
-Ajent rollback belongs to David in that repository: use the reviewed deployment mechanism and last confirmed healthy revision. No Ajent merge or deployment was performed by this inventory, and no unverified rollback commit is invented here. The shared Ajent feed was read; its September 7 deployment statements were treated as historical references and checked against current APIs/browser behavior.
+Adjacent-product changes are **deferred to their release owner, David Ndungu**,
+for review and live deployment verification in their own repository. Internal
+revision identifiers, change scopes, readiness evidence and release decisions
+belong there. Serenity's inventory does not attest an external deployment or
+provide its rollback revision. The owner must verify those before depending on
+that release; Serenity's own deployment and rollback evidence is recorded above.
 
 ## Next acceptance gates
 
-- [x] T7.1: inventory live URLs, exact known deployment/asset revisions, owners, rollback routes, and Ajent PR classifications.
+- [x] T7.1: inventory live URLs, exact known deployment/asset revisions, owners, rollback routes, and external dependency status.
 - [x] T7.2: documented browser-local adoption events, browser CI and production event observation; receipt below.
 - [x] T7.3: health/CORS/outage/rate-limit CI coverage and deployed error/latency signals; receipt below.
 - [ ] T7.4: reviewed launch content packet with canonical installation walkthrough; publication remains a separate action.
