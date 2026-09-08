@@ -180,6 +180,11 @@ type Item struct {
 	// accept) so the recorded outcome stays observable after the fact.
 	Route DistillRoute `json:"route,omitempty"`
 
+	// RouteEffectPending is committed with new precept-draft route decisions
+	// and cleared after deterministic staging. Older completed routes have no
+	// marker and must not acquire a duplicate child when replayed after upgrade.
+	RouteEffectPending bool `json:"route_effect_pending,omitempty"`
+
 	// Resurfaced is set once Resurface (expiry.go, T2.6) has moved this
 	// item from parked back to pending. RFC 0001 §8.2: a parked item is
 	// "resurfaced only by explicit filter or by new evidence... Nothing
@@ -471,6 +476,7 @@ func (s *Store) dispose(ctx context.Context, id string, verdict Verdict, editedP
 			item.DeferCount++
 		}
 		item.Route = route
+		item.RouteEffectPending = route == RoutePreceptDraft
 		item.Verdict = verdict
 		item.Note = note
 		item.Actor = actor

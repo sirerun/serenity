@@ -243,7 +243,7 @@ func TestDistillDraftFailureRecoversRecordedRouteOnce(t *testing.T) {
 		t.Fatal("follow-on storage failure swallowed")
 	}
 	stored, err := s.Get(ctx, item.ID)
-	if err != nil || stored.Route != RoutePreceptDraft || stored.State != StateDisposed {
+	if err != nil || stored.Route != RoutePreceptDraft || stored.State != StateDisposed || !stored.RouteEffectPending {
 		t.Fatalf("committed route not recoverable: %+v %v", stored, err)
 	}
 	if _, err := db.Exec(`DROP TRIGGER audit_reject_draft`); err != nil {
@@ -251,7 +251,7 @@ func TestDistillDraftFailureRecoversRecordedRouteOnce(t *testing.T) {
 	}
 	for _, route := range []DistillRoute{RouteTrash, RouteNote} {
 		res, err := s.RouteDistill(ctx, item.ID, route, "human:changed-input", "changed input", "route-key", fixedNow.Add(time.Hour))
-		if err != nil || !res.Replayed || res.Item.Route != RoutePreceptDraft || res.Item.Actor != "human:reviewer" {
+		if err != nil || !res.Replayed || res.Item.Route != RoutePreceptDraft || res.Item.Actor != "human:reviewer" || res.Item.RouteEffectPending {
 			t.Fatalf("recorded route lost on retry: %+v %v", res, err)
 		}
 	}
@@ -267,6 +267,92 @@ func TestDistillDraftFailureRecoversRecordedRouteOnce(t *testing.T) {
 	history, err := s.HistoryFor(ctx, item.ID)
 	if err != nil || len(history) != 1 {
 		t.Fatalf("route re-disposed: history=%d err=%v", len(history), err)
+	}
+}
+
+func TestLegacyCompletedDistillRouteDoesNotDuplicateDraft(t *testing.T) {
+	s := openTestStore(t)
+	ctx := context.Background()
+	item, err := Capture(ctx, s, "Legacy routed capture.", "", "", fixedNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Dispose(ctx, item.ID, VerdictAccept, nil, "", "human:legacy", "legacy-key", fixedNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Item.Route = RoutePreceptDraft
+	if err := s.put(ctx, res.Item); err != nil {
+		t.Fatal(err)
+	}
+	// Older versions staged a random child identity with no parent link.
+	child, err := s.Create(ctx, KindPreceptDraft, item.Payload, "", fixedNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RouteDistill(ctx, item.ID, RoutePreceptDraft, "human:retry", "", "legacy-key", fixedNow.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	items, err := s.List(ctx)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("upgrade duplicated a legacy completed route: items=%d err=%v", len(items), err)
+	}
+	if _, err := s.Get(ctx, child.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDistillCompletionRetryPreservesReviewedChild(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "index.db")
+	eng, err := index.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = eng.Close() }()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	s := NewStore(eng)
+	ctx := context.Background()
+	parent, err := Capture(ctx, s, "Captured decision evidence.", "", "", fixedNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER audit_reject_completion BEFORE UPDATE ON disposition_items WHEN json_extract(OLD.payload, '$.route_effect_pending') = 1 AND COALESCE(json_extract(NEW.payload, '$.route_effect_pending'), 0) = 0 BEGIN SELECT RAISE(ABORT, 'completion unavailable'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RouteDistill(ctx, parent.ID, RoutePreceptDraft, "human:parent", "", "parent-key", fixedNow); err == nil {
+		t.Fatal("completion failure swallowed")
+	}
+	items, err := s.List(ctx)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("expected staged child before failed completion: count=%d err=%v", len(items), err)
+	}
+	var child Item
+	for _, item := range items {
+		if item.ID != parent.ID {
+			child = item
+		}
+	}
+	if _, err := s.Dispose(ctx, child.ID, VerdictReject, nil, "reviewed independently", "human:child-reviewer", "child-key", fixedNow.Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`DROP TRIGGER audit_reject_completion`); err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.RouteDistill(ctx, parent.ID, RoutePreceptDraft, "human:retry", "", "parent-key", fixedNow.Add(2*time.Hour))
+	if err != nil || !res.Replayed || res.Item.RouteEffectPending {
+		t.Fatalf("completion retry failed: %+v %v", res, err)
+	}
+	stored, err := s.Get(ctx, child.ID)
+	if err != nil || stored.State != StateDisposed || stored.Verdict != VerdictReject || stored.Actor != "human:child-reviewer" {
+		t.Fatalf("recovery reset a reviewed child: %+v %v", stored, err)
+	}
+	items, err = s.List(ctx)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("completion duplicated child: count=%d err=%v", len(items), err)
 	}
 }
 

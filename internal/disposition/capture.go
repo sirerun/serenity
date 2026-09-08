@@ -136,10 +136,24 @@ func (s *Store) RouteDistill(ctx context.Context, id string, route DistillRoute,
 	// The recorded winning route governs recovery, even if this caller lost
 	// or retried with another route. Deterministic staging closes the crash gap
 	// between the committed decision and its separate follow-on queue effect.
-	if res.Item.Route == RoutePreceptDraft {
+	if res.Item.Route == RoutePreceptDraft && res.Item.RouteEffectPending {
 		if _, _, err := s.CreateOnce(ctx, KindPreceptDraft, res.Item.Payload, "", "distill-precept-draft:"+res.Item.ID, res.Item.DisposedAt); err != nil {
 			return Result{}, fmt.Errorf("disposition: route distill: stage precept draft for %s: %w", id, err)
 		}
+		current, _, err := s.updateItem(ctx, id, func(item *Item) (bool, error) {
+			if item.Route != RoutePreceptDraft || item.State != StateDisposed {
+				return false, errors.New("disposition: recorded route changed during follow-on recovery")
+			}
+			if !item.RouteEffectPending {
+				return false, nil
+			}
+			item.RouteEffectPending = false
+			return true, nil
+		})
+		if err != nil {
+			return Result{}, fmt.Errorf("disposition: route distill: complete follow-on for %s: %w", id, err)
+		}
+		res.Item = current
 	}
 
 	return res, nil

@@ -48,6 +48,10 @@
       "type": "boolean",
       "description": "True once a parked item has been resurfaced back to pending -- a one-time transition."
     },
+    "route_effect_pending": {
+      "type": "boolean",
+      "description": "Optional recovery marker for a committed precept-draft route whose follow-on staging has not completed. Absent on legacy and completed routes."
+    },
     "applied_claim_id": {
       "type": "string",
       "description": "The claim id a reconcile item's accept/edit_accept verdict wrote to the canonical brain repo, once applied."
