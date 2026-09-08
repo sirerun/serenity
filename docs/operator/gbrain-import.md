@@ -39,9 +39,30 @@ separate. An existing destination page is accepted only if its bytes exactly
 match the import; different content, including untracked human work, is never
 overwritten. Repeat imports of unchanged pages create no duplicate claims.
 The importer publishes and git-commits one complete page at a time, then the CLI
-rebuilds its disposable SQLite index. Checkpointed interruption/resume support
-is tracked separately by T5.3; this initial command makes no full incremental
-update or checkpoint guarantee.
+rebuilds its disposable SQLite index.
+
+## Resume an interrupted import
+
+Rerun the same command against the same source snapshot and target. The importer
+records each committed page and its fence-qualified row IDs in
+`.serenity/import/gbrain.json`. The checkpoint is local runtime state and is
+never committed with canonical pages. It advances only after the page commit;
+a killed process can leave an uncommitted page or an unpublished checkpoint temp
+file, both recovered on the next run. Completed pages create no extra commits.
+
+Before skipping a page, Serenity verifies its source hash, mapping, canonical
+bytes, and committed Git bytes. Copied or stale checkpoints cannot skip
+uncommitted work. Changed source snapshots, corrupted checkpoint files, and
+human edits or deletions fail explicitly. Preserve the original snapshot to
+resume; use a fresh target for a changed migration. This is interruption recovery,
+not replacement of previously imported pages with newer versions.
+
+A kernel file lock rejects concurrent imports into the same target and releases
+automatically when a process exits or is killed. It coordinates importer processes;
+stop other writers while migrating. Checkpoint directories, files, and lock files
+must not be symlinks. The supported macOS/Linux builds include this locking path.
+The checkpoint is disposable: if removed while no import is running, an unchanged
+source can rebuild it from matching canonical pages and their Git commits.
 
 ## Field-level report
 
