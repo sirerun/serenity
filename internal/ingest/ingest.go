@@ -18,7 +18,10 @@
 package ingest
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"sort"
 
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/domain"
@@ -53,7 +56,8 @@ type Writer struct {
 	// pages caches parsed entity pages by path for the duration of one
 	// Write call, so N observations against the same entity read the file
 	// once, not N times, and see each other's just-added claims.
-	pages map[string]*store.EntityPage
+	pages        map[string]*store.EntityPage
+	changedPages map[string]bool
 	// shardIDs caches the set of claim ids already present in a shard file
 	// (by path) for the duration of one Write call, for the same reason.
 	shardIDs map[string]map[string]bool
@@ -78,18 +82,20 @@ type Stats struct {
 	Skipped int
 }
 
-// Write commits every observation in obs as its own claim, in the order
-// given. obs must be a Result.Ready slice (internal/extract) -- an
+// writeObservations runs the existing tier writers inside a private snapshot,
+// adding each observation in order before the outer Write publishes any bytes.
+// obs must be a Result.Ready slice (internal/extract) -- an
 // observation below extract.DistillThreshold aborts the whole call with
 // an error, exactly as Extractor.Extract aborts on a per-chunk failure:
 // partial, silently-degraded ingestion is never reported as success. A
 // caller must route Result.Distill elsewhere; this package never writes a
 // sub-threshold observation to a fence or shard.
-func (w *Writer) Write(obs []domain.Observation) (Stats, error) {
+func (w *Writer) writeObservations(obs []domain.Observation) (Stats, error) {
 	var stats Stats
 	w.pages = map[string]*store.EntityPage{}
+	w.changedPages = map[string]bool{}
 	w.shardIDs = map[string]map[string]bool{}
-	defer func() { w.pages, w.shardIDs = nil, nil }()
+	defer func() { w.pages, w.changedPages, w.shardIDs = nil, nil, nil }()
 
 	for _, o := range obs {
 		if o.Confidence < extract.DistillThreshold {
@@ -108,6 +114,18 @@ func (w *Writer) Write(obs []domain.Observation) (Stats, error) {
 			stats.Written++
 		} else {
 			stats.Skipped++
+		}
+	}
+	// Render each affected page once, after every observation is validated.
+	// Re-rendering the growing page for every row makes a large batch quadratic.
+	paths := make([]string, 0, len(w.changedPages))
+	for path := range w.changedPages {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		if _, _, err := writer.Fence(w.Queue, w.Fence, w.pages[path]); err != nil {
+			return stats, fmt.Errorf("fence write: %w", err)
 		}
 	}
 	return stats, nil
@@ -160,15 +178,10 @@ func (w *Writer) writeFenceClaim(c domain.Claim) (bool, error) {
 		parsed, err := w.Fence.ParseEntity(path)
 		if err == nil {
 			p = parsed
-		} else {
-			// No existing page (or unreadable): start a fresh one. A
-			// genuine read error (bad permissions, corrupt frontmatter on
-			// an existing file) also falls here rather than a hard stop --
-			// consistent with FenceWriter.WriteEntity's own no-op-on-first-
-			// write posture; a truly corrupt page still fails loudly, at
-			// RenderEntity/WriteEntity time below, once real content is at
-			// stake.
+		} else if errors.Is(err, fs.ErrNotExist) {
 			p = store.NewEntityPage(domain.Entity{Type: entityType, Slug: c.SubjectSlug})
+		} else {
+			return false, fmt.Errorf("read canonical entity page: %w", err)
 		}
 		w.pages[path] = p
 	}
@@ -180,9 +193,7 @@ func (w *Writer) writeFenceClaim(c domain.Claim) (bool, error) {
 	}
 	p.Claims = append(p.Claims, c)
 
-	if _, _, err := writer.Fence(w.Queue, w.Fence, p); err != nil {
-		return false, fmt.Errorf("fence write: %w", err)
-	}
+	w.changedPages[path] = true
 	return true, nil
 }
 

@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -331,71 +330,18 @@ func (w *Writer) preparePublication(a, b domain.Claim) ([]writer.FileChange, err
 	if a.ID == b.ID {
 		return nil, fmt.Errorf("reconcile: replacement has the prior claim's identity")
 	}
-	preview, err := os.MkdirTemp(filepath.Join(root, ".serenity"), "reconcile-preview-")
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = os.RemoveAll(preview) }()
-	for path, raw := range snapshot {
-		target := filepath.Join(preview, filepath.FromSlash(path))
-		if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(target, raw, 0600); err != nil {
-			return nil, err
-		}
-	}
-	q := writer.NewQueue(nil)
-	defer q.Close()
-	fw := store.NewFenceWriter(preview)
-	fw.Vocabulary = w.Fence.Vocabulary
-	ss := store.NewShardStore(preview)
-	ss.Vocabulary = w.Shard.Vocabulary
-	ss.RolloverBytes = w.Shard.RolloverBytes
-	planned := New(q, fw, ss, w.Config)
-	planned.EntityType = func(string) string { return entityType }
-	if _, err := planned.Apply(a, b); err != nil {
-		return nil, err
-	}
-	after := map[string][]byte{}
-	err = filepath.WalkDir(filepath.Join(preview, "brain"), func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(preview, path)
-		if err != nil {
-			return err
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
-		if original, exists := snapshot[rel]; exists && strings.HasPrefix(rel, "brain/entities/") {
-			raw, err = writer.MergeClaimFences(original, raw)
-			if err != nil {
-				return err
-			}
-		}
-		after[rel] = raw
-		return nil
+	return writer.PlanFiles(root, snapshot, func(preview string) error {
+		q := writer.NewQueue(nil)
+		defer q.Close()
+		fw, ss := store.NewFenceWriter(preview), store.NewShardStore(preview)
+		fw.Vocabulary = w.Fence.Vocabulary
+		ss.Vocabulary = w.Shard.Vocabulary
+		ss.RolloverBytes = w.Shard.RolloverBytes
+		planned := New(q, fw, ss, w.Config)
+		planned.EntityType = func(string) string { return entityType }
+		_, err := planned.Apply(a, b)
+		return err
 	})
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(after))
-	for path := range after {
-		names = append(names, path)
-	}
-	sort.Strings(names)
-	changes := make([]writer.FileChange, 0, len(names))
-	for _, path := range names {
-		changes = append(changes, writer.FileChange{Path: path, Before: snapshot[path], After: after[path]})
-	}
-	return changes, nil
 }
 
 func sameCanonicalClaim(fw *store.FenceWriter, a, b domain.Claim, entityType string) bool {

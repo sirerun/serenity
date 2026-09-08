@@ -1,0 +1,129 @@
+{
+  "date": "2026-09-08",
+  "revision": "a763cc44db8bb37dc0ce5c49787dfdd3c1225bea",
+  "fixture": "real CLI, Git and SQLite with deterministic local HTTP model responses; invented data, no live model calls",
+  "full_race": {
+    "command": "GOMAXPROCS=2 go test -race -p 2 -timeout 600s -json ./...",
+    "passed_cases": 1544,
+    "passed_packages": 58,
+    "skipped_cases": 6
+  },
+  "lint": {
+    "command": "golangci-lint run ./internal/cli/... ./internal/ingest/... ./internal/supersede/... ./internal/writer/...",
+    "issues": 0
+  },
+  "cli_scenarios": [
+    {
+      "scenario": "new",
+      "exit": 0,
+      "stdout": "extraction: 1 claim(s) written, 0 skipped (already present), 0 rejected, 0 below distill threshold, 0 source(s) skipped (index_only)\ncommitted new claims\nno embedding model pinned (models.embedding: none@v0); embedding skipped\nchunks     2\nclaims     1\nentities   1\nvectors    0\n",
+      "stderr": "",
+      "provider_fixture_calls": 1,
+      "claims": [
+        [
+          "Old Company",
+          "active"
+        ]
+      ],
+      "queue_items": 0,
+      "human_prose_present": false,
+      "verdict": "pass"
+    },
+    {
+      "scenario": "two-sources",
+      "exit": 0,
+      "stdout": "extraction: 2 claim(s) written, 0 skipped (already present), 0 rejected, 0 below distill threshold, 0 source(s) skipped (index_only)\ncommitted new claims\nno embedding model pinned (models.embedding: none@v0); embedding skipped\nchunks     3\nclaims     3\nentities   1\nvectors    0\n",
+      "stderr": "",
+      "provider_fixture_calls": 2,
+      "claims": [
+        [
+          "Old Company",
+          "active"
+        ],
+        [
+          "Old Company",
+          "active"
+        ],
+        [
+          "Old Company",
+          "active"
+        ]
+      ],
+      "queue_items": 0,
+      "human_prose_present": false,
+      "verdict": "pass"
+    },
+    {
+      "scenario": "conflict",
+      "exit": 0,
+      "stdout": "extraction: 1 claim(s) written, 0 skipped (already present), 0 rejected, 0 below distill threshold, 0 source(s) skipped (index_only)\ncommitted new claims\nno embedding model pinned (models.embedding: none@v0); embedding skipped\nchunks     2\nclaims     2\nentities   1\nvectors    0\n",
+      "stderr": "",
+      "provider_fixture_calls": 1,
+      "claims": [
+        [
+          "New Company",
+          "active"
+        ],
+        [
+          "Old Company",
+          "active"
+        ]
+      ],
+      "queue_items": 0,
+      "human_prose_present": false,
+      "verdict": "pending remediation"
+    },
+    {
+      "scenario": "low-confidence",
+      "exit": 0,
+      "stdout": "extraction: 0 claim(s) written, 0 skipped (already present), 0 rejected, 1 below distill threshold, 0 source(s) skipped (index_only)\nno embedding model pinned (models.embedding: none@v0); embedding skipped\nchunks     1\nclaims     0\nentities   0\nvectors    0\n",
+      "stderr": "",
+      "provider_fixture_calls": 1,
+      "claims": [],
+      "queue_items": 0,
+      "human_prose_present": false,
+      "verdict": "pending remediation"
+    },
+    {
+      "scenario": "human-prose",
+      "exit": 0,
+      "stdout": "extraction: 1 claim(s) written, 0 skipped (already present), 0 rejected, 0 below distill threshold, 0 source(s) skipped (index_only)\ncommitted new claims\nno embedding model pinned (models.embedding: none@v0); embedding skipped\nchunks     2\nclaims     2\nentities   1\nvectors    0\n",
+      "stderr": "",
+      "provider_fixture_calls": 1,
+      "claims": [
+        [
+          "Old Company",
+          "active"
+        ],
+        [
+          "Old Company",
+          "active"
+        ]
+      ],
+      "queue_items": 0,
+      "human_prose_present": true,
+      "verdict": "pass"
+    }
+  ],
+  "negative_controls": [
+    {
+      "fault": "drop-human-prose",
+      "suite": "TestBatchExistingFencePreservesHumanContent",
+      "exit": 1,
+      "detected": true
+    },
+    {
+      "fault": "publish-per-source",
+      "suite": "TestExtractMultipleSourcesPreservesExistingHumanPage",
+      "exit": 1,
+      "detected": true
+    }
+  ],
+  "performance": {
+    "previous_seconds": 341.323216832,
+    "current_seconds": 171.649080499,
+    "change_percent": -49.71,
+    "same_environment_corpus_and_cache": true,
+    "live_model_quality_evidence": false
+  }
+}

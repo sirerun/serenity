@@ -1,6 +1,9 @@
 package ingest
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -16,6 +19,17 @@ import (
 func newTestWriter(t *testing.T) (*Writer, func()) {
 	t.Helper()
 	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".serenity/\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"init", "--quiet"}, {"config", "user.name", "Ingest fixture"}, {"config", "user.email", "ingest@example.invalid"}, {"add", ".gitignore"}, {"commit", "--quiet", "-m", "fixture"}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("fixture Git: %v %s", err, out)
+		}
+	}
+
 	q := writer.NewQueue(nil)
 	w := New(q, store.NewFenceWriter(root), store.NewShardStore(root), config.Default())
 	return w, q.Close
@@ -109,6 +123,9 @@ func TestWrite_FenceTierDoubleIngestNoop(t *testing.T) {
 	o2 := o
 	o2.CreatedAt = time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
 
+	if _, err := writer.Flush(w.Queue, w.Fence.Root); err != nil {
+		t.Fatal(err)
+	}
 	stats2, err := w.Write([]domain.Observation{o2})
 	if err != nil {
 		t.Fatalf("second Write: %v", err)
@@ -146,6 +163,9 @@ func TestWrite_ShardTierDoubleIngestNoop(t *testing.T) {
 
 	o2 := o
 	o2.CreatedAt = time.Date(2026, 8, 29, 9, 0, 0, 0, time.UTC)
+	if _, err := writer.Flush(w.Queue, w.Fence.Root); err != nil {
+		t.Fatal(err)
+	}
 	stats2, err := w.Write([]domain.Observation{o2})
 	if err != nil {
 		t.Fatalf("second Write: %v", err)
