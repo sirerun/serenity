@@ -149,9 +149,10 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 				return fmt.Errorf("inbox: publication incomplete for %s: %w; resolve the target and retry with inbox --apply %s", item.ID, err, item.ID)
 			}
 			kind := "claim"
-			if item.Kind == disposition.KindDirtyEdit {
+			switch item.Kind {
+			case disposition.KindDirtyEdit:
 				kind = "publication"
-			} else if item.Kind == disposition.KindPreceptDraft || item.Kind == disposition.KindDecompose {
+			case disposition.KindPreceptDraft, disposition.KindDecompose:
 				kind = "entry"
 			}
 			_, _ = fmt.Fprintf(out, "applied %s -> %s %s committed to brain repo\n", item.ID, kind, id)
