@@ -108,6 +108,13 @@ func (w *Writer) writeObservations(obs []domain.Observation) (Stats, error) {
 			stats.Skipped++
 		}
 	}
+	if err := w.renderChangedPages(); err != nil {
+		return stats, err
+	}
+	return stats, nil
+}
+
+func (w *Writer) renderChangedPages() error {
 	// Render each affected page once, after every observation is validated.
 	// Re-rendering the growing page for every row makes a large batch quadratic.
 	paths := make([]string, 0, len(w.changedPages))
@@ -117,10 +124,10 @@ func (w *Writer) writeObservations(obs []domain.Observation) (Stats, error) {
 	sort.Strings(paths)
 	for _, path := range paths {
 		if _, _, err := writer.Fence(w.Queue, w.Fence, w.pages[path]); err != nil {
-			return stats, fmt.Errorf("fence write: %w", err)
+			return fmt.Errorf("fence write: %w", err)
 		}
 	}
-	return stats, nil
+	return nil
 }
 
 // writeClaim commits one claim if its id is not already present at the

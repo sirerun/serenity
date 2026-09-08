@@ -34,12 +34,14 @@ type reconcilePublication struct {
 // Git failure retryable without interpreting current human edits as our output.
 // It deliberately does not re-dispose the item or add another history record.
 func (w *Writer) ApplyAndCommitReconcile(ctx context.Context, dispStore *disposition.Store, item disposition.Item, now time.Time) (string, error) {
-	a, b, err := acceptedReconcileClaims(item, now)
-	if err != nil {
+	return w.applyAndCommitDecision(ctx, dispStore, item, now, acceptedReconcileClaims, w.preparePublication)
+}
+
+// The same journal/lock/commit protocol serves explicit human assertions and
+// reconciliations. Each caller supplies its own strict decision decoder and plan.
+func (w *Writer) applyAndCommitDecision(ctx context.Context, dispStore *disposition.Store, item disposition.Item, now time.Time, decode func(disposition.Item, time.Time) (domain.Claim, domain.Claim, error), prepare func(domain.Claim, domain.Claim) ([]writer.FileChange, error)) (string, error) {
+	if _, _, err := decode(item, now); err != nil {
 		return "", err
-	}
-	if !safeClaimPart(a.SubjectSlug) || !safeClaimPart(a.Family) || a.SubjectSlug != b.SubjectSlug || a.Predicate != b.Predicate || a.Family != b.Family {
-		return "", fmt.Errorf("reconcile: invalid or mismatched claim identity")
 	}
 	root := w.Fence.Root
 	runtime, err := openPublicationRuntime(root)
@@ -57,11 +59,11 @@ func (w *Writer) ApplyAndCommitReconcile(ctx context.Context, dispStore *disposi
 	if err != nil {
 		return "", err
 	}
-	a, b, err = acceptedReconcileClaims(item, now)
+	a, b, err := decode(item, now)
 	if err != nil {
 		return "", err
 	}
-	if !safeClaimPart(a.SubjectSlug) || !safeClaimPart(a.Family) || a.SubjectSlug != b.SubjectSlug || a.Predicate != b.Predicate || a.Family != b.Family {
+	if !safeClaimPart(a.SubjectSlug) || !safeClaimPart(a.Family) || (b.ID != "" && (a.SubjectSlug != b.SubjectSlug || a.Predicate != b.Predicate || a.Family != b.Family)) {
 		return "", fmt.Errorf("reconcile: invalid or mismatched claim identity")
 	}
 	decision, err := json.Marshal(struct {
@@ -94,7 +96,7 @@ func (w *Writer) ApplyAndCommitReconcile(ctx context.Context, dispStore *disposi
 			return "", fmt.Errorf("reconcile: publication receipt does not match recorded decision")
 		}
 	case errors.Is(err, fs.ErrNotExist):
-		changes, err := w.preparePublication(a, b)
+		changes, err := prepare(a, b)
 		if err != nil {
 			return "", err
 		}
