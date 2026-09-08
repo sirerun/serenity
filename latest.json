@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "revision": "87d9a4741772680c0a0e34aa1d2123519457674f",
+  "environment": "github-ubuntu-24.04-amd64-2procs",
+  "corpus_sha256": "1d97c81d5448734ea09a6683ea9f5ff36106120a893a5fb1ed6513928ecdcdcc",
+  "cache_version": "synthetic-golden-v1-vector512-v4",
+  "messages": 10000,
+  "claims": 10000,
+  "vectors": 10050,
+  "cache_hits": 10000,
+  "model_calls": 0,
+  "total_seconds": 179.030931555,
+  "stages": [
+    {
+      "name": "poll",
+      "seconds": 0.321584767,
+      "items": 10000
+    },
+    {
+      "name": "store_sources",
+      "seconds": 33.57139027,
+      "items": 10000
+    },
+    {
+      "name": "chunk_extract",
+      "seconds": 1.016192036,
+      "items": 10000
+    },
+    {
+      "name": "reconcile",
+      "seconds": 7.343097956,
+      "items": 10000
+    },
+    {
+      "name": "write_claims",
+      "seconds": 123.020377166,
+      "items": 10000
+    },
+    {
+      "name": "index",
+      "seconds": 10.464572883,
+      "items": 10000
+    },
+    {
+      "name": "embed",
+      "seconds": 3.293716477,
+      "items": 10050
+    }
+  ]
+}
