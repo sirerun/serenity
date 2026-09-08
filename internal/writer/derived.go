@@ -90,10 +90,21 @@ func fenceSpan(data []byte, name string, optional bool) (int, int, error) {
 	return start, finish + len(end), nil
 }
 
+// MergeClaimFences replaces only claim, claim-detail and metadata blocks with
+// canonical renderer output. It preserves human prose, frontmatter, summaries
+// and timelines byte-for-byte. Callers must still guard and commit the result.
+func MergeClaimFences(original, fresh []byte) ([]byte, error) {
+	return mergeManagedFences(original, fresh, []string{"claims", "claims-detail", "metadata"})
+}
+
 func mergeDerivedFences(original, fresh []byte) ([]byte, error) {
+	return mergeManagedFences(original, fresh, []string{"summary", "claims", "claims-detail", "metadata"})
+}
+
+func mergeManagedFences(original, fresh []byte, names []string) ([]byte, error) {
 	// Reject overlapping sections rather than replacing text ambiguously.
 	last := -1
-	for _, name := range []string{"summary", "claims", "claims-detail", "metadata"} {
+	for _, name := range names {
 		start, end, err := fenceSpan(original, name, name == "claims-detail" || name == "metadata")
 		if err != nil {
 			return nil, err
@@ -107,7 +118,7 @@ func mergeDerivedFences(original, fresh []byte) ([]byte, error) {
 		last = end
 	}
 	out := bytes.Clone(original)
-	for _, name := range []string{"summary", "claims", "claims-detail", "metadata"} {
+	for _, name := range names {
 		optional := name == "claims-detail" || name == "metadata"
 		start, end, err := fenceSpan(out, name, optional)
 		if err != nil {
