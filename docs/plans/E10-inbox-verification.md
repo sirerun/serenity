@@ -28,7 +28,9 @@ passing cases across three packages, zero skips. Checks include fence and shard
 publication, rotated shards, failed commits, exact-history retry, stale/retracted
 or deleted targets, unrelated staged files, symlinks, same-page grouped approvals,
 human prose, and truthful reporting when canonical commit succeeds but index
-rebuilding fails. Vet, changed-package lint, CLI build and strict docs build pass.
+rebuilding fails. Vet, changed-package lint, CLI build and strict docs build pass. Seven inbox/drift
+cases also pass with global and system Git configuration disabled; disposable
+fixtures explicitly configure their own repository-local author identity.
 
 Negative controls that disable plain-accept publication or replace the whole page
 instead of managed blocks each fail their dedicated test. Both changes were

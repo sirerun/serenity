@@ -69,5 +69,12 @@
       "exit": 1,
       "detected": true
     }
-  ]
+  ],
+  "clean_git_configuration_suite": {
+    "passed_test_cases": 7,
+    "skipped_test_cases": 0,
+    "global_config": "disabled",
+    "system_config": "disabled",
+    "identity": "repository-local synthetic fixture"
+  }
 }
