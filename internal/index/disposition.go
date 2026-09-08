@@ -126,7 +126,10 @@ func (s *SQLite) CommitDisposition(ctx context.Context, id string, before, after
 		return false, fmt.Errorf("index: begin disposition: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	result, err := tx.ExecContext(ctx, `UPDATE disposition_items SET payload = ? WHERE id = ? AND payload = ?`, after, id, before)
+	// Readers accept valid JSON stored as either TEXT or BLOB. Compare its
+	// exact bytes, rather than letting SQLite storage-class inequality turn
+	// an unchanged TEXT snapshot into an endless lost-CAS retry.
+	result, err := tx.ExecContext(ctx, `UPDATE disposition_items SET payload = ? WHERE id = ? AND CAST(payload AS BLOB) = ?`, after, id, before)
 	if err != nil {
 		return false, fmt.Errorf("index: update disposition: %w", err)
 	}
