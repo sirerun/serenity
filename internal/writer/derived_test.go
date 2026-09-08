@@ -109,3 +109,61 @@ func TestFenceDerivedDetailAndMalformedSections(t *testing.T) {
 		t.Fatalf("malformed page changed: %v", err)
 	}
 }
+
+func TestFenceDerivedRefreshesClaimMetadata(t *testing.T) {
+	root := t.TempDir()
+	gitRepo(t, root)
+	q := NewQueue(nil)
+	t.Cleanup(q.Close)
+	fw := store.NewFenceWriter(root)
+	p := store.NewEntityPage(domain.Entity{Type: "person", Slug: "ava"})
+	p.Frontmatter = map[string]any{"external_id": "fixture-1"}
+	p.OriginalBody = "original source narrative"
+	p.Claims = []domain.Claim{{ID: "old", Predicate: "prefers", Family: "prefers", Object: "old choice", Confidence: .7, State: domain.StateActive, Visibility: domain.VisibilityPrivate, Review: true}}
+	path, _, err := Fence(q, fw, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Flush(q, root); err != nil {
+		t.Fatal(err)
+	}
+	p.Claims = []domain.Claim{{ID: "new", Predicate: "prefers", Family: "prefers", Object: "new choice", Confidence: .8, State: domain.StateActive, Visibility: domain.VisibilityPrivate, Review: true}}
+	if _, _, err := FenceDerived(q, fw, p); err != nil {
+		t.Fatal(err)
+	}
+	got, err := fw.ParseEntity(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Claims) != 1 || got.Claims[0].ID != "new" || !got.Claims[0].Review || got.Claims[0].Visibility != domain.VisibilityPrivate {
+		t.Fatalf("stale or missing metadata: %+v", got.Claims)
+	}
+	if got.Frontmatter["external_id"] != "fixture-1" || got.OriginalBody != "original source narrative" {
+		t.Fatal("lost source metadata")
+	}
+}
+
+func TestFenceDerivedAddsMetadataAfterClaimDetails(t *testing.T) {
+	root := t.TempDir()
+	gitRepo(t, root)
+	q := NewQueue(nil)
+	t.Cleanup(q.Close)
+	fw := store.NewFenceWriter(root)
+	p := store.NewEntityPage(domain.Entity{Type: "person", Slug: "ava"})
+	p.Claims = []domain.Claim{{ID: "c1", Predicate: "prefers", Family: "prefers", Object: strings.Repeat("a long claim ", 20), Confidence: .7, State: domain.StateActive}}
+	if _, _, err := Fence(q, fw, p); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Flush(q, root); err != nil {
+		t.Fatal(err)
+	}
+	p.Claims[0].Visibility = domain.VisibilityPrivate
+	for range 2 {
+		if _, _, err := FenceDerived(q, fw, p); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Flush(q, root); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

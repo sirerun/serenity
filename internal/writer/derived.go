@@ -93,8 +93,8 @@ func fenceSpan(data []byte, name string, optional bool) (int, int, error) {
 func mergeDerivedFences(original, fresh []byte) ([]byte, error) {
 	// Reject overlapping sections rather than replacing text ambiguously.
 	last := -1
-	for _, name := range []string{"summary", "claims", "claims-detail"} {
-		start, end, err := fenceSpan(original, name, name == "claims-detail")
+	for _, name := range []string{"summary", "claims", "claims-detail", "metadata"} {
+		start, end, err := fenceSpan(original, name, name == "claims-detail" || name == "metadata")
 		if err != nil {
 			return nil, err
 		}
@@ -107,8 +107,8 @@ func mergeDerivedFences(original, fresh []byte) ([]byte, error) {
 		last = end
 	}
 	out := bytes.Clone(original)
-	for _, name := range []string{"summary", "claims", "claims-detail"} {
-		optional := name == "claims-detail"
+	for _, name := range []string{"summary", "claims", "claims-detail", "metadata"} {
+		optional := name == "claims-detail" || name == "metadata"
 		start, end, err := fenceSpan(out, name, optional)
 		if err != nil {
 			return nil, err
@@ -125,7 +125,11 @@ func mergeDerivedFences(original, fresh []byte) ([]byte, error) {
 			replacement = fresh[fs:fe]
 		}
 		if start < 0 {
-			_, end, err = fenceSpan(out, "claims", false)
+			anchor := "claims"
+			if name == "metadata" {
+				anchor = "timeline"
+			}
+			_, end, err = fenceSpan(out, anchor, false)
 			if err != nil {
 				return nil, err
 			}
