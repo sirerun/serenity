@@ -547,3 +547,47 @@ open to the session's own good-faith inference -- and a session that
 infers "no hold mentioned this time = cleared" is a plausible, honest
 misreading, not malice. State the mechanism, not just the outcome,
 every time.
+
+## L-0015: A `disable_thinking` diagnostic run can score an ava family perfectly clean while the real thinking-on production path genuinely fails it -- the fast method isn't a substitute for `eval-runner -mode live`, because some failure modes only exist when the model is allowed to deliberate
+
+**Tags:** #eval #router #model #gotcha
+**Date:** 2026-09-07
+**Repo:** sirerun/serenity
+
+**Rule:** Never treat a `chat_template_kwargs.enable_thinking: false`
+diagnostic run (T1.31's mechanism, used throughout T1.28-T1.33/T1.29 for
+fast per-span root-cause iteration) as proof a family will pass the real
+`cmd/eval-runner -mode live` acceptance run. It is a good tool for fast
+iteration on failures the thinking-on path also has, but it can miss a
+failure mode entirely when that failure mode is itself caused by the
+model's thinking pass. Only the real thinking-on run gates any ava-family
+acceptance task; a disable-thinking diagnostic showing a family clean is
+evidence, not proof.
+**Why:** T1.29 (PR #179) ran a full-corpus disable-thinking re-run twice
+after fixing `belongs_to_project`'s known lead-word-dropping bug; both
+scored the family 24/24 clean. The real `eval-runner -mode live` run
+(thinking-on) showed it still failing (recall_ci=[0.667,0.917], tp=19/
+fp=0/fn=5) -- every one of the 5 misses was the same held-out cluster,
+"Ava's calendar invite series is titled after X." A targeted thinking-on
+diagnostic reproduced it directly and explained why the fast method
+never could: 4 of 5 spans in that cluster produced zero observations
+after 21-69s each (every other span in the same run finished under 15s),
+and the 5th timed out entirely at 366s -- the model's thinking pass
+appears to spend real time deliberating whether a meeting series named
+after a project counts as membership evidence, sometimes concluding no
+(abstention) and sometimes not finishing in time at all. Disabling
+thinking forces a fast, single-pass answer with no room for this
+hesitation, so the same cluster answered instantly and correctly every
+time under that mode -- the bug and the diagnostic's blind spot to it
+share one root cause.
+**Trigger:** Any task using a disable-thinking diagnostic tool (this
+repo's pattern: `.claude/scratch/*/main.go` wrapping
+`internal/extract.Extractor` with `ExtraBody:
+{"chat_template_kwargs":{"enable_thinking":false}}`) to iterate quickly
+on an ava (or similar) extraction family. Treat a clean disable-thinking
+score as "no known object-slugging/classification bug found", not as
+"this family will pass acceptance" -- always confirm with at least one
+real `eval-runner -mode live` run before reporting a family fixed, and if
+that real run still fails, look specifically for a latency/abstention
+pattern (unusually slow calls, zero-observation results, or timeouts)
+concentrated in one cluster, not just a wrong-object pattern.
