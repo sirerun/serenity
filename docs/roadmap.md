@@ -4,6 +4,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-09-08 T7.1 launch inventory: recorded exact deployed Pages/Lambda hashes, authoritative DNS and certificate state, observed Ajent login asset, named owners and rollback routes in docs/launch/checklist.md. Ajent #15 is already merged; #24 and draft #25 are deferred to David’s Ajent review. HTTPS enforcement and the missing chat health route are concrete pending gates; no Ajent deployment is claimed.
+
 - 2026-09-08 T9.1/T9.2 migration retrieval remediation: an end-to-end CLI audit found that imported claims were counted but absent from search chunks. Derived imported-claim chunks now retain review labels and check canonical privacy, lifecycle, validity, text, source, entity, and storage tier at every read. Local private search works; remote recall and providers exclude private or stale evidence. All seven scoped CLI flows pass, including real SIGKILL/resume, and an actual MCP stdio session verifies public/private and post-edit stale-index behavior. Full race suite: 1,510 passing cases across 58 packages, six explicit test skips; focused suite: 28 passing cases, zero skips. Privacy and canonical-text negative controls both failed and restored code passed.
 
 - 2026-09-08 T5.8 cached ingest budget: actual nightly run imported 10,000 sources and claims plus 10,050 vectors with zero model calls in 179.031 measured seconds. Stage timings/test evidence uploaded and the accepted baseline persisted. A deliberately slowed run (+118.85%) failed the workflow budget step, retained its artifacts, and left the baseline unchanged. Exact 20% and cache-miss negative controls also fire. See docs/evals/m5-report.md; the real-mailbox laptop gate remains pending.

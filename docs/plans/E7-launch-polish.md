@@ -6,13 +6,11 @@ Fidelity: executable. Frontier: unblocked after the current Ajent and Serenity r
 
 ## Current fleet state (checked 2026-09-08)
 
-- Serenity has no open GitHub PRs; the Pages site and Lambda endpoint are live at `serenity.sire.run`.
-- Ajent PR #24 (browser-login logo) is open with its Go/PostgreSQL checks green. Ajent PR #25 (consulting footer) is a draft with checks green. Ajent PR #15's contrast revision is merged, but its live deployment is not claimed in the shared feed. Ajent PRs #14, #9, and #8 remain open maintenance/infrastructure work.
-- Serenity's core roadmap still has the founder-only T4.17 M4 exit and later E5 release-gate work; E7 is the public-surface polish lane and must not silently claim those product milestones.
+The dated [launch checklist](../launch/checklist.md) records the exact Pages and Lambda revisions, authoritative DNS and certificate state, observed Ajent login asset, PR classifications, owners and rollback routes. HTTPS enforcement and the chat health route remain open. M4 is complete; M5 is 11/15 with its human release gates preserved. Ajent deployment provenance remains its owner's responsibility.
 
 ## Tasks
 
-- [ ] T7.1 Release-surface inventory and coordination  Owner: David  Est: 30m  kind: operations  delivers: [single launch checklist naming the exact Serenity Pages revision, DNS state, Lambda version, Ajent logo revision, owners, and rollback links]  deps: []
+- [x] T7.1 Release-surface inventory and coordination  Owner: David  Est: 30m  kind: operations  delivers: [single launch checklist naming the exact Serenity Pages revision, DNS state, Lambda version, Ajent logo revision, owners, and rollback links]  deps: []
   - Acceptance: checklist records live URLs and current CI/deployment evidence; Ajent PRs #15, #24, and #25 are classified as merge, defer, or reject with one named owner for each.
 - [ ] T7.2 Adoption event contract and browser coverage  Owner: pool  Est: 90m  verifies: [UC-039, infrastructure]  deps: [T7.1]  acc: [Playwright covers landing-page install CTA, docs/get-started navigation, chat happy path, chat error path, and mobile layout; production verification observes the documented events without recording prompt text or secrets]
   - Scope: define a small event vocabulary (`install_cta`, `docs_open`, `chat_started`, `chat_answered`, `chat_failed`) and a privacy-preserving implementation for the static site. Keep the chat transcript out of analytics.
