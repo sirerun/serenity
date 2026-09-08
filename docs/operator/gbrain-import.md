@@ -53,7 +53,7 @@ file, both recovered on the next run. Completed pages create no extra commits.
 Before skipping a page, Serenity verifies its source hash, mapping, canonical
 bytes, and committed Git bytes. Copied or stale checkpoints cannot skip
 uncommitted work. Changed source snapshots, corrupted checkpoint files, and
-human edits or deletions fail explicitly. Preserve the original snapshot to
+human edits or deletions (including committed deletions) fail explicitly. Preserve the original snapshot to
 resume; use a fresh target for a changed migration. This is interruption recovery,
 not replacement of previously imported pages with newer versions.
 
@@ -61,8 +61,11 @@ A kernel file lock rejects concurrent imports into the same target and releases
 automatically when a process exits or is killed. It coordinates importer processes;
 stop other writers while migrating. Checkpoint directories, files, and lock files
 must not be symlinks. The supported macOS/Linux builds include this locking path.
-The checkpoint is disposable: if removed while no import is running, an unchanged
-source can rebuild it from matching canonical pages and their Git commits.
+The checkpoint is disposable: if removed while no import is running and all imported pages are still present,
+an unchanged source can rebuild it from matching canonical pages and their Git
+commits. Do not discard it to bypass a missing-page error: that loses the record
+that the page was already imported. Resolve intentional deletions before starting
+a new migration.
 
 ## Field-level report
 
