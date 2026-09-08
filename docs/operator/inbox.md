@@ -1,4 +1,4 @@
-# Review and recover reconciliation decisions
+# Review and recover inbox decisions
 
 Run `serenity -C /path/to/brain inbox` to review pending or deferred items. Use
 `j`/`k` to move, space to accept, `e` to edit a single reconciliation proposal,
@@ -63,8 +63,9 @@ index rebuilding fails, the CLI reports that canonical changes were committed
 and directs you to `serenity sync`; it does not pretend the publication rolled
 back.
 
-This recovery path covers local-owner CLI reconciliation approvals. Other inbox
-item kinds retain their existing handlers. Canonical publication through DISPOSITION HTTP and recovery of older
+This recovery path covers local-owner CLI reconciliation, confirmed extraction
+assertions and accepted human edits. Other item kinds retain their existing
+handlers. Canonical publication through DISPOSITION HTTP and recovery of older
 versions' premature `AppliedClaimID` markers are separate surfaces. Receipts do
 not provide a multi-file filesystem transaction against arbitrary simultaneous
 human writes; byte checks reject observed intervening changes, and each file is
@@ -119,3 +120,27 @@ claimed snapshots are immutable until successfully staged.
 pending files, and `--apply` only retries its named canonical publication. These
 handoff guarantees concern review staging; importing a dirty-edit item does not
 publish either version of its canonical file.
+
+## Approve a paused human edit
+
+On a dirty-edit item, space previews the captured human page and the number of
+shard corrections, then asks for `y` and Enter. Any other answer leaves it pending.
+Approval commits the human copy. It does not apply the paused machine version.
+Human prose and fence-tier claims remain intact. Changed object values on existing
+shard-head rows become new confidence-one human assertions, retaining history and
+clearing extraction provenance. Each corrected row must identify its current head;
+multiple current heads are supported when the page identifies each explicitly.
+
+A newer page edit, a changed or missing head, an uncommitted shard dependency, or
+an unsafe path stops the preview before a decision is recorded. Added or removed
+shard rows, direct JSONL edits, and changes to shard state/metadata require explicit
+resolution. Absolute paths captured before moving a brain are not silently mapped
+to a different location; generate a fresh pending record at the current path.
+
+Once accepted, dirty edits use the same `--unapplied` and `--apply ITEM_ID` commands.
+A durable receipt records the exact file transitions before publication begins.
+The optional `applied_publication_id` marks a completed publication, which can
+contain zero or several new claims; `applied_claim_id` keeps its original meaning.
+An already accepted legacy dirty-edit item can also be applied if its captured
+human bytes and current heads still pass validation. Unreviewed newer content is
+never inferred to be part of that acceptance.

@@ -153,7 +153,7 @@ func openPublicationRuntime(root string) (*os.Root, error) {
 	return dir.OpenRoot(".serenity/reconcile")
 }
 
-func savePublication(root *os.Root, name string, value reconcilePublication) error {
+func savePublication(root *os.Root, name string, value any) error {
 	raw, err := json.Marshal(value)
 	if err != nil {
 		return err
