@@ -4,6 +4,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-09-08 T7.3 chat operations: deployed five owner/runbook-linked alarms and fixed-schema privacy-preserving metrics with 14-day log retention. Twenty-one Python tests passed, zero skipped; fallback/logging negative controls failed correctly. Four live health/CORS/cited-answer checks passed, and CloudWatch extracted two latency samples (maximum 5,786.077 ms). No visitor content or credentials are logged; no pager subscription or live fault injection is claimed. Evidence: docs/launch/checklist.md.
+
 - 2026-09-08 T7.5 HTTPS enforcement: Pages reports the correct custom domain and `https_enforced=true`; authoritative DNS resolves to GitHub Pages, HTTP redirects 301 to HTTPS, and HTTPS returns 200 with normal certificate validation. Only the Pages enforcement setting changed. Before/after evidence and rollback owner are in docs/launch/checklist.md.
 
 - 2026-09-08 T7.1 launch inventory: recorded exact deployed Pages/Lambda hashes, authoritative DNS and certificate state, observed Ajent login asset, named owners and rollback routes in docs/launch/checklist.md. Ajent #15 is already merged; #24 and draft #25 are deferred to David’s Ajent review. HTTPS enforcement and chat operational monitoring are concrete pending gates; no Ajent deployment is claimed.

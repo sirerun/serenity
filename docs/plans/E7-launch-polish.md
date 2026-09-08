@@ -6,7 +6,7 @@ Fidelity: executable. Frontier: unblocked after the current Ajent and Serenity r
 
 ## Current fleet state (checked 2026-09-08)
 
-The dated [launch checklist](../launch/checklist.md) records the exact Pages and Lambda revisions, authoritative DNS and certificate state, observed Ajent login asset, PR classifications, owners and rollback routes. HTTPS enforcement is verified complete; chat operational monitoring remains open. The live `/healthz` route returns 200. M4 is complete; M5 is 11/15 with its human release gates preserved. Ajent deployment provenance remains its owner's responsibility.
+The dated [launch checklist](../launch/checklist.md) records the exact Pages and Lambda revisions, authoritative DNS and certificate state, observed Ajent login asset, PR classifications, owners and rollback routes. HTTPS enforcement and chat operational monitoring are verified complete. The live `/healthz` route returns 200; CloudWatch received application latency samples. M4 is complete; M5 is 11/15 with its human release gates preserved. Ajent deployment provenance remains its owner's responsibility.
 
 ## Tasks
 
@@ -14,7 +14,7 @@ The dated [launch checklist](../launch/checklist.md) records the exact Pages and
   - Acceptance: checklist records live URLs and current CI/deployment evidence; Ajent PRs #15, #24, and #25 are classified as merge, defer, or reject with one named owner for each.
 - [ ] T7.2 Adoption event contract and browser coverage  Owner: pool  Est: 90m  verifies: [UC-039, infrastructure]  deps: [T7.1]  acc: [Playwright covers landing-page install CTA, docs/get-started navigation, chat happy path, chat error path, and mobile layout; production verification observes the documented events without recording prompt text or secrets]
   - Scope: define a small event vocabulary (`install_cta`, `docs_open`, `chat_started`, `chat_answered`, `chat_failed`) and a privacy-preserving implementation for the static site. Keep the chat transcript out of analytics.
-- [ ] T7.3 Chat reliability and operations  Owner: pool  Est: 90m  verifies: [UC-039, infrastructure]  deps: [T7.1]  acc: [Lambda health check, allowed-origin request, rejected-origin request, model-outage fallback, and rate-limit behavior are covered in CI; production has an actionable error/latency signal and no API key or prompt transcript is logged]
+- [x] T7.3 Chat reliability and operations  Owner: pool  Est: 90m  verifies: [UC-039, infrastructure]  deps: [T7.1]  acc: [Lambda health check, allowed-origin request, rejected-origin request, model-outage fallback, and rate-limit behavior are covered in CI; production has an actionable error/latency signal and no API key or prompt transcript is logged]
   - Scope: add CloudWatch alarms or an equivalent existing AWS signal, document thresholds and response steps, and verify the deployed function against the live custom-domain origin.
 - [ ] T7.4 Launch content packet  Owner: David  Est: 60m  kind: content  delivers: [launch announcement, short demo script, FAQ answers, and one canonical installation walkthrough linked from Serenity and ndungu.dev]  deps: [T7.1]
   - Acceptance: every claim in the packet links to a live Serenity or repository page; install instructions are copy-pasteable; the packet names the early-access boundary and the chat's privacy behavior.
