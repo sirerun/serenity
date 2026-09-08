@@ -1,6 +1,8 @@
 package reconcile
 
 import (
+	"maps"
+	"reflect"
 	"testing"
 	"time"
 
@@ -140,13 +142,17 @@ func TestDecayNeverWritesConfidenceBackToAFile(t *testing.T) {
 		mkClaim("c1", "dave-osei", "has_balance", 0.9, now.AddDate(0, 0, -100)),
 		mkClaim("c2", "dave-osei", "has_balance", 0.2, now.AddDate(0, 0, -5)),
 	}
+	claims[0].Provenance.Meta = map[string]string{"source": "preserve original attribution"}
 	before := make([]domain.Claim, len(claims))
 	copy(before, claims)
+	for i := range before {
+		before[i].Provenance.Meta = maps.Clone(claims[i].Provenance.Meta)
+	}
 
 	_ = Sweep(claims, map[string]int{"has_balance": 10}, now, 0)
 
 	for i := range claims {
-		if claims[i] != before[i] {
+		if !reflect.DeepEqual(claims[i], before[i]) {
 			t.Fatalf("Sweep mutated claims[%d]: got %+v, want unchanged %+v", i, claims[i], before[i])
 		}
 	}
