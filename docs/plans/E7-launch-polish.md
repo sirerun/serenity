@@ -1,19 +1,19 @@
 # E7 — Launch polish and adoption loop
 
-Purpose: turn the already deployed Serenity website and adoption chat into a measured, reliable launch surface. This epic coordinates Serenity with the Ajent work that owns the sign-in destination; it does not reopen the shipped visual direction or rewrite the product roadmap.
+Purpose: turn the already deployed Serenity website and adoption chat into a measured, reliable launch surface. Adjacent product-owned release surfaces are tracked in their own private repositories; this epic covers only Serenity's public dependencies and launch work.
 
-Fidelity: executable. Frontier: unblocked after the current Ajent and Serenity release surfaces are inventoried.
+Fidelity: executable. Frontier: unblocked after the current Serenity and external dependency release surfaces are inventoried.
 
 ## Current fleet state (checked 2026-09-08)
 
 - Serenity has no open GitHub PRs; the Pages site and Lambda endpoint are live at `serenity.sire.run`.
-- Ajent PR #24 (browser-login logo) is open with its Go/PostgreSQL checks green. Ajent PR #25 (consulting footer) is a draft with checks green. Ajent PR #15's contrast revision is merged, but its live deployment is not claimed in the shared feed. Ajent PRs #14, #9, and #8 remain open maintenance/infrastructure work.
+- Adjacent product release work is owned and reviewed in its private repository. Serenity records only the dependency and live-verification outcome, never private task numbers or internal readiness evidence.
 - Serenity's core roadmap still has the founder-only T4.17 M4 exit and later E5 release-gate work; E7 is the public-surface polish lane and must not silently claim those product milestones.
 
 ## Tasks
 
-- [ ] T7.1 Release-surface inventory and coordination  Owner: David  Est: 30m  kind: operations  delivers: [single launch checklist naming the exact Serenity Pages revision, DNS state, Lambda version, Ajent logo revision, owners, and rollback links]  deps: []
-  - Acceptance: checklist records live URLs and current CI/deployment evidence; Ajent PRs #15, #24, and #25 are classified as merge, defer, or reject with one named owner for each.
+- [ ] T7.1 Release-surface inventory and coordination  Owner: David  Est: 30m  kind: operations  delivers: [single launch checklist naming the exact Serenity Pages revision, DNS state, Lambda version, adjacent-product dependency status, owners, and rollback links]  deps: []
+  - Acceptance: checklist records live URLs and current CI/deployment evidence; each external dependency is classified as merge, defer, or reject with one named owner for each.
 - [ ] T7.2 Adoption event contract and browser coverage  Owner: pool  Est: 90m  verifies: [UC-039, infrastructure]  deps: [T7.1]  acc: [Playwright covers landing-page install CTA, docs/get-started navigation, chat happy path, chat error path, and mobile layout; production verification observes the documented events without recording prompt text or secrets]
   - Scope: define a small event vocabulary (`install_cta`, `docs_open`, `chat_started`, `chat_answered`, `chat_failed`) and a privacy-preserving implementation for the static site. Keep the chat transcript out of analytics.
 - [ ] T7.3 Chat reliability and operations  Owner: pool  Est: 90m  verifies: [UC-039, infrastructure]  deps: [T7.1]  acc: [Lambda health check, allowed-origin request, rejected-origin request, model-outage fallback, and rate-limit behavior are covered in CI; production has an actionable error/latency signal and no API key or prompt transcript is logged]
@@ -27,6 +27,6 @@ Fidelity: executable. Frontier: unblocked after the current Ajent and Serenity r
 
 ## Risks and boundaries
 
-- Ajent is a separate release surface. Serenity can link to it, but cannot merge or deploy Ajent changes without that repository's normal review gate.
+- External products are separate release surfaces. Serenity can link to them, but cannot merge or deploy their changes without their repository's normal review gate.
 - Analytics must measure adoption without collecting chat contents, credentials, IP addresses, or model prompts.
 - The launch packet must preserve the existing early-access and human-control claims; no performance or customer-result claims are introduced without evidence.
