@@ -63,6 +63,8 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 ### E5 -- M5: migration + launch  -> docs/plans/E5-m5-migration-launch.md  (5/15; T5.11's weekly report card shipped earlier (PR #149); T5.5 adversarial corpus release gate shipped in PR #173, wiring T1.20's existing corpus suite into release.yml as a required job. T5.4 mkdocs-material docs site shipped in PR #175, wiring already-shipped operator/protocol content into a strict-build site with a build-time threat-model include, unblocking T5.7/T5.10. T5.7 fresh-machine install-verify script + CI job shipped in PR #177, proving the documented init->connect->sync->extract->search->ask->inbox->check walkthrough works end to end from a clean clone in <15min. T5.10 BrainBench trend persistence + docs chart shipped in PR #178, completing T1.21's deferred durable-history half with real data on a data-only orphan results branch. Remaining tasks gated behind M1+M4; T5.1 and T5.9 carry blocked-by: [T4.17] mechanically -- ADR 011)
 ### E6 -- M6: hardening soak (outline, post-code-complete)  -> docs/plans/E6-m6-hardening.md  (0/1)
 
+### E7 -- Launch polish and adoption loop  -> docs/plans/E7-launch-polish.md  (0/6; executable; newly planned 2026-09-08)
+
 Decisions confirmed by David on 2026 08 27 (no open decisions remain):
 - OD-1 Second labeler for golden sets: two independent frontier-model passes from different families with David adjudicating (ADR 005).
 - OD-2 Voice-note connector timing: M2 task T2.16, not an M1 gate (ADR 005).
@@ -302,6 +304,8 @@ Definition of done for a task, all required:
 Rules: one worktree per task on `/Volumes/BuildOffload/wt/serenity-<task>`; small logical commits; never commit files from different directories in one commit; `acc:` predicates drive kazi's lane, `lane: agent` tasks go to a frontier subagent; every kazi friction point becomes an issue at kazi-org/kazi. When running multiple parallel `/apply --pool` loop sessions (up to 4, section 5), task claims (refs/claims/T*, the /claim skill) are the only coordination mechanism -- never hand-assign tasks to sessions; a session that finds nothing claimable checkpoints and exits rather than idle-polling.
 
 ## 9. Progress log
+
+- 2026-09-08 Launch-polish planning pass: checked live Ajent/Serenity work, recorded E7 tasks T7.1-T7.6 for release coordination, privacy-preserving adoption measurement, chat operations, launch content, HTTPS/DNS completion, and the human go/no-go gate.
 
 - 2026 08 27 Initial plan: E0-E6 created (108 tasks, 108 with acc:, 6 kind: human, 2 kind: any, 7 lane: agent), ADRs 001-010 written, use-case manifest (46) written, roadmap seeded. OD-1..OD-4 confirmed by David (recommended options); ADR 005 moved to Accepted.
 - 2026 08 29 Trim pass (no new scope): E0 is fully shipped (13/13) -- its wave 0a/0b task list removed from this file per the plan skill's trim step (full detail stays in docs/plans/E0-m0-residuals.md and docs/roadmap.md, never trimmed there). Synced this file's stale wave checkboxes to the epic files' real state: 22 E1 tasks and 12 E3 tasks flipped to [x] (34 total) -- only T1.23 (E1, David-only) and T3.4/T3.9/T3.10/T3.11/T3.17 (E3, pool-dispatchable, unclaimed) remain open on the frontier. No epic changed fidelity tier: E4/E5 were already decomposed to executable in the initial pass (a deliberate original choice, section 1) despite being beyond the current frontier -- left as-is rather than retroactively demoted, since that would discard already-verified planning work for no benefit. E2/E4/E5/E6 unchanged (0 done each).

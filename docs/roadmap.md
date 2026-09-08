@@ -336,6 +336,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 - E4 M4 serve + protocols -- 20/21 epic task checkboxes complete. Pinned MEMORY_VERBS compatibility and T4.5 acceptance are complete in PR #160; migrated drift/security checks pass. Schema publication (T4.7) shipped in PR #162. Protocol documents (T4.16) shipped in PR #164. Conformance fixture set (T4.13) shipped in PR #165, unblocking full conformance (T4.14). Authenticated Streamable HTTP MCP endpoint (T4.21) shipped in PR #166. `pkg/serenity` facade `Brief` (T4.19) shipped in PR #168. Full gbrain protocol conformance (T4.14) shipped in PR #169. Serenity-native conformance replay (T4.15) shipped in PR #171. The David-only M4 exit (T4.17) remains planned.
 - E5 M5 migration + launch (gbrain import, docs site, adversarial gate, name decision, install-time AC) -- 5/15 epic task checkboxes complete (T5.11 weekly report card, T5.5 adversarial release gate, T5.4 mkdocs-material docs site, T5.7 fresh-machine install-verify script, T5.10 BrainBench trend published). Remaining tasks mostly gated behind M1+M4 (T5.9 blocked-by T4.17, ADR 011)
 - E6 M6 hardening soak (outline; starts after code complete, ADR 002)
+- E7 Launch polish and adoption loop -- planned 2026-09-08 in `docs/plans/E7-launch-polish.md`; coordinates Serenity's live Pages/Lambda surface with Ajent PR #24 (browser-login logo) and the adjacent Ajent launch work, then adds privacy-preserving adoption measurement, chat operations, launch content, HTTPS enforcement, and a human go/no-go gate.
 
 ## Blocked
 
