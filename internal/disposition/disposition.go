@@ -201,7 +201,7 @@ type Item struct {
 	// a cross-reference into the canonical repo's own claim id space, not
 	// a second place canonical state lives.
 	AppliedClaimID string `json:"applied_claim_id,omitempty"`
-	// AppliedPublicationID identifies a committed dirty-edit receipt (zero or more claims).
+	// AppliedPublicationID identifies a committed dirty-edit or compaction receipt.
 	AppliedPublicationID string `json:"applied_publication_id,omitempty"`
 	// AppliedEntryID identifies a committed precept or child-intent ledger entry.
 	AppliedEntryID string `json:"applied_entry_id,omitempty"`
@@ -551,12 +551,21 @@ func (s *Store) RecordResultClaimID(ctx context.Context, id, claimID string, now
 
 // RecordPublicationID marks a committed dirty edit without inventing a claim ID.
 func (s *Store) RecordPublicationID(ctx context.Context, id, publicationID string, now time.Time) error {
+	return s.recordPublicationID(ctx, id, publicationID, now, KindDirtyEdit)
+}
+
+// RecordCompactionID marks a committed approved compaction pass.
+func (s *Store) RecordCompactionID(ctx context.Context, id, publicationID string, now time.Time) error {
+	return s.recordPublicationID(ctx, id, publicationID, now, KindCompact)
+}
+
+func (s *Store) recordPublicationID(ctx context.Context, id, publicationID string, now time.Time, kind Kind) error {
 	if publicationID == "" {
 		return errors.New("disposition: empty publication id")
 	}
 	_, _, err := s.updateItem(ctx, id, func(item *Item) (bool, error) {
-		if item.Kind != KindDirtyEdit || item.State != StateDisposed || item.Verdict != VerdictAccept {
-			return false, errors.New("disposition: accepted dirty edit required")
+		if item.Kind != kind || item.State != StateDisposed || (item.Verdict != VerdictAccept && (kind != KindCompact || item.Verdict != VerdictEditAccept)) {
+			return false, errors.New("disposition: accepted publication decision required")
 		}
 		if item.AppliedPublicationID == publicationID {
 			return false, nil

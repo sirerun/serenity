@@ -1,0 +1,92 @@
+{
+  "task": "T21.1",
+  "date": "2026-09-08",
+  "source_revision": "3f1cdc467de5d724062fbe2bb03092ff86a1bc89",
+  "linux_ci": {
+    "url": "https://github.com/sirerun/serenity/actions/runs/34269287031",
+    "conclusion": "success",
+    "race_command": "go test -race -timeout 600s ./...",
+    "passing_packages": 58,
+    "individual_case_count": null,
+    "count_note": "Non-verbose CI log reports package results, not individual test cases.",
+    "vet": "full repository passed",
+    "build": "full repository passed",
+    "lint": "full repository passed",
+    "checks_passed": 12
+  },
+  "darwin_focused": {
+    "cli": {
+      "pattern": "^TestApprovedCompact|^TestCompactCLIItemAccepted$",
+      "passing_cases": 18,
+      "skipped_cases": 0,
+      "global_git_configuration": "disabled",
+      "identity_guessing": "forbidden; fixtures set local identity"
+    },
+    "writer": {
+      "pattern": "^TestCompaction|^TestFlushRetries",
+      "passing_cases": 13,
+      "skipped_cases": 0
+    }
+  },
+  "negative_controls": [
+    {
+      "fault": "skip-dirty-check",
+      "test": "TestApprovedCompactRefusesDirtyCanonicalInput",
+      "detected": true
+    },
+    {
+      "fault": "restage-absent-deletion",
+      "test": "TestFlushRetriesAlreadyStagedDeletionAndCompletedDeletion",
+      "detected": true
+    },
+    {
+      "fault": "allow-base-deletion",
+      "test": "TestCompactionPublicationDeletionIsNarrowAndExact",
+      "detected": true
+    },
+    {
+      "fault": "replay-completed-receipt",
+      "test": "TestApprovedCompactRetryIsOnePass",
+      "detected": true
+    }
+  ],
+  "actual_cli_sigkill": [
+    {
+      "cut": "pre-commit",
+      "signal": "SIGKILL of synthetic process group",
+      "incomplete_receipt_at_cut": true,
+      "decision_history": 1,
+      "live_claims": 1,
+      "archived_claims": 1,
+      "numbered_segment_removed": true,
+      "repeat_commit_unchanged": true,
+      "current_fact_search_survived_without_rebuild": true,
+      "unapplied_visible_then_cleared": true,
+      "synthetic_orphan_git_lock_removed": true,
+      "live_model_calls": 0,
+      "verdict": "pass"
+    },
+    {
+      "cut": "post-commit",
+      "signal": "SIGKILL of synthetic process group",
+      "incomplete_receipt_at_cut": true,
+      "decision_history": 1,
+      "live_claims": 1,
+      "archived_claims": 1,
+      "numbered_segment_removed": true,
+      "repeat_commit_unchanged": true,
+      "current_fact_search_survived_without_rebuild": true,
+      "unapplied_visible_then_cleared": true,
+      "synthetic_orphan_git_lock_removed": false,
+      "live_model_calls": 0,
+      "verdict": "pass"
+    }
+  ],
+  "fixture_correction": "The first Linux CI run failed on missing fixture Git identity; the corrected fixtures passed under explicit local identity and in CI.",
+  "limitations": [
+    "No final full Darwin suite was run while the shared build lease was occupied; the full Linux CI and local targeted recovery runs are the verification evidence.",
+    "Cross-build jobs compile target platforms; they do not claim runtime execution there.",
+    "Canonical publication retains the project single-writer contract; ordinary publication still refuses deletion.",
+    "A completed approval authorizes no future compaction pass."
+  ]
+}

@@ -62,7 +62,7 @@
     },
     "applied_publication_id": {
       "type": "string",
-      "description": "Optional completion receipt ID for an accepted dirty edit, which may publish zero or more claims."
+      "description": "Optional completion receipt ID for an accepted dirty edit or compaction pass."
     },
     "applied_claim_id": {
       "type": "string",

@@ -79,6 +79,8 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 
 ### E20 -- Scheduled review jobs -> docs/plans/E20-scheduled-review-jobs.md (1/1; scheduled decay review and queue metrics verified, 2026-09-08)
 
+### E21 -- Approved compaction publication -> docs/plans/E21-approved-compaction.md (1/1; approved compaction publication and recovery verified, 2026-09-08)
+
 Decisions confirmed by David on 2026 08 27 (no open decisions remain):
 - OD-1 Second labeler for golden sets: two independent frontier-model passes from different families with David adjudicating (ADR 005).
 - OD-2 Voice-note connector timing: M2 task T2.16, not an M1 gate (ADR 005).

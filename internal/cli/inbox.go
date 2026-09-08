@@ -721,8 +721,13 @@ func runListUnapplied(ctx context.Context, dispStore *disposition.Store, out io.
 		if err != nil {
 			return err
 		}
-		supported := item.Kind == disposition.KindPreceptDraft || item.Kind == disposition.KindDecompose || item.Kind == disposition.KindDirtyEdit || item.Kind == disposition.KindReconcile || (extracted && item.Verdict == disposition.VerdictEditAccept)
+		supported := item.Kind == disposition.KindCompact || item.Kind == disposition.KindPreceptDraft || item.Kind == disposition.KindDecompose || item.Kind == disposition.KindDirtyEdit || item.Kind == disposition.KindReconcile || (extracted && item.Verdict == disposition.VerdictEditAccept)
 		if !supported || item.State != disposition.StateDisposed || (item.Verdict != disposition.VerdictAccept && item.Verdict != disposition.VerdictEditAccept) || item.AppliedClaimID != "" || item.AppliedPublicationID != "" || item.AppliedEntryID != "" {
+			continue
+		}
+		if item.Kind == disposition.KindCompact {
+			_, _ = fmt.Fprintf(out, "unapplied compact %s — run: serenity compact --item %s\n", item.ID, item.ID)
+			count++
 			continue
 		}
 		if (item.Kind == disposition.KindPreceptDraft || item.Kind == disposition.KindDecompose) && !item.LedgerEffectPending {

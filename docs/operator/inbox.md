@@ -167,3 +167,8 @@ Deleting it is not a recovery procedure, even when a completion marker remains.
 This path covers local inbox precept drafts and child intents. Other low-level
 direction lifecycle calls and HTTP canonical publication keep their existing
 contracts. See [ledger storage](ledger-storage.md) for individual file guarantees.
+
+Accepted [compaction proposals](compaction.md) appear in `--unapplied` with their
+`serenity compact --item <id>` command until that exact pass is committed. This
+command is also the recovery path after interrupted publication. A completed
+approval cannot be reused to sweep new data; create a new proposal for another pass.

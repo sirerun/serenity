@@ -153,6 +153,8 @@ func TestCompactCLIItemAccepted(t *testing.T) {
 		t.Fatalf("init: %v\n%s", err, initOut.String())
 	}
 
+	configureGitIdentity(t, root)
+
 	const slug, family = "acct-42", "has_balance"
 	ss := store.NewShardStore(root)
 	q := writer.NewQueue(nil)
@@ -184,6 +186,11 @@ func TestCompactCLIItemAccepted(t *testing.T) {
 		t.Fatalf("seed line 2: %v %+v", err, lines)
 	}
 	headID := lines[1].ID
+
+	// Canonical producer writes must be committed before a destructive pass.
+	if _, err := writer.Flush(q, root); err != nil {
+		t.Fatal(err)
+	}
 
 	if out, err := exec.Command(bin, "-C", root, "sync").CombinedOutput(); err != nil {
 		t.Fatalf("pre-compact sync: %v\n%s", err, out)

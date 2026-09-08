@@ -11,7 +11,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/providers"
-	"github.com/sirerun/serenity/internal/store"
+	"github.com/sirerun/serenity/internal/supersede"
 )
 
 // CompactPayload is a KindCompact disposition item's payload. Empty today:
@@ -54,6 +54,9 @@ func newCompactCmd() *cobra.Command {
 // runCapture/runStatus use) and either stages a proposal or, given an
 // accepted item id, runs the actual sweep.
 func runCompactCmd(ctx context.Context, root string, propose bool, itemID string, out io.Writer, now time.Time) error {
+	if propose && itemID != "" {
+		return fmt.Errorf("compact: --propose and --item are mutually exclusive")
+	}
 	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		return err
@@ -88,39 +91,14 @@ func runCompactCmd(ctx context.Context, root string, propose bool, itemID string
 		return fmt.Errorf("compact: item %s is not an accepted compact item (state=%q verdict=%q) -- accept it first via `serenity inbox`", itemID, item.State, item.Verdict)
 	}
 
-	return runCompact(root, out)
-}
-
-// runCompact walks every shard family and archives its dead (superseded or
-// retracted) lines, leaving only resolved heads in the live shard(s).
-// ShardStore.Compact (internal/store/shard.go) does the actual file work
-// (including consolidating any rolled-over segments back to one live file,
-// T2.9) and is already correct and tested -- this is purely the CLI
-// surface iterating every (slug, family) pair.
-func runCompact(root string, out io.Writer) error {
-	ss := store.NewShardStore(root)
-	slugs, err := ss.Slugs()
+	result, err := supersede.ApplyAndCommitCompaction(ctx, root, dispStore, item, now)
 	if err != nil {
 		return err
 	}
-
-	var total int
-	for _, slug := range slugs {
-		families, err := ss.Families(slug)
-		if err != nil {
-			return err
-		}
-		for _, family := range families {
-			moved, err := ss.Compact(slug, family)
-			if err != nil {
-				return fmt.Errorf("compact %s/%s: %w", slug, family, err)
-			}
-			if moved > 0 {
-				_, _ = fmt.Fprintf(out, "compacted %s/%s: %d line(s) archived\n", slug, family, moved)
-			}
-			total += moved
-		}
+	if result.AlreadyComplete {
+		_, err = fmt.Fprintf(out, "compact already complete: approved pass archived %d line(s); use a new proposal for another pass\n", result.Archived)
+	} else {
+		_, err = fmt.Fprintf(out, "compact complete: %d line(s) archived across %d entit(y/ies), committed\n", result.Archived, result.Entities)
 	}
-	_, _ = fmt.Fprintf(out, "compact complete: %d line(s) archived across %d entit(y/ies)\n", total, len(slugs))
-	return nil
+	return err
 }

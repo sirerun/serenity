@@ -49,6 +49,7 @@ func commitPaths(root string, paths []string, message string) (bool, error) {
 	}
 	owned := make(map[string]bool, len(paths))
 	rels := make([]string, 0, len(paths))
+	missing := map[string]bool{}
 	for _, path := range paths {
 		if !filepath.IsAbs(path) {
 			// Writers may return paths prefixed with a relative brain root;
@@ -77,26 +78,53 @@ func commitPaths(root string, paths []string, message string) (bool, error) {
 		}
 		rel = filepath.ToSlash(rel)
 		owned[rel] = true
+		missing[rel] = errors.Is(statErr, fs.ErrNotExist)
 		rels = append(rels, rel)
 	}
-	pathspec := strings.Join(rels, "\x00") + "\x00"
-	if out, err := runGitStdin(root, pathspec, "--literal-pathspecs", "add", "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
-		return false, fmt.Errorf("git add: %w: %s", err, out)
+
+	// A previous failed commit may already have staged a deletion. Such a path
+	// no longer exists in either the worktree or index, so git add rejects it.
+	// Add missing paths only while they are still tracked in the index.
+	var addRels []string
+	var tracked map[string]bool
+	for _, rel := range rels {
+		if missing[rel] {
+			if tracked == nil {
+				raw, err := runGit(root, "ls-files", "-z", "--cached")
+				if err != nil {
+					return false, fmt.Errorf("git indexed paths: %w: %s", err, raw)
+				}
+				tracked = map[string]bool{}
+				for _, path := range strings.Split(string(raw), "\x00") {
+					tracked[path] = true
+				}
+			}
+			if !tracked[rel] {
+				continue
+			}
+		}
+		addRels = append(addRels, rel)
+	}
+	if len(addRels) > 0 {
+		pathspec := strings.Join(addRels, "\x00") + "\x00"
+		if out, err := runGitStdin(root, pathspec, "--literal-pathspecs", "add", "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
+			return false, fmt.Errorf("git add: %w: %s", err, out)
+		}
 	}
 	staged, err := runGit(root, "diff", "--cached", "--name-only", "-z", "--no-renames")
 	if err != nil {
 		return false, fmt.Errorf("git diff staged paths: %w: %s", err, staged)
 	}
-	changed := false
+	var changedRels []string
 	for _, path := range strings.Split(string(staged), "\x00") {
 		if owned[path] {
-			changed = true
-			break
+			changedRels = append(changedRels, path)
 		}
 	}
-	if !changed {
+	if len(changedRels) == 0 {
 		return false, nil
 	}
+	pathspec := strings.Join(changedRels, "\x00") + "\x00"
 	if out, err := runGitStdin(root, pathspec, "--literal-pathspecs", "commit", "--only", "--quiet", "-m", message, "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
 		return false, fmt.Errorf("git commit: %w: %s", err, out)
 	}

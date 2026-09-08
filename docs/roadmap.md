@@ -4,6 +4,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-09-08 T21.1 approved compaction: exact durable plans guard clean shard inputs, write archives/live heads before numbered-segment deletion, and commit only owned paths. Retries preserve human edits, one archive copy and one decision; completed approvals cannot sweep new data. Corrected Linux CI passed all 12 checks and 58 race-test packages; local Darwin suites passed 18 CLI and 13 writer cases with no skips. Four fault controls and real pre/post-commit SIGKILL verified recovery and current-fact search. Evidence: docs/evals/approved-compaction.json.
+
 - 2026-09-08 T20.1 scheduled review jobs: decay now stages deduplicated stale-claim and lexical-alias review from committed canonical heads, and SLO records real queue metrics. Human decisions and canonical confidence/state survive retries; failed calculations do not advance success. Final race suite: 1,752 passing cases across 58 packages, six explicit skips; full vet clean, lint zero issues, three detected fault controls, real CLI review, and SIGKILL recovery of 2,001 unique cards. Evidence: docs/evals/scheduled-review-jobs.json.
 
 - 2026-09-08 T19.1 SQLite disposition compatibility: exact-byte compare-and-swap now accepts valid TEXT-stored JSON without retrying forever. Changed-byte conflicts and atomic history remain enforced. Full race suite: 1,742 passing cases across 58 packages, six explicit skips; changed-package vet and lint clean. Two fault controls and real CLI baseline/fixed reproduction passed. Evidence: docs/evals/disposition-storage-types.json.

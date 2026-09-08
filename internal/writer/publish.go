@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -23,6 +25,34 @@ type FileChange struct {
 // entire pass before any write. Repeating a partially published plan is safe.
 // The caller persists the plan before calling this method and Flushes afterward.
 func PublishFiles(q *Queue, root string, changes []FileChange) error {
+	return publishFiles(q, root, changes, false)
+}
+
+// PublishCompactionFiles permits only shard transitions, with deletion restricted
+// to numbered rollover segments. Archives and live files are durable before deletion.
+func PublishCompactionFiles(q *Queue, root string, changes []FileChange) error {
+	ordered := append([]FileChange(nil), changes...)
+	rank := func(c FileChange) int {
+		if c.After == nil {
+			return 2
+		}
+		if strings.HasSuffix(c.Path, ".archive.jsonl") {
+			return 0
+		}
+		return 1
+	}
+	sort.SliceStable(ordered, func(i, j int) bool { return rank(ordered[i]) < rank(ordered[j]) })
+	return publishFiles(q, root, ordered, true)
+}
+
+var compactSegment = regexp.MustCompile(`^.+\.[1-9][0-9]*\.jsonl$`)
+
+func compactionPath(path string, removed bool) bool {
+	parts := strings.Split(path, "/")
+	return len(parts) == 4 && parts[0] == "brain" && parts[1] == "claims" && strings.HasSuffix(path, ".jsonl") && (!removed || compactSegment.MatchString(parts[3]))
+}
+
+func publishFiles(q *Queue, root string, changes []FileChange, compact bool) error {
 	result := q.Submit(Job{Render: func() ([]byte, error) {
 		dir, err := os.OpenRoot(root)
 		if err != nil {
@@ -31,7 +61,10 @@ func PublishFiles(q *Queue, root string, changes []FileChange) error {
 		defer func() { _ = dir.Close() }()
 		seen := map[string]bool{}
 		for _, change := range changes {
-			if change.After == nil {
+			if compact && !compactionPath(change.Path, change.After == nil) {
+				return nil, fmt.Errorf("writer: invalid compaction transition %s", change.Path)
+			}
+			if change.After == nil && (!compact || change.Before == nil) {
 				return nil, fmt.Errorf("writer: deletion is not a publication transition")
 			}
 			if seen[change.Path] {
@@ -58,7 +91,7 @@ func PublishFiles(q *Queue, root string, changes []FileChange) error {
 				return nil, err
 			}
 			if sameFileBytes(actual, change.Before) {
-				if err := writePublicationFile(dir, change.Path, change.After); err != nil {
+				if err := applyPublicationFile(dir, change.Path, change.After); err != nil {
 					return nil, err
 				}
 			} else if !sameFileBytes(actual, change.After) {
@@ -153,6 +186,21 @@ func writePublicationFile(root *os.Root, path string, data []byte) error {
 		return err
 	}
 	dir, err := root.Open(parent)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+	return dir.Sync()
+}
+
+func applyPublicationFile(root *os.Root, path string, data []byte) error {
+	if data != nil {
+		return writePublicationFile(root, path, data)
+	}
+	if err := root.Remove(path); err != nil {
+		return err
+	}
+	dir, err := root.Open(filepath.Dir(path))
 	if err != nil {
 		return err
 	}
