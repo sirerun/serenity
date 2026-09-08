@@ -34,7 +34,7 @@ func TestAskRedactsSensitiveSpansFromOutboundPrompt(t *testing.T) {
 		State:       domain.StateActive,
 		Family:      "owns_account",
 		SourceRef:   "src#1",
-		Provenance:  domain.Provenance{SourceSHA256: "sha-card"},
+		Provenance:  domain.Provenance{SourceSHA256: fixtureSourceSHA(t, root, "redaction", cardNumber)},
 	}
 	writeAvaEntity(t, root, []domain.Claim{claim})
 

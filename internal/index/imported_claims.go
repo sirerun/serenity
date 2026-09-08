@@ -54,7 +54,7 @@ func canonicalClaimProjection(slug string, c domain.Claim) (string, canonicalCla
 	if c.Review {
 		qualifier = "; review required"
 	}
-	text := fmt.Sprintf("Canonical claim for %s (%s; confidence %.3g; actor %s%s): %s", slug, c.Predicate, c.Confidence, c.Provenance.Actor, qualifier, c.Object)
+	text := fmt.Sprintf("%s [canonical claim: %s %s; confidence %.3g; actor %s%s]", c.Object, slug, c.Predicate, c.Confidence, c.Provenance.Actor, qualifier)
 	return ref, canonicalClaimRecord{claim: c, slug: slug, kind: CanonicalClaimChunkKind, text: text}, nil
 }
 
@@ -150,7 +150,7 @@ func canonicalClaims(root string, now time.Time, cfg *config.Config) (map[string
 // RetrievalEligibility combines raw-source and canonical claim policy.
 // Canonical bytes are read once per request; stale edited/deleted/retracted rows
 // cannot leak through an old FTS/vector index. Local search may read private
-// imported claims; remote recall and every embedding/composition egress may not.
+// native/imported claims; remote recall and provider egress may not.
 func RetrievalEligibility(root string, proj *store.MemoryProjection, remote, egress bool, now time.Time) (func(Hit) bool, error) {
 	restricted, err := RestrictedSummaryEntities(root, proj, now)
 	if err != nil {

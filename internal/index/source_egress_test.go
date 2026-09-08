@@ -139,7 +139,7 @@ func TestRebuildOmitsUntraceableSummaryOfPrivateHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, h := range hits {
-		if strings.Contains(h.Text, "PRIVATE-SUMMARY-SENTINEL") {
+		if h.Kind == "entity_page" && strings.Contains(h.Text, "PRIVATE-SUMMARY-SENTINEL") {
 			t.Fatalf("private derived summary indexed: %+v", h)
 		}
 	}
@@ -148,6 +148,17 @@ func TestRebuildOmitsUntraceableSummaryOfPrivateHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now()
+	// Explicit private claim chunks remain locally searchable; unlike an opaque
+	// summary, their canonical policy must exclude every remote/provider read.
+	claimPolicy, err := RetrievalEligibility(root, proj, true, true, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, h := range hits {
+		if strings.Contains(h.Text, "PRIVATE-SUMMARY-SENTINEL") && claimPolicy(h) {
+			t.Fatal("private canonical claim eligible for provider")
+		}
+	}
 	restricted, err := RestrictedSummaryEntities(root, proj, now)
 	if err != nil {
 		t.Fatal(err)

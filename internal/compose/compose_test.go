@@ -179,7 +179,7 @@ func TestAskCitationsResolveToRealClaims(t *testing.T) {
 		State:       domain.StateActive,
 		Family:      fact.Predicate,
 		SourceRef:   "ava#1",
-		Provenance:  domain.Provenance{SourceSHA256: "aaaa1111", ObservedAt: mustDate(t, "2024-02-01")},
+		Provenance:  domain.Provenance{SourceSHA256: fixtureSourceSHA(t, root, "project", fact.Object), ObservedAt: mustDate(t, "2024-02-01")},
 	}
 	writeAvaEntity(t, root, []domain.Claim{claim})
 
@@ -237,7 +237,7 @@ func TestAskStaleClaimSupersessionChain(t *testing.T) {
 		SupersededBy: "role-em",
 		Family:       oldFact.Predicate,
 		SourceRef:    "ava#2",
-		Provenance:   domain.Provenance{SourceSHA256: "bbbb2222", ObservedAt: mustDate(t, "2022-07-01")},
+		Provenance:   domain.Provenance{SourceSHA256: fixtureSourceSHA(t, root, "prior", oldFact.Object), ObservedAt: mustDate(t, "2022-07-01")},
 	}
 	newClaim := domain.Claim{
 		ID:          "role-em",
@@ -251,7 +251,7 @@ func TestAskStaleClaimSupersessionChain(t *testing.T) {
 		Supersedes:  "role-sbe",
 		Family:      newFact.Predicate,
 		SourceRef:   "ava#3",
-		Provenance:  domain.Provenance{SourceSHA256: "bbbb3333", ObservedAt: mustDate(t, "2024-01-01")},
+		Provenance:  domain.Provenance{SourceSHA256: fixtureSourceSHA(t, root, "current", newFact.Object), ObservedAt: mustDate(t, "2024-01-01")},
 	}
 	writeAvaEntity(t, root, []domain.Claim{oldClaim, newClaim})
 
@@ -315,7 +315,7 @@ func TestAskUnanswerableGapStatement(t *testing.T) {
 		State:       domain.StateActive,
 		Family:      fact.Predicate,
 		SourceRef:   "ava#4",
-		Provenance:  domain.Provenance{SourceSHA256: "dddd5555", ObservedAt: mustDate(t, "2026-03-01")},
+		Provenance:  domain.Provenance{SourceSHA256: fixtureSourceSHA(t, root, "balance", fact.Object), ObservedAt: mustDate(t, "2026-03-01")},
 	}
 	if err := store.NewShardStore(root).Append(claim); err != nil {
 		t.Fatalf("shard append: %v", err)
@@ -349,3 +349,14 @@ func TestAskUnanswerableGapStatement(t *testing.T) {
 }
 
 var errUnexpectedCall = fmt.Errorf("compose test: the fake provider must never be called on the gap-statement path")
+
+// Real canonical attribution is required before provider disclosure. Fixture
+// source labels are not fabricated content hashes.
+func fixtureSourceSHA(t *testing.T, root, label, object string) string {
+	t.Helper()
+	source, err := store.NewSourceStore(root).Write([]byte("Synthetic source "+label+": "+object), domain.Source{Kind: "file", URI: "fixture:" + label})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return source.SHA256
+}

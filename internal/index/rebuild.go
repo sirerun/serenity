@@ -122,17 +122,17 @@ func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) e
 
 	// Canonical claims may have no matching source text (notably human edits).
 	// Their derived chunks are revalidated against canonical state on every read.
-	imported, err := canonicalClaims(root, now, cfg)
+	canonical, err := canonicalClaims(root, now, cfg)
 	if err != nil {
 		return err
 	}
-	refs := make([]string, 0, len(imported))
-	for ref := range imported {
+	refs := make([]string, 0, len(canonical))
+	for ref := range canonical {
 		refs = append(refs, ref)
 	}
 	sort.Strings(refs)
 	for _, ref := range refs {
-		rec := imported[ref]
+		rec := canonical[ref]
 		if err := eng.InsertChunk(ctx, ref, rec.slug, rec.text, rec.claim.Provenance.SourceSHA256, rec.kind); err != nil {
 			return err
 		}

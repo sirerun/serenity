@@ -165,7 +165,7 @@ func TestNativeClaimLocalRemoteAndProviderPolicy(t *testing.T) {
 			}
 			nativeCount := 0
 			for _, text := range recorder.texts {
-				if strings.HasPrefix(text, "Canonical claim ") {
+				if strings.Contains(text, "[canonical claim:") {
 					nativeCount++
 					if !strings.Contains(text, "public-native-evidence") && !strings.Contains(text, "legacy-native-evidence") {
 						t.Fatalf("restricted native claim sent to provider: %s", text)
