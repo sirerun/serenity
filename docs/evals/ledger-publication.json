@@ -1,0 +1,203 @@
+{
+  "task": "T18.1",
+  "date": "2026-09-08",
+  "full_race_source_and_contract_revision": "d90d3e830bc270e33bfc449c726aac5a26c0b271",
+  "final_code_revision": "3d0e6eeac6442c5bc81e65f12afae72b43f1e429",
+  "baseline": "Both real inbox commit-failure cases recorded accepted decisions but hid their unfinished ledger effects from --unapplied.",
+  "full_race": {
+    "command": "go test -race -json -timeout 600s ./...",
+    "passed_cases": 1736,
+    "passed_packages": 58,
+    "skipped_cases": [
+      {
+        "package": "github.com/sirerun/serenity/evals/importbudget",
+        "test": "TestImportBudget10K"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/import/gbrain",
+        "test": "TestImportCrashHelper"
+      },
+      {
+        "package": "github.com/sirerun/serenity/pkg/serenity",
+        "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request"
+      },
+      {
+        "package": "github.com/sirerun/serenity/pkg/serenity",
+        "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/conformance",
+        "test": "TestBootDeliberatelyBrokenBuildFailsDisposeConformance"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/cli",
+        "test": "TestGbrainProtocolConformance"
+      }
+    ],
+    "packages_without_tests": 4
+  },
+  "focused_membership": {
+    "source": "Executed full-race cases, not an additional claimed run.",
+    "passed_cases": 23,
+    "tests": [
+      "TestLedgerPublicationCommitsOneEntryAndPreservesLaterChanges/precept_draft",
+      "TestLedgerPublicationCommitsOneEntryAndPreservesLaterChanges/decompose",
+      "TestLedgerPublicationCommitsOneEntryAndPreservesLaterChanges",
+      "TestLedgerPublicationFailedCommitResumesOrPreservesInterveningEdit/resume",
+      "TestLedgerPublicationFailedCommitResumesOrPreservesInterveningEdit/newer-entry",
+      "TestLedgerPublicationFailedCommitResumesOrPreservesInterveningEdit/newer-parent",
+      "TestLedgerPublicationFailedCommitResumesOrPreservesInterveningEdit",
+      "TestLedgerPublicationPreflightRejectsInvalidOrChangedParent/missing-parent",
+      "TestLedgerPublicationPreflightRejectsInvalidOrChangedParent/dirty-parent",
+      "TestLedgerPublicationPreflightRejectsInvalidOrChangedParent/completed-parent",
+      "TestLedgerPublicationPreflightRejectsInvalidOrChangedParent/invalid-draft",
+      "TestLedgerPublicationPreflightRejectsInvalidOrChangedParent",
+      "TestLedgerPublicationMarkerFailureRetriesWithoutNewAllocation",
+      "TestLedgerPublicationRefusesUnmarkedLegacyEffectAndMissingCompletedReceipt/legacy",
+      "TestLedgerPublicationRefusesUnmarkedLegacyEffectAndMissingCompletedReceipt/missing-receipt",
+      "TestLedgerPublicationRefusesUnmarkedLegacyEffectAndMissingCompletedReceipt",
+      "TestLedgerPublicationReadOnlyStoreRefusesBeforeStateAccess",
+      "TestLedgerPublicationHonorsEditedChildIntent",
+      "TestLedgerPublicationPreservesRecordedSubsecondDecisionTime",
+      "TestInboxLedgerCommitFailureRemainsVisibleAndRetryable/precept_draft",
+      "TestInboxLedgerCommitFailureRemainsVisibleAndRetryable/decompose",
+      "TestInboxLedgerCommitFailureRemainsVisibleAndRetryable",
+      "TestInboxInteractiveSpaceAcceptWritesDecomposedChildIntoLedger"
+    ]
+  },
+  "validation": {
+    "vet": "passed",
+    "final_lint": "0 issues",
+    "final_style_change": "Equivalent result-label if/else replaced by a switch; four affected CLI cases passed afterward.",
+    "docs": "strict mkdocs build passed"
+  },
+  "negative_controls": [
+    {
+      "fault": "omit-durable-intent",
+      "suite": "./internal/cli",
+      "filter": "^TestInboxLedgerCommitFailureRemainsVisibleAndRetryable$/precept_draft$",
+      "detected": true
+    },
+    {
+      "fault": "ignore-saved-receipt",
+      "suite": "./internal/direction",
+      "filter": "^TestLedgerPublicationFailedCommitResumesOrPreservesInterveningEdit$/resume$",
+      "detected": true
+    },
+    {
+      "fault": "skip-parent-dependency",
+      "suite": "./internal/direction",
+      "filter": "^TestLedgerPublicationFailedCommitResumesOrPreservesInterveningEdit$/newer-parent$",
+      "detected": true
+    },
+    {
+      "fault": "commit-newer-target",
+      "suite": "./internal/direction",
+      "filter": "^TestLedgerPublicationFailedCommitResumesOrPreservesInterveningEdit$/newer-entry$",
+      "detected": true
+    },
+    {
+      "fault": "replay-unmarked-legacy",
+      "suite": "./internal/direction",
+      "filter": "^TestLedgerPublicationRefusesUnmarkedLegacyEffectAndMissingCompletedReceipt$/legacy$",
+      "detected": true
+    },
+    {
+      "fault": "truncate-recorded-time",
+      "suite": "./internal/direction",
+      "filter": "^TestLedgerPublicationPreservesRecordedSubsecondDecisionTime$",
+      "detected": true
+    }
+  ],
+  "actual_cli_crash_recovery": [
+    {
+      "kind": "precept_draft",
+      "cut": "pre-commit",
+      "signal": "SIGKILL of synthetic process group",
+      "durable_receipt_incomplete_at_cut": true,
+      "pending_intent_recorded_at_cut": true,
+      "completion_marker_absent_at_cut": true,
+      "unapplied_visible_then_cleared": true,
+      "retry_committed_once": true,
+      "repeat_retry_no_new_commit": true,
+      "ledger_entries_including_parent": 2,
+      "decision_history_entries": 1,
+      "recorded_actor_time_payload_preserved": true,
+      "parent_bytes_unchanged": true,
+      "synthetic_orphan_git_lock_removed": true,
+      "live_model_calls": 0,
+      "verdict": "pass"
+    },
+    {
+      "kind": "precept_draft",
+      "cut": "post-commit",
+      "signal": "SIGKILL of synthetic process group",
+      "durable_receipt_incomplete_at_cut": true,
+      "pending_intent_recorded_at_cut": true,
+      "completion_marker_absent_at_cut": true,
+      "unapplied_visible_then_cleared": true,
+      "retry_committed_once": true,
+      "repeat_retry_no_new_commit": true,
+      "ledger_entries_including_parent": 2,
+      "decision_history_entries": 1,
+      "recorded_actor_time_payload_preserved": true,
+      "parent_bytes_unchanged": true,
+      "synthetic_orphan_git_lock_removed": false,
+      "live_model_calls": 0,
+      "verdict": "pass"
+    },
+    {
+      "kind": "decompose",
+      "cut": "pre-commit",
+      "signal": "SIGKILL of synthetic process group",
+      "durable_receipt_incomplete_at_cut": true,
+      "pending_intent_recorded_at_cut": true,
+      "completion_marker_absent_at_cut": true,
+      "unapplied_visible_then_cleared": true,
+      "retry_committed_once": true,
+      "repeat_retry_no_new_commit": true,
+      "ledger_entries_including_parent": 2,
+      "decision_history_entries": 1,
+      "recorded_actor_time_payload_preserved": true,
+      "parent_bytes_unchanged": true,
+      "synthetic_orphan_git_lock_removed": true,
+      "live_model_calls": 0,
+      "verdict": "pass"
+    },
+    {
+      "kind": "decompose",
+      "cut": "post-commit",
+      "signal": "SIGKILL of synthetic process group",
+      "durable_receipt_incomplete_at_cut": true,
+      "pending_intent_recorded_at_cut": true,
+      "completion_marker_absent_at_cut": true,
+      "unapplied_visible_then_cleared": true,
+      "retry_committed_once": true,
+      "repeat_retry_no_new_commit": true,
+      "ledger_entries_including_parent": 2,
+      "decision_history_entries": 1,
+      "recorded_actor_time_payload_preserved": true,
+      "parent_bytes_unchanged": true,
+      "synthetic_orphan_git_lock_removed": false,
+      "live_model_calls": 0,
+      "verdict": "pass"
+    }
+  ],
+  "transcript_refresh": {
+    "operations": 4,
+    "recorded_http_cases": 14,
+    "new_pending_effect_fields": 2,
+    "unexpected_semantic_changes": 0,
+    "boot_seed_literals_updated": 18,
+    "generator": "GOWORK=off go run testdata/conformance/disposition/gen_transcripts.go"
+  },
+  "scope": [
+    "Local-owner CLI precept-draft and child-intent acceptances.",
+    "Parent must be local, active and committed; observed later dependency changes stop publication.",
+    "Ledger metadata preserves original human actor and subsecond disposal time.",
+    "Legacy unmarked effects and missing completed receipts are not blindly reallocated.",
+    "Existing noncommitting low-level lifecycle APIs and HTTP canonical publication retain their separate contracts.",
+    "Single canonical writer remains required; no automatic Git-lock removal.",
+    "All crash data/processes were synthetic."
+  ]
+}
