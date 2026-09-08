@@ -242,11 +242,12 @@ func TestDirtyPublicationRefusesUnsafeOrStaleInputsBeforeCommit(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if mode == "missing-head" {
+				switch mode {
+				case "missing-head":
 					page.Claims = nil
-				} else if mode == "changed-state" {
+				case "changed-state":
 					page.Claims[0].State = domain.StateRetracted
-				} else {
+				default:
 					page.Claims[0].ID = "unknown"
 				}
 				raw, err := w.Fence.RenderEntity(page)
