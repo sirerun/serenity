@@ -62,24 +62,32 @@ func Sweep(ctx context.Context, s *Store, thresholds Thresholds, now time.Time) 
 	}
 	now = now.UTC()
 	var res SweepResult
-	for _, item := range items {
-		if item.State != StatePending && item.State != StateDeferred {
-			continue
+	for _, listed := range items {
+		item, changed, err := s.updateItem(ctx, listed.ID, func(item *Item) (bool, error) {
+			if item.State != StatePending && item.State != StateDeferred {
+				return false, nil
+			}
+			if now.Sub(item.UpdatedAt) < thresholds.forKind(item.Kind) {
+				return false, nil
+			}
+			item.DeferCount++
+			item.UpdatedAt = now
+			if item.DeferCount >= MaxDeferCycles {
+				item.State = StateParked
+			} else {
+				item.State = StateDeferred
+			}
+			return true, nil
+		})
+		if err != nil {
+			return res, fmt.Errorf("disposition: sweep: write %s: %w", listed.ID, err)
 		}
-		if now.Sub(item.UpdatedAt) < thresholds.forKind(item.Kind) {
-			continue
-		}
-		item.DeferCount++
-		item.UpdatedAt = now
-		if item.DeferCount >= MaxDeferCycles {
-			item.State = StateParked
-			res.Parked++
-		} else {
-			item.State = StateDeferred
-			res.Deferred++
-		}
-		if err := s.put(ctx, item); err != nil {
-			return res, fmt.Errorf("disposition: sweep: write %s: %w", item.ID, err)
+		if changed {
+			if item.State == StateParked {
+				res.Parked++
+			} else {
+				res.Deferred++
+			}
 		}
 	}
 	return res, nil
@@ -105,28 +113,19 @@ var ErrAlreadyResurfaced = errors.New("disposition: item already resurfaced once
 // parked item should come back: exactly one resurface, structurally
 // enforced via Item.Resurfaced rather than trusted to callers.
 func (s *Store) Resurface(ctx context.Context, id string, now time.Time) (Item, error) {
-	item, err := s.Get(ctx, id)
-	if err != nil {
-		return Item{}, err
-	}
-	// Checked before State: once an item has been resurfaced, it is no
-	// longer StateParked (this function moved it to pending), so checking
-	// State first would misreport a second call as "not parked" rather
-	// than the more specific, more useful "already used its one
-	// resurface."
-	if item.Resurfaced {
-		return Item{}, fmt.Errorf("%w: %s", ErrAlreadyResurfaced, id)
-	}
-	if item.State != StateParked {
-		return Item{}, fmt.Errorf("%w: %s is %q", ErrNotParked, id, item.State)
-	}
-	item.State = StatePending
-	item.Resurfaced = true
-	item.UpdatedAt = now.UTC()
-	if err := s.put(ctx, item); err != nil {
-		return Item{}, fmt.Errorf("disposition: resurface %s: %w", id, err)
-	}
-	return item, nil
+	item, _, err := s.updateItem(ctx, id, func(item *Item) (bool, error) {
+		if item.Resurfaced {
+			return false, fmt.Errorf("%w: %s", ErrAlreadyResurfaced, id)
+		}
+		if item.State != StateParked {
+			return false, fmt.Errorf("%w: %s is %q", ErrNotParked, id, item.State)
+		}
+		item.State = StatePending
+		item.Resurfaced = true
+		item.UpdatedAt = now.UTC()
+		return true, nil
+	})
+	return item, err
 }
 
 // PendingDepth counts items in a non-terminal state (pending or deferred).

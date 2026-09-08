@@ -225,6 +225,7 @@ type HistoryEntry struct {
 // direction -- the same asymmetric-dependency shape internal/connector's
 // JobStore takes over internal/index/jobs.go.
 type Backend interface {
+	CommitDisposition(ctx context.Context, id string, before, after []byte, historyID string, history []byte) (bool, error)
 	InsertDispositionItem(ctx context.Context, id string, payload []byte) (bool, error)
 	PutDispositionItem(ctx context.Context, id string, payload []byte) error
 	DispositionItem(ctx context.Context, id string) (payload []byte, found bool, err error)
@@ -237,16 +238,8 @@ type Backend interface {
 type Store struct {
 	backend Backend
 
-	// mu serializes Dispose's read-check-write sequence (RFC 0001 §8.2's
-	// cross-client conflict rule, "first successful dispose wins" -- T2.8).
-	// The Backend gives no transactional guarantee across its own separate
-	// Get/Put/Append calls (internal/index's *SQLite opens with the
-	// database/sql default pool, no single-connection serialization), so
-	// without this mutex two goroutines racing Dispose against the same
-	// item could both observe State != disposed before either writes back,
-	// and both would return a fresh (non-conflict) Result -- silently
-	// double-applying a verdict and appending two history rows for one
-	// item, instead of exactly one winner and one already_disposed loser.
+	// mu reduces contention among calls sharing this Store. Correctness across
+	// independent handles comes from the backend's exact-snapshot transaction.
 	mu sync.Mutex
 }
 
@@ -309,18 +302,38 @@ func (s *Store) put(ctx context.Context, item Item) error {
 // Get reads back one item by id, wrapping ErrNotFound when it does not
 // exist.
 func (s *Store) Get(ctx context.Context, id string) (Item, error) {
+	item, _, err := s.getSnapshot(ctx, id)
+	return item, err
+}
+
+func (s *Store) getSnapshot(ctx context.Context, id string) (Item, []byte, error) {
 	payload, found, err := s.backend.DispositionItem(ctx, id)
 	if err != nil {
-		return Item{}, fmt.Errorf("disposition: get %s: %w", id, err)
+		return Item{}, nil, fmt.Errorf("disposition: get %s: %w", id, err)
 	}
 	if !found {
-		return Item{}, fmt.Errorf("%w: %s", ErrNotFound, id)
+		return Item{}, nil, fmt.Errorf("%w: %s", ErrNotFound, id)
 	}
 	var item Item
 	if err := json.Unmarshal(payload, &item); err != nil {
-		return Item{}, fmt.Errorf("disposition: decode item %s: %w", id, err)
+		return Item{}, nil, fmt.Errorf("disposition: decode item %s: %w", id, err)
 	}
-	return item, nil
+	if item.ID != id {
+		return Item{}, nil, fmt.Errorf("disposition: item identity does not match row %s", id)
+	}
+	return item, payload, nil
+}
+
+func (s *Store) commitItem(ctx context.Context, before []byte, item Item, historyID string, history []byte) (bool, error) {
+	after, err := json.Marshal(item)
+	if err != nil {
+		return false, fmt.Errorf("disposition: marshal item %s: %w", item.ID, err)
+	}
+	committed, err := s.backend.CommitDisposition(ctx, item.ID, before, after, historyID, history)
+	if err != nil {
+		return false, fmt.Errorf("disposition: commit item %s: %w", item.ID, err)
+	}
+	return committed, nil
 }
 
 // List returns every item, oldest-created first.
@@ -402,6 +415,10 @@ type Result struct {
 //  5. Otherwise the verdict is applied, exactly one history row is
 //     appended, and the updated item is written back.
 func (s *Store) Dispose(ctx context.Context, id string, verdict Verdict, editedPayload json.RawMessage, note, actor, idempotencyKey string, now time.Time) (Result, error) {
+	return s.dispose(ctx, id, verdict, editedPayload, note, actor, idempotencyKey, now, "")
+}
+
+func (s *Store) dispose(ctx context.Context, id string, verdict Verdict, editedPayload json.RawMessage, note, actor, idempotencyKey string, now time.Time, route DistillRoute) (Result, error) {
 	if !verdict.valid() {
 		return Result{}, fmt.Errorf("%w: %q", ErrInvalidVerdict, verdict)
 	}
@@ -409,75 +426,86 @@ func (s *Store) Dispose(ctx context.Context, id string, verdict Verdict, editedP
 		return Result{}, ErrRejectRequiresNote
 	}
 
-	// Everything from here on reads then writes the same item -- hold the
-	// lock across the whole check-and-set so a concurrent Dispose against
-	// the same id cannot interleave between this call's Get and its Put.
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	item, err := s.Get(ctx, id)
-	if err != nil {
-		return Result{}, err
-	}
-
-	if idempotencyKey != "" {
-		history, err := s.HistoryFor(ctx, id)
+	for {
+		if err := ctx.Err(); err != nil {
+			return Result{}, err
+		}
+		item, snapshot, err := s.getSnapshot(ctx, id)
 		if err != nil {
 			return Result{}, err
 		}
-		for _, h := range history {
-			if h.IdempotencyKey == idempotencyKey {
-				return Result{Item: item, Replayed: true}, nil
+		if route != "" && item.Kind != KindDistill {
+			return Result{}, fmt.Errorf("%w: %s is kind %q", ErrNotDistill, id, item.Kind)
+		}
+
+		if idempotencyKey != "" {
+			history, err := s.HistoryFor(ctx, id)
+			if err != nil {
+				return Result{}, err
+			}
+			for _, h := range history {
+				if h.IdempotencyKey == idempotencyKey {
+					latest, err := s.Get(ctx, id)
+					if err != nil {
+						return Result{}, err
+					}
+					return Result{Item: latest, Replayed: true}, nil
+				}
 			}
 		}
-	}
 
-	if item.State == StateDisposed {
-		return Result{Item: item, AlreadyDisposed: true}, nil
-	}
+		if item.State == StateDisposed {
+			return Result{Item: item, AlreadyDisposed: true}, nil
+		}
 
-	now = now.UTC()
-	switch verdict {
-	case VerdictAccept, VerdictEditAccept, VerdictReject:
-		item.State = StateDisposed
-		item.DisposedAt = now
-	case VerdictDefer:
-		item.State = StateDeferred
-		item.DeferCount++
-	}
-	item.Verdict = verdict
-	item.Note = note
-	item.Actor = actor
-	item.IdempotencyKey = idempotencyKey
-	if verdict == VerdictEditAccept {
-		item.EditedPayload = editedPayload
-	}
-	item.UpdatedAt = now
+		now = now.UTC()
+		switch verdict {
+		case VerdictAccept, VerdictEditAccept, VerdictReject:
+			item.State = StateDisposed
+			item.DisposedAt = now
+		case VerdictDefer:
+			item.State = StateDeferred
+			item.DeferCount++
+		}
+		item.Route = route
+		item.Verdict = verdict
+		item.Note = note
+		item.Actor = actor
+		item.IdempotencyKey = idempotencyKey
+		if verdict == VerdictEditAccept {
+			item.EditedPayload = editedPayload
+		}
+		item.UpdatedAt = now
 
-	histID, err := newEventID()
-	if err != nil {
-		return Result{}, err
+		histID, err := newEventID()
+		if err != nil {
+			return Result{}, err
+		}
+		entry := HistoryEntry{
+			ID:             histID,
+			ItemID:         id,
+			Verdict:        verdict,
+			Note:           note,
+			Actor:          actor,
+			IdempotencyKey: idempotencyKey,
+			OccurredAt:     now,
+		}
+		histPayload, err := json.Marshal(entry)
+		if err != nil {
+			return Result{}, fmt.Errorf("disposition: marshal history entry: %w", err)
+		}
+		committed, err := s.commitItem(ctx, snapshot, item, histID, histPayload)
+		if err != nil {
+			return Result{}, err
+		}
+		if !committed {
+			continue
+		}
+		return Result{Item: item}, nil
 	}
-	entry := HistoryEntry{
-		ID:             histID,
-		ItemID:         id,
-		Verdict:        verdict,
-		Note:           note,
-		Actor:          actor,
-		IdempotencyKey: idempotencyKey,
-		OccurredAt:     now,
-	}
-	histPayload, err := json.Marshal(entry)
-	if err != nil {
-		return Result{}, fmt.Errorf("disposition: marshal history entry: %w", err)
-	}
-	if err := s.backend.AppendDispositionHistory(ctx, entry.ID, histPayload); err != nil {
-		return Result{}, fmt.Errorf("disposition: append history for %s: %w", id, err)
-	}
-	if err := s.put(ctx, item); err != nil {
-		return Result{}, err
-	}
-	return Result{Item: item}, nil
 }
 
 // RecordResultClaimID stamps AppliedClaimID on an already-disposed item
@@ -491,18 +519,54 @@ func (s *Store) Dispose(ctx context.Context, id string, verdict Verdict, editedP
 // without re-running Dispose's own idempotency/already_disposed machinery
 // (id is a fact about a write that already happened, not a new verdict).
 func (s *Store) RecordResultClaimID(ctx context.Context, id, claimID string, now time.Time) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	item, err := s.Get(ctx, id)
-	if err != nil {
-		return err
+	if claimID == "" {
+		return errors.New("disposition: result claim id is empty")
 	}
-	item.AppliedClaimID = claimID
-	item.UpdatedAt = now.UTC()
-	if err := s.put(ctx, item); err != nil {
-		return fmt.Errorf("disposition: record result claim id for %s: %w", id, err)
+	_, _, err := s.updateItem(ctx, id, func(item *Item) (bool, error) {
+		if item.State != StateDisposed || (item.Verdict != VerdictAccept && item.Verdict != VerdictEditAccept) {
+			return false, errors.New("disposition: cannot record a result for an unaccepted decision")
+		}
+		if item.AppliedClaimID == claimID {
+			return false, nil
+		}
+		if item.AppliedClaimID != "" {
+			return false, fmt.Errorf("disposition: result already recorded as %s", item.AppliedClaimID)
+		}
+		item.AppliedClaimID = claimID
+		if now.After(item.UpdatedAt) {
+			item.UpdatedAt = now.UTC()
+		}
+		return true, nil
+	})
+	return err
+}
+
+// updateItem retries bookkeeping against the latest item. mutate must be pure:
+// a competing writer may make it run again, and only the successful CAS counts.
+func (s *Store) updateItem(ctx context.Context, id string, mutate func(*Item) (bool, error)) (Item, bool, error) {
+	for {
+		if err := ctx.Err(); err != nil {
+			return Item{}, false, err
+		}
+		item, snapshot, err := s.getSnapshot(ctx, id)
+		if err != nil {
+			return Item{}, false, err
+		}
+		changed, err := mutate(&item)
+		if err != nil {
+			return Item{}, false, err
+		}
+		if !changed {
+			return item, false, nil
+		}
+		committed, err := s.commitItem(ctx, snapshot, item, "", nil)
+		if err != nil {
+			return Item{}, false, err
+		}
+		if committed {
+			return item, true, nil
+		}
 	}
-	return nil
 }
 
 // dirtyEditItemID derives a stable id for a dirty_edit item from a T0.4
