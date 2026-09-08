@@ -170,3 +170,44 @@ jobs:
         with:
           go-version-file: go.mod
       - run: scripts/install-verify.sh
+
+  gbrain-public-fixture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Clone the public synthetic fixture at its pinned commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          pin=$(cat testdata/gbrain-fixture/PIN)
+          [[ "$pin" =~ ^[0-9a-f]{40}$ ]]
+          git -c credential.helper= clone --no-checkout https://github.com/sirerun/serenity-gbrain-fixture.git "$RUNNER_TEMP/gbrain-fixture"
+          git -C "$RUNNER_TEMP/gbrain-fixture" checkout --detach "$pin"
+          test "$(git -C "$RUNNER_TEMP/gbrain-fixture" rev-parse HEAD)" = "$pin"
+          diff -r testdata/gbrain-fixture/people "$RUNNER_TEMP/gbrain-fixture/people"
+          diff -r testdata/gbrain-fixture/projects "$RUNNER_TEMP/gbrain-fixture/projects"
+      - name: Execute and verify every round-trip fixture row
+        env:
+          SERENITY_GBRAIN_FIXTURE: ${{ runner.temp }}/gbrain-fixture
+        run: |
+          set -euo pipefail
+          go test -race -count=1 -json -run '^TestGBrainFieldRoundTrip$' ./internal/import/gbrain > "$RUNNER_TEMP/gbrain-roundtrip.jsonl"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          events = [json.loads(line) for line in Path(os.environ['RUNNER_TEMP'], 'gbrain-roundtrip.jsonl').read_text().splitlines()]
+          cases = [e for e in events if e.get('Test', '').startswith('TestGBrainFieldRoundTrip') and e['Action'] in ('pass', 'fail', 'skip')]
+          assert len(cases) == 9, f'expected parent + eight executed row cases, got {len(cases)}'
+          assert all(e['Action'] == 'pass' for e in cases), cases
+          assert any(e['Action'] == 'pass' and 'Test' not in e for e in events), 'package did not complete'
+          print('Public pinned fixture: nine passing cases, eight rows, zero skips.')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gbrain-public-fixture-roundtrip
+          path: ${{ runner.temp }}/gbrain-roundtrip.jsonl
+          if-no-files-found: error
