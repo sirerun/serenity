@@ -73,6 +73,7 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 ### E15 -- Paused-write review handoff -> docs/plans/E15-pending-handoff.md (1/1; durable paused-write handoff and interactive inbox recovery verified, 2026-09-08)
 ### E16 -- Reviewed human edit publication -> docs/plans/E16-dirty-edit-publication.md (1/1; explicit human edit publication and crash recovery verified, 2026-09-08)
 ### E17 -- Decision ledger storage integrity -> docs/plans/E17-ledger-storage.md (1/1; confined ledger reads/writes and atomic entries verified, 2026-09-08)
+### E18 -- Ledger acceptance publication recovery -> docs/plans/E18-ledger-publication.md (1/1; precept/child-intent publication and crash recovery verified, 2026-09-08)
 
 Decisions confirmed by David on 2026 08 27 (no open decisions remain):
 - OD-1 Second labeler for golden sets: two independent frontier-model passes from different families with David adjudicating (ADR 005).
