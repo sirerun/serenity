@@ -70,6 +70,7 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 ### E12 -- Native canonical claim retrieval -> docs/plans/E12-canonical-retrieval.md (1/1; native canonical claim search, recall and disclosure verified, 2026-09-08)
 ### E13 -- Raw source retrieval consistency -> docs/plans/E13-source-retrieval.md (1/1; canonical source/page checks and embedded read parity verified, 2026-09-08)
 ### E14 -- Disposition state atomicity -> docs/plans/E14-disposition-atomicity.md (1/1; atomic decisions, protected bookkeeping and replay recovery verified, 2026-09-08)
+### E15 -- Paused-write review handoff -> docs/plans/E15-pending-handoff.md (0/1; replay reset and newer-record deletion reproduced, 2026-09-08)
 
 Decisions confirmed by David on 2026 08 27 (no open decisions remain):
 - OD-1 Second labeler for golden sets: two independent frontier-model passes from different families with David adjudicating (ADR 005).
