@@ -26,3 +26,32 @@ Deployment: `python3 deploy/chat/deploy.py --execute`. This creates a CloudForma
 After CloudFormation completes, put its `ChatURL` output into `site/assets/chat-config.js`, commit it, and deploy the Pages workflow. This is a public endpoint, not a credential. Test real POST requests, CORS, citations, model failure fallback, and the installation flow after deployment.
 
 References: [Lambda URL permissions](https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html), [GitHub Pages custom domains](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site).
+
+## Operations
+
+Owner: **David Ndungu**. The CloudWatch console and `describe-alarms` are the launch monitoring surface; there is no email/pager subscription configured. Check at launch and during the next measurement window. Alarms carry the owner and this runbook URL. An `OK` alarm with missing data is not proof of traffic or health: confirm `/healthz` and recent metric timestamps too.
+
+The dedicated `/aws/lambda/serenity-adoption-chat` log group retains 14 days. Application output is one fixed-schema Embedded Metric Format record per POST: `ChatRequests`, `ChatErrors`, `ChatFallbacks`, `ChatRateLimited`, and `ChatLatencyMs`, with the single constant dimension `Service=serenity-adoption-chat`. It contains no prompt, history, answer, credentials, IP, origin, request ID, user identifier or exception text. Lambda runtime start/end/duration records still apply. Health GETs do not consume the chat rate budget or inflate application adoption counts. These operational counts include rejected requests and are not an adoption conversion metric.
+
+| Alarm | Five-minute threshold | Response |
+| --- | --- | --- |
+| `serenity-adoption-chaterrors` | 3 application 5xx responses | Check `/healthz`, stack status, secret access and DynamoDB availability. Keep the docs fallback available; do not expose SDK diagnostics to visitors. |
+| `serenity-adoption-chatfallbacks` | 5 documentation search fallbacks | Check provider availability and citation validation. A fallback is useful degraded service, not necessarily an outage: no-match/no-key/invalid-citation responses also count. |
+| `serenity-adoption-chatratelimited` | 10 rate-limit responses | Compare request volume with the 20/visitor/hour and 200/service/day budgets. Do not automatically increase spend limits or collect visitor identities. |
+| `serenity-adoption-url5xxcount` | 3 native URL 5xx responses | Check Lambda errors/timeouts, including failures before application metrics can emit. |
+| `serenity-adoption-urlrequestlatency` | maximum ≥22,000 ms | Check provider latency and Lambda duration against the 20-second provider timeout and 28-second function timeout. |
+
+All alarms use one five-minute evaluation period and `notBreaching` for missing data. No automated remediation changes configuration or spend. Native [Lambda URL metrics](https://docs.aws.amazon.com/lambda/latest/dg/urls-monitoring.html) cover transport errors and latency; [embedded metrics](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format.html) expose handled failures that still return 200.
+
+```sh
+aws cloudwatch describe-alarms --alarm-name-prefix serenity-adoption- \
+  --region us-west-2 \
+  --query 'MetricAlarms[].{name:AlarmName,state:StateValue,reason:StateReason}'
+python3 deploy/chat/verify_live.py
+# One public-document question, consuming one request from the production budget:
+python3 deploy/chat/verify_live.py --ask
+```
+
+`verify_live.py` reads the public endpoint from committed `chat-config.js`; it verifies health, allowed-origin preflight, rejected origin and optionally a real public question/citation. It never sends credentials, personal notes or arbitrary user input. CI exercises the actual handler and generated template with provider/storage seams controlled, including outage fallback, 429/503 behavior, atomic private rate-limit transaction construction and sensitive-input log exclusion. CI does not exhaust the production request budget or deliberately break the live provider.
+
+For a regression, revert the reviewed handler/package change and regenerate `stack.json` from committed public content. Review an UPDATE change set with `python3 deploy/chat/deploy.py`, then execute the approved change through the same deployment procedure. Preserve the model secret, rate salt and table; never delete the working stack. Verify health, a public cited answer and fresh metric data after recovery. Reverting the monitoring resources also removes their alarms/log group; preserve needed operational evidence first.
