@@ -564,7 +564,7 @@ func (s *Store) recordPublicationID(ctx context.Context, id, publicationID strin
 		return errors.New("disposition: empty publication id")
 	}
 	_, _, err := s.updateItem(ctx, id, func(item *Item) (bool, error) {
-		if item.Kind != kind || item.State != StateDisposed || (item.Verdict != VerdictAccept && !(kind == KindCompact && item.Verdict == VerdictEditAccept)) {
+		if item.Kind != kind || item.State != StateDisposed || (item.Verdict != VerdictAccept && (kind != KindCompact || item.Verdict != VerdictEditAccept)) {
 			return false, errors.New("disposition: accepted publication decision required")
 		}
 		if item.AppliedPublicationID == publicationID {
