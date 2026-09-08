@@ -18,6 +18,8 @@ The dated [launch checklist](../launch/checklist.md) records the exact Pages and
   - Scope: add CloudWatch alarms or an equivalent existing AWS signal, document thresholds and response steps, and verify the deployed function against the live custom-domain origin.
 - [ ] T7.4 Launch content packet  Owner: David  Est: 60m  kind: content  delivers: [launch announcement, short demo script, FAQ answers, and one canonical installation walkthrough linked from Serenity and ndungu.dev]  deps: [T7.1]
   - Acceptance: every claim in the packet links to a live Serenity or repository page; install instructions are copy-pasteable; the packet names the early-access boundary and the chat's privacy behavior.
+  - Progress 2026-09-08: [content packet](../launch/content-packet.md) prepared and public source installation verified. The canonical ndungu.dev installation link is draft dndungu/dndungu.github.io PR #6; this task stays open until that cross-site link is deployed.
+
 - [x] T7.5 Domain and security finish  Owner: pool  Est: 30m  verifies: [infrastructure]  deps: [T7.1]  acc: [serenity.sire.run resolves through the authoritative DNS record, HTTPS returns 200 with a valid certificate, GitHub Pages reports the custom domain, and HTTPS enforcement is enabled]
   - Scope: wait for certificate issuance if necessary, then enable enforcement and record `dig`, `curl`, and Pages API evidence. Do not change unrelated DNS records.
 - [ ] T7.6 Launch-readiness gate  Owner: David  Est: 30m  kind: human  delivers: [go/no-go launch decision with evidence links and a dated follow-up review]  deps: [T7.2, T7.3, T7.4, T7.5]
