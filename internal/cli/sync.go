@@ -238,12 +238,8 @@ func runExtract(ctx context.Context, root string, out io.Writer) error {
 // configured (providers.BuildExtractionRouter), is reported once and the whole call
 // is a documented no-op -- the same explicit-skip contract the pre-T1.15
 // stub used for "models.extraction: none@v0", extended to a real-but-
-// uncredentialed pin. Below-distill-threshold observations
-// (extract.Result.Distill) are counted and dropped: RFC §10.1's distill
-// queue is E2 work (T2.x, not yet built); Extractor.Extract's own
-// contract already forbids writing a Distill observation to a fence or
-// shard, so v1's honest behavior is "counted, not silently lost, not
-// silently promoted."
+// uncredentialed pin. Below-threshold observations are retained as immutable
+// distill evidence; only an explicit human assertion can promote their content.
 func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger router.SpendLedger, ds *disposition.Store, out io.Writer) error {
 	r, ok, note := providers.BuildExtractionRouter(cfg, ledger)
 	if !ok {
@@ -269,7 +265,7 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 	iw := ingest.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg)
 
 	var written, skipped, distilled, rejected, indexOnlySkipped int
-	var ready []domain.Observation
+	var ready, lowConfidence []domain.Observation
 	for _, src := range sources {
 		if src.Kind == store.SourceKindMemoryFact || src.Kind == store.SourceKindMemoryExpiry {
 			continue
@@ -307,6 +303,7 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 		}
 		rejected += result.Rejected
 		distilled += len(result.Distill)
+		lowConfidence = append(lowConfidence, result.Distill...)
 		if len(result.Ready) == 0 {
 			continue
 		}
@@ -314,6 +311,10 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 		ready = append(ready, result.Ready...)
 	}
 	reviewNow := time.Now()
+	lowStaged, lowExisting, err := iw.StageDistill(ctx, ds, lowConfidence, reviewNow)
+	if err != nil {
+		return fmt.Errorf("extract: retain low-confidence evidence: %w", err)
+	}
 	review, err := iw.ReviewObservations(ctx, ds, ready, reviewNow)
 	if err != nil {
 		return fmt.Errorf("extract: reconcile observations: %w", err)
@@ -334,7 +335,8 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 	}
 	_, _ = fmt.Fprintf(out, "extraction: %d claim(s) written, %d skipped (already present), %d rejected, %d below distill threshold, %d source(s) skipped (index_only)\n",
 		written, skipped, rejected, distilled, indexOnlySkipped)
-	_, _ = fmt.Fprintf(out, "reconciliation: %d proposal(s) staged, %d existing reviews preserved, %d prior human decisions retained\n", staged, existing, review.PriorDecision)
+	_, _ = fmt.Fprintf(out, "reconciliation: %d proposal(s) staged, %d existing reviews preserved, %d prior human decisions retained, %d pending distill reviews retained\n", staged, existing, review.PriorDecision, review.AwaitingDistill)
+	_, _ = fmt.Fprintf(out, "distill: %d observation(s) retained, %d existing reviews preserved; review with serenity inbox\n", lowStaged, lowExisting)
 	if committed {
 		_, _ = fmt.Fprintln(out, "committed new claims")
 	}

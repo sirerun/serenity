@@ -25,10 +25,11 @@ import (
 // Proposals are staged only after Ready is published and committed, because a
 // proposal can refer to an earlier addition in the same extraction batch.
 type ReviewPlan struct {
-	Ready          []domain.Observation
-	Proposals      []reconcile.ReconcilePayload
-	AlreadyPresent int
-	PriorDecision  int
+	Ready           []domain.Observation
+	Proposals       []reconcile.ReconcilePayload
+	AlreadyPresent  int
+	PriorDecision   int
+	AwaitingDistill int
 }
 
 // ReviewObservations uses canonical rows, not potentially stale index claims.
@@ -49,7 +50,24 @@ func (w *Writer) ReviewObservations(ctx context.Context, ds *disposition.Store, 
 		return result, err
 	}
 	decided := map[string]bool{}
+	awaiting := map[string]bool{}
 	for _, item := range items {
+		observation, isExtraction, err := disposition.ExtractionObservation(item)
+		if err != nil {
+			return result, err
+		}
+		if isExtraction {
+			key, err := observationIdentity(ClaimFromObservation(observation))
+			if err != nil {
+				return result, err
+			}
+			if item.State == disposition.StateDisposed {
+				decided[key] = true
+			} else {
+				awaiting[key] = true
+			}
+			continue
+		}
 		if item.Kind != disposition.KindReconcile || item.State != disposition.StateDisposed {
 			continue
 		}
@@ -82,6 +100,10 @@ func (w *Writer) ReviewObservations(ctx context.Context, ds *disposition.Store, 
 		}
 		if decided[key] {
 			result.PriorDecision++
+			continue
+		}
+		if awaiting[key] {
+			result.AwaitingDistill++
 			continue
 		}
 		candidates := reconcile.Candidates(claim, active[claim.SubjectSlug])

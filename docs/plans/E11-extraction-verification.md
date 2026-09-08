@@ -13,7 +13,7 @@ committed prose outside managed fences.
 
 - [x] T11.1 Publish extraction batches without losing canonical content  Owner: pool  Est: 90m  verifies: [UC-005, UC-016]  deps: []  acc: [multiple observations and sources update existing fence/shard files successfully and commit all actual segment paths; exact repeats add no claims; committed human prose and metadata survive; dirty, corrupt, ambiguous or unsafe targets fail without being replaced]
 - [x] T11.2 Route extracted contradictions through human review  Owner: pool  Est: 90m  verifies: [UC-005, UC-014, UC-015]  deps: [T11.1]  acc: [real extraction stages a conflicting proposal instead of activating it; unchanged repeated extraction does not duplicate pending or rejected decisions; acceptance through the real inbox supersedes the canonical prior claim; candidate selection uses current canonical state and preserves unrelated claims]
-- [ ] T11.3 Retain and review low-confidence extraction observations  Owner: pool  Est: 90m  verifies: [UC-005, UC-012]  deps: [T11.1]  acc: [low-confidence observations remain discoverable with their source provenance; repeats do not duplicate queue records; review actions have explicit effects and never silently promote a low-confidence observation or discard an accepted effect; rejection/defer preserve canonical state and operator guidance documents the supported approval path]
+- [x] T11.3 Retain and review low-confidence extraction observations  Owner: pool  Est: 90m  verifies: [UC-005, UC-012]  deps: [T11.1]  acc: [low-confidence observations remain discoverable with their source provenance; repeats do not duplicate queue records; review actions have explicit effects and never silently promote a low-confidence observation or discard an accepted effect; rejection/defer preserve canonical state and operator guidance documents the supported approval path]
 
 Each task requires real CLI evidence, meaningful failure cases and a detected
 negative control before completion. Existing human naming, mailbox and release
@@ -79,3 +79,37 @@ versions are not automatically retracted by this repair.
 A follow-up compacted-shard regression failed before repair. Archive rows now
 retain historical identity for deduplication but never enter active candidates.
 The focused `TestReview` race suite passed six cases with zero skips.
+
+## T11.3 verification — 2026-09-08
+
+Low-confidence observations now retain an immutable distill payload with original
+source digest, span, model, time and confidence. Repeated or higher-confidence
+extraction cannot bypass that review. Plain accept leaves the item pending; a typed
+human assertion and explicit confirmation publish the reviewed effect. A prior
+canonical value is displayed before replacement. Reject, defer and cancellation
+preserve canonical state. See [operator workflow](../operator/extraction.md).
+
+The real CLI five-scenario audit now passes all five flows. Eight CLI review
+scenarios (nine named cases including their parent) passed with a fresh Git
+configuration, and 20 publication/recovery cases passed. Both low-confidence-drop
+and plain-accept-consumption negative controls failed their meaningful regression
+test. The final full repository race run passed 1,569 cases in 58 packages, with
+six explicit skips; changed-package lint reported zero issues.
+
+Two actual executable SIGKILL cuts, before and after Git commit, left an unapplied
+decision discoverable and retryable. Each recovery produced one human claim and
+one history entry while retaining the original model payload. Repeating recovery
+added no commit. The pre-commit synthetic fixture's dead process group left an
+orphan Git index lock, which the harness removed explicitly; production never
+removes locks automatically. See [receipt](../evals/extraction-distill.json).
+
+The post-T11.1 nightly [run 34241717066](https://github.com/sirerun/serenity/actions/runs/34241717066)
+passed on merged code: 56.439 seconds versus its matching 170.921-second baseline
+(-66.98%), 10,000 claims, 10,050 vectors, 10,000 cache hits and zero live model calls.
+[Raw timing](../evals/extraction-batch-nightly.json) remains component-throughput
+evidence, with the review-orchestration limitations already disclosed above.
+
+A subsequent real CLI search for the newly confirmed human claim returned no
+results despite its correct canonical publication. Native claim text lacks the
+search projection already provided for imported claims. This is recorded as E12,
+not described as a successful retrieval or folded into these publication receipts.

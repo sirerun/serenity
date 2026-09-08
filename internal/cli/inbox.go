@@ -76,7 +76,7 @@ func newInboxCmd() *cobra.Command {
 	cmd.Flags().StringVar(&bulkDefer, "bulk-defer", "",
 		`non-interactively defer every pending/deferred item matching filter (only "family=<value>" is supported)`)
 	cmd.Flags().BoolVar(&parked, "parked", false, "list parked items only -- read-only, no interactive review")
-	cmd.Flags().BoolVar(&unapplied, "unapplied", false, "list accepted reconciliation decisions awaiting canonical publication")
+	cmd.Flags().BoolVar(&unapplied, "unapplied", false, "list accepted claim decisions awaiting canonical publication")
 	cmd.Flags().StringVar(&applyID, "apply", "", "retry canonical publication of an already accepted reconciliation item")
 	cmd.MarkFlagsMutuallyExclusive("bulk-defer", "parked", "unapplied", "apply")
 	return cmd
@@ -139,7 +139,7 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 			if err != nil {
 				return err
 			}
-			id, err := sw.ApplyAndCommitReconcile(ctx, dispStore, item, now)
+			id, err := applyInboxDecision(ctx, sw, dispStore, item, now)
 			if err != nil {
 				return fmt.Errorf("inbox: publication incomplete for %s: %w; resolve the target and retry with inbox --apply %s", item.ID, err, item.ID)
 			}
@@ -169,6 +169,8 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 // reconcilePublisher separates interactive review from publication bookkeeping.
 type reconcilePublisher interface {
 	ApplyAndCommitReconcile(context.Context, *disposition.Store, disposition.Item, time.Time) (string, error)
+	PreviewDistillAssertion(context.Context, disposition.Item, string, string, time.Time) (supersede.DistillDecision, error)
+	ApplyAndCommitDistill(context.Context, *disposition.Store, disposition.Item, time.Time) (string, error)
 }
 
 type inboxPublisher struct {
@@ -182,6 +184,25 @@ func (p *inboxPublisher) ApplyAndCommitReconcile(ctx context.Context, ds *dispos
 		p.published = true
 	}
 	return id, err
+}
+
+func (p *inboxPublisher) PreviewDistillAssertion(ctx context.Context, item disposition.Item, object, actor string, now time.Time) (supersede.DistillDecision, error) {
+	return p.writer.PreviewDistillAssertion(ctx, item, object, actor, now)
+}
+
+func (p *inboxPublisher) ApplyAndCommitDistill(ctx context.Context, ds *disposition.Store, item disposition.Item, now time.Time) (string, error) {
+	id, err := p.writer.ApplyAndCommitDistill(ctx, ds, item, now)
+	if err == nil && item.AppliedClaimID == "" {
+		p.published = true
+	}
+	return id, err
+}
+
+func applyInboxDecision(ctx context.Context, sw reconcilePublisher, ds *disposition.Store, item disposition.Item, now time.Time) (string, error) {
+	if item.Kind == disposition.KindDistill {
+		return sw.ApplyAndCommitDistill(ctx, ds, item, now)
+	}
+	return sw.ApplyAndCommitReconcile(ctx, ds, item, now)
 }
 
 // currentActor reports the local human identity used as Dispose's actor
@@ -209,6 +230,9 @@ func currentActor() string {
 // add its own case here without changing bulkDefer's or the interactive
 // loop's own logic.
 func itemFamily(item disposition.Item) (string, bool) {
+	if observation, extracted, err := disposition.ExtractionObservation(item); err == nil && extracted {
+		return observation.Predicate, true
+	}
 	if item.Kind != disposition.KindReconcile {
 		return "", false
 	}
@@ -236,6 +260,13 @@ func itemSummary(item disposition.Item) string {
 				item.Kind, p.Verdict, p.A.SubjectSlug, p.A.Predicate, p.A.Object, p.B.Predicate, p.B.Object)
 		}
 	case disposition.KindDistill:
+		observation, extracted, err := disposition.ExtractionObservation(item)
+		if err != nil {
+			return "distill: malformed extraction evidence: " + err.Error()
+		}
+		if extracted {
+			return fmt.Sprintf("distill confidence=%.2f %s %s=%q source=%s span=%s model=%s; e: type a human assertion, d: defer, r: reject", observation.Confidence, observation.SubjectSlug, observation.Predicate, observation.Object, observation.SourceSHA256, observation.Span, observation.Model)
+		}
 		var p disposition.CapturePayload
 		if err := json.Unmarshal(item.Payload, &p); err == nil {
 			text := p.Text
@@ -423,6 +454,22 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 				}
 			}
 			row := rows[cursor]
+			needsAssertion := false
+			if verdict == disposition.VerdictAccept {
+				for _, it := range row.Items {
+					_, extracted, err := disposition.ExtractionObservation(it)
+					if err != nil {
+						return err
+					}
+					if extracted {
+						needsAssertion = true
+					}
+				}
+			}
+			if needsAssertion {
+				_, _ = fmt.Fprintln(out, "inbox: low-confidence evidence stays pending; use e to type a human assertion and confirm its canonical effect, or d/r to defer/reject")
+				continue
+			}
 			for _, it := range row.Items {
 				res, err := dispStore.Dispose(ctx, it.ID, verdict, nil, note, actor, "", now)
 				if err != nil {
@@ -457,6 +504,23 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 			}
 
 		case 'e':
+			row := rows[cursor]
+			if len(row.Items) == 1 {
+				_, extracted, err := disposition.ExtractionObservation(row.Items[0])
+				if err != nil {
+					return err
+				}
+				if extracted {
+					applied, err := runDistillEdit(ctx, dispStore, sw, row.Items[0], r, out, actor, now)
+					if err != nil {
+						return err
+					}
+					if applied && advance() {
+						return nil
+					}
+					continue
+				}
+			}
 			// edit_accept (T2.7): only defined for a single ungrouped
 			// KindReconcile row -- "which edited value" is per-item
 			// information a human supplies one item at a time, and no
@@ -464,7 +528,6 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 			// (internal/reconcile.Engine.Process always stages with an
 			// empty GroupID), so fanning one edit across several group
 			// members has no real caller to motivate guessing at it.
-			row := rows[cursor]
 			if len(row.Items) != 1 || row.Items[0].Kind != disposition.KindReconcile {
 				_, _ = fmt.Fprintln(out, "inbox: e (edit_accept) only works on a single ungrouped reconcile item")
 				continue
@@ -576,14 +639,19 @@ func runListUnapplied(ctx context.Context, dispStore *disposition.Store, out io.
 	}
 	count := 0
 	for _, item := range items {
-		if item.Kind != disposition.KindReconcile || item.State != disposition.StateDisposed || (item.Verdict != disposition.VerdictAccept && item.Verdict != disposition.VerdictEditAccept) || item.AppliedClaimID != "" {
+		_, extracted, err := disposition.ExtractionObservation(item)
+		if err != nil {
+			return err
+		}
+		supported := item.Kind == disposition.KindReconcile || (extracted && item.Verdict == disposition.VerdictEditAccept)
+		if !supported || item.State != disposition.StateDisposed || (item.Verdict != disposition.VerdictAccept && item.Verdict != disposition.VerdictEditAccept) || item.AppliedClaimID != "" {
 			continue
 		}
 		_, _ = fmt.Fprintf(out, "unapplied %s verdict=%s — retry: serenity inbox --apply %s\n", item.ID, item.Verdict, item.ID)
 		count++
 	}
 	if count > 0 {
-		_, _ = fmt.Fprintf(out, "inbox: %d accepted reconciliation decision(s) await publication\n", count)
+		_, _ = fmt.Fprintf(out, "inbox: %d accepted claim decision(s) await publication\n", count)
 	}
 	return nil
 }
