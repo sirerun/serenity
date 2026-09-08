@@ -103,5 +103,6 @@ composition providers. Composition prompts retain the human-review requirement.
 Retrieval rechecks canonical pages on every request. Changing visibility,
 retracting/deleting a row, changing its text or review flag, expiring its validity
 window, or moving its family to shard storage invalidates stale imported search
-chunks immediately. Rebuild the derived index to make changed eligible text
-searchable; stale vectors cannot override the canonical checks.
+chunks immediately. Run `serenity sync` to rebuild the derived index and make changed eligible text
+searchable; this also polls configured connectors. Stale vectors cannot override
+the canonical checks.
