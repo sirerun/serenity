@@ -59,3 +59,31 @@ reading the source refuted that. The grammars:
 - gbrain's DB-only facts (if any exist without a fence row) are out of
   scope for the file importer; the operator's manual says to run gbrain's
   own fence backfill first.
+
+## File representation implemented 2026-09-08
+
+The existing seven-column Serenity claim table cannot carry visibility or full
+provenance. Imported pages therefore add a `serenity:metadata` JSON block that
+supplements the visible table with visibility, original provenance cells,
+`review`, and confidence precision. The table remains authoritative for text,
+state, validity and supersession; a changed visible confidence overrides the
+stored precision. The block also retains source frontmatter, original prose,
+and typed wiki-link edges. Known link targets carry the destination entity slug;
+unresolved targets retain their source reference without inventing an entity.
+No graph traversal endpoint is introduced by the file importer.
+
+Facts and takes have independent row-number spaces in the pinned upstream
+parser. Their human-readable SourceRef can consequently be identical, but the
+claim ID includes page path, fence name, row number and original cells. The
+`gbrain_fence` provenance key disambiguates references. Resumption must likewise
+key rows by `(page, fence, row)` rather than collapsing facts #1 with takes #1.
+Both `->` and `→` take date ranges are read; take lifecycle annotations are in
+the source column, while facts use context. Original extension columns remain
+verbatim in provenance rather than being silently dropped.
+
+The initial import writes complete pages exclusively and atomically through the
+writer queue, commits each page, then rebuilds the disposable index. Identical
+existing pages are idempotent; different pages are conflicts, even if untracked.
+Incremental replacement is not inferred from ID equality. Use metadata-aware
+Serenity versions to read imported brains: older binaries do not understand
+these supplementary privacy/provenance fields.
