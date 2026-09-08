@@ -75,6 +75,8 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 ### E17 -- Decision ledger storage integrity -> docs/plans/E17-ledger-storage.md (1/1; confined ledger reads/writes and atomic entries verified, 2026-09-08)
 ### E18 -- Ledger acceptance publication recovery -> docs/plans/E18-ledger-publication.md (1/1; precept/child-intent publication and crash recovery verified, 2026-09-08)
 
+### E19 -- SQLite disposition storage compatibility -> docs/plans/E19-disposition-storage-types.md (1/1; exact-byte updates accept readable TEXT rows, 2026-09-08)
+
 Decisions confirmed by David on 2026 08 27 (no open decisions remain):
 - OD-1 Second labeler for golden sets: two independent frontier-model passes from different families with David adjudicating (ADR 005).
 - OD-2 Voice-note connector timing: M2 task T2.16, not an M1 gate (ADR 005).
