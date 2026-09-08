@@ -14,9 +14,10 @@ import (
 // runtime-state directory internal/writer's PendingRecord and
 // internal/providers' index.db already use.
 type RunRecord struct {
-	Job      string    `json:"job"`
-	LastRun  time.Time `json:"last_run"`
-	RunCount int       `json:"run_count"`
+	Job      string          `json:"job"`
+	LastRun  time.Time       `json:"last_run"`
+	RunCount int             `json:"run_count"`
+	Details  json.RawMessage `json:"details,omitempty"`
 }
 
 // RecordPath returns the runtime-state path a job's run record lives at:
@@ -40,13 +41,21 @@ func ReadRecord(root, job string) (RunRecord, error) {
 	return rec, nil
 }
 
-// recordRun writes job's run record for this invocation, incrementing
-// RunCount from whatever was already on disk (0 on a first run). This is
-// what makes a placeholder job idempotent: running it twice never errors,
-// it just overwrites the same file with an incremented count and the new
-// LastRun.
+// recordRun records a completed invocation. Detailed jobs include their actual
+// computed result; a failure before this call never advances the success record.
 func recordRun(root, job string, at time.Time) error {
+	return recordDetails(root, job, at, nil)
+}
+
+func recordDetails(root, job string, at time.Time, details any) error {
 	rec := RunRecord{Job: job, LastRun: at, RunCount: 1}
+	if details != nil {
+		raw, err := json.Marshal(details)
+		if err != nil {
+			return err
+		}
+		rec.Details = raw
+	}
 	if prev, err := ReadRecord(root, job); err == nil {
 		rec.RunCount = prev.RunCount + 1
 	}
