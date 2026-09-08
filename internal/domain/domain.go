@@ -6,8 +6,8 @@ package domain
 
 import "time"
 
-// Visibility is present in v1 file formats and ignored by the daemon
-// (RFC §6: the format must not preclude multi-principal later).
+// Visibility separates local-private evidence from shared evidence on remote
+// retrieval and provider-egress paths.
 type Visibility string
 
 const (
@@ -58,7 +58,7 @@ type Claim struct {
 	Confidence  float64 `json:"confidence"`
 	ValidFrom   string  `json:"valid_from,omitempty"`
 	ValidTo     string  `json:"valid_to,omitempty"`
-	// Visibility exists in v1 and is ignored by the daemon (§6).
+	// Visibility is enforced on remote retrieval and provider egress.
 	Visibility Visibility `json:"visibility,omitempty"`
 	State      State      `json:"state"`
 	// Supersedes points at the claim this line replaces (shard chains
