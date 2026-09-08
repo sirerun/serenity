@@ -189,7 +189,7 @@ func checkpointComplete(ctx context.Context, target string, root *os.Root, actua
 	}
 	raw, err := root.ReadFile(expected.Target)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return false, fmt.Errorf("gbrain checkpoint: previously committed page %s is missing; preserve the deletion and resolve the migration explicitly", expected.Target)
 	}
 	if err != nil {
 		return false, err
