@@ -142,9 +142,9 @@ func (s *Store) List(_ context.Context) ([]ledger.EntryInfo, error) {
 
 // Create writes a new entry through the writer queue, failing with an
 // error wrapping ledger.ErrExists if the id is already taken. It is
-// exclusive by construction (atomic link) -- the same native primitive dira's
-// own local backend uses -- which is what lets ledger.Add (write.go) retry
-// the next candidate id on a losing race instead of clobbering the winner.
+// exclusive by construction: an atomic hard link publishes already-synced bytes.
+// A losing creator receives ErrExists, allowing ledger.Add to try the next
+// candidate ID without clobbering the winner.
 func (s *Store) Create(_ context.Context, e *ledger.Entry) error {
 	if err := s.writable("create"); err != nil {
 		return err
