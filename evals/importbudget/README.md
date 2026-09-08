@@ -55,3 +55,9 @@ adds per-claim search entries to the raw-source and entity-page entries; reports
 therefore count the actual increased vector workload. The vector cache algorithm,
 corpus and model pins are unchanged. Performance comparisons retain their baseline
 and disclose this added work rather than resetting the gate to hide it.
+
+Each nightly artifact also records an allowlisted `environment.json`: Go and Git
+versions, CPU information, runner image version, processor limit and benchmark
+class. It contains no environment dump or credentials. Use this evidence when
+investigating timing variation; it does not relax the 20% threshold, change
+baseline compatibility or make a failed run eligible for baseline publication.
