@@ -65,6 +65,7 @@ Out of scope: Flutter app (v1.1), Graph email, ANN index, multi-principal enforc
 
 ### E7 -- Launch polish and adoption loop  -> docs/plans/E7-launch-polish.md  (0/6; executable; newly planned 2026-09-08)
 ### E8 -- Ajent agent readiness  -> docs/plans/E8-ajent-agent-readiness.md  (0/7; executable; coordinated external epic, newly planned 2026-09-08)
+### E9 -- Migration verification remediation -> docs/plans/E9-migration-verification.md (2/2; completed 2026-09-08; imported-claim retrieval repaired with canonical privacy checks, seven CLI flows and real MCP stdio verified)
 
 Decisions confirmed by David on 2026 08 27 (no open decisions remain):
 - OD-1 Second labeler for golden sets: two independent frontier-model passes from different families with David adjudicating (ADR 005).
@@ -264,6 +265,10 @@ gap, fixed same day) -- v0.1.0 itself was left untouched, not retagged.
 
 ### Wave 6: E6 planning task (1 agents)
 - [ ] T6.0 PLAN: expand E6 to executable fidelity (informed by E0-E5 learnings and the shipped metrics surface)
+
+### Wave 9: Migration verification remediation
+- [x] T9.1 Wire imported claim text into retrieval with canonical eligibility
+- [x] T9.2 Reverify migration operator flows and retrieval privacy
 
 ## 6. Timeline and milestones
 
