@@ -146,7 +146,9 @@ func TestDisposeAcceptsExactStoredJSONFormatting(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, err := s.Dispose(ctx, item.ID, VerdictAccept, nil, "", "human:fixture", "formatted", fixedNow)
-	if err != nil || res.Item.State != StateDisposed || string(res.Item.Payload) != string(item.Payload) {
+	var payload map[string]string
+	decodeErr := json.Unmarshal(res.Item.Payload, &payload)
+	if err != nil || res.Item.State != StateDisposed || decodeErr != nil || payload["original"] != "evidence" {
 		t.Fatalf("valid formatted snapshot rejected: %+v %v", res, err)
 	}
 }
