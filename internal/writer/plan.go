@@ -39,7 +39,7 @@ func SnapshotFiles(root string, paths []string) (map[string][]byte, error) {
 // The caller must publish the returned plan with PublishFiles; approval flows
 // additionally persist it first so an interrupted application can be resumed.
 func PlanFiles(root string, snapshot map[string][]byte, build func(preview string) error) ([]FileChange, error) {
-	return planFiles(root, snapshot, "", nil, build)
+	return planFiles(root, snapshot, "", nil, false, build)
 }
 
 // PlanReviewedFiles permits exactly one reviewed entity page to be Git-dirty.
@@ -49,10 +49,21 @@ func PlanReviewedFiles(root string, snapshot map[string][]byte, path string, hum
 	if !strings.HasPrefix(path, "brain/entities/") || human == nil || !sameFileBytes(snapshot[path], human) {
 		return nil, fmt.Errorf("writer: reviewed page does not match snapshot")
 	}
-	return planFiles(root, snapshot, path, human, build)
+	return planFiles(root, snapshot, path, human, false, build)
 }
 
-func planFiles(root string, snapshot map[string][]byte, reviewed string, human []byte, build func(string) error) ([]FileChange, error) {
+// PlanCompactionFiles plans shard layout changes, including removed rollover
+// segments, against clean exact input bytes. It cannot modify entity pages.
+func PlanCompactionFiles(root string, snapshot map[string][]byte, build func(string) error) ([]FileChange, error) {
+	for path := range snapshot {
+		if !compactionPath(path, false) {
+			return nil, fmt.Errorf("writer: non-shard compaction input %s", path)
+		}
+	}
+	return planFiles(root, snapshot, "", nil, true, build)
+}
+
+func planFiles(root string, snapshot map[string][]byte, reviewed string, human []byte, compact bool, build func(string) error) ([]FileChange, error) {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, err
@@ -121,6 +132,9 @@ func planFiles(root string, snapshot map[string][]byte, reviewed string, human [
 				return err
 			}
 		}
+		if compact && !compactionPath(rel, false) {
+			return fmt.Errorf("writer: non-shard compaction output %s", rel)
+		}
 		after[rel] = raw
 		return nil
 	})
@@ -129,7 +143,10 @@ func planFiles(root string, snapshot map[string][]byte, reviewed string, human [
 	}
 	for path, raw := range snapshot {
 		if raw != nil && after[path] == nil {
-			return nil, fmt.Errorf("writer: planner removed canonical file %s", path)
+			if !compact || !compactionPath(path, true) {
+				return nil, fmt.Errorf("writer: planner removed canonical file %s", path)
+			}
+			after[path] = nil
 		}
 	}
 	names := make([]string, 0, len(after))
