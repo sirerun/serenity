@@ -52,6 +52,16 @@ func TestImportCLIRebuildsCanonicalFixture(t *testing.T) {
 		t.Fatalf("incorrect JSON report: %+v", report)
 	}
 
+	for _, query := range []string{"feature flags", "Synthetic project"} {
+		hits, _, err := searchResults(context.Background(), root, query, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(hits) == 0 || !strings.Contains(hits[0].Text, query) || !strings.Contains(hits[0].Text, "review required") {
+			t.Fatalf("imported claim not searchable for %q: %+v", query, hits)
+		}
+	}
+
 	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		t.Fatal(err)
