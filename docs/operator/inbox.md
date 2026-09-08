@@ -24,7 +24,8 @@ serenity -C /path/to/brain inbox --apply ITEM_ID
 
 A retry uses the already recorded verdict; it does not create another decision or
 change the reviewer. Publication receipts under `.serenity/reconcile/` retain
-before/after bytes until completion. Keep this local runtime directory when
+before/after bytes until completion. Ledger publications use `.serenity/direction/`.
+Keep both local runtime directories when
 recovering an interrupted review. It can contain private canonical content and
 must remain excluded from Git, like the disposition database itself. Deleting
 runtime state is not a way to recover an unfinished publication.
@@ -64,7 +65,8 @@ and directs you to `serenity sync`; it does not pretend the publication rolled
 back.
 
 This recovery path covers local-owner CLI reconciliation, confirmed extraction
-assertions and accepted human edits. Other item kinds retain their existing
+assertions, accepted human edits, precept drafts and child intents. Other item
+kinds retain their existing
 handlers. Canonical publication through DISPOSITION HTTP and recovery of older
 versions' premature `AppliedClaimID` markers are separate surfaces. Receipts do
 not provide a multi-file filesystem transaction against arbitrary simultaneous
@@ -144,3 +146,24 @@ contain zero or several new claims; `applied_claim_id` keeps its original meanin
 An already accepted legacy dirty-edit item can also be applied if its captured
 human bytes and current heads still pass validation. Unreviewed newer content is
 never inferred to be part of that acceptance.
+
+## Recover accepted ledger proposals
+
+Precept drafts and decomposed child intents now commit their ledger entry before
+the inbox advances. Draft validation and a child's active, committed parent are
+checked before recording acceptance. A later commit failure leaves the recorded
+approval visible in `--unapplied`; `--apply ITEM_ID` completes that same entry.
+Retries preserve the original actor, precise decision time, alternatives, edited
+payload and parent relation. They do not allocate another entry or overwrite a
+newer human edit to the entry or its parent.
+
+New ledger acceptances record a pending-effect intent atomically with their
+history. Completion stores `applied_entry_id` and clears `ledger_effect_pending`.
+Older acceptances without this intent may already have created an entry without
+recording its ID. The inbox flags those for inspection; it does not blindly
+allocate a duplicate. Keep the saved receipt when recovering a new approval.
+Deleting it is not a recovery procedure, even when a completion marker remains.
+
+This path covers local inbox precept drafts and child intents. Other low-level
+direction lifecycle calls and HTTP canonical publication keep their existing
+contracts. See [ledger storage](ledger-storage.md) for individual file guarantees.

@@ -62,6 +62,8 @@ rather than redeclared.
 | `route` | enum: `claim-batch`, `precept-draft`, `note`, `trash` | no | Set only for a distill item disposed through the capture routing path. |
 | `route_effect_pending` | boolean | no | Recovery marker for a committed precept-draft route whose follow-on staging has not completed. Absent on legacy and completed routes. |
 | `resurfaced` | boolean | no | `true` once a parked item has been resurfaced back to pending — a one-time transition. |
+| `applied_entry_id` | string | no | Committed ledger entry created by an accepted precept draft or child intent. |
+| `ledger_effect_pending` | boolean | no | Recovery intent recorded with new ledger acceptances; cleared on publication, absent on legacy unmarked effects. |
 | `applied_publication_id` | string | no | Committed dirty-edit receipt ID; a publication may contain zero or more claims. |
 | `applied_claim_id` | string | no | The claim id a reconcile item's accept/edit_accept verdict wrote to the canonical brain repo, once applied. |
 

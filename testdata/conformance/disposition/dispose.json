@@ -9,14 +9,14 @@
           "method": "POST",
           "path": "/disposition/dispose",
           "request_body": {
-            "item_id": "cda08aff5a5749c7f6ad9b50d90554ac",
+            "item_id": "6bdc48ad531356f7c371d9a167cfac9c",
             "verdict": "accept",
             "idempotency_key": "accept-key-1",
             "actor": "tester"
           },
           "response": {
             "status": 200,
-            "body": "{\"results\":[{\"item\":{\"id\":\"cda08aff5a5749c7f6ad9b50d90554ac\",\"kind\":\"distill\",\"state\":\"disposed\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:00Z\",\"updated_at\":\"2026-09-07T12:00:00Z\",\"verdict\":\"accept\",\"actor\":\"tester\",\"disposed_at\":\"2026-09-07T12:00:00Z\",\"idempotency_key\":\"accept-key-1\"}}]}\n"
+            "body": "{\"results\":[{\"item\":{\"id\":\"6bdc48ad531356f7c371d9a167cfac9c\",\"kind\":\"distill\",\"state\":\"disposed\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:00Z\",\"updated_at\":\"2026-09-07T12:00:00Z\",\"verdict\":\"accept\",\"actor\":\"tester\",\"disposed_at\":\"2026-09-07T12:00:00Z\",\"idempotency_key\":\"accept-key-1\"}}]}\n"
           }
         }
       ]
@@ -28,7 +28,7 @@
           "method": "POST",
           "path": "/disposition/dispose",
           "request_body": {
-            "item_id": "0a13575759c2272ce8f7959b6b7f215e",
+            "item_id": "cf1f6b680b141ae8944d3841700fbc70",
             "verdict": "reject",
             "idempotency_key": "reject-key-1"
           },
@@ -46,7 +46,7 @@
           "method": "POST",
           "path": "/disposition/dispose",
           "request_body": {
-            "item_id": "46f2b88c3b64599c78f7a0666d6c5e63",
+            "item_id": "311d0e3bdfc3770510ab478d1707efa1",
             "verdict": "accept",
             "idempotency_key": ""
           },
@@ -64,28 +64,28 @@
           "method": "POST",
           "path": "/disposition/dispose",
           "request_body": {
-            "item_id": "d0d31506c9a304c9e3c81664795dc521",
+            "item_id": "d62ea2ad57d0c4900c55d8fef87798a2",
             "verdict": "accept",
             "idempotency_key": "replay-key-1",
             "actor": "tester"
           },
           "response": {
             "status": 200,
-            "body": "{\"results\":[{\"item\":{\"id\":\"d0d31506c9a304c9e3c81664795dc521\",\"kind\":\"distill\",\"state\":\"disposed\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:00Z\",\"updated_at\":\"2026-09-07T12:00:00Z\",\"verdict\":\"accept\",\"actor\":\"tester\",\"disposed_at\":\"2026-09-07T12:00:00Z\",\"idempotency_key\":\"replay-key-1\"}}]}\n"
+            "body": "{\"results\":[{\"item\":{\"id\":\"d62ea2ad57d0c4900c55d8fef87798a2\",\"kind\":\"distill\",\"state\":\"disposed\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:00Z\",\"updated_at\":\"2026-09-07T12:00:00Z\",\"verdict\":\"accept\",\"actor\":\"tester\",\"disposed_at\":\"2026-09-07T12:00:00Z\",\"idempotency_key\":\"replay-key-1\"}}]}\n"
           }
         },
         {
           "method": "POST",
           "path": "/disposition/dispose",
           "request_body": {
-            "item_id": "d0d31506c9a304c9e3c81664795dc521",
+            "item_id": "d62ea2ad57d0c4900c55d8fef87798a2",
             "verdict": "accept",
             "idempotency_key": "replay-key-1",
             "actor": "tester"
           },
           "response": {
             "status": 200,
-            "body": "{\"results\":[{\"item\":{\"id\":\"d0d31506c9a304c9e3c81664795dc521\",\"kind\":\"distill\",\"state\":\"disposed\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:00Z\",\"updated_at\":\"2026-09-07T12:00:00Z\",\"verdict\":\"accept\",\"actor\":\"tester\",\"disposed_at\":\"2026-09-07T12:00:00Z\",\"idempotency_key\":\"replay-key-1\"},\"replayed\":true}]}\n"
+            "body": "{\"results\":[{\"item\":{\"id\":\"d62ea2ad57d0c4900c55d8fef87798a2\",\"kind\":\"distill\",\"state\":\"disposed\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:00Z\",\"updated_at\":\"2026-09-07T12:00:00Z\",\"verdict\":\"accept\",\"actor\":\"tester\",\"disposed_at\":\"2026-09-07T12:00:00Z\",\"idempotency_key\":\"replay-key-1\"},\"replayed\":true}]}\n"
           }
         }
       ]
@@ -103,7 +103,7 @@
           },
           "response": {
             "status": 200,
-            "body": "{\"results\":[{\"item\":{\"id\":\"bf87faff5713ba6f5fe5e9b624356cbb\",\"kind\":\"decompose\",\"state\":\"disposed\",\"group_id\":\"g2\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:00Z\",\"updated_at\":\"2026-09-07T12:00:00Z\",\"verdict\":\"accept\",\"disposed_at\":\"2026-09-07T12:00:00Z\",\"idempotency_key\":\"group-key-1\"}},{\"item\":{\"id\":\"c07701dc57cb9777ab687f8942c10c09\",\"kind\":\"decompose\",\"state\":\"disposed\",\"group_id\":\"g2\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:01Z\",\"updated_at\":\"2026-09-07T12:00:00Z\",\"verdict\":\"accept\",\"disposed_at\":\"2026-09-07T12:00:00Z\",\"idempotency_key\":\"group-key-1\"}}]}\n"
+            "body": "{\"results\":[{\"item\":{\"id\":\"d0b3dcbfcff72383c9fe36cbf4c6f592\",\"kind\":\"decompose\",\"state\":\"disposed\",\"group_id\":\"g2\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:00Z\",\"updated_at\":\"2026-09-07T12:00:00Z\",\"verdict\":\"accept\",\"disposed_at\":\"2026-09-07T12:00:00Z\",\"idempotency_key\":\"group-key-1\",\"ledger_effect_pending\":true}},{\"item\":{\"id\":\"bca12abeaf764b8df9068b27f9488288\",\"kind\":\"decompose\",\"state\":\"disposed\",\"group_id\":\"g2\",\"payload\":{},\"created_at\":\"2026-09-07T12:00:01Z\",\"updated_at\":\"2026-09-07T12:00:00Z\",\"verdict\":\"accept\",\"disposed_at\":\"2026-09-07T12:00:00Z\",\"idempotency_key\":\"group-key-1\",\"ledger_effect_pending\":true}}]}\n"
           }
         }
       ]

@@ -470,6 +470,7 @@ func TestInboxInteractiveSpaceAcceptWritesDecomposedChildIntoLedger(t *testing.T
 		t.Fatalf("seed parent intent: %v", err)
 	}
 
+	commitInboxLedgerFixture(t, root)
 	itemA := seedDecomposeItem(t, dispStore, ctx, inboxFixedNow, parent.ID, "Write the launch doc", "needed first", "g-decompose")
 	itemB := seedDecomposeItem(t, dispStore, ctx, inboxFixedNow, parent.ID, "Line up the demo env", "referenced by the doc", "g-decompose")
 

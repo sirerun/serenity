@@ -201,8 +201,12 @@ func (s *Store) ApplyDisposedDecompose(ctx context.Context, item disposition.Ite
 		return nil, fmt.Errorf("direction: apply decompose %s: item is not accepted (state=%q verdict=%q)", item.ID, item.State, item.Verdict)
 	}
 
+	raw := item.Payload
+	if item.Verdict == disposition.VerdictEditAccept && len(item.EditedPayload) > 0 {
+		raw = item.EditedPayload
+	}
 	var payload DecomposePayload
-	if err := json.Unmarshal(item.Payload, &payload); err != nil {
+	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil, fmt.Errorf("direction: apply decompose %s: decode payload: %w", item.ID, err)
 	}
 	if payload.Child.Title == "" {

@@ -203,6 +203,10 @@ type Item struct {
 	AppliedClaimID string `json:"applied_claim_id,omitempty"`
 	// AppliedPublicationID identifies a committed dirty-edit receipt (zero or more claims).
 	AppliedPublicationID string `json:"applied_publication_id,omitempty"`
+	// AppliedEntryID identifies a committed precept or child-intent ledger entry.
+	AppliedEntryID string `json:"applied_entry_id,omitempty"`
+	// LedgerEffectPending distinguishes new recoverable acceptances from legacy unmarked effects.
+	LedgerEffectPending bool `json:"ledger_effect_pending,omitempty"`
 }
 
 // HistoryEntry is one append-only disposition_history row (RFC 0001 §8.2:
@@ -472,6 +476,7 @@ func (s *Store) dispose(ctx context.Context, id string, verdict Verdict, editedP
 			item.State = StateDeferred
 			item.DeferCount++
 		}
+		item.LedgerEffectPending = (item.Kind == KindPreceptDraft || item.Kind == KindDecompose) && (verdict == VerdictAccept || verdict == VerdictEditAccept)
 		item.Route = route
 		item.RouteEffectPending = route == RoutePreceptDraft
 		item.Verdict = verdict
@@ -560,6 +565,31 @@ func (s *Store) RecordPublicationID(ctx context.Context, id, publicationID strin
 			return false, errors.New("disposition: different publication already recorded")
 		}
 		item.AppliedPublicationID = publicationID
+		if now.After(item.UpdatedAt) {
+			item.UpdatedAt = now.UTC()
+		}
+		return true, nil
+	})
+	return err
+}
+
+// RecordEntryID marks a committed accepted ledger effect without redisposing it.
+func (s *Store) RecordEntryID(ctx context.Context, id, entryID string, now time.Time) error {
+	if entryID == "" {
+		return errors.New("disposition: empty ledger entry id")
+	}
+	_, _, err := s.updateItem(ctx, id, func(item *Item) (bool, error) {
+		if (item.Kind != KindPreceptDraft && item.Kind != KindDecompose) || item.State != StateDisposed || (item.Verdict != VerdictAccept && item.Verdict != VerdictEditAccept) {
+			return false, errors.New("disposition: accepted ledger decision required")
+		}
+		if item.AppliedEntryID == entryID && !item.LedgerEffectPending {
+			return false, nil
+		}
+		if item.AppliedEntryID != "" && item.AppliedEntryID != entryID {
+			return false, errors.New("disposition: different ledger entry already recorded")
+		}
+		item.AppliedEntryID = entryID
+		item.LedgerEffectPending = false
 		if now.After(item.UpdatedAt) {
 			item.UpdatedAt = now.UTC()
 		}

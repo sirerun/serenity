@@ -52,6 +52,14 @@
       "type": "boolean",
       "description": "Optional recovery marker for a committed precept-draft route whose follow-on staging has not completed. Absent on legacy and completed routes."
     },
+    "applied_entry_id": {
+      "type": "string",
+      "description": "Committed ledger entry ID for an accepted precept draft or child intent."
+    },
+    "ledger_effect_pending": {
+      "type": "boolean",
+      "description": "Optional recovery intent committed with new ledger acceptances; cleared after publication. Absent on legacy unmarked effects."
+    },
     "applied_publication_id": {
       "type": "string",
       "description": "Optional completion receipt ID for an accepted dirty edit, which may publish zero or more claims."

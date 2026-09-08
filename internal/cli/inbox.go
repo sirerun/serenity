@@ -136,21 +136,24 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 			}
 			_, _ = fmt.Fprintln(out, "inbox: refreshed derived index; run serenity extract to regenerate embeddings")
 		}()
-		// Direction writes use the session queue; reconciliation commits each
-		// durable publication independently before reviewing another item.
+		// Accepted canonical and ledger effects commit their own durable
+		// publications before reviewing another item.
 		dirStore := direction.NewStore(root, q)
 		if opts.ApplyID != "" {
 			item, err := dispStore.Get(ctx, opts.ApplyID)
 			if err != nil {
 				return err
 			}
-			id, err := applyInboxDecision(ctx, sw, dispStore, item, now)
+			id, err := applyInboxDecision(ctx, sw, dirStore, dispStore, item, now)
 			if err != nil {
 				return fmt.Errorf("inbox: publication incomplete for %s: %w; resolve the target and retry with inbox --apply %s", item.ID, err, item.ID)
 			}
 			kind := "claim"
-			if item.Kind == disposition.KindDirtyEdit {
+			switch item.Kind {
+			case disposition.KindDirtyEdit:
 				kind = "publication"
+			case disposition.KindPreceptDraft, disposition.KindDecompose:
+				kind = "entry"
 			}
 			_, _ = fmt.Fprintf(out, "applied %s -> %s %s committed to brain repo\n", item.ID, kind, id)
 			return nil
@@ -162,8 +165,8 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 		if err := runInteractive(ctx, dispStore, sw, dirStore, in, out, currentActor(), now); err != nil {
 			return err
 		}
-		// Reconciliation decisions already committed through their publication
-		// receipts. Flush the remaining direction writes for this review session.
+		// Durable approvals already committed independently. Flush any remaining
+		// session-owned writes before returning.
 		committed, ferr := writer.Flush(q, root)
 		if ferr != nil {
 			return fmt.Errorf("inbox: flush: %w", ferr)
@@ -221,7 +224,14 @@ func (p *inboxPublisher) ApplyAndCommitDirtyEdit(ctx context.Context, ds *dispos
 	return id, err
 }
 
-func applyInboxDecision(ctx context.Context, sw reconcilePublisher, ds *disposition.Store, item disposition.Item, now time.Time) (string, error) {
+func applyInboxDecision(ctx context.Context, sw reconcilePublisher, dirStore *direction.Store, ds *disposition.Store, item disposition.Item, now time.Time) (string, error) {
+	if item.Kind == disposition.KindPreceptDraft || item.Kind == disposition.KindDecompose {
+		entry, err := dirStore.ApplyAndCommitDisposition(ctx, ds, item, now)
+		if err != nil {
+			return "", err
+		}
+		return entry.ID, nil
+	}
 	if item.Kind == disposition.KindDirtyEdit {
 		return sw.ApplyAndCommitDirtyEdit(ctx, ds, item, now)
 	}
@@ -523,6 +533,11 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 				}
 			}
 			for _, it := range row.Items {
+				if verdict == disposition.VerdictAccept && (it.Kind == disposition.KindPreceptDraft || it.Kind == disposition.KindDecompose) {
+					if err := dirStore.PreviewDisposition(ctx, it, actor, now); err != nil {
+						return fmt.Errorf("inbox: ledger proposal %s remains pending: %w", it.ID, err)
+					}
+				}
 				res, err := dispStore.Dispose(ctx, it.ID, verdict, nil, note, actor, "", now)
 				if err != nil {
 					return fmt.Errorf("inbox: dispose %s: %w", it.ID, err)
@@ -543,18 +558,12 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 						return fmt.Errorf("inbox: publication incomplete for %s: %w; resolve the target and retry with inbox --apply %s", it.ID, aerr, it.ID)
 					}
 					_, _ = fmt.Fprintf(out, "applied %s -> claim %s committed to brain repo\n", it.ID, id)
-				case verdict == disposition.VerdictAccept && res.Item.Verdict == disposition.VerdictAccept && it.Kind == disposition.KindDecompose:
-					entry, aerr := dirStore.ApplyDisposedDecompose(ctx, res.Item, now)
+				case verdict == disposition.VerdictAccept && res.Item.Verdict == disposition.VerdictAccept && (it.Kind == disposition.KindDecompose || it.Kind == disposition.KindPreceptDraft):
+					entry, aerr := dirStore.ApplyAndCommitDisposition(ctx, dispStore, res.Item, now)
 					if aerr != nil {
-						return fmt.Errorf("inbox: apply decompose %s: %w", it.ID, aerr)
+						return fmt.Errorf("inbox: ledger publication incomplete for %s: %w; retry with inbox --apply %s", it.ID, aerr, it.ID)
 					}
-					_, _ = fmt.Fprintf(out, "applied %s -> %s written to ledger (%s)\n", it.ID, entry.ID, entry.Title)
-				case verdict == disposition.VerdictAccept && res.Item.Verdict == disposition.VerdictAccept && it.Kind == disposition.KindPreceptDraft:
-					entry, aerr := dirStore.ApplyDisposedPreceptDraft(ctx, res.Item, now)
-					if aerr != nil {
-						return fmt.Errorf("inbox: apply precept draft %s: %w", it.ID, aerr)
-					}
-					_, _ = fmt.Fprintf(out, "applied %s -> %s written to ledger (%s)\n", it.ID, entry.ID, entry.Title)
+					_, _ = fmt.Fprintf(out, "applied %s -> %s written to ledger and committed (%s)\n", it.ID, entry.ID, entry.Title)
 				}
 			}
 			if advance() {
@@ -701,15 +710,20 @@ func runListUnapplied(ctx context.Context, dispStore *disposition.Store, out io.
 		if err != nil {
 			return err
 		}
-		supported := item.Kind == disposition.KindDirtyEdit || item.Kind == disposition.KindReconcile || (extracted && item.Verdict == disposition.VerdictEditAccept)
-		if !supported || item.State != disposition.StateDisposed || (item.Verdict != disposition.VerdictAccept && item.Verdict != disposition.VerdictEditAccept) || item.AppliedClaimID != "" || item.AppliedPublicationID != "" {
+		supported := item.Kind == disposition.KindPreceptDraft || item.Kind == disposition.KindDecompose || item.Kind == disposition.KindDirtyEdit || item.Kind == disposition.KindReconcile || (extracted && item.Verdict == disposition.VerdictEditAccept)
+		if !supported || item.State != disposition.StateDisposed || (item.Verdict != disposition.VerdictAccept && item.Verdict != disposition.VerdictEditAccept) || item.AppliedClaimID != "" || item.AppliedPublicationID != "" || item.AppliedEntryID != "" {
+			continue
+		}
+		if (item.Kind == disposition.KindPreceptDraft || item.Kind == disposition.KindDecompose) && !item.LedgerEffectPending {
+			_, _ = fmt.Fprintf(out, "unapplied legacy %s — inspect existing ledger entries before recovering this approval\n", item.ID)
+			count++
 			continue
 		}
 		_, _ = fmt.Fprintf(out, "unapplied %s verdict=%s — retry: serenity inbox --apply %s\n", item.ID, item.Verdict, item.ID)
 		count++
 	}
 	if count > 0 {
-		_, _ = fmt.Fprintf(out, "inbox: %d accepted decision(s) await publication\n", count)
+		_, _ = fmt.Fprintf(out, "inbox: %d accepted decision(s) need publication or inspection\n", count)
 	}
 	return nil
 }

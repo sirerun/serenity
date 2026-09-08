@@ -244,7 +244,7 @@ func TestBootDispositionReplaysListPending(t *testing.T) {
 			t.Fatalf("seed reconcile: %v", err)
 		}
 		c := substituteCase(caseByName(t, tr, "list_pending filters by kind: only the reconcile item is returned"),
-			map[string]string{"ebd72d47d6cb7145b1f581425deb94f0": reconcile.ID})
+			map[string]string{"739a6edff1b55109115fa856fd5894f7": reconcile.ID})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
 
@@ -265,9 +265,9 @@ func TestBootDispositionReplaysListPending(t *testing.T) {
 		}
 		c := substituteCase(caseByName(t, tr, "list_pending with group:true collapses items sharing a group_id into one row"),
 			map[string]string{
-				"8c7be57a3e70e66072de44faa97e112e": m1.ID,
-				"da88f8f13ad0bde81615619a019a88bf": m2.ID,
-				"9cfd8aa2ea89f87c73cc22822551d0d5": ungrouped.ID,
+				"70a5fffb9988e68088a3e4104f151499": m1.ID,
+				"129473f0e84a834898947445899e1112": m2.ID,
+				"f0228b0579657b3ede67e502ff5bf32f": ungrouped.ID,
 			})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
@@ -291,8 +291,8 @@ func TestBootDispositionReplaysListPending(t *testing.T) {
 		}
 		c := substituteCase(caseByName(t, tr, "parked items appear only with the parked filter; the default view excludes them"),
 			map[string]string{
-				"e2d0059ec88559a717f4011b0b1ec344": pending.ID,
-				"876e169deb3801fb3fd96299f27c008c": toBePark.ID,
+				"9db0922e742781a9efa22f04733a122d": pending.ID,
+				"fa972c0a4b736ba1d3660fd27bf6911f": toBePark.ID,
 			})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
@@ -300,11 +300,11 @@ func TestBootDispositionReplaysListPending(t *testing.T) {
 	t.Run("cursor pagination walks all 5 items in pages of 2 and terminates with no next_cursor", func(t *testing.T) {
 		srv, store := newBootDispositionServer(t)
 		recordedIDs := []string{
-			"6cd3f245564041105b3849dc82287d14",
-			"4b897ff110f07533d546403b0ca59d5b",
-			"72f05146034026824af83535349619b0",
-			"b97a22d4d24c64e499f2b42b03da597a",
-			"7b752da0af4db42b23986e61840d27ee",
+			"8c8752457a4612e0da602412980c80c7",
+			"5be764827e9b4353fbaa367fc5d4df36",
+			"49a04952bd89803827e903b08c599b6f",
+			"0bf33da2f3f4025620eb925217b0fe54",
+			"a82f47c1da97e0b153720518b274852d",
 		}
 		subs := map[string]string{}
 		for i, recorded := range recordedIDs {
@@ -330,7 +330,7 @@ func TestBootDispositionReplaysDispose(t *testing.T) {
 			t.Fatalf("seed item: %v", err)
 		}
 		c := substituteCase(caseByName(t, tr, "dispose accept records the verdict"),
-			map[string]string{"cda08aff5a5749c7f6ad9b50d90554ac": item.ID})
+			map[string]string{"6bdc48ad531356f7c371d9a167cfac9c": item.ID})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
 
@@ -341,7 +341,7 @@ func TestBootDispositionReplaysDispose(t *testing.T) {
 			t.Fatalf("seed item: %v", err)
 		}
 		c := substituteCase(caseByName(t, tr, "reject without a note returns the reject_requires_note protocol error"),
-			map[string]string{"0a13575759c2272ce8f7959b6b7f215e": item.ID})
+			map[string]string{"cf1f6b680b141ae8944d3841700fbc70": item.ID})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
 
@@ -352,7 +352,7 @@ func TestBootDispositionReplaysDispose(t *testing.T) {
 			t.Fatalf("seed item: %v", err)
 		}
 		c := substituteCase(caseByName(t, tr, "dispose without idempotency_key returns invalid_request"),
-			map[string]string{"46f2b88c3b64599c78f7a0666d6c5e63": item.ID})
+			map[string]string{"311d0e3bdfc3770510ab478d1707efa1": item.ID})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
 
@@ -363,7 +363,7 @@ func TestBootDispositionReplaysDispose(t *testing.T) {
 			t.Fatalf("seed item: %v", err)
 		}
 		c := substituteCase(caseByName(t, tr, "replaying dispose with the same idempotency_key returns replayed:true, never a second write"),
-			map[string]string{"d0d31506c9a304c9e3c81664795dc521": item.ID})
+			map[string]string{"d62ea2ad57d0c4900c55d8fef87798a2": item.ID})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
 
@@ -380,8 +380,8 @@ func TestBootDispositionReplaysDispose(t *testing.T) {
 		}
 		c := substituteCase(caseByName(t, tr, "dispose by group_id disposes every member individually, one result per member"),
 			map[string]string{
-				"bf87faff5713ba6f5fe5e9b624356cbb": m1.ID,
-				"c07701dc57cb9777ab687f8942c10c09": m2.ID,
+				"d0b3dcbfcff72383c9fe36cbf4c6f592": m1.ID,
+				"bca12abeaf764b8df9068b27f9488288": m2.ID,
 			})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
@@ -626,7 +626,7 @@ func TestBootDeliberatelyBrokenBuildFailsDisposeConformance(t *testing.T) {
 		t.Fatalf("seed item: %v", err)
 	}
 	c := substituteCase(caseByName(t, tr, "dispose accept records the verdict"),
-		map[string]string{"cda08aff5a5749c7f6ad9b50d90554ac": item.ID})
+		map[string]string{"6bdc48ad531356f7c371d9a167cfac9c": item.ID})
 
 	brokenClient := &http.Client{Transport: breakingRoundTripper{inner: srv.client.Transport}}
 	outcome := replayCase(ctx, brokenClient, srv.base, srv.token, c)
