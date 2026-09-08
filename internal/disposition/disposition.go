@@ -25,14 +25,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/sirerun/serenity/internal/writer"
 )
 
 // Kind enumerates disposition item kinds (RFC 0001 §8.2/§10.2/ADR 004: "Item
@@ -573,59 +568,4 @@ func (s *Store) updateItem(ctx context.Context, id string, mutate func(*Item) (b
 			return item, true, nil
 		}
 	}
-}
-
-// dirtyEditItemID derives a stable id for a dirty_edit item from a T0.4
-// pending record's key (its filename stem, e.g. an entity slug or
-// slug-family). A deterministic id makes ImportPending idempotent across a
-// partial failure (item written, source file delete failed): re-running it
-// overwrites the same row with identical content via PutDispositionItem's
-// upsert rather than creating a duplicate.
-func dirtyEditItemID(key string) string { return "dirty_edit:" + key }
-
-// ImportPending sweeps root/.serenity/pending/*.json -- T0.4's dirty-tree
-// guard's paused-write records (internal/writer.PendingRecord) -- into
-// dirty_edit disposition items, then deletes the source files. This is
-// exactly ADR 004's promise: "M2's disposition store imports these records
-// as dirty_edit items and deletes the files." It returns the number of
-// records imported; a pending directory that does not exist yet (no write
-// has ever paused) is zero records, not an error.
-func (s *Store) ImportPending(ctx context.Context, root string, now time.Time) (int, error) {
-	dir := filepath.Join(root, ".serenity", "pending")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil
-		}
-		return 0, fmt.Errorf("disposition: import pending: %w", err)
-	}
-
-	n := 0
-	for _, de := range entries {
-		if de.IsDir() || filepath.Ext(de.Name()) != ".json" {
-			continue
-		}
-		path := filepath.Join(dir, de.Name())
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return n, fmt.Errorf("disposition: import pending: read %s: %w", path, err)
-		}
-		var rec writer.PendingRecord
-		if err := json.Unmarshal(data, &rec); err != nil {
-			return n, fmt.Errorf("disposition: import pending: decode %s: %w", path, err)
-		}
-		key := strings.TrimSuffix(de.Name(), ".json")
-		payload, err := json.Marshal(rec)
-		if err != nil {
-			return n, fmt.Errorf("disposition: import pending: marshal %s: %w", path, err)
-		}
-		if _, err := s.createWithID(ctx, dirtyEditItemID(key), KindDirtyEdit, payload, "", now); err != nil {
-			return n, fmt.Errorf("disposition: import pending: create item for %s: %w", path, err)
-		}
-		if err := os.Remove(path); err != nil {
-			return n, fmt.Errorf("disposition: import pending: remove %s: %w", path, err)
-		}
-		n++
-	}
-	return n, nil
 }

@@ -64,8 +64,7 @@ and directs you to `serenity sync`; it does not pretend the publication rolled
 back.
 
 This recovery path covers local-owner CLI reconciliation approvals. Other inbox
-item kinds retain their existing handlers. DISPOSITION HTTP decision recording,
-producer routing, multi-process decision arbitration, and recovery of older
+item kinds retain their existing handlers. Canonical publication through DISPOSITION HTTP and recovery of older
 versions' premature `AppliedClaimID` markers are separate surfaces. Receipts do
 not provide a multi-file filesystem transaction against arbitrary simultaneous
 human writes; byte checks reject observed intervening changes, and each file is
@@ -98,3 +97,25 @@ human review of the child. This marker is optional in the DISPOSITION v1 item
 schema. Completed legacy routes without it are preserved rather than inferred
 again; old orphan history and incomplete unmarked routes need explicit inspection.
 This change adds no capture-routing CLI command.
+
+
+## Recover paused writes into review
+
+Opening interactive `serenity inbox` imports paused writes before listing review
+items. The human and proposed machine versions remain in each dirty-edit item's
+payload. Repeating the same conflict does not reset a prior rejection, edited
+payload or reviewer; changed conflict evidence creates a separate review item.
+The import itself never writes or commits the human's canonical file.
+
+Records being transferred live under `.serenity/pending/.claimed/`. If a process
+stops or the review database cannot accept an input, keep that directory and open
+interactive inbox again after resolving the failure. Recovery consumes the claimed
+record independently of any newer input under the original filename. A malformed
+record remains available for inspection rather than being silently discarded.
+The incoming filename still represents the producer's latest complete snapshot;
+claimed snapshots are immutable until successfully staged.
+
+`inbox --parked` and `inbox --unapplied` remain read-only views. They do not import
+pending files, and `--apply` only retries its named canonical publication. These
+handoff guarantees concern review staging; importing a dirty-edit item does not
+publish either version of its canonical file.

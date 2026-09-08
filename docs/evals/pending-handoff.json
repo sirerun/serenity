@@ -1,0 +1,119 @@
+{
+  "date": "2026-09-08",
+  "revision": "c2ec76c200156677c8e3a2971dba602d39ddf7b1",
+  "scope": "Paused-write producer publication, durable review handoff, replay preservation and interactive inbox recovery",
+  "full_race": {
+    "command": "GOMAXPROCS=2 go test -race -p 2 -json ./...",
+    "passed_cases": 1667,
+    "passed_packages": 58,
+    "skipped_cases": [
+      "TestImportBudget10K",
+      "TestBootDeliberatelyBrokenBuildFailsDisposeConformance",
+      "TestImportCrashHelper",
+      "TestGbrainProtocolConformance",
+      "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request",
+      "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+    ]
+  },
+  "lint": {
+    "issues": 0
+  },
+  "focused_membership": {
+    "source": "Executed final full-suite JSON stream",
+    "passed_cases": 16,
+    "skipped_cases": 0,
+    "tests": [
+      "TestImportPendingCreatesDirtyEditItemsAndDeletesFiles",
+      "TestImportPendingOnMissingDirectoryIsZeroNotError",
+      "TestImportPendingIsIdempotentAcrossRepeatedRuns",
+      "TestPendingDepthAndOldestAgeOnEmptyStore",
+      "TestPendingReplayPreservesHumanDecisionAndDistinctConflict",
+      "TestPendingImportCannotDeleteNewerProducerRecord",
+      "TestPendingStorageFailureRetainsClaimedEvidence",
+      "TestPendingLegacyReviewSurvivesMovedBrain",
+      "TestPendingContentIdentitySurvivesBrainMove",
+      "TestPendingIndependentImportersConsumeEachRecordOnce",
+      "TestPendingInvalidInputIsRetainedWithoutStaging/malformed-json",
+      "TestPendingInvalidInputIsRetainedWithoutStaging/symlink-record",
+      "TestPendingInvalidInputIsRetainedWithoutStaging/symlink-directory",
+      "TestPendingInvalidInputIsRetainedWithoutStaging",
+      "TestInboxRecoversPausedWritesBeforeInteractiveReview",
+      "TestPendingReadersOnlyObserveCompleteProducerRecords"
+    ]
+  },
+  "real_sigkill_and_cli_recovery": [
+    {
+      "cut": "before-stage",
+      "signal": "SIGKILL",
+      "items_before_recovery": 0,
+      "claimed_records_retained": 1,
+      "newer_record_created_before_recovery": true,
+      "real_cli_inbox_recovery_exit": 0,
+      "final_distinct_items": 2,
+      "prior_human_rejection_preserved": null,
+      "canonical_human_bytes_and_git_status_unchanged": true,
+      "second_cli_recovery_unchanged": true,
+      "model_calls": 0,
+      "verdict": "pass"
+    },
+    {
+      "cut": "after-stage",
+      "signal": "SIGKILL",
+      "items_before_recovery": 1,
+      "claimed_records_retained": 1,
+      "newer_record_created_before_recovery": true,
+      "real_cli_inbox_recovery_exit": 0,
+      "final_distinct_items": 2,
+      "prior_human_rejection_preserved": true,
+      "canonical_human_bytes_and_git_status_unchanged": true,
+      "second_cli_recovery_unchanged": true,
+      "model_calls": 0,
+      "verdict": "pass"
+    }
+  ],
+  "negative_controls": [
+    {
+      "fault": "reset-reviewed-input",
+      "suite": "TestPendingReplayPreservesHumanDecisionAndDistinctConflict",
+      "exit": 1,
+      "detected": true
+    },
+    {
+      "fault": "unlink-incoming-instead-of-claimed-input",
+      "suite": "TestPendingImportCannotDeleteNewerProducerRecord",
+      "exit": 1,
+      "detected": true
+    },
+    {
+      "fault": "skip-claimed-recovery",
+      "suite": "TestPendingStorageFailureRetainsClaimedEvidence",
+      "exit": 1,
+      "detected": true
+    },
+    {
+      "fault": "publish-pending-in-place",
+      "suite": "TestPendingReadersOnlyObserveCompleteProducerRecords",
+      "exit": 1,
+      "detected": true
+    },
+    {
+      "fault": "disconnect-interactive-inbox",
+      "suite": "TestInboxRecoversPausedWritesBeforeInteractiveReview",
+      "exit": 1,
+      "detected": true
+    }
+  ],
+  "baseline_failures": [
+    "Re-importing the same pending record reset a human rejection to pending",
+    "The importer deleted a newer input written under the same filename",
+    "A concurrent reader observed truncated producer JSON after 66 successful reads",
+    "Interactive inbox returned no items because it never called the pending importer"
+  ],
+  "limitations": [
+    "Incoming filenames hold the latest producer snapshot; claimed snapshots are immutable until staged.",
+    "The importer never dereferences the recorded canonical target path.",
+    "Malformed records fail explicitly and remain available for inspection.",
+    "This task stages review evidence and does not publish dirty-edit canonical effects.",
+    "Read-only inbox modes and named publication retry do not sweep pending inputs."
+  ]
+}

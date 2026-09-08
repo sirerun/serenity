@@ -81,11 +81,26 @@ func guard(q *Queue, root, path, key string, machine []byte, render func() ([]by
 	if err != nil {
 		return nil, fmt.Errorf("dirty-tree guard: encode pending record: %w", err)
 	}
-	pp := PendingPath(root, key)
-	if err := os.MkdirAll(filepath.Dir(pp), 0o755); err != nil {
-		return nil, fmt.Errorf("dirty-tree guard: %w", err)
+	if key == "" || filepath.Base(key) != key || key == "." || key == ".." {
+		return nil, errors.New("dirty-tree guard: invalid pending key")
 	}
-	if err := os.WriteFile(pp, b, 0o644); err != nil {
+	brain, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = brain.Close() }()
+	for _, dir := range []string{".serenity", filepath.Join(".serenity", "pending")} {
+		info, err := brain.Lstat(dir)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+		if err == nil && (!info.IsDir() || info.Mode()&os.ModeSymlink != 0) {
+			return nil, errors.New("dirty-tree guard: invalid pending directory")
+		}
+	}
+	// Publish from a synced temporary file by rename. A handoff reader sees
+	// either complete version, never a truncated JSON record being overwritten.
+	if err := writePublicationFile(brain, filepath.Join(".serenity", "pending", key+".json"), b); err != nil {
 		return nil, fmt.Errorf("dirty-tree guard: write pending record: %w", err)
 	}
 	return nil, ErrDirtyTree

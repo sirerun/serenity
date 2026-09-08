@@ -109,6 +109,11 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 	}
 	defer func() { _ = eng.Close() }()
 	dispStore := disposition.NewStore(eng)
+	if opts.BulkDefer == "" && !opts.Parked && !opts.Unapplied && opts.ApplyID == "" {
+		if _, err := dispStore.ImportPending(ctx, root, now); err != nil {
+			return fmt.Errorf("inbox: paused-write import incomplete; unconsumed records retained for retry: %w", err)
+		}
+	}
 
 	switch {
 	case opts.BulkDefer != "":
