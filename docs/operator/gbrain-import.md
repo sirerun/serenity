@@ -87,3 +87,21 @@ expectations, including lifecycle, superseded pointers, confidence and who/weigh
 Extended typed-fact and resolved-take columns are retained verbatim and covered
 by a second fixture test. Predicate inference and calibration are still semantic
 interpretations requiring review; an empty report does not certify their truth.
+
+## Retrieve imported claims
+
+After import, `serenity search "feature flags"` can find current imported claim
+text, including private claims for the local brain owner. Results identify the
+imported predicate and retain the `review required` qualifier. The original
+source fields remain in the canonical page metadata.
+
+Remote MCP recall returns only current shared imported claims in its `results`
+arm. Imported rows do not become raw `remember` facts in the separate `facts`
+arm. Private claims are excluded from remote recall and from embedding or
+composition providers. Composition prompts retain the human-review requirement.
+
+Retrieval rechecks canonical pages on every request. Changing visibility,
+retracting/deleting a row, changing its text or review flag, expiring its validity
+window, or moving its family to shard storage invalidates stale imported search
+chunks immediately. Rebuild the derived index to make changed eligible text
+searchable; stale vectors cannot override the canonical checks.
