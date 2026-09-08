@@ -2,9 +2,9 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ['site/**', 'scripts/site/**', 'deploy/chat/**', '.github/workflows/pages.yml']
+    paths: ['site/**', 'scripts/site/**', 'deploy/chat/**', 'tests/site/**', 'playwright.config.js', 'package.json', 'package-lock.json', '.github/workflows/pages.yml']
   pull_request:
-    paths: ['site/**', 'scripts/site/**', 'deploy/chat/**', '.github/workflows/pages.yml']
+    paths: ['site/**', 'scripts/site/**', 'deploy/chat/**', 'tests/site/**', 'playwright.config.js', 'package.json', 'package-lock.json', '.github/workflows/pages.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,10 +23,32 @@ jobs:
       - run: mkdocs build --strict --site-dir "$RUNNER_TEMP/mkdocs-site"
       - run: python3 scripts/site/check.py
       - run: python3 -m unittest discover -s deploy/chat -p 'test_*.py' -v
-      - run: node --check site/assets/chat.js && node --check site/assets/site.js
+      - run: node --check site/assets/chat.js && node --check site/assets/site.js && node --check site/assets/adoption.js
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:site
+      - name: Require executed browser coverage
+        run: node tests/site/check-results.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: site-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: error
   deploy:
     if: github.event_name != 'pull_request'
-    needs: verify
+    needs: [verify, browser]
     runs-on: ubuntu-latest
     permissions:
       contents: read
