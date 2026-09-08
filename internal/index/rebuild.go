@@ -120,6 +120,27 @@ func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) e
 		}
 	}
 
+	// Imported rows have no raw Source record. Index their canonical claim text
+	// as derived chunks, with per-request privacy/lifecycle checks on every read.
+	imported, err := importedClaims(root, now, cfg)
+	if err != nil {
+		return err
+	}
+	refs := make([]string, 0, len(imported))
+	for ref := range imported {
+		refs = append(refs, ref)
+	}
+	sort.Strings(refs)
+	for _, ref := range refs {
+		rec := imported[ref]
+		if cfg.TierOf(rec.claim.Family) != domain.TierFence {
+			continue
+		}
+		if err := eng.InsertChunk(ctx, ref, rec.slug, importedClaimText(rec.slug, rec.claim), rec.claim.Provenance.SourceSHA256, GBrainClaimChunkKind); err != nil {
+			return err
+		}
+	}
+
 	// Raw sources: index every stored source's own text for full-text
 	// search (RFC §10.1's "index" pipeline stage) -- searchable evidence
 	// distinct from the entity-page/claim-derived chunks above, available
@@ -225,11 +246,10 @@ func chunksLackingVector(ctx context.Context, eng *SQLite, pin string) ([]Hit, e
 		return nil, fmt.Errorf("reembed: source policy: %w", err)
 	}
 	now := time.Now()
-	restricted, err := RestrictedSummaryEntities(root, proj, now)
+	eligible, err := RetrievalEligibility(root, proj, true, true, now)
 	if err != nil {
 		return nil, err
 	}
-	eligible := SourceEligibility(proj, true, true, now, restricted)
 	var missing []Hit
 	for _, c := range chunks {
 		if !eligible(c) {
@@ -361,6 +381,10 @@ func Refresh(ctx context.Context, root string, cfg *config.Config, eng *SQLite) 
 // independently of local/remote visibility.
 func SourceEligibility(proj *store.MemoryProjection, remote, egress bool, now time.Time, restricted ...map[string]bool) func(Hit) bool {
 	return func(h Hit) bool {
+		// Only RetrievalEligibility can validate this reserved canonical projection.
+		if strings.HasPrefix(h.Kind, "gbrain_") {
+			return false
+		}
 		if h.Kind == "entity_page" {
 			for _, subjects := range restricted {
 				if subjects[h.EntitySlug] {
