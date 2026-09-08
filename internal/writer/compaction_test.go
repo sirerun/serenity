@@ -1,6 +1,7 @@
 package writer
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -91,5 +92,49 @@ func TestFlushRetriesAlreadyStagedDeletionAndCompletedDeletion(t *testing.T) {
 	q.MarkTouched(path)
 	if committed, err := Flush(q, root); err != nil || !committed {
 		t.Fatalf("next write committed=%v err=%v", committed, err)
+	}
+}
+
+func TestCompactionResumesEveryFileBoundary(t *testing.T) {
+	changes := []FileChange{
+		{Path: "brain/claims/ava/has_balance.archive.jsonl", Before: nil, After: []byte("old history\n")},
+		{Path: "brain/claims/ava/has_balance.jsonl", Before: []byte("old history\n"), After: []byte("current head\n")},
+		{Path: "brain/claims/ava/has_balance.1.jsonl", Before: []byte("current head\n"), After: nil},
+	}
+	for cut := 0; cut <= len(changes); cut++ {
+		t.Run(fmt.Sprintf("after-%d-files", cut), func(t *testing.T) {
+			root := t.TempDir()
+			for i, c := range changes {
+				raw := c.Before
+				if i < cut {
+					raw = c.After
+				}
+				if raw == nil {
+					continue
+				}
+				path := filepath.Join(root, filepath.FromSlash(c.Path))
+				if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			q := NewQueue(nil)
+			defer q.Close()
+			if err := PublishCompactionFiles(q, root, []FileChange{changes[2], changes[1], changes[0]}); err != nil {
+				t.Fatal(err)
+			}
+			for _, c := range changes {
+				got, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(c.Path)))
+				if c.After == nil {
+					if !os.IsNotExist(err) {
+						t.Fatalf("deleted segment %v", err)
+					}
+				} else if err != nil || string(got) != string(c.After) {
+					t.Fatalf("recovered %s: %q %v", c.Path, got, err)
+				}
+			}
+		})
 	}
 }
