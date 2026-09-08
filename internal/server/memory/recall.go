@@ -166,11 +166,10 @@ func (h *Handlers) recall(ctx context.Context, args json.RawMessage) (any, bool,
 	}
 	var searchDegraded string
 	if strings.TrimSpace(req.Query) != "" && limit > 0 {
-		restricted, err := index.RestrictedSummaryEntities(h.deps.Root, proj, now)
+		eligible, err := index.RetrievalEligibility(h.deps.Root, proj, true, false, now)
 		if err != nil {
 			return nil, false, err
 		}
-		eligible := index.SourceEligibility(proj, true, false, now, restricted)
 		hits, err := search.Search(ctx, h.deps.Index, h.deps.Embedder, req.Query, limit, search.Options{Eligible: eligible})
 		if err != nil {
 			return nil, false, err
