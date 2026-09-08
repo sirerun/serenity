@@ -167,9 +167,13 @@ func RetrievalEligibility(root string, proj *store.MemoryProjection, remote, egr
 		return nil, err
 	}
 	sourceEligible := SourceEligibility(proj, remote, egress, now, restricted)
+	sourceAuthority, err := sourceChunkAuthority(root, proj, restricted)
+	if err != nil {
+		return nil, err
+	}
 	return func(hit Hit) bool {
 		if hit.Kind != GBrainClaimChunkKind && hit.Kind != CanonicalClaimChunkKind {
-			return sourceEligible(hit)
+			return sourceEligible(hit) && sourceAuthority(hit)
 		}
 		rec, ok := claims[hit.ChunkRef]
 		if !ok || hit.Kind != rec.kind || hit.EntitySlug != rec.slug || hit.Text != rec.text || hit.SourceSHA256 != rec.claim.Provenance.SourceSHA256 {

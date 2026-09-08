@@ -1,0 +1,86 @@
+{
+  "date": "2026-09-08",
+  "revision": "e5452068959374a5f087f83a458c42c1ec8fd4ab",
+  "scope": "Raw-source, memory-fact and entity-page chunk authority at search, recall and embedding boundaries",
+  "baseline": {
+    "scenario": "deleted raw source remains in stale CLI search",
+    "before": {
+      "exit": 0,
+      "stdout": "no embedding model pinned; running full-text-only search\n 1. src:df4fb03a8a2310b314ab4b335f374165fcf0138031cf1a204270e7504b650760:0-43 score=0.0164  SOURCE_0: Demo Person works at Old Company.\n",
+      "stderr": ""
+    },
+    "after_source_deletion": {
+      "exit": 0,
+      "stdout": "no embedding model pinned; running full-text-only search\n 1. src:df4fb03a8a2310b314ab4b335f374165fcf0138031cf1a204270e7504b650760:0-43 score=0.0164  SOURCE_0: Demo Person works at Old Company.\n",
+      "stderr": ""
+    },
+    "reproduced": true
+  },
+  "full_race": {
+    "command": "GOMAXPROCS=2 go test -race -p 2 -json ./...",
+    "passed_cases": 1642,
+    "passed_packages": 58,
+    "skipped_cases": 6
+  },
+  "lint": {
+    "issues": 0
+  },
+  "focused": {
+    "suite": "Test(RawSource|MemorySourceChunk|EntityPageChunk)",
+    "passed_cases": 25,
+    "skipped_cases": 0
+  },
+  "real_cli_mcp": {
+    "checks": {
+      "public_raw_source_cli_and_mcp": true,
+      "new_index_only_local_visible_remote_omitted_without_rebuild": true,
+      "changed_bytes_cli_and_mcp_explicit_integrity_error": true,
+      "deleted_source_cli_and_mcp_omitted_without_rebuild": true
+    },
+    "keyword_only": true,
+    "model_calls": 0,
+    "verdict": "pass"
+  },
+  "negative_controls": [
+    {
+      "fault": "bypass-source-authority",
+      "suite": "TestRawSourceChunksRequireCurrentCanonicalAuthority/deleted",
+      "exit": 1,
+      "detected": true
+    },
+    {
+      "fault": "trust-forged-text",
+      "suite": "TestRawSourceChunksRequireCurrentCanonicalAuthority/forged-text",
+      "exit": 1,
+      "detected": true
+    },
+    {
+      "fault": "allow-remote-index-only",
+      "suite": "TestRawSourceChunksRequireCurrentCanonicalAuthority/index-only",
+      "exit": 1,
+      "detected": true
+    }
+  ],
+  "limitations": [
+    "Keyword-only synthetic boundary verification, no live model calls.",
+    "Corrupt source bytes fail the request with an integrity error; deletion withholds stale rows.",
+    "Canonical eligibility is refreshed per request, not a multi-file filesystem transaction.",
+    "Raw source history is not reinterpreted as current claim truth."
+  ],
+  "embedded_facade": {
+    "suite": "TestEmbeddedRecallRechecksCanonicalAuthority",
+    "passed_cases": 3,
+    "skipped_cases": 0,
+    "raw_source_deletion_failed_before_fix": true,
+    "native_claim_deletion_failed_before_fix": true,
+    "audience": "local-owner, matching CLI search; composition applies provider egress policy"
+  },
+  "matching_budget": {
+    "report": "source-retrieval-budget.json",
+    "seconds": 194.774,
+    "previous_seconds": 176.927,
+    "change_percent": 10.09,
+    "unchanged_twenty_percent_gate": "pass",
+    "note": "Measured source/index code at c984106; subsequent facade wiring is not on the import benchmark path."
+  }
+}

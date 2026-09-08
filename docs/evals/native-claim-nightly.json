@@ -1,0 +1,105 @@
+{
+  "workflow_run": "https://github.com/sirerun/serenity/actions/runs/34248058226",
+  "conclusion": "success",
+  "report": {
+    "version": 1,
+    "revision": "5d24fe29048e67a814e64f067ba124b523e7c3b1",
+    "environment": "github-ubuntu-24.04-amd64-2procs",
+    "corpus_sha256": "1d97c81d5448734ea09a6683ea9f5ff36106120a893a5fb1ed6513928ecdcdcc",
+    "cache_version": "synthetic-golden-v1-vector512-v4",
+    "messages": 10000,
+    "claims": 10000,
+    "vectors": 20050,
+    "cache_hits": 10000,
+    "model_calls": 0,
+    "total_seconds": 58.763028602,
+    "stages": [
+      {
+        "name": "poll",
+        "seconds": 0.291537767,
+        "items": 10000
+      },
+      {
+        "name": "store_sources",
+        "seconds": 28.929674868,
+        "items": 10000
+      },
+      {
+        "name": "chunk_extract",
+        "seconds": 0.873437795,
+        "items": 10000
+      },
+      {
+        "name": "reconcile",
+        "seconds": 6.331332693,
+        "items": 10000
+      },
+      {
+        "name": "write_claims",
+        "seconds": 0.771746533,
+        "items": 10000
+      },
+      {
+        "name": "index",
+        "seconds": 14.027836152,
+        "items": 10000
+      },
+      {
+        "name": "embed",
+        "seconds": 7.537462794,
+        "items": 20050
+      }
+    ]
+  },
+  "previous_report": {
+    "version": 1,
+    "revision": "f77827ee713cf39becc996b8b2379702e27f2f4f",
+    "environment": "github-ubuntu-24.04-amd64-2procs",
+    "corpus_sha256": "1d97c81d5448734ea09a6683ea9f5ff36106120a893a5fb1ed6513928ecdcdcc",
+    "cache_version": "synthetic-golden-v1-vector512-v4",
+    "messages": 10000,
+    "claims": 10000,
+    "vectors": 10050,
+    "cache_hits": 10000,
+    "model_calls": 0,
+    "total_seconds": 56.439254982,
+    "stages": [
+      {
+        "name": "poll",
+        "seconds": 0.529362529,
+        "items": 10000
+      },
+      {
+        "name": "store_sources",
+        "seconds": 33.098443707,
+        "items": 10000
+      },
+      {
+        "name": "chunk_extract",
+        "seconds": 0.988708184,
+        "items": 10000
+      },
+      {
+        "name": "reconcile",
+        "seconds": 7.271154705,
+        "items": 10000
+      },
+      {
+        "name": "write_claims",
+        "seconds": 0.945915758,
+        "items": 10000
+      },
+      {
+        "name": "index",
+        "seconds": 10.395045665,
+        "items": 10000
+      },
+      {
+        "name": "embed",
+        "seconds": 3.210624434,
+        "items": 10050
+      }
+    ]
+  },
+  "scope": "Synthetic cached model performance only; no live model calls. The native claim projection expands the workload from 10,050 to 20,050 vectors without resetting the performance baseline."
+}

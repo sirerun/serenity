@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/sirerun/serenity/internal/config"
+	"github.com/sirerun/serenity/internal/domain"
+	"github.com/sirerun/serenity/internal/store"
 )
 
 func openTestEngine(t *testing.T) *SQLite {
@@ -299,16 +301,10 @@ func TestAllChunksReturnsEverySorted(t *testing.T) {
 // within one run" half of its contract (T1.15).
 func TestReembedMissingSkipsAlreadyEmbedded(t *testing.T) {
 	ctx := context.Background()
-	eng := openTestEngine(t)
+	eng, c1, c2 := canonicalVectorFixture(t)
 
-	if err := eng.InsertChunk(ctx, "c1", "e", "hello", "sha-c1", "file"); err != nil {
-		t.Fatal(err)
-	}
-	if err := eng.InsertChunk(ctx, "c2", "e", "world", "sha-c2", "file"); err != nil {
-		t.Fatal(err)
-	}
 	// c2 already has a vector under this pin -- must not be re-embedded.
-	if err := eng.UpsertVector(ctx, "c2", "fake@v1", []float32{9, 9}); err != nil {
+	if err := eng.UpsertVector(ctx, c2, "fake@v1", []float32{9, 9}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -324,11 +320,11 @@ func TestReembedMissingSkipsAlreadyEmbedded(t *testing.T) {
 		t.Fatalf("Embed called %d time(s), want 1 (c2 already had a vector under this pin)", fe.calls)
 	}
 
-	vec, ok, err := eng.VectorFor(ctx, "c1", "fake@v1")
+	vec, ok, err := eng.VectorFor(ctx, c1, "fake@v1")
 	if err != nil || !ok {
 		t.Fatalf("VectorFor(c1) = %v, %v, %v, want a vector", vec, ok, err)
 	}
-	preserved, _, err := eng.VectorFor(ctx, "c2", "fake@v1")
+	preserved, _, err := eng.VectorFor(ctx, c2, "fake@v1")
 	if err != nil || preserved[0] != 9 {
 		t.Fatalf("c2's pre-existing vector was overwritten: %v, %v", preserved, err)
 	}
@@ -353,18 +349,12 @@ func TestReembedMissingSkipsAlreadyEmbedded(t *testing.T) {
 // is pending under it any more.
 func TestPendingReembedCountsChunksLackingThePin(t *testing.T) {
 	ctx := context.Background()
-	eng := openTestEngine(t)
+	eng, c1, c2 := canonicalVectorFixture(t)
 
-	if err := eng.InsertChunk(ctx, "c1", "e", "hello", "sha-c1", "file"); err != nil {
+	if err := eng.UpsertVector(ctx, c1, "old@v1", []float32{1, 0}); err != nil {
 		t.Fatal(err)
 	}
-	if err := eng.InsertChunk(ctx, "c2", "e", "world", "sha-c2", "file"); err != nil {
-		t.Fatal(err)
-	}
-	if err := eng.UpsertVector(ctx, "c1", "old@v1", []float32{1, 0}); err != nil {
-		t.Fatal(err)
-	}
-	if err := eng.UpsertVector(ctx, "c2", "old@v1", []float32{0, 1}); err != nil {
+	if err := eng.UpsertVector(ctx, c2, "old@v1", []float32{0, 1}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -400,4 +390,22 @@ func TestPendingReembedCountsChunksLackingThePin(t *testing.T) {
 	if pendingAfter != 0 {
 		t.Fatalf("PendingReembed(new@v2) after ReembedMissing = %d, want 0", pendingAfter)
 	}
+}
+
+// Embedding tests use stored sources; fabricated index rows have no authority.
+func canonicalVectorFixture(t *testing.T) (*SQLite, string, string) {
+	t.Helper()
+	root, eng := sourcePolicyIndex(t)
+	refs := []string{}
+	for _, text := range []string{"hello", "world"} {
+		src, err := store.NewSourceStore(root).Write([]byte(text), domain.Source{Kind: "file", URI: "fixture:" + text})
+		if err != nil {
+			t.Fatal(err)
+		}
+		refs = append(refs, "src:"+src.SHA256+":0-5")
+	}
+	if err := Rebuild(context.Background(), root, config.Default(), eng); err != nil {
+		t.Fatal(err)
+	}
+	return eng, refs[0], refs[1]
 }

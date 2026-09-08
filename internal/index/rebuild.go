@@ -372,10 +372,10 @@ func Refresh(ctx context.Context, root string, cfg *config.Config, eng *SQLite) 
 	return nil
 }
 
-// SourceEligibility is the shared query-time authority for source chunks. The
-// index is only a cache: stale, private or expired memory cannot become generic
-// evidence when its canonical record disappears. IndexOnly controls egress,
-// independently of local/remote visibility.
+// SourceEligibility applies audience/lifecycle policy to source metadata.
+// It does not validate ordinary chunk identity or content; indexed read paths
+// must use RetrievalEligibility. IndexOnly excludes remote recall and provider
+// egress while allowing local-owner access to available source bytes.
 func SourceEligibility(proj *store.MemoryProjection, remote, egress bool, now time.Time, restricted ...map[string]bool) func(Hit) bool {
 	return func(h Hit) bool {
 		// Only RetrievalEligibility can validate this reserved canonical projection.
@@ -400,7 +400,7 @@ func SourceEligibility(proj *store.MemoryProjection, remote, egress bool, now ti
 				return false
 			}
 		}
-		if egress && proj.SourceIndexOnly(h.SourceSHA256) {
+		if (remote || egress) && proj.SourceIndexOnly(h.SourceSHA256) {
 			return false
 		}
 		return store.MemoryEligible(proj, h.SourceSHA256, remote || egress, now)

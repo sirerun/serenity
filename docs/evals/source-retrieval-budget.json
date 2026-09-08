@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "revision": "c984106e44e8a87cf150dee220d49fc4792c3a45",
+  "environment": "darwin/arm64-go1.27.1-procs3",
+  "corpus_sha256": "1d97c81d5448734ea09a6683ea9f5ff36106120a893a5fb1ed6513928ecdcdcc",
+  "cache_version": "synthetic-golden-v1-vector512-v4",
+  "messages": 10000,
+  "claims": 10000,
+  "vectors": 20050,
+  "cache_hits": 10000,
+  "model_calls": 0,
+  "total_seconds": 194.773718707,
+  "stages": [
+    {
+      "name": "poll",
+      "seconds": 0.142780125,
+      "items": 10000
+    },
+    {
+      "name": "store_sources",
+      "seconds": 181.900532625,
+      "items": 10000
+    },
+    {
+      "name": "chunk_extract",
+      "seconds": 2.238720791,
+      "items": 10000
+    },
+    {
+      "name": "reconcile",
+      "seconds": 1.529871375,
+      "items": 10000
+    },
+    {
+      "name": "write_claims",
+      "seconds": 1.504059041,
+      "items": 10000
+    },
+    {
+      "name": "index",
+      "seconds": 4.89722275,
+      "items": 10000
+    },
+    {
+      "name": "embed",
+      "seconds": 2.5605320000000003,
+      "items": 20050
+    }
+  ]
+}

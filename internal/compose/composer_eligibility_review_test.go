@@ -165,7 +165,7 @@ func TestComposeReviewSourceDatesFilterBeforeSearchCaps(t *testing.T) {
 		if i == 39 {
 			eligibleID = r.Record.SHA256
 		}
-		ranked.hits = append(ranked.hits, index.Hit{ChunkRef: "src:" + r.Record.SHA256 + ":0", Text: fact, SourceSHA256: r.Record.SHA256, Kind: store.SourceKindMemoryFact})
+		ranked.hits = append(ranked.hits, index.Hit{ChunkRef: "fact:" + r.Record.SHA256, Text: fact, SourceSHA256: r.Record.SHA256, Kind: store.SourceKindMemoryFact})
 	}
 	var sent string
 	fp := &fakeProvider{modelVersion: "review@v1", resp: router.Response{Text: "The attributed report says [source:" + eligibleID + "]."}, sentPrompt: &sent}
