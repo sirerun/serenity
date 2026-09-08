@@ -17,13 +17,18 @@ import (
 )
 
 // Result counts pages and source fence rows; graph edges are separate from claims.
-type Result struct{ Pages, Claims, Skipped int }
+type Result struct {
+	Pages   int         `json:"pages"`
+	Claims  int         `json:"claims"`
+	Skipped int         `json:"skipped"`
+	Audit   FieldReport `json:"audit"`
+}
 
 // Import reads a gbrain checkout and durably publishes canonical entity pages.
 // Parse/map/vocabulary/destination-collision checks finish before any writes.
 // Changed existing pages require an explicit migration resolution, never overwrite.
 func Import(ctx context.Context, source, target string, cfg *config.Config) (Result, error) {
-	var result Result
+	result := Result{Audit: FieldReport{Unmapped: []FieldLoss{}}}
 	if cfg == nil {
 		return result, fmt.Errorf("gbrain import: missing target config")
 	}
@@ -54,6 +59,7 @@ func Import(ctx context.Context, source, target string, cfg *config.Config) (Res
 	var pages []*store.EntityPage
 	seen := map[string]string{}
 	targets := map[string]string{}
+	sourcePages := map[string]Page{}
 	err = filepath.WalkDir(source, func(name string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -110,6 +116,7 @@ func Import(ctx context.Context, source, target string, cfg *config.Config) (Res
 				return fmt.Errorf("gbrain import: predicate %s requires a configured fence tier", c.Family)
 			}
 		}
+		sourcePages[mapped.Entity.Slug] = p
 		targets[p.Slug] = mapped.Entity.Slug
 		targets[mapped.Entity.Slug] = mapped.Entity.Slug
 		pages = append(pages, mapped)
@@ -143,6 +150,17 @@ func Import(ctx context.Context, source, target string, cfg *config.Config) (Res
 		data, err := fw.RenderEntity(p)
 		if err != nil {
 			return result, err
+		}
+		persisted, err := store.ParseEntityBytes(data)
+		if err != nil {
+			return result, fmt.Errorf("gbrain import: parse rendered page: %w", err)
+		}
+		audit := Audit(sourcePages[p.Entity.Slug], persisted.Claims)
+		result.Audit.Rows += audit.Rows
+		result.Audit.Fields += audit.Fields
+		result.Audit.Unmapped = append(result.Audit.Unmapped, audit.Unmapped...)
+		if len(audit.Unmapped) > 0 {
+			return result, fmt.Errorf("gbrain import: %s has %d unmapped fields; no pages written", p.Entity.Slug, len(audit.Unmapped))
 		}
 		rel := filepath.Join("brain", "entities", p.Entity.Type, p.Entity.Slug+".md")
 		if existing, err := dstRoot.ReadFile(rel); err == nil {
