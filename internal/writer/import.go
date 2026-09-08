@@ -39,6 +39,9 @@ func ImportEntity(ctx context.Context, q *Queue, fw *store.FenceWriter, p *store
 		}
 		defer func() { _ = root.Close() }()
 		rel := filepath.Join("brain", "entities", p.Entity.Type, p.Entity.Slug+".md")
+		if dirty(fw.Root, filepath.Join(fw.Root, rel)) {
+			return nil, ErrDirtyTree
+		}
 		if existing, err := root.ReadFile(rel); err == nil {
 			if !bytes.Equal(existing, data) {
 				return nil, fmt.Errorf("import entity: %s already exists with different content", rel)
