@@ -1,0 +1,294 @@
+{
+  "verified_through_revision": "dce0ddd502490132b43c88893c69db7e9766eb74",
+  "merged_work_prs": 32,
+  "pull_requests": [
+    {
+      "mergeCommit": {
+        "oid": "7c0aeceb00caf8895f8474851718f1d79e370500"
+      },
+      "mergedAt": "2026-09-08T10:52:50Z",
+      "number": 186,
+      "title": "docs: complete external-agent M4 exit verification",
+      "url": "https://github.com/sirerun/serenity/pull/186"
+    },
+    {
+      "mergeCommit": {
+        "oid": "acb3c1c79fe15d4cbb163fadcac1cc24e9e5081d"
+      },
+      "mergedAt": "2026-09-08T11:16:50Z",
+      "number": 187,
+      "title": "feat: import gbrain pages with durable provenance and lifecycle",
+      "url": "https://github.com/sirerun/serenity/pull/187"
+    },
+    {
+      "mergeCommit": {
+        "oid": "449971098e9fac9bad8bc4e950cc46deded06f06"
+      },
+      "mergedAt": "2026-09-08T11:26:13Z",
+      "number": 188,
+      "title": "feat: generate reproducible synthetic messages for import benchmarks",
+      "url": "https://github.com/sirerun/serenity/pull/188"
+    },
+    {
+      "mergeCommit": {
+        "oid": "42157fdfb05ea4023f7cdf0bea0c8708f04de647"
+      },
+      "mergedAt": "2026-09-08T11:43:27Z",
+      "number": 189,
+      "title": "feat: audit gbrain imports with a field-level round-trip report",
+      "url": "https://github.com/sirerun/serenity/pull/189"
+    },
+    {
+      "mergeCommit": {
+        "oid": "17c57b28e5416ddb1c8f39240f718b369a8a8ac7"
+      },
+      "mergedAt": "2026-09-08T11:52:22Z",
+      "number": 190,
+      "title": "Resume interrupted gbrain imports from durable page and row checkpoints",
+      "url": "https://github.com/sirerun/serenity/pull/190"
+    },
+    {
+      "mergeCommit": {
+        "oid": "6a9836899fa3ef33f9f42436d81653ad026aa687"
+      },
+      "mergedAt": "2026-09-08T12:03:39Z",
+      "number": 191,
+      "title": "Verify gbrain migration against a pinned public synthetic fixture",
+      "url": "https://github.com/sirerun/serenity/pull/191"
+    },
+    {
+      "mergeCommit": {
+        "oid": "87d9a4741772680c0a0e34aa1d2123519457674f"
+      },
+      "mergedAt": "2026-09-08T12:08:12Z",
+      "number": 192,
+      "title": "Measure 10K cached ingest and enforce a nightly regression budget",
+      "url": "https://github.com/sirerun/serenity/pull/192"
+    },
+    {
+      "mergeCommit": {
+        "oid": "8efd991d0697ea30edc19f6f7b5e42042c437943"
+      },
+      "mergedAt": "2026-09-08T12:14:22Z",
+      "number": 193,
+      "title": "Preserve committed human deletions when resuming gbrain imports",
+      "url": "https://github.com/sirerun/serenity/pull/193"
+    },
+    {
+      "mergeCommit": {
+        "oid": "43786310c99b142ae9865543bb1b39a36adb7bde"
+      },
+      "mergedAt": "2026-09-08T12:38:07Z",
+      "number": 194,
+      "title": "Record verified nightly import budget and slowdown rejection evidence",
+      "url": "https://github.com/sirerun/serenity/pull/194"
+    },
+    {
+      "mergeCommit": {
+        "oid": "d8ae214f52d0523cec3a3322fd2d920ced179e69"
+      },
+      "mergedAt": "2026-09-08T12:53:23Z",
+      "number": 195,
+      "title": "Make imported claims searchable without leaking private or stale evidence",
+      "url": "https://github.com/sirerun/serenity/pull/195"
+    },
+    {
+      "mergeCommit": {
+        "oid": "236ff1781597fd30e141ca6dde75018e7259b522"
+      },
+      "mergedAt": "2026-09-08T13:00:56Z",
+      "number": 196,
+      "title": "Record deployed launch revisions, owners and remaining gates",
+      "url": "https://github.com/sirerun/serenity/pull/196"
+    },
+    {
+      "mergeCommit": {
+        "oid": "a886b9571b3eae9da0eaede731af6d828fcfccaf"
+      },
+      "mergedAt": "2026-09-08T13:07:05Z",
+      "number": 197,
+      "title": "Monitor chat degradation and latency without recording visitor content",
+      "url": "https://github.com/sirerun/serenity/pull/197"
+    },
+    {
+      "mergeCommit": {
+        "oid": "28af2c8fc34869a6c86d257d1567227dfa2eb120"
+      },
+      "mergedAt": "2026-09-08T13:07:10Z",
+      "number": 198,
+      "title": "Record enabled HTTPS enforcement and verified domain checks",
+      "url": "https://github.com/sirerun/serenity/pull/198"
+    },
+    {
+      "mergeCommit": {
+        "oid": "372dfe4dc43ee0ddb022297573e31b3a418e38c4"
+      },
+      "mergedAt": "2026-09-08T13:15:37Z",
+      "number": 199,
+      "title": "Record deployed chat monitoring and live verification evidence",
+      "url": "https://github.com/sirerun/serenity/pull/199"
+    },
+    {
+      "mergeCommit": {
+        "oid": "938f7c32d423f1c5f72e8c12a28fdba4d747dfa1"
+      },
+      "mergedAt": "2026-09-08T13:17:52Z",
+      "number": 200,
+      "title": "Add content-free adoption events and browser regression coverage",
+      "url": "https://github.com/sirerun/serenity/pull/200"
+    },
+    {
+      "mergeCommit": {
+        "oid": "7bad1b8a375fdec021c195e9a1bbb739ab449b58"
+      },
+      "mergedAt": "2026-09-08T13:23:23Z",
+      "number": 201,
+      "title": "Prepare early-access launch copy and a verified installation walkthrough",
+      "url": "https://github.com/sirerun/serenity/pull/201"
+    },
+    {
+      "mergeCommit": {
+        "oid": "e3ca4fac17cba22ea814547c326e350bbcde9b43"
+      },
+      "mergedAt": "2026-09-08T13:27:02Z",
+      "number": 202,
+      "title": "Record deployed adoption events and mobile browser verification",
+      "url": "https://github.com/sirerun/serenity/pull/202"
+    },
+    {
+      "mergeCommit": {
+        "oid": "840ed4055472edfe44eae176076a844ac5dcc123"
+      },
+      "mergedAt": "2026-09-08T14:11:29Z",
+      "number": 203,
+      "title": "Fix inbox approvals that disappear before their claims are published",
+      "url": "https://github.com/sirerun/serenity/pull/203"
+    },
+    {
+      "mergeCommit": {
+        "oid": "951c24dda7cdc0efa3a6ac7655a53703d49f17e8"
+      },
+      "mergedAt": "2026-09-08T14:14:39Z",
+      "number": 204,
+      "title": "Keep private adjacent-product plans out of Serenity public docs",
+      "url": "https://github.com/sirerun/serenity/pull/204"
+    },
+    {
+      "mergeCommit": {
+        "oid": "f77827ee713cf39becc996b8b2379702e27f2f4f"
+      },
+      "mergedAt": "2026-09-08T14:57:00Z",
+      "number": 205,
+      "title": "Preserve canonical content when extracting multiple sources",
+      "url": "https://github.com/sirerun/serenity/pull/205"
+    },
+    {
+      "mergeCommit": {
+        "oid": "b0a0bbbd4bebb49ae2fd5dd5cab2eb046bcabdbb"
+      },
+      "mergedAt": "2026-09-08T15:09:18Z",
+      "number": 206,
+      "title": "Route extracted contradictions through persistent human review",
+      "url": "https://github.com/sirerun/serenity/pull/206"
+    },
+    {
+      "mergeCommit": {
+        "oid": "790eec1b2e61dfe2ba7ad7346e5d7fcc6e5f9014"
+      },
+      "mergedAt": "2026-09-08T15:25:34Z",
+      "number": 207,
+      "title": "Retain uncertain extraction and require explicit human claim approval",
+      "url": "https://github.com/sirerun/serenity/pull/207"
+    },
+    {
+      "mergeCommit": {
+        "oid": "5d24fe29048e67a814e64f067ba124b523e7c3b1"
+      },
+      "mergedAt": "2026-09-08T15:57:21Z",
+      "number": 208,
+      "title": "Make confirmed native facts searchable with canonical eligibility",
+      "url": "https://github.com/sirerun/serenity/pull/208"
+    },
+    {
+      "mergeCommit": {
+        "oid": "fc2ffc4253ab12543287f55c219a993e8061bd42"
+      },
+      "mergedAt": "2026-09-08T16:21:50Z",
+      "number": 209,
+      "title": "Withhold stale and forged source evidence across retrieval surfaces",
+      "url": "https://github.com/sirerun/serenity/pull/209"
+    },
+    {
+      "mergeCommit": {
+        "oid": "377330d5c5358bfd7d9345bda6bbbde477490156"
+      },
+      "mergedAt": "2026-09-08T16:39:47Z",
+      "number": 210,
+      "title": "Commit disposition decisions atomically and recover routed effects",
+      "url": "https://github.com/sirerun/serenity/pull/210"
+    },
+    {
+      "mergeCommit": {
+        "oid": "c6459fde29fc696a1a25d4c8a01a01b8c0b247b5"
+      },
+      "mergedAt": "2026-09-08T17:10:20Z",
+      "number": 211,
+      "title": "Preserve paused writes and human review through durable inbox handoff",
+      "url": "https://github.com/sirerun/serenity/pull/211"
+    },
+    {
+      "mergeCommit": {
+        "oid": "9e8e4a352eebb693f79c3b03b3652ad7ab2fe672"
+      },
+      "mergedAt": "2026-09-08T17:35:51Z",
+      "number": 212,
+      "title": "Publish confirmed human edits with durable inbox recovery",
+      "url": "https://github.com/sirerun/serenity/pull/212"
+    },
+    {
+      "mergeCommit": {
+        "oid": "3f556327d170ce9a5f650bb696d5ade5f0e83cae"
+      },
+      "mergedAt": "2026-09-08T17:56:14Z",
+      "number": 213,
+      "title": "Confine decision ledger files and publish complete entries atomically",
+      "url": "https://github.com/sirerun/serenity/pull/213"
+    },
+    {
+      "mergeCommit": {
+        "oid": "8962e180f0316c51bcbde9ba35a9976460728e0c"
+      },
+      "mergedAt": "2026-09-08T18:47:04Z",
+      "number": 214,
+      "title": "Recover accepted precepts and child intents without duplicate ledger entries",
+      "url": "https://github.com/sirerun/serenity/pull/214"
+    },
+    {
+      "mergeCommit": {
+        "oid": "83ce3095d00f3b399613db85a111fa0407dbd327"
+      },
+      "mergedAt": "2026-09-08T18:55:55Z",
+      "number": 215,
+      "title": "Fix endless disposition updates for SQLite TEXT rows",
+      "url": "https://github.com/sirerun/serenity/pull/215"
+    },
+    {
+      "mergeCommit": {
+        "oid": "07cb57461ee6281c58ced8f3bd03f4bef43a02af"
+      },
+      "mergedAt": "2026-09-08T19:16:25Z",
+      "number": 216,
+      "title": "Run scheduled decay review and queue SLO jobs",
+      "url": "https://github.com/sirerun/serenity/pull/216"
+    },
+    {
+      "mergeCommit": {
+        "oid": "dce0ddd502490132b43c88893c69db7e9766eb74"
+      },
+      "mergedAt": "2026-09-08T19:47:08Z",
+      "number": 217,
+      "title": "Commit and recover one approved shard compaction pass",
+      "url": "https://github.com/sirerun/serenity/pull/217"
+    }
+  ]
+}

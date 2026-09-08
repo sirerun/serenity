@@ -68,6 +68,25 @@ seconds (346.05 seconds for the whole test), with the same source/claim/vector
 counts and zero model calls. The earlier development run measured 367.051
 seconds. These local timings are not compared against the Linux baseline.
 
+### Latest main run: timing gate failed
+
+The [post-compaction main run](https://github.com/sirerun/serenity/actions/runs/34270989376)
+on revision `dce0ddd502490132b43c88893c69db7e9766eb74` completed 10,000 messages
+and claims, 20,050 vectors and 10,000 cache hits, with zero model calls. Its
+66.298-second total was 31.94% above the matching 50.248-second prior report,
+so the unchanged timing gate failed. Artifacts were uploaded and baseline
+publication was skipped; the results ref remained byte-identical. A controlled
+same-runner ABBA comparison measured prior at 62.581/60.836 seconds and current
+at 60.992/60.728 seconds: no code slowdown reproduced, but no production gate
+pass is implied. T22.1 tracks the investigation and follow-up verification. This failure supersedes any inference that the
+latest main performance run is green.
+
+After runner/tool metadata capture shipped in PR #218, one production
+verification run (`34273146565`) failed at **68.124 seconds (+35.58%)**, again
+with complete counts and zero model calls. The metadata artifact was verified;
+the baseline still did not advance. T22.1 remains open. No passing sample was
+selected by repeated retries. [Receipt](final-import-budget.json).
+
 ## T5.12: real-message laptop run -- pending human execution
 
 No real mailbox was imported for this report. The manual receipt must still name

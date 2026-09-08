@@ -1,0 +1,659 @@
+{
+  "checked_at": "2026-09-08T20:16:57.591310+00:00",
+  "workflow": "https://github.com/sirerun/serenity/actions/runs/34270989376",
+  "verdict": "OPEN: original and one production replication failed the unchanged timing gate; same-runner ABBA did not reproduce a code slowdown",
+  "current": {
+    "version": 1,
+    "revision": "dce0ddd502490132b43c88893c69db7e9766eb74",
+    "environment": "github-ubuntu-24.04-amd64-2procs",
+    "corpus_sha256": "1d97c81d5448734ea09a6683ea9f5ff36106120a893a5fb1ed6513928ecdcdcc",
+    "cache_version": "synthetic-golden-v1-vector512-v4",
+    "messages": 10000,
+    "claims": 10000,
+    "vectors": 20050,
+    "cache_hits": 10000,
+    "model_calls": 0,
+    "total_seconds": 66.29790129,
+    "stages": [
+      {
+        "name": "poll",
+        "seconds": 0.743059398,
+        "items": 10000
+      },
+      {
+        "name": "store_sources",
+        "seconds": 33.538823103,
+        "items": 10000
+      },
+      {
+        "name": "chunk_extract",
+        "seconds": 0.96412958,
+        "items": 10000
+      },
+      {
+        "name": "reconcile",
+        "seconds": 7.437101901,
+        "items": 10000
+      },
+      {
+        "name": "write_claims",
+        "seconds": 0.975755343,
+        "items": 10000
+      },
+      {
+        "name": "index",
+        "seconds": 14.225745086,
+        "items": 10000
+      },
+      {
+        "name": "embed",
+        "seconds": 8.413286879,
+        "items": 20050
+      }
+    ]
+  },
+  "previous": {
+    "version": 1,
+    "revision": "fc2ffc4253ab12543287f55c219a993e8061bd42",
+    "environment": "github-ubuntu-24.04-amd64-2procs",
+    "corpus_sha256": "1d97c81d5448734ea09a6683ea9f5ff36106120a893a5fb1ed6513928ecdcdcc",
+    "cache_version": "synthetic-golden-v1-vector512-v4",
+    "messages": 10000,
+    "claims": 10000,
+    "vectors": 20050,
+    "cache_hits": 10000,
+    "model_calls": 0,
+    "total_seconds": 50.24829592900001,
+    "stages": [
+      {
+        "name": "poll",
+        "seconds": 0.283441088,
+        "items": 10000
+      },
+      {
+        "name": "store_sources",
+        "seconds": 27.219724708,
+        "items": 10000
+      },
+      {
+        "name": "chunk_extract",
+        "seconds": 0.745477991,
+        "items": 10000
+      },
+      {
+        "name": "reconcile",
+        "seconds": 5.277954994,
+        "items": 10000
+      },
+      {
+        "name": "write_claims",
+        "seconds": 0.904197586,
+        "items": 10000
+      },
+      {
+        "name": "index",
+        "seconds": 10.146773332,
+        "items": 10000
+      },
+      {
+        "name": "embed",
+        "seconds": 5.67072623,
+        "items": 20050
+      }
+    ]
+  },
+  "baseline_ref_before_and_after": "57d2164e2bc25e0c91206e56982811a05c22586c",
+  "baseline_published": false,
+  "timing_gate_changed": false,
+  "diagnostic_workflow": "https://github.com/sirerun/serenity/actions/runs/34272028056",
+  "diagnostic_status": "completed; four workload tests passed; production gate remains failed",
+  "diagnostic_method": {
+    "order": [
+      "prior",
+      "current",
+      "current",
+      "prior"
+    ],
+    "same_runner": true,
+    "gomaxprocs": 2,
+    "cpu_model": "AMD EPYC 7763 64-Core Processor",
+    "logical_cpus": 4,
+    "go_version": "go1.26.7 linux/amd64",
+    "git_version": "2.55.0",
+    "baseline_writes": false,
+    "workflow_revision": "72a1544"
+  },
+  "diagnostic_runs": [
+    {
+      "order": "1-prior",
+      "report": {
+        "version": 1,
+        "revision": "fc2ffc4253ab12543287f55c219a993e8061bd42",
+        "environment": "diagnostic-same-runner-ubuntu24-amd64-2procs",
+        "corpus_sha256": "1d97c81d5448734ea09a6683ea9f5ff36106120a893a5fb1ed6513928ecdcdcc",
+        "cache_version": "synthetic-golden-v1-vector512-v4",
+        "messages": 10000,
+        "claims": 10000,
+        "vectors": 20050,
+        "cache_hits": 10000,
+        "model_calls": 0,
+        "total_seconds": 62.580624128,
+        "stages": [
+          {
+            "name": "poll",
+            "seconds": 0.533359331,
+            "items": 10000
+          },
+          {
+            "name": "store_sources",
+            "seconds": 31.741916544,
+            "items": 10000
+          },
+          {
+            "name": "chunk_extract",
+            "seconds": 1.01972083,
+            "items": 10000
+          },
+          {
+            "name": "reconcile",
+            "seconds": 6.857462582,
+            "items": 10000
+          },
+          {
+            "name": "write_claims",
+            "seconds": 0.966075792,
+            "items": 10000
+          },
+          {
+            "name": "index",
+            "seconds": 13.598895934,
+            "items": 10000
+          },
+          {
+            "name": "embed",
+            "seconds": 7.863193115,
+            "items": 20050
+          }
+        ]
+      },
+      "executed_tests": 1,
+      "skipped_tests": 0,
+      "failed_tests": 0
+    },
+    {
+      "order": "2-current",
+      "report": {
+        "version": 1,
+        "revision": "dce0ddd502490132b43c88893c69db7e9766eb74",
+        "environment": "diagnostic-same-runner-ubuntu24-amd64-2procs",
+        "corpus_sha256": "1d97c81d5448734ea09a6683ea9f5ff36106120a893a5fb1ed6513928ecdcdcc",
+        "cache_version": "synthetic-golden-v1-vector512-v4",
+        "messages": 10000,
+        "claims": 10000,
+        "vectors": 20050,
+        "cache_hits": 10000,
+        "model_calls": 0,
+        "total_seconds": 60.991697691999995,
+        "stages": [
+          {
+            "name": "poll",
+            "seconds": 0.437143359,
+            "items": 10000
+          },
+          {
+            "name": "store_sources",
+            "seconds": 30.655497934,
+            "items": 10000
+          },
+          {
+            "name": "chunk_extract",
+            "seconds": 0.979898683,
+            "items": 10000
+          },
+          {
+            "name": "reconcile",
+            "seconds": 6.889889011,
+            "items": 10000
+          },
+          {
+            "name": "write_claims",
+            "seconds": 0.958353112,
+            "items": 10000
+          },
+          {
+            "name": "index",
+            "seconds": 13.26276253,
+            "items": 10000
+          },
+          {
+            "name": "embed",
+            "seconds": 7.808153063,
+            "items": 20050
+          }
+        ]
+      },
+      "executed_tests": 1,
+      "skipped_tests": 0,
+      "failed_tests": 0
+    },
+    {
+      "order": "3-current",
+      "report": {
+        "version": 1,
+        "revision": "dce0ddd502490132b43c88893c69db7e9766eb74",
+        "environment": "diagnostic-same-runner-ubuntu24-amd64-2procs",
+        "corpus_sha256": "1d97c81d5448734ea09a6683ea9f5ff36106120a893a5fb1ed6513928ecdcdcc",
+        "cache_version": "synthetic-golden-v1-vector512-v4",
+        "messages": 10000,
+        "claims": 10000,
+        "vectors": 20050,
+        "cache_hits": 10000,
+        "model_calls": 0,
+        "total_seconds": 60.728231791,
+        "stages": [
+          {
+            "name": "poll",
+            "seconds": 0.445397359,
+            "items": 10000
+          },
+          {
+            "name": "store_sources",
+            "seconds": 30.182302985,
+            "items": 10000
+          },
+          {
+            "name": "chunk_extract",
+            "seconds": 1.003534498,
+            "items": 10000
+          },
+          {
+            "name": "reconcile",
+            "seconds": 7.111784739,
+            "items": 10000
+          },
+          {
+            "name": "write_claims",
+            "seconds": 0.990623549,
+            "items": 10000
+          },
+          {
+            "name": "index",
+            "seconds": 13.322745321,
+            "items": 10000
+          },
+          {
+            "name": "embed",
+            "seconds": 7.67184334,
+            "items": 20050
+          }
+        ]
+      },
+      "executed_tests": 1,
+      "skipped_tests": 0,
+      "failed_tests": 0
+    },
+    {
+      "order": "4-prior",
+      "report": {
+        "version": 1,
+        "revision": "fc2ffc4253ab12543287f55c219a993e8061bd42",
+        "environment": "diagnostic-same-runner-ubuntu24-amd64-2procs",
+        "corpus_sha256": "1d97c81d5448734ea09a6683ea9f5ff36106120a893a5fb1ed6513928ecdcdcc",
+        "cache_version": "synthetic-golden-v1-vector512-v4",
+        "messages": 10000,
+        "claims": 10000,
+        "vectors": 20050,
+        "cache_hits": 10000,
+        "model_calls": 0,
+        "total_seconds": 60.836383579,
+        "stages": [
+          {
+            "name": "poll",
+            "seconds": 0.429087461,
+            "items": 10000
+          },
+          {
+            "name": "store_sources",
+            "seconds": 30.37713034,
+            "items": 10000
+          },
+          {
+            "name": "chunk_extract",
+            "seconds": 1.081947894,
+            "items": 10000
+          },
+          {
+            "name": "reconcile",
+            "seconds": 6.81385397,
+            "items": 10000
+          },
+          {
+            "name": "write_claims",
+            "seconds": 0.965336371,
+            "items": 10000
+          },
+          {
+            "name": "index",
+            "seconds": 13.370882099,
+            "items": 10000
+          },
+          {
+            "name": "embed",
+            "seconds": 7.798145444,
+            "items": 20050
+          }
+        ]
+      },
+      "executed_tests": 1,
+      "skipped_tests": 0,
+      "failed_tests": 0
+    }
+  ],
+  "paired_mean_change_percent": -1.3750764627424639,
+  "interpretation": "The same-runner comparison did not reproduce a code slowdown: current mean is 1.38% faster. Both prior runs exceed the original accepted timing. This supports inter-run environment variation but does not prove the cause of the original failure or pass the production gate.",
+  "production_replication": {
+    "workflow": "https://github.com/sirerun/serenity/actions/runs/34273146565",
+    "verdict": "performance gate failed; pipeline completeness passed",
+    "current": {
+      "version": 1,
+      "revision": "12548bdb19e51da4471a8ea50504f91cefd4fe88",
+      "environment": "github-ubuntu-24.04-amd64-2procs",
+      "corpus_sha256": "1d97c81d5448734ea09a6683ea9f5ff36106120a893a5fb1ed6513928ecdcdcc",
+      "cache_version": "synthetic-golden-v1-vector512-v4",
+      "messages": 10000,
+      "claims": 10000,
+      "vectors": 20050,
+      "cache_hits": 10000,
+      "model_calls": 0,
+      "total_seconds": 68.124273323,
+      "stages": [
+        {
+          "name": "poll",
+          "seconds": 0.545148674,
+          "items": 10000
+        },
+        {
+          "name": "store_sources",
+          "seconds": 34.4681629,
+          "items": 10000
+        },
+        {
+          "name": "chunk_extract",
+          "seconds": 0.974714598,
+          "items": 10000
+        },
+        {
+          "name": "reconcile",
+          "seconds": 7.517426293,
+          "items": 10000
+        },
+        {
+          "name": "write_claims",
+          "seconds": 0.98270357,
+          "items": 10000
+        },
+        {
+          "name": "index",
+          "seconds": 14.793997776,
+          "items": 10000
+        },
+        {
+          "name": "embed",
+          "seconds": 8.842119512,
+          "items": 20050
+        }
+      ]
+    },
+    "previous": {
+      "version": 1,
+      "revision": "fc2ffc4253ab12543287f55c219a993e8061bd42",
+      "environment": "github-ubuntu-24.04-amd64-2procs",
+      "corpus_sha256": "1d97c81d5448734ea09a6683ea9f5ff36106120a893a5fb1ed6513928ecdcdcc",
+      "cache_version": "synthetic-golden-v1-vector512-v4",
+      "messages": 10000,
+      "claims": 10000,
+      "vectors": 20050,
+      "cache_hits": 10000,
+      "model_calls": 0,
+      "total_seconds": 50.24829592900001,
+      "stages": [
+        {
+          "name": "poll",
+          "seconds": 0.283441088,
+          "items": 10000
+        },
+        {
+          "name": "store_sources",
+          "seconds": 27.219724708,
+          "items": 10000
+        },
+        {
+          "name": "chunk_extract",
+          "seconds": 0.745477991,
+          "items": 10000
+        },
+        {
+          "name": "reconcile",
+          "seconds": 5.277954994,
+          "items": 10000
+        },
+        {
+          "name": "write_claims",
+          "seconds": 0.904197586,
+          "items": 10000
+        },
+        {
+          "name": "index",
+          "seconds": 10.146773332,
+          "items": 10000
+        },
+        {
+          "name": "embed",
+          "seconds": 5.67072623,
+          "items": 20050
+        }
+      ]
+    },
+    "environment": {
+      "go_version": "go version go1.26.7 linux/amd64",
+      "git_version": "git version 2.55.0",
+      "cpu": {
+        "lscpu": [
+          {
+            "field": "Architecture:",
+            "data": "x86_64"
+          },
+          {
+            "field": "CPU op-mode(s):",
+            "data": "32-bit, 64-bit"
+          },
+          {
+            "field": "Address sizes:",
+            "data": "48 bits physical, 48 bits virtual"
+          },
+          {
+            "field": "Byte Order:",
+            "data": "Little Endian"
+          },
+          {
+            "field": "CPU(s):",
+            "data": "4"
+          },
+          {
+            "field": "On-line CPU(s) list:",
+            "data": "0-3"
+          },
+          {
+            "field": "Vendor ID:",
+            "data": "AuthenticAMD"
+          },
+          {
+            "field": "Model name:",
+            "data": "AMD EPYC 7763 64-Core Processor"
+          },
+          {
+            "field": "CPU family:",
+            "data": "25"
+          },
+          {
+            "field": "Model:",
+            "data": "1"
+          },
+          {
+            "field": "Thread(s) per core:",
+            "data": "2"
+          },
+          {
+            "field": "Core(s) per socket:",
+            "data": "2"
+          },
+          {
+            "field": "Socket(s):",
+            "data": "1"
+          },
+          {
+            "field": "Stepping:",
+            "data": "1"
+          },
+          {
+            "field": "BogoMIPS:",
+            "data": "4890.85"
+          },
+          {
+            "field": "Flags:",
+            "data": "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx mmxext fxsr_opt pdpe1gb rdtscp lm constant_tsc rep_good nopl tsc_reliable nonstop_tsc cpuid extd_apicid aperfmperf tsc_known_freq pni pclmulqdq ssse3 fma cx16 pcid sse4_1 sse4_2 movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm cmp_legacy svm cr8_legacy abm sse4a misalignsse 3dnowprefetch osvw topoext vmmcall fsgsbase bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves user_shstk clzero xsaveerptr rdpru arat npt nrip_save tsc_scale vmcb_clean flushbyasid decodeassists pausefilter pfthreshold v_vmsave_vmload umip vaes vpclmulqdq rdpid fsrm"
+          },
+          {
+            "field": "Virtualization:",
+            "data": "AMD-V"
+          },
+          {
+            "field": "Hypervisor vendor:",
+            "data": "Microsoft"
+          },
+          {
+            "field": "Virtualization type:",
+            "data": "full"
+          },
+          {
+            "field": "L1d cache:",
+            "data": "64 KiB (2 instances)"
+          },
+          {
+            "field": "L1i cache:",
+            "data": "64 KiB (2 instances)"
+          },
+          {
+            "field": "L2 cache:",
+            "data": "1 MiB (2 instances)"
+          },
+          {
+            "field": "L3 cache:",
+            "data": "32 MiB (1 instance)"
+          },
+          {
+            "field": "NUMA node(s):",
+            "data": "1"
+          },
+          {
+            "field": "NUMA node0 CPU(s):",
+            "data": "0-3"
+          },
+          {
+            "field": "Vulnerability Gather data sampling:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability Ghostwrite:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability Indirect target selection:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability Itlb multihit:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability L1tf:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability Mds:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability Meltdown:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability Mmio stale data:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability Old microcode:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability Reg file data sampling:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability Retbleed:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability Spec rstack overflow:",
+            "data": "Vulnerable: Safe RET, no microcode"
+          },
+          {
+            "field": "Vulnerability Spec store bypass:",
+            "data": "Vulnerable"
+          },
+          {
+            "field": "Vulnerability Spectre v1:",
+            "data": "Mitigation; usercopy/swapgs barriers and __user pointer sanitization"
+          },
+          {
+            "field": "Vulnerability Spectre v2:",
+            "data": "Mitigation; Retpolines; STIBP disabled; RSB filling; PBRSB-eIBRS Not affected; BHI Not affected"
+          },
+          {
+            "field": "Vulnerability Srbds:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability Tsa:",
+            "data": "Vulnerable: No microcode"
+          },
+          {
+            "field": "Vulnerability Tsx async abort:",
+            "data": "Not affected"
+          },
+          {
+            "field": "Vulnerability Vmscape:",
+            "data": "Not affected"
+          }
+        ]
+      },
+      "image_os": "ubuntu24",
+      "image_version": "20260831.293.1",
+      "gomaxprocs": "2",
+      "benchmark_environment": "github-ubuntu-24.04-amd64-2procs"
+    },
+    "baseline_published": false,
+    "baseline_ref_after": "57d2164e2bc25e0c91206e56982811a05c22586c",
+    "timing_gate_changed": false,
+    "executed_tests": 1,
+    "skipped_tests": 0,
+    "failed_tests": 0
+  },
+  "original_successful_run_software": {
+    "go_version": "go1.26.7 linux/amd64",
+    "git_version": "2.55.0",
+    "image_version": "20260831.293.1",
+    "cpu_model": "not captured",
+    "source": "https://github.com/sirerun/serenity/actions/runs/34250593955"
+  }
+}

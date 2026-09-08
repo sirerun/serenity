@@ -1,5 +1,9 @@
 # M4 exit verification
 
+**T4.17 completed on 2026-09-08.** The [external-session completion](#external-session-completion-2026-09-08)
+below records the successful follow-up. The initial 2026-09-07 attempt and its
+then-open authentication blocker are retained as historical evidence.
+
 Date: 2026-09-07  
 Build: `origin/main` at `0f06c08a3eb200cdef374e27c563450a819062d5`
 

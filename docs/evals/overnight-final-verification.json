@@ -1,0 +1,123 @@
+{
+  "checked_at": "2026-09-08T20:16:57.591310+00:00",
+  "revision": "12548bdb19e51da4471a8ea50504f91cefd4fe88",
+  "platform": "Darwin ARM64, macOS 26.6.2 (25G83)",
+  "go_version": "go1.27.1",
+  "gomaxprocs": 2,
+  "gowork": "off",
+  "suite": "go test -race -p 2 -count=1 -timeout 600s -json ./...",
+  "exit_code": 0,
+  "passing_test_and_subtest_cases": 1779,
+  "passing_packages": 58,
+  "discovered_packages": 62,
+  "package_membership_matches_go_list": true,
+  "case_counts_by_package": {
+    "github.com/sirerun/serenity/cmd/eval-runner": 3,
+    "github.com/sirerun/serenity/docs/protocol/schemas": 126,
+    "github.com/sirerun/serenity/evals/importbudget": 1,
+    "github.com/sirerun/serenity/evals/importbudget/check": 2,
+    "github.com/sirerun/serenity/internal/briefing": 11,
+    "github.com/sirerun/serenity/internal/cli": 192,
+    "github.com/sirerun/serenity/internal/compose": 14,
+    "github.com/sirerun/serenity/internal/config": 5,
+    "github.com/sirerun/serenity/internal/conformance": 65,
+    "github.com/sirerun/serenity/internal/connector": 3,
+    "github.com/sirerun/serenity/internal/connector/file": 7,
+    "github.com/sirerun/serenity/internal/connector/gitrepo": 4,
+    "github.com/sirerun/serenity/internal/connector/imap": 4,
+    "github.com/sirerun/serenity/internal/connector/voice": 11,
+    "github.com/sirerun/serenity/internal/consolidate": 5,
+    "github.com/sirerun/serenity/internal/cron": 19,
+    "github.com/sirerun/serenity/internal/dira/ledger": 5,
+    "github.com/sirerun/serenity/internal/dira/schema": 4,
+    "github.com/sirerun/serenity/internal/direction": 111,
+    "github.com/sirerun/serenity/internal/direction/check": 32,
+    "github.com/sirerun/serenity/internal/direction/interview": 17,
+    "github.com/sirerun/serenity/internal/disposition": 55,
+    "github.com/sirerun/serenity/internal/docs": 9,
+    "github.com/sirerun/serenity/internal/domain": 10,
+    "github.com/sirerun/serenity/internal/embed": 10,
+    "github.com/sirerun/serenity/internal/entities": 27,
+    "github.com/sirerun/serenity/internal/eval": 39,
+    "github.com/sirerun/serenity/internal/eval/brainbench": 18,
+    "github.com/sirerun/serenity/internal/eval/direction": 15,
+    "github.com/sirerun/serenity/internal/eval/importbudget": 18,
+    "github.com/sirerun/serenity/internal/eval/messages": 7,
+    "github.com/sirerun/serenity/internal/eval/reconcile": 11,
+    "github.com/sirerun/serenity/internal/eval/runner": 13,
+    "github.com/sirerun/serenity/internal/events": 5,
+    "github.com/sirerun/serenity/internal/extract": 20,
+    "github.com/sirerun/serenity/internal/extract/chunk": 7,
+    "github.com/sirerun/serenity/internal/gate": 45,
+    "github.com/sirerun/serenity/internal/import/gbrain": 38,
+    "github.com/sirerun/serenity/internal/index": 120,
+    "github.com/sirerun/serenity/internal/ingest": 20,
+    "github.com/sirerun/serenity/internal/ladder": 24,
+    "github.com/sirerun/serenity/internal/providers": 14,
+    "github.com/sirerun/serenity/internal/queue": 5,
+    "github.com/sirerun/serenity/internal/reconcile": 27,
+    "github.com/sirerun/serenity/internal/redact": 13,
+    "github.com/sirerun/serenity/internal/report": 17,
+    "github.com/sirerun/serenity/internal/router": 30,
+    "github.com/sirerun/serenity/internal/search": 18,
+    "github.com/sirerun/serenity/internal/server": 20,
+    "github.com/sirerun/serenity/internal/server/direction": 18,
+    "github.com/sirerun/serenity/internal/server/disposition": 20,
+    "github.com/sirerun/serenity/internal/server/mcp": 96,
+    "github.com/sirerun/serenity/internal/server/memory": 160,
+    "github.com/sirerun/serenity/internal/spend": 6,
+    "github.com/sirerun/serenity/internal/store": 62,
+    "github.com/sirerun/serenity/internal/supersede": 53,
+    "github.com/sirerun/serenity/internal/writer": 44,
+    "github.com/sirerun/serenity/pkg/serenity": 24
+  },
+  "skipped_tests": [
+    {
+      "package": "github.com/sirerun/serenity/evals/importbudget",
+      "test": "TestImportBudget10K"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/conformance",
+      "test": "TestBootDeliberatelyBrokenBuildFailsDisposeConformance"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/cli",
+      "test": "TestGbrainProtocolConformance"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/import/gbrain",
+      "test": "TestImportCrashHelper"
+    },
+    {
+      "package": "github.com/sirerun/serenity/pkg/serenity",
+      "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request"
+    },
+    {
+      "package": "github.com/sirerun/serenity/pkg/serenity",
+      "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+    }
+  ],
+  "packages_without_tests": [
+    "github.com/sirerun/serenity/cmd/serenity",
+    "github.com/sirerun/serenity/evals/gen/messages",
+    "github.com/sirerun/serenity/internal/dira/frontmatter",
+    "github.com/sirerun/serenity/internal/secrets"
+  ],
+  "raw_test_log_sha256": "5b4f82f7f6e3a462ca6214c56010189efccc8b386afeac6e61e79606c3d5021e",
+  "vet": {
+    "command": "make vet",
+    "exit_code": 0
+  },
+  "lint": {
+    "command": "make lint",
+    "exit_code": 0,
+    "issues": 0
+  },
+  "working_tree_clean": true,
+  "shared_build_lease_released": true,
+  "limitations": [
+    "A correctness-suite pass does not override the separate failed 10K performance gate.",
+    "Dedicated external protocol and 10K jobs execute separately from the ordinary suite; skipped arms are named above.",
+    "This run does not establish the seven-day hardening soak."
+  ]
+}
