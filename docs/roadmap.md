@@ -337,7 +337,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 - E5 M5 migration + launch (gbrain import, docs site, adversarial gate, name decision, install-time AC) -- 5/15 epic task checkboxes complete (T5.11 weekly report card, T5.5 adversarial release gate, T5.4 mkdocs-material docs site, T5.7 fresh-machine install-verify script, T5.10 BrainBench trend published). Remaining tasks mostly gated behind M1+M4 (T5.9 blocked-by T4.17, ADR 011)
 - E6 M6 hardening soak (outline; starts after code complete, ADR 002)
 - E7 Launch polish and adoption loop -- planned 2026-09-08 in `docs/plans/E7-launch-polish.md`; coordinates Serenity's live Pages/Lambda surface with Ajent PR #24 (browser-login logo) and the adjacent Ajent launch work, then adds privacy-preserving adoption measurement, chat operations, launch content, HTTPS enforcement, and a human go/no-go gate.
-- E8 Ajent agent readiness -- planned 2026-09-08 in `docs/plans/E8-ajent-agent-readiness.md`; coordinated external work ordered by the supplied Ora audit: brand discoverability, official CLI distribution, RFC rate-limit headers, developer-resource indexing, homepage docs bridge, version/deprecation policy, and evidence refresh.
+- E8 Ajent agent readiness -- planned 2026-09-08 in `docs/plans/E8-ajent-agent-readiness.md`; coordinated external work ordered by the supplied Ora audit: brand discoverability, multi-channel CLI distribution for agents and humans, authenticated/versioned RFC rate-limit headers, public self-serve signup, developer-resource indexing, homepage docs bridge, and the ADR 014 version/deprecation policy.
 
 ## Blocked
 
