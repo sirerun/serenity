@@ -128,7 +128,7 @@ def limit(ip):
         'ExpressionAttributeValues': {':ttl': {'N': str(now + 90000)}, ':one': {'N': '1'}, ':cap': {'N': str(cap)}}}} for key, cap in keys])
 
 
-def handler(event, context):
+def handle_request(event, context):
     method = event.get('requestContext', {}).get('http', {}).get('method', '')
     origin = event.get('headers', {}).get('origin', '')
     def respond(code, obj):
@@ -165,3 +165,34 @@ def handler(event, context):
     except Exception:
         answer, mode = fallback(matches), 'search'
     return respond(200, {'answer': answer, 'mode': mode, 'citations': [{'title': m['title'], 'url': m['url']} for m in matches[:3]]})
+
+
+def handler(event, context):
+    # Only fixed counters and elapsed time cross the logging boundary. Never pass
+    # event, context, answers, exception text or SDK response objects to it.
+    started = time.monotonic()
+    try:
+        response = handle_request(event, context)
+    except Exception:
+        response = {'statusCode': 503, 'headers': {
+            'Content-Type': 'application/json', 'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff'},
+            'body': json.dumps({'error': 'The assistant is unavailable. Please use the documentation and try later.'})}
+    if event.get('requestContext', {}).get('http', {}).get('method') == 'POST':
+        status = response['statusCode']
+        mode = json.loads(response['body']).get('mode')
+        record_metrics(status, mode == 'search', (time.monotonic() - started) * 1000)
+    return response
+
+
+def record_metrics(status, search_fallback, elapsed_ms):
+    """Fixed-dimension EMF; no caller-controlled strings or identifiers."""
+    values = {'ChatRequests': 1, 'ChatErrors': int(status >= 500),
+              'ChatFallbacks': int(search_fallback),
+              'ChatRateLimited': int(status == 429),
+              'ChatLatencyMs': max(0, round(elapsed_ms, 3))}
+    print(json.dumps({'_aws': {'Timestamp': int(time.time() * 1000),
+        'CloudWatchMetrics': [{'Namespace': 'Serenity/AdoptionChat',
+            'Dimensions': [['Service']], 'Metrics': [
+                {'Name': name, 'Unit': 'Milliseconds' if name == 'ChatLatencyMs' else 'Count'}
+                for name in values]}]}, 'Service': 'serenity-adoption-chat', **values}), flush=True)

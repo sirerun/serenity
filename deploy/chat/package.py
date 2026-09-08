@@ -13,6 +13,40 @@ r['Function']={'Type':'AWS::Lambda::Function','Properties':{'FunctionName':'sere
 r['URL']={'Type':'AWS::Lambda::Url','Properties':{'TargetFunctionArn':{'Ref':'Function'},'AuthType':'NONE','Cors':{'AllowOrigins':['https://serenity.sire.run','http://127.0.0.1:8937'],'AllowMethods':['POST','GET'],'AllowHeaders':['content-type'],'MaxAge':3600}}}
 r['URLPermission']={'Type':'AWS::Lambda::Permission','Properties':{'Action':'lambda:InvokeFunctionUrl','FunctionName':{'Ref':'Function'},'Principal':'*','FunctionUrlAuthType':'NONE'}}
 r['InvokePermission']={'Type':'AWS::Lambda::Permission','Properties':{'Action':'lambda:InvokeFunction','FunctionName':{'Ref':'Function'},'Principal':'*','InvokedViaFunctionUrl':True}}
+# A dedicated, bounded log group contains only fixed metrics and Lambda runtime
+# records. No request, response, origin, IP or exception text is emitted.
+r['LogGroup'] = {'Type': 'AWS::Logs::LogGroup', 'Properties': {
+    'LogGroupName': '/aws/lambda/serenity-adoption-chat', 'RetentionInDays': 14}}
+r['Function']['Properties']['LoggingConfig'] = {'LogFormat': 'Text', 'LogGroup': {'Ref': 'LogGroup'}}
+r['Role']['Properties']['Policies'][0]['PolicyDocument']['Statement'].append({
+    'Effect': 'Allow', 'Action': ['logs:CreateLogStream', 'logs:PutLogEvents'],
+    'Resource': {'Fn::GetAtt': ['LogGroup', 'Arn']}})
+
+runbook = 'https://github.com/sirerun/serenity/blob/main/deploy/chat/README.md#operations'
+for logical, metric, threshold, description in [
+    ('ChatErrorsAlarm', 'ChatErrors', 3, 'Three server errors in five minutes. Check health, rate storage and secret access.'),
+    ('ChatFallbacksAlarm', 'ChatFallbacks', 5, 'Five documentation fallbacks in five minutes. Check provider availability and citation quality.'),
+    ('ChatRateLimitAlarm', 'ChatRateLimited', 10, 'Ten throttled requests in five minutes. Inspect aggregate usage; do not raise spend limits automatically.')]:
+    r[logical] = {'Type': 'AWS::CloudWatch::Alarm', 'Properties': {
+        'AlarmName': 'serenity-adoption-' + metric.lower(),
+        'AlarmDescription': description + ' Owner: David Ndungu. Runbook: ' + runbook,
+        'Namespace': 'Serenity/AdoptionChat', 'MetricName': metric,
+        'Dimensions': [{'Name': 'Service', 'Value': 'serenity-adoption-chat'}],
+        'Statistic': 'Sum', 'Period': 300, 'EvaluationPeriods': 1,
+        'Threshold': threshold, 'ComparisonOperator': 'GreaterThanOrEqualToThreshold',
+        'TreatMissingData': 'notBreaching'}}
+# Native URL metrics also catch failures/timeouts before application metrics emit.
+for logical, metric, statistic, threshold, description in [
+    ('URLServerErrorsAlarm', 'Url5xxCount', 'Sum', 3, 'Three URL server errors in five minutes; inspect Lambda errors/timeouts.'),
+    ('URLLatencyAlarm', 'UrlRequestLatency', 'Maximum', 22000, 'A URL request exceeded 22 seconds; inspect provider latency and Lambda duration.')]:
+    r[logical] = {'Type': 'AWS::CloudWatch::Alarm', 'Properties': {
+        'AlarmName': 'serenity-adoption-' + metric.lower(),
+        'AlarmDescription': description + ' Owner: David Ndungu. Runbook: ' + runbook,
+        'Namespace': 'AWS/Lambda', 'MetricName': metric,
+        'Dimensions': [{'Name': 'FunctionName', 'Value': {'Ref': 'Function'}}],
+        'Statistic': statistic, 'Period': 300, 'EvaluationPeriods': 1,
+        'Threshold': threshold, 'ComparisonOperator': 'GreaterThanOrEqualToThreshold',
+        'TreatMissingData': 'notBreaching'}}
 T['Outputs']['ChatURL']={'Value':{'Fn::GetAtt':['URL','FunctionUrl']}}
 (root/'deploy/chat/stack.json').write_text(json.dumps(T,indent=2)+'\n')
 print('Packaged public documentation into CloudFormation template')
