@@ -31,7 +31,7 @@ Ajent rollback belongs to David in that repository: use the reviewed deployment 
 
 - [x] T7.1: inventory live URLs, exact known deployment/asset revisions, owners, rollback routes, and Ajent PR classifications.
 - [ ] T7.2: document and verify `install_cta`, `docs_open`, `chat_started`, `chat_answered`, `chat_failed`; browser coverage and production event observation, excluding prompts and secrets.
-- [ ] T7.3: health/CORS/outage/rate-limit CI coverage and an actionable deployed error/latency signal.
+- [x] T7.3: health/CORS/outage/rate-limit CI coverage and deployed error/latency signals; receipt below.
 - [ ] T7.4: reviewed launch content packet with canonical installation walkthrough; publication remains a separate action.
 - [x] T7.5: HTTPS enforced; authoritative DNS, certificate, redirect and Pages API evidence recorded below.
 - [ ] T7.6: David's go/no-go decision, adoption baseline, known limitations and next review date.
@@ -60,3 +60,16 @@ GET /repos/sirerun/serenity/pages (selected fields)
 ```
 
 All four acceptance checks passed. No DNS record or site source changed. David owns the setting; rollback is the same Pages update with `https_enforced=false` only if necessary to recover a verified HTTPS incident. Normal operation keeps enforcement enabled.
+
+
+## T7.3 chat operations completion — 2026-09-08 13:10 UTC
+
+[PR #197](https://github.com/sirerun/serenity/pull/197) passed all 12 core checks plus Website verification (deployment correctly skipped on the PR). Its reviewed CloudFormation UPDATE completed. Lambda is Active/last-update Successful, `$LATEST` modified 2026-09-08 13:08:01 UTC, ZIP SHA-256 base64 `olC1ReXGkgsJaxwejGvpct0iigupDfCkyf9855Tkzwk=`. This supersedes the original Lambda inventory above.
+
+- **21 Python tests passed, zero skipped**: 12 `ChatTests` and 9 `OperationsTests`. The latter executes health, allowed/rejected origin, provider fallback, 429/503 behavior, the real private atomic limiter request builder, sensitive-input log exclusion, and the generated handler/template. Removing fallback counting and adding request logging independently failed the suite; restored code passed.
+- **Four live checks passed** via `deploy/chat/verify_live.py --ask`: health 200/nonempty corpus, allowed-origin preflight, foreign-origin 403, and a real generated answer with public citations and the production origin's CORS header. Only one invented public documentation question consumed the model budget. No production outage or rate exhaustion was induced.
+- Five alarms exist: application errors, fallbacks and rate limits, plus native URL 5xx and maximum latency. Each names David and the [operations runbook](https://github.com/sirerun/serenity/blob/main/deploy/chat/README.md#operations). At verification all were `OK`; no email/pager subscription is configured.
+- The dedicated log group reports 14-day retention. The first two application records have exactly `_aws`, `Service`, `ChatRequests`, `ChatErrors`, `ChatFallbacks`, `ChatRateLimited`, `ChatLatencyMs`. Ten accompanying records were Lambda runtime records. No prompt, answer, IP, origin, credentials or exception text appeared in application output.
+- CloudWatch extracted actual `ChatLatencyMs` data at 13:09 UTC: **2 samples, maximum 5,786.077 ms**. This verifies the log-to-metric wiring beyond merely observing an `OK` alarm. The two POST records were the foreign-origin rejection and the successful public question, not two visitors.
+
+The runbook records five-minute thresholds, owner checks, missing-data limits and rollback. Operational counters are not adoption conversion metrics. Provider/storage faults and rate-limit rejection are verified in CI; deliberate live failure injection is not claimed.
