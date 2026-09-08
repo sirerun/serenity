@@ -34,3 +34,20 @@ Raw sources are still source evidence, distinct from current claims. Retracting 
 claim does not erase the original source text or claim history. This repair covers
 canonical claim projection and disclosure; it does not reinterpret every raw
 source mention as a currently believed fact.
+
+Raw-source and summary entries are also checked against current canonical content.
+An ordinary source hit must match its stored bytes, source digest, chunk boundaries,
+kind and attribution. A memory-fact hit must match its decoded canonical payload.
+Deleted sources and forged cache rows are withheld immediately; corrupted stored
+bytes produce an explicit integrity error. A page summary edited after indexing
+is withheld until `serenity sync` rebuilds its entry.
+
+Setting source metadata `index_only: true` keeps available raw text searchable by
+the local owner, but excludes it from remote recall and provider embedding. An
+index-only clone without source bytes cannot authorize an old raw-text cache row.
+Each request takes a fresh canonical view; the index itself never grants disclosure
+permission. These checks do not erase raw source history or change claim state.
+
+The embedded Go `Brain.Recall` hit list follows local-owner CLI search eligibility,
+including fresh canonical checks. It can return private owner data locally; its
+optional composed answer applies the provider egress policy independently.
