@@ -21,6 +21,7 @@ nav:
       - Claude: operator/claude.md
       - Connectors: operator/connect.md
       - Scheduling: operator/scheduling.md
+      - Import gbrain: operator/gbrain-import.md
       - Conformance: operator/conformance.md
       - Threat model: operator/threat-model.md
   - Connectors:
