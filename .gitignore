@@ -31,3 +31,6 @@ ajent.social
 # Python authoring and chat verification
 __pycache__/
 *.pyc
+
+# Generated synthetic benchmark corpora
+/evals/generated/
