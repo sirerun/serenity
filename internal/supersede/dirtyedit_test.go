@@ -244,7 +244,7 @@ func TestApplyDisposedDirtyEditSkipsFenceTierRows(t *testing.T) {
 	item := disposition.Item{
 		ID: "dirty_edit:alice-tan", Kind: disposition.KindDirtyEdit,
 		State: disposition.StateDisposed, Verdict: disposition.VerdictAccept,
-		Actor: "human:tester", Payload: payload,
+		Actor: "human:tester", Payload: payload, DisposedAt: fixedNow,
 	}
 
 	w := New(q, fw, ss, config.Default())
