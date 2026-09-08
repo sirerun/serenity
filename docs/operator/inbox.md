@@ -76,3 +76,25 @@ Extraction-produced low-confidence items have an explicit typed-assertion and
 confirmation flow. They share `--unapplied` / `--apply ID` recovery after a confirmed
 human decision. See [extraction review](extraction.md#low-confidence-observations)
 for provenance, cancellation and replacement behavior.
+
+## Decision durability
+
+A disposition item's state and its append-only history now commit together.
+A failed database write leaves neither half of a new decision behind. Independent
+runtime-store handles cannot both win conflicting terminal verdicts, and aging,
+resurfacing or result bookkeeping cannot overwrite a newer human decision.
+The canonical brain still has one writer under ADR 012; this database guarantee
+does not introduce concurrent canonical file writers.
+
+If a process stops before the decision transaction commits, retry the decision.
+If it stops after commit but before acknowledging it, the same idempotency key
+replays the stored decision. Filesystem publication still uses the separate
+`--unapplied` / `--apply` recovery described above.
+
+For callers of the internal capture-routing Store API, new precept-draft routes
+carry `route_effect_pending: true` until their follow-on queue item is staged.
+Retrying the recorded route recovers that effect once, retaining any subsequent
+human review of the child. This marker is optional in the DISPOSITION v1 item
+schema. Completed legacy routes without it are preserved rather than inferred
+again; old orphan history and incomplete unmarked routes need explicit inspection.
+This change adds no capture-routing CLI command.

@@ -133,37 +133,33 @@ func (s *Store) RouteDistill(ctx context.Context, id string, route DistillRoute,
 	if err != nil {
 		return Result{}, err
 	}
-	// A replay or a cross-client already_disposed hit must not create a
-	// second precept-draft follow-on item -- only a genuinely NEW
-	// disposition (res.Item.Route freshly set by this very call) does.
-	if res.AlreadyDisposed || res.Replayed {
-		return res, nil
-	}
-
-	if route == RoutePreceptDraft {
-		if _, err := s.Create(ctx, KindPreceptDraft, item.Payload, "", now); err != nil {
+	// The recorded winning route governs recovery, even if this caller lost
+	// or retried with another route. Deterministic staging closes the crash gap
+	// between the committed decision and its separate follow-on queue effect.
+	if res.Item.Route == RoutePreceptDraft && res.Item.RouteEffectPending {
+		if _, _, err := s.CreateOnce(ctx, KindPreceptDraft, res.Item.Payload, "", "distill-precept-draft:"+res.Item.ID, res.Item.DisposedAt); err != nil {
 			return Result{}, fmt.Errorf("disposition: route distill: stage precept draft for %s: %w", id, err)
 		}
+		current, _, err := s.updateItem(ctx, id, func(item *Item) (bool, error) {
+			if item.Route != RoutePreceptDraft || item.State != StateDisposed {
+				return false, errors.New("disposition: recorded route changed during follow-on recovery")
+			}
+			if !item.RouteEffectPending {
+				return false, nil
+			}
+			item.RouteEffectPending = false
+			return true, nil
+		})
+		if err != nil {
+			return Result{}, fmt.Errorf("disposition: route distill: complete follow-on for %s: %w", id, err)
+		}
+		res.Item = current
 	}
+
 	return res, nil
 }
 
-// disposeWithRoute is Dispose plus recording route on the item before it
-// is written back -- Dispose itself knows nothing about distill routes, so
-// this small wrapper re-implements just enough of Dispose's write step to
-// stamp Route on the same item/history transaction rather than issuing a
-// second write.
+// disposeWithRoute includes route metadata in the atomic item/history decision.
 func (s *Store) disposeWithRoute(ctx context.Context, id string, verdict Verdict, route DistillRoute, note, actor, idempotencyKey string, now time.Time) (Result, error) {
-	res, err := s.Dispose(ctx, id, verdict, nil, note, actor, idempotencyKey, now)
-	if err != nil {
-		return Result{}, err
-	}
-	if res.AlreadyDisposed || res.Replayed {
-		return res, nil
-	}
-	res.Item.Route = route
-	if err := s.put(ctx, res.Item); err != nil {
-		return Result{}, fmt.Errorf("disposition: route distill: record route for %s: %w", id, err)
-	}
-	return res, nil
+	return s.dispose(ctx, id, verdict, nil, note, actor, idempotencyKey, now, route)
 }

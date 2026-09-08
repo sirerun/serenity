@@ -112,3 +112,38 @@ func (s *SQLite) InsertDispositionItem(ctx context.Context, id string, payload [
 	count, err := result.RowsAffected()
 	return count == 1, err
 }
+
+// CommitDisposition changes an exact previously-read item and appends its
+// optional decision history in one transaction. A lost compare-and-swap writes
+// neither row. The first statement acquires the SQLite writer lock, avoiding a
+// read-snapshot upgrade race between independent database handles.
+func (s *SQLite) CommitDisposition(ctx context.Context, id string, before, after []byte, historyID string, history []byte) (bool, error) {
+	if id == "" || len(before) == 0 || len(after) == 0 || (historyID == "") != (len(history) == 0) {
+		return false, errors.New("index: disposition transaction requires item snapshots and a complete optional history entry")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("index: begin disposition: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE disposition_items SET payload = ? WHERE id = ? AND payload = ?`, after, id, before)
+	if err != nil {
+		return false, fmt.Errorf("index: update disposition: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if n == 0 {
+		return false, nil
+	}
+	if historyID != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO disposition_history(id, payload) VALUES(?, ?)`, historyID, history); err != nil {
+			return false, fmt.Errorf("index: commit disposition history: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("index: commit disposition: %w", err)
+	}
+	return true, nil
+}
