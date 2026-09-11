@@ -102,7 +102,8 @@ type MemoryFactPayload struct {
 type MemoryExpiryPayload struct {
 	FormatVersion int       `json:"format_version"`
 	RecordType    string    `json:"record_type"` // always "memory_expiry"
-	TargetSHA256  string    `json:"target_sha256"`
+	TargetSHA256  string    `json:"target_sha256,omitempty"`
+	OperationKey  string    `json:"operation_key,omitempty"`
 	Reason        string    `json:"reason,omitempty"`
 	ExpiredAt     time.Time `json:"expired_at"`
 }
@@ -143,6 +144,9 @@ func DecodeMemoryFact(data []byte) (MemoryFactPayload, error) {
 
 // EncodeMemoryExpiry renders p as its canonical JSON source bytes.
 func EncodeMemoryExpiry(p MemoryExpiryPayload) ([]byte, error) {
+	if p.OperationKey != "" && p.FormatVersion == 0 {
+		p.FormatVersion = 2
+	}
 	p.RecordType = SourceKindMemoryExpiry
 	if p.FormatVersion == 0 {
 		p.FormatVersion = MemoryFactFormatVersion
@@ -217,11 +221,15 @@ func validateMemoryFact(p MemoryFactPayload) error {
 }
 
 func validateMemoryExpiry(p MemoryExpiryPayload) error {
-	if p.RecordType != SourceKindMemoryExpiry || p.FormatVersion != MemoryFactFormatVersion {
-		return fmt.Errorf("store: invalid memory expiry type/version")
+	if p.RecordType != SourceKindMemoryExpiry || p.ExpiredAt.IsZero() || !utf8.ValidString(p.Reason) {
+		return fmt.Errorf("store: invalid memory expiry type/timestamp/reason")
 	}
-	if !ValidSourceSHA(p.TargetSHA256) || p.ExpiredAt.IsZero() || !utf8.ValidString(p.Reason) {
-		return fmt.Errorf("store: invalid memory expiry target/timestamp/reason")
+	if p.OperationKey != "" {
+		if p.FormatVersion != 2 || p.TargetSHA256 != "" || !ValidMemoryOperationKey(p.OperationKey) {
+			return fmt.Errorf("store: invalid memory operation cancellation")
+		}
+	} else if p.FormatVersion != MemoryFactFormatVersion || !ValidSourceSHA(p.TargetSHA256) {
+		return fmt.Errorf("store: invalid memory expiry target/version")
 	}
 	return nil
 }
@@ -262,6 +270,7 @@ func (r MemoryFactRecord) Expired(now time.Time) bool {
 // already holds, safe to rebuild from scratch at any time.
 type MemoryProjection struct {
 	bySHA     map[string]*MemoryFactRecord
+	canceled  map[string]string
 	lifecycle map[string]bool
 	indexOnly map[string]bool
 }
@@ -276,7 +285,7 @@ func LoadMemoryProjection(ss *SourceStore) (*MemoryProjection, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: load memory projection: %w", err)
 	}
-	p := &MemoryProjection{bySHA: make(map[string]*MemoryFactRecord), lifecycle: make(map[string]bool), indexOnly: make(map[string]bool)}
+	p := &MemoryProjection{canceled: make(map[string]string), bySHA: make(map[string]*MemoryFactRecord), lifecycle: make(map[string]bool), indexOnly: make(map[string]bool)}
 	legacy := make(map[int64]string)
 	operations := make(map[string]string)
 
@@ -324,7 +333,17 @@ func LoadMemoryProjection(ss *SourceStore) (*MemoryProjection, error) {
 		}
 	}
 	for _, e := range expiries {
-		rec, ok := p.bySHA[e.pl.TargetSHA256]
+		target := e.pl.TargetSHA256
+		if e.pl.OperationKey != "" {
+			// Cancellation is durable even when no matching fact has arrived.
+			// Choose a stable source pointer if independent histories merged.
+			prior := p.canceled[e.pl.OperationKey]
+			if prior == "" || e.sha < prior {
+				p.canceled[e.pl.OperationKey] = e.sha
+			}
+			target = operations[e.pl.OperationKey]
+		}
+		rec, ok := p.bySHA[target]
 		if !ok {
 			continue // an expiry citing an unknown/private-to-another-brain target is inert
 		}
@@ -509,4 +528,11 @@ func MemoryEligible(p *MemoryProjection, sourceSHA256 string, remote bool, now t
 		return false
 	}
 	return true
+}
+
+// OperationCancellation returns the immutable cancellation source, if any.
+// Absence of a fact does not discard a cancellation fence.
+func (p *MemoryProjection) OperationCancellation(key string) (string, bool) {
+	sha, ok := p.canceled[key]
+	return sha, ok
 }

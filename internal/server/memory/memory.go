@@ -41,6 +41,7 @@ func (realClock) Now() time.Time { return time.Now() }
 const (
 	ErrCodeInvalidParams       = "invalid_params"
 	ErrCodeOperationConflict   = "operation_conflict"
+	ErrCodeOperationCanceled   = "operation_canceled"
 	ErrCodeProvenanceRequired  = "provenance_required"
 	ErrCodeNotFound            = "not_found"
 	ErrCodeScopeDenied         = "scope_denied"

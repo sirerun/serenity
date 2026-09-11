@@ -236,7 +236,8 @@ func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, error
 		Fence:                   store.NewFenceWriter(root),
 		Shard:                   store.NewShardStore(root),
 	}
-	return memory.New(deps).Tools(), closeDeps, nil
+	handlers := memory.New(deps)
+	return append(handlers.Tools(), handlers.ExtensionTools()...), closeDeps, nil
 }
 
 // Inherited stdin/stdout may be blocking descriptors outside Go's runtime poller.

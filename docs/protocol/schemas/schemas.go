@@ -83,6 +83,8 @@ var Registry = []Entry{
 	{"memory_verbs", "entity_response", "memory_verbs_entity_response.schema.json", reflect.TypeOf(memory.EntityResponse{})},
 	{"memory_verbs", "synthesize_request", "memory_verbs_synthesize_request.schema.json", reflect.TypeOf(memory.SynthesizeRequest{})},
 	{"memory_verbs", "synthesize_response", "memory_verbs_synthesize_response.schema.json", reflect.TypeOf(memory.SynthesizeResponse{})},
+	{"memory_verbs", "cancel_operation_request", "memory_extensions_cancel_operation_request.schema.json", reflect.TypeOf(memory.CancelOperationRequest{})},
+	{"memory_verbs", "cancel_operation_response", "memory_extensions_cancel_operation_response.schema.json", reflect.TypeOf(memory.CancelOperationResponse{})},
 	{"memory_verbs", "forget_request", "memory_verbs_forget_request.schema.json", reflect.TypeOf(memory.ForgetRequest{})},
 	{"memory_verbs", "forget_response", "memory_verbs_forget_response.schema.json", reflect.TypeOf(memory.ForgetResponse{})},
 	{"memory_verbs", "error", "memory_verbs_error.schema.json", reflect.TypeOf(memory.VerbError{})},
