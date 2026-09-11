@@ -36,18 +36,22 @@ type MemoryFact struct {
 // idempotent-forget outcome, not this error).
 var ErrMemoryFactNotFound = errors.New("writer: no memory fact with this id")
 
+// ErrMemoryOperationConflict means a durable key was reused with different input.
+var ErrMemoryOperationConflict = errors.New("writer: memory operation key conflicts with prior input")
+
 // RememberInput is the durable half of a remember call -- already
 // validated by the MCP-layer verb handler (non-empty fact/provenance,
 // closed kind/visibility enums, parsed TTL); this package only allocates
 // and writes.
 type RememberInput struct {
-	Fact       string
-	Provenance string
-	EntitySlug string
-	EntityType string
-	Kind       store.MemoryFactKind
-	Visibility store.MemoryVisibility
-	ValidUntil *time.Time
+	OperationKey string
+	Fact         string
+	Provenance   string
+	EntitySlug   string
+	EntityType   string
+	Kind         store.MemoryFactKind
+	Visibility   store.MemoryVisibility
+	ValidUntil   *time.Time
 }
 
 // RememberResult is what the caller needs to build MEMORY_VERBS's remember
@@ -82,13 +86,31 @@ func (w *MemoryFact) Remember(input RememberInput, now time.Time) (RememberResul
 // Remember's Job.Render) -- the single-writer window every allocation and
 // dedup decision in this method depends on.
 func (w *MemoryFact) rememberLocked(input RememberInput, now time.Time) (RememberResult, error) {
+	if !store.ValidMemoryOperationKey(input.OperationKey) {
+		return RememberResult{}, fmt.Errorf("writer: invalid memory operation key")
+	}
 	proj, err := store.LoadMemoryProjection(w.Sources)
 	if err != nil {
 		return RememberResult{}, err
 	}
 
 	key := store.DedupKey(input.Fact, input.Provenance, input.EntitySlug, input.Kind, input.Visibility, input.ValidUntil, input.EntityType)
-	if dup, ok := proj.FindDuplicate(key, now); ok {
+	if input.OperationKey != "" {
+		// Look through expired records too: retry must never resurrect a withdrawal.
+		for _, rec := range proj.All() {
+			if rec.Payload.OperationKey != input.OperationKey {
+				continue
+			}
+			p := rec.Payload
+			prior := store.DedupKey(p.Fact, p.Provenance, p.EntitySlug, p.Kind, p.Visibility, p.ValidUntil, p.EntityType)
+			if prior != key {
+				return RememberResult{}, ErrMemoryOperationConflict
+			}
+			w.markSource(rec.SHA256)
+			w.markSource(rec.ExpirySHA256)
+			return RememberResult{Record: rec, Inserted: false}, nil
+		}
+	} else if dup, ok := proj.FindDuplicate(key, now); ok {
 		w.markSource(dup.SHA256)
 		return RememberResult{Record: dup, Inserted: false}, nil
 	}
@@ -98,6 +120,7 @@ func (w *MemoryFact) rememberLocked(input RememberInput, now time.Time) (Remembe
 		return RememberResult{}, err
 	}
 	payload := store.MemoryFactPayload{
+		OperationKey:  input.OperationKey,
 		FormatVersion: store.MemoryFactFormatVersion,
 		RecordType:    store.SourceKindMemoryFact,
 		LegacyID:      legacyID,

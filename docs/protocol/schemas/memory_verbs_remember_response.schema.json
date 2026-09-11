@@ -5,9 +5,10 @@
   "description": "internal/server/memory.RememberResponse.",
   "protocol_version": 1,
   "type": "object",
-  "required": ["protocol_version", "id", "status", "status_text", "entity_slug", "valid_until"],
+  "required": ["expired", "protocol_version", "id", "status", "status_text", "entity_slug", "valid_until"],
   "additionalProperties": false,
   "properties": {
+    "expired": { "type": "boolean", "description": "Current TTL or withdrawal state; keyed retry never revives an expired record." },
     "protocol_version": { "type": "integer", "const": 1 },
     "id": { "type": "string", "description": "Opaque fact id. On status=duplicate this is the EXISTING fact's id." },
     "status": {

@@ -230,3 +230,36 @@ func TestSourceMetadataOnlyIndexOnlyCloneRemainsReadable(t *testing.T) {
 		t.Fatal("immutable source identity changed")
 	}
 }
+
+func TestMemoryProjectionRejectsDuplicateOperationKeys(t *testing.T) {
+	root := t.TempDir()
+	first := independentMemoryPayload("first operation", 101)
+	first.OperationKey = "merged-key"
+	independentPublishMemoryFixture(t, root, first)
+	second := independentMemoryPayload("other branch", 102)
+	second.OperationKey = first.OperationKey
+	independentPublishMemoryFixture(t, root, second)
+	if _, err := store.LoadMemoryProjection(store.NewSourceStore(root)); err == nil {
+		t.Fatal("conflicting merged operation keys were accepted")
+	}
+}
+
+func TestMemoryOperationKeyEncodingValidation(t *testing.T) {
+	for _, key := range []string{"contains space", "../slash", "雪", strings.Repeat("a", 129)} {
+		p := independentMemoryPayload("fact", 103)
+		p.OperationKey = key
+		if _, err := store.EncodeMemoryFact(p); err == nil {
+			t.Fatalf("invalid key accepted: %q", key)
+		}
+	}
+	p := independentMemoryPayload("fact", 104)
+	p.OperationKey = "ajent:post-1.rev_2"
+	data, err := store.EncodeMemoryFact(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := store.DecodeMemoryFact(data)
+	if err != nil || decoded.OperationKey != p.OperationKey {
+		t.Fatal("operation identity lost")
+	}
+}
