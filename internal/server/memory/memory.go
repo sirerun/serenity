@@ -40,6 +40,7 @@ func (realClock) Now() time.Time { return time.Now() }
 // accurate drops," never this code).
 const (
 	ErrCodeInvalidParams       = "invalid_params"
+	ErrCodeOperationConflict   = "operation_conflict"
 	ErrCodeProvenanceRequired  = "provenance_required"
 	ErrCodeNotFound            = "not_found"
 	ErrCodeScopeDenied         = "scope_denied"

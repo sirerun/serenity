@@ -14,9 +14,10 @@
     },
     "error": {
       "type": "string",
-      "description": "Versioned enumerated error code (upstream-verbs.ts ERROR_SCHEMA, verbatim). budget_unsatisfiable is schema-listed but reserved -- this server never emits it.",
+      "description": "Versioned enumerated error code (upstream-verbs.ts ERROR_SCHEMA, with keyed-recovery extension). budget_unsatisfiable is schema-listed but reserved -- this server never emits it.",
       "enum": [
         "invalid_params",
+        "operation_conflict",
         "provenance_required",
         "not_found",
         "scope_denied",

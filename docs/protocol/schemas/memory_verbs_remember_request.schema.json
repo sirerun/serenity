@@ -8,6 +8,7 @@
   "required": ["fact", "provenance"],
   "additionalProperties": false,
   "properties": {
+    "operation_key": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]+$", "description": "Optional immutable brain-scoped request key; keyed TTL must be absolute or omitted." },
     "fact": { "type": "string", "description": "The fact to remember, one claim per call." },
     "provenance": { "type": "string", "description": "Where this fact came from (required, free text, max 500 chars)." },
     "ttl": { "type": "string", "description": "Duration shorthand (\"30d\", \"12h\", \"45m\") or absolute ISO 8601 timestamp. Omit = never expires." },

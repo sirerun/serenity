@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"unicode/utf8"
 
@@ -13,15 +14,17 @@ import (
 )
 
 type rememberRequest struct {
-	Fact       string `json:"fact"`
-	Provenance string `json:"provenance"`
-	TTL        string `json:"ttl,omitempty"`
-	Entity     string `json:"entity,omitempty"`
-	Kind       string `json:"kind,omitempty"`
-	Visibility string `json:"visibility,omitempty"`
+	OperationKey string `json:"operation_key,omitempty"`
+	Fact         string `json:"fact"`
+	Provenance   string `json:"provenance"`
+	TTL          string `json:"ttl,omitempty"`
+	Entity       string `json:"entity,omitempty"`
+	Kind         string `json:"kind,omitempty"`
+	Visibility   string `json:"visibility,omitempty"`
 }
 
 type rememberResponse struct {
+	Expired         bool    `json:"expired"`
 	ProtocolVersion int     `json:"protocol_version"`
 	ID              string  `json:"id"`
 	Status          string  `json:"status"` // inserted | duplicate | superseded
@@ -38,6 +41,7 @@ func (h *Handlers) rememberTool() mcp.Tool {
 	schema := `{
 		"type": "object",
 		"properties": {
+ "operation_key": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_.:-]+$", "description": "Optional brain-scoped immutable request key. Same key and normalized payload recover the same fact even after expiry; changed payload conflicts. With a key, ttl must be absolute or omitted."},
 			"fact": {"type": "string", "description": "The fact to remember, one claim per call."},
 			"provenance": {"type": "string", "description": "Where this fact came from (required, free text, max 500 chars)."},
 			"ttl": {"type": "string", "description": "Duration shorthand (\"30d\", \"12h\", \"45m\") or absolute ISO 8601 timestamp. Omit = never expires."},
@@ -63,6 +67,12 @@ func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, boo
 	var req rememberRequest
 	if err := json.Unmarshal(args, &req); err != nil {
 		return verbError(ErrCodeInvalidParams, "remember: malformed request", "send a JSON object with \"fact\" and \"provenance\" strings"), true, nil
+	}
+	if !store.ValidMemoryOperationKey(req.OperationKey) {
+		return verbError(ErrCodeInvalidParams, "remember: invalid operation_key", "use at most 128 ASCII letters, digits, dot, colon, underscore or hyphen"), true, nil
+	}
+	if req.OperationKey != "" && ttlDurationPattern.MatchString(req.TTL) {
+		return verbError(ErrCodeInvalidParams, "remember: keyed TTL must be absolute", "use a fixed ISO 8601 timestamp or omit ttl so retries do not move expiry"), true, nil
 	}
 	fact := req.Fact
 	if trimmed(fact) == "" {
@@ -109,14 +119,18 @@ func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, boo
 
 	mw := h.deps.memoryWriter()
 	result, err := mw.Remember(writer.RememberInput{
-		Fact:       fact,
-		Provenance: provenance,
-		EntitySlug: entitySlug,
-		EntityType: entityType,
-		Kind:       store.MemoryFactKind(kind),
-		Visibility: store.MemoryVisibility(visibility),
-		ValidUntil: validUntil,
+		OperationKey: req.OperationKey,
+		Fact:         fact,
+		Provenance:   provenance,
+		EntitySlug:   entitySlug,
+		EntityType:   entityType,
+		Kind:         store.MemoryFactKind(kind),
+		Visibility:   store.MemoryVisibility(visibility),
+		ValidUntil:   validUntil,
 	}, now)
+	if errors.Is(err, writer.ErrMemoryOperationConflict) {
+		return verbError(ErrCodeOperationConflict, "remember: operation_key already has different input", "retry the original payload; use a new key only for a genuinely new operation"), true, nil
+	}
 	if err != nil {
 		return nil, false, fmt.Errorf("remember: %w", err)
 	}
@@ -142,6 +156,7 @@ func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, boo
 	}
 
 	return rememberResponse{
+		Expired:         result.Record.Expired(now),
 		ProtocolVersion: ProtocolVersion,
 		DegradedDedup:   true,
 		ID:              result.Record.SHA256,

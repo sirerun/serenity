@@ -188,3 +188,19 @@ curl -i http://127.0.0.1:<port>/mcp
 For a fuller check against the frozen conformance transcripts (MEMORY_VERBS
 plus DISPOSITION/DIRECTION, if also registered on this target), see
 [Protocol conformance](conformance.md).
+
+### Optional keyed remember recovery (pending release)
+
+A binary advertising `operation_key` on `remember` can recover an ambiguous
+write by replaying the original payload with that key. Keys are brain-scoped,
+1–128 ASCII letters/digits or `_.:-`, and are durable public identifiers within
+the brain, never credentials. A keyed TTL must be absolute or omitted. Different
+keys allocate distinct facts; a key reused with changed durable input returns
+`operation_conflict`. The response's `expired` field reports current expiry,
+including withdrawal. Retrying a withdrawn keyed write returns its original ID
+without reviving it. Keep the same supported writer version for all writers;
+older binaries ignore this additive field and cannot enforce the contract.
+
+This extends exact retry under the existing single-queue constraint; it does
+not establish cross-process exclusion or an operation-status service. See
+[the recovery contract](../plans/keyed-memory-recovery.md).

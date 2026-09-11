@@ -80,6 +80,7 @@ const (
 // object of its own, and this payload never becomes one (mapping doc:
 // "never automatic accepted belief").
 type MemoryFactPayload struct {
+	OperationKey  string           `json:"operation_key,omitempty"`
 	FormatVersion int              `json:"format_version"`
 	RecordType    string           `json:"record_type"` // always "memory_fact"
 	LegacyID      int64            `json:"legacy_id"`
@@ -170,7 +171,27 @@ func DecodeMemoryExpiry(data []byte) (MemoryExpiryPayload, error) {
 // MaxMemoryLegacyID is the largest integer exactly representable by JSON clients.
 const MaxMemoryLegacyID int64 = 1<<53 - 1
 
+// ValidMemoryOperationKey accepts bounded opaque ASCII keys. Empty means the
+// original unkeyed contract. Keys are brain-scoped identifiers, not credentials.
+func ValidMemoryOperationKey(key string) bool {
+	if len(key) > 128 {
+		return false
+	}
+	for _, c := range key {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-', c == '_', c == '.', c == ':':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func validateMemoryFact(p MemoryFactPayload) error {
+	if !ValidMemoryOperationKey(p.OperationKey) {
+		return fmt.Errorf("store: invalid memory operation key")
+	}
+
 	if p.RecordType != SourceKindMemoryFact || p.FormatVersion != MemoryFactFormatVersion {
 		return fmt.Errorf("store: invalid memory fact type/version")
 	}
@@ -257,6 +278,7 @@ func LoadMemoryProjection(ss *SourceStore) (*MemoryProjection, error) {
 	}
 	p := &MemoryProjection{bySHA: make(map[string]*MemoryFactRecord), lifecycle: make(map[string]bool), indexOnly: make(map[string]bool)}
 	legacy := make(map[int64]string)
+	operations := make(map[string]string)
 
 	var expiries []struct {
 		sha string
@@ -276,6 +298,12 @@ func LoadMemoryProjection(ss *SourceStore) (*MemoryProjection, error) {
 			}
 			if other, exists := legacy[pl.LegacyID]; exists {
 				return nil, fmt.Errorf("store: duplicate memory legacy ID %d in %s and %s", pl.LegacyID, other, src.SHA256)
+			}
+			if pl.OperationKey != "" {
+				if _, exists := operations[pl.OperationKey]; exists {
+					return nil, fmt.Errorf("store: duplicate memory operation key")
+				}
+				operations[pl.OperationKey] = src.SHA256
 			}
 			legacy[pl.LegacyID] = src.SHA256
 			p.bySHA[src.SHA256] = &MemoryFactRecord{SHA256: src.SHA256, Payload: pl}
