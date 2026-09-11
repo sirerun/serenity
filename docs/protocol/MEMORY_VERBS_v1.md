@@ -273,3 +273,30 @@ Error codes:
   two protocols Serenity does author, under the same governance model.
 - `docs/operator/claude.md` — `serenity connect claude`, the one-command
   MCP install path for this protocol.
+
+## Optional Serenity extension: cancel_memory_operation
+
+The five pinned MEMORY_VERBS tools, including forget's required `id`, are
+unchanged. Serenity additionally advertises `cancel_memory_operation` through
+MCP tools/list. Discover it before relying on this extension; older servers do
+not implement it. This is a write capability of the same controlled brain.
+
+The required `operation_key` is the original immutable remember key. An optional
+`reason` is an audit annotation. The writer durably fences the key even when the
+fact has not arrived. The response's `canceled:true` confirms that fence. Its `id`
+is empty when no fact exists; `expired:true` means this call expired an active
+fact. Repeat cancellation is idempotent. An existing private fact returns
+scope_denied and is unchanged. Canonical failure is not successful cancellation.
+
+A subsequent remember cannot create an absent canceled key: operation_canceled
+is returned. If a matching fact existed, exact replay recovers its expired ID;
+changed payloads still return operation_conflict. Cancellation is not secure
+physical erasure and cannot be bypassed by retrying the same publication under
+a different key. The source projection also applies fences to later merged facts.
+
+Storage uses memory_expiry format v2 for key cancellation. Old binaries fail
+closed on that version; ordinary fact-ID expiry retains format v1. Do not roll
+back a brain containing cancellations to an incompatible reader/writer.
+
+Schemas: [request](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_cancel_operation_request.schema.json)
+and [response](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_cancel_operation_response.schema.json).

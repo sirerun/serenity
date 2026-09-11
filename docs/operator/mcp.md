@@ -234,3 +234,20 @@ deadline; competing canonical mutations wait for that decision. Private and
 withdrawn sources do not enter the provider. With no embedding provider, the
 existing lexical behavior remains. No separate daemon restart or whole-brain
 extract pass is needed for a successfully indexed fresh write.
+
+### Canceling an ambiguous write
+
+When tools/list advertises `cancel_memory_operation`, callers can send its
+`operation_key` without an acknowledged fact ID. This durably prevents a delayed missing write from being created and expires
+an already-written matching world fact without replaying its revoked body.
+`canceled:true` confirms the fence. `id` is empty if no fact existed; `expired`
+is true only if this call expired a live fact. Retrying cancellation is safe.
+A later remember returns `operation_canceled` for an absent canceled key, or
+recovers the original expired identity when it already existed. Do not change
+keys to bypass withdrawal. Existing private facts remain outside remote scope.
+
+Operation cancellation uses canonical memory_expiry format v2. Older writers
+and readers reject such a brain; do not downgrade to a binary lacking support.
+Ordinary fact-ID expiry stays v1. Git/history bytes are retained, so cancellation
+is logical withdrawal, not physical purge. Check advertised support before
+relying on cancellation to close cross-system ingestion races.

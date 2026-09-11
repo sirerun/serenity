@@ -37,6 +37,9 @@ type MemoryFact struct {
 var ErrMemoryFactNotFound = errors.New("writer: no memory fact with this id")
 
 // ErrMemoryOperationConflict means a durable key was reused with different input.
+var ErrMemoryOperationCanceled = errors.New("writer: memory operation was canceled")
+var ErrMemoryScopeDenied = errors.New("writer: memory fact is outside remote scope")
+
 var ErrMemoryOperationConflict = errors.New("writer: memory operation key conflicts with prior input")
 
 // RememberInput is the durable half of a remember call -- already
@@ -109,6 +112,10 @@ func (w *MemoryFact) rememberLocked(input RememberInput, now time.Time) (Remembe
 			w.markSource(rec.SHA256)
 			w.markSource(rec.ExpirySHA256)
 			return RememberResult{Record: rec, Inserted: false}, nil
+		}
+		if sha, canceled := proj.OperationCancellation(input.OperationKey); canceled {
+			w.markSource(sha)
+			return RememberResult{}, ErrMemoryOperationCanceled
 		}
 	} else if dup, ok := proj.FindDuplicate(key, now); ok {
 		w.markSource(dup.SHA256)
@@ -240,4 +247,46 @@ func (w *MemoryFact) markSource(sha string) {
 	dir := w.Sources.DirFor(sha)
 	w.Queue.MarkTouched(filepath.Join(dir, "bytes"))
 	w.Queue.MarkTouched(filepath.Join(dir, "meta.yaml"))
+}
+
+// CancelRemoteOperation durably fences a key and expires any matching world
+// fact, without needing its body or an acknowledged fact ID. A later remember
+// cannot create a missing canceled operation. Existing facts still recover their
+// expired identity. The complete decision is serialized with Remember.
+func (w *MemoryFact) CancelRemoteOperation(key, reason string, now time.Time) (ForgetResult, error) {
+	if w.Queue == nil || w.Sources == nil || key == "" || !store.ValidMemoryOperationKey(key) {
+		return ForgetResult{}, fmt.Errorf("writer: invalid cancellation dependencies/key")
+	}
+	var result ForgetResult
+	res := w.Queue.Submit(Job{Render: func() ([]byte, error) {
+		proj, err := store.LoadMemoryProjection(w.Sources)
+		if err != nil {
+			return nil, err
+		}
+		for _, rec := range proj.All() {
+			if rec.Payload.OperationKey != key {
+				continue
+			}
+			if rec.Payload.Visibility != store.MemoryVisibilityWorld {
+				return nil, ErrMemoryScopeDenied
+			}
+			result.Record = rec
+			result.Expired = !rec.Expired(now)
+			break
+		}
+		if sha, canceled := proj.OperationCancellation(key); canceled {
+			w.markSource(sha)
+			result.Expired = false
+			return nil, nil
+		}
+		written, err := w.Sources.WriteMemoryExpiry(store.MemoryExpiryPayload{OperationKey: key, Reason: reason, ExpiredAt: now})
+		if written.SHA256 != "" {
+			w.markSource(written.SHA256)
+		}
+		return nil, err
+	}})
+	if res.Err != nil {
+		return ForgetResult{}, res.Err
+	}
+	return result, nil
 }

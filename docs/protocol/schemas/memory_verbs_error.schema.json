@@ -5,7 +5,12 @@
   "description": "internal/server/memory.VerbError -- the uniform error envelope MEMORY_VERBS v1's five verbs return in place of their own success response type whenever a call fails at the protocol layer (upstream-verbs.ts ERROR_SCHEMA, RFC 0001 section 8.1). suggestion is always populated.",
   "protocol_version": 1,
   "type": "object",
-  "required": ["protocol_version", "error", "message", "suggestion"],
+  "required": [
+    "protocol_version",
+    "error",
+    "message",
+    "suggestion"
+  ],
   "additionalProperties": false,
   "properties": {
     "protocol_version": {
@@ -23,7 +28,8 @@
         "scope_denied",
         "unavailable",
         "budget_unsatisfiable",
-        "internal"
+        "internal",
+        "operation_canceled"
       ]
     },
     "message": {
