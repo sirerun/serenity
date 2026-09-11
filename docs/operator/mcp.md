@@ -218,3 +218,19 @@ server. The generated plan-check hook remains usable while serve runs.
 This is a local cooperating-process guarantee, requiring supported binaries for
 all writers; it does not serialize arbitrary Git/filesystem edits or grant
 atomic snapshots to readers. See [ownership contract](../plans/cli-writer-ownership.md).
+
+### Fresh-write search readiness (pending release)
+
+`remember` returns `search_state`: `semantic` when the eligible fact has a vector
+under the configured pin, `lexical` when only keyword search is ready,
+`not_eligible` for excluded lifecycle/audience state, or `unavailable` when the
+search projection could not be established. These fields are optional for compatibility with older v1 servers; missing
+readiness means unknown. These describe search readiness,
+not acceptance or truth. Canonical storage success remains represented by the
+fact ID and status. Retry the same operation key to recover missing indexing.
+
+Configured embedding work runs under the writer queue with a ten-second context
+deadline; competing canonical mutations wait for that decision. Private and
+withdrawn sources do not enter the provider. With no embedding provider, the
+existing lexical behavior remains. No separate daemon restart or whole-brain
+extract pass is needed for a successfully indexed fresh write.

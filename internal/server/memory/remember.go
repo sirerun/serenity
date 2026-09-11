@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 	"unicode/utf8"
 
 	"github.com/sirerun/serenity/internal/index"
@@ -24,7 +25,8 @@ type rememberRequest struct {
 }
 
 type rememberResponse struct {
-	Expired         bool    `json:"expired"`
+	SearchState     string  `json:"search_state,omitempty"`
+	Expired         bool    `json:"expired,omitempty"`
 	ProtocolVersion int     `json:"protocol_version"`
 	ID              string  `json:"id"`
 	Status          string  `json:"status"` // inserted | duplicate | superseded
@@ -142,21 +144,32 @@ func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, boo
 		statusText = fmt.Sprintf("already knew this -- kept fact #%d", result.Record.Payload.LegacyID)
 	}
 
-	// Canonical bytes are already durable. A derived-index error must not turn
-	// this into an ambiguous failed write; the caller can rebuild the cache.
-	if !result.Record.Expired(now) {
-		cacheReady := false
-		if h.deps.Index != nil {
-			rec := result.Record
-			cacheReady = index.RefreshMemoryFact(ctx, h.deps.Root, rec.SHA256, h.deps.Index, now) == nil
+	// Canonical bytes are already durable. Search failure is a recoverable
+	// projection state, not an ambiguous failed canonical write.
+	searchState := "unavailable"
+	expired := result.Record.Expired(now)
+	if h.deps.Index != nil {
+		indexed := h.deps.Queue.Submit(writer.Job{Render: func() ([]byte, error) {
+			indexCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+			var indexErr error
+			searchState, expired, indexErr = index.RefreshMemoryFactSearch(indexCtx, h.deps.Root, result.Record.SHA256, h.deps.Index, h.deps.Embedder, h.deps.now)
+			return nil, indexErr
+		}})
+		if indexed.Err != nil {
+			if searchState == "unavailable" {
+				statusText += "; search cache unavailable, retry the same operation or stop the daemon and run serenity sync"
+			} else {
+				statusText += "; semantic indexing incomplete, retry the same operation to recover"
+			}
 		}
-		if !cacheReady {
-			statusText += "; search cache unavailable, run serenity sync to rebuild"
-		}
+	} else {
+		statusText += "; search cache unavailable, run serenity sync to rebuild"
 	}
 
 	return rememberResponse{
-		Expired:         result.Record.Expired(now),
+		SearchState:     searchState,
+		Expired:         expired,
 		ProtocolVersion: ProtocolVersion,
 		DegradedDedup:   true,
 		ID:              result.Record.SHA256,
