@@ -176,15 +176,24 @@ func loadServerConfig(root string) config.Server {
 // a failure there is a genuine infra problem and is returned as a hard
 // error, the same posture internal/cli/ask.go's own runAsk takes.
 func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, error) {
-	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	_, err := config.Load(filepath.Join(root, config.FileName))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "serve: %s is not a brain repo -- serving MCP transport with no MEMORY_VERBS tools\n", root)
 		return nil, nil, nil
 	}
 
+	owner, err := writer.AcquireBrain(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	// Re-read under ownership: config may have changed while recognizing the brain.
+	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	if err != nil {
+		return nil, nil, errors.Join(err, owner.Close())
+	}
 	eng, err := providers.OpenIndex(root)
 	if err != nil {
-		return nil, nil, fmt.Errorf("serve: open index: %w", err)
+		return nil, nil, errors.Join(fmt.Errorf("serve: open index: %w", err), owner.Close())
 	}
 	// The writer queue is this daemon's own owned resource (memory-compat-
 	// mapping.md coordinator refinement #2: "stdio serve must close its
@@ -194,7 +203,7 @@ func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, error
 	closeDeps := func() error {
 		q.Close()
 		_, flushErr := writer.Flush(q, root)
-		return errors.Join(flushErr, eng.Close())
+		return errors.Join(flushErr, eng.Close(), owner.Close())
 	}
 
 	ledger := &providers.IndexSpendLedger{Eng: eng}
