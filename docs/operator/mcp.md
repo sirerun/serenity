@@ -204,3 +204,17 @@ older binaries ignore this additive field and cannot enforce the contract.
 This extends exact retry under the existing single-queue constraint; it does
 not establish cross-process exclusion or an operation-status service. See
 [the recovery contract](../plans/keyed-memory-recovery.md).
+
+### Canonical writer ownership (pending release)
+
+One supported CLI process owns canonical writes to a brain at a time. A second
+server or mutating CLI command fails promptly with `another Serenity writer owns
+this brain`. The lock remains through shutdown and flush; process death releases
+it. Do not delete `.serenity/writer.lock` to bypass an owner. Stop the server
+before running sync, import, cron or other canonical CLI mutations, or use its
+existing MCP verbs where applicable. Multiple MCP clients can share one HTTP
+server. The generated plan-check hook remains usable while serve runs.
+
+This is a local cooperating-process guarantee, requiring supported binaries for
+all writers; it does not serialize arbitrary Git/filesystem edits or grant
+atomic snapshots to readers. See [ownership contract](../plans/cli-writer-ownership.md).
