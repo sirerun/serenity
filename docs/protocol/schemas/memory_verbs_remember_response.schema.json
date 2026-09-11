@@ -5,10 +5,11 @@
   "description": "internal/server/memory.RememberResponse.",
   "protocol_version": 1,
   "type": "object",
-  "required": ["expired", "protocol_version", "id", "status", "status_text", "entity_slug", "valid_until"],
+  "required": [ "protocol_version", "id", "status", "status_text", "entity_slug", "valid_until"],
   "additionalProperties": false,
   "properties": {
-    "expired": { "type": "boolean", "description": "Current TTL or withdrawal state; keyed retry never revives an expired record." },
+    "search_state": { "type": "string", "enum": ["unavailable", "not_eligible", "lexical", "semantic"], "description": "Optional current search readiness; absence on older v1 servers means unknown. Canonical success does not imply semantic indexing." },
+    "expired": { "type": "boolean", "description": "When true, the fact has expired or been withdrawn. Optional for v1 compatibility; absence alone does not prove active state on older servers." },
     "protocol_version": { "type": "integer", "const": 1 },
     "id": { "type": "string", "description": "Opaque fact id. On status=duplicate this is the EXISTING fact's id." },
     "status": {

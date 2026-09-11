@@ -515,3 +515,70 @@ func RefreshMemoryFact(ctx context.Context, root, sha string, eng *SQLite, now t
 	}
 	return tx.Commit()
 }
+
+// RefreshMemoryFactSearch indexes one immutable fact and, when configured,
+// embeds only that eligible source. The caller must hold its writer queue for
+// the complete call so a withdrawal cannot race the egress decision. Failure
+// leaves canonical storage untouched; lexical availability can still succeed.
+func RefreshMemoryFactSearch(ctx context.Context, root, sha string, eng *SQLite, embedder Embedder, clock func() time.Time) (state string, expired bool, err error) {
+	state = "unavailable"
+	now := clock()
+	proj, err := store.LoadMemoryProjection(store.NewSourceStore(root))
+	if err != nil {
+		return state, false, err
+	}
+	rec, ok := proj.Get(sha)
+	if !ok {
+		return state, false, fmt.Errorf("index: memory source not found")
+	}
+	expired = rec.Expired(now)
+	if err := RefreshMemoryFact(ctx, root, sha, eng, now); err != nil {
+		return state, expired, err
+	}
+	hit := Hit{ChunkRef: "fact:" + sha, EntitySlug: rec.Payload.EntitySlug, Text: rec.Payload.Fact, SourceSHA256: sha, Kind: store.SourceKindMemoryFact}
+	eligible, err := RetrievalEligibility(root, proj, true, true, now)
+	if err != nil {
+		return state, expired, err
+	}
+	if !eligible(hit) || rec.Expired(clock()) {
+		return "not_eligible", rec.Expired(clock()), nil
+	}
+	state = "lexical"
+	if embedder == nil {
+		return state, expired, nil
+	}
+	pin := embedder.ModelVersion()
+	has, err := eng.HasVector(ctx, hit.ChunkRef, pin)
+	if err != nil {
+		return state, expired, err
+	}
+	if rec.Expired(clock()) {
+		return "not_eligible", true, nil
+	}
+	if has {
+		return "semantic", false, nil
+	}
+	// Bound egress by remaining TTL as well as the caller's indexing deadline.
+	if rec.Payload.ValidUntil != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, rec.Payload.ValidUntil.Sub(clock()))
+		defer cancel()
+	}
+	if rec.Expired(clock()) {
+		return "not_eligible", true, nil
+	}
+	if ctx.Err() != nil {
+		return state, false, ctx.Err()
+	}
+	vec, err := embedder.Embed(ctx, hit.Text)
+	if rec.Expired(clock()) {
+		return "not_eligible", true, nil
+	}
+	if err != nil {
+		return state, expired, err
+	}
+	if err := eng.UpsertVector(ctx, hit.ChunkRef, pin, vec); err != nil {
+		return state, expired, err
+	}
+	return "semantic", expired, nil
+}
