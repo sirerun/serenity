@@ -310,10 +310,11 @@ capability only: it never writes, and it is not recall or entity -- it takes
 no query, no entity reference, and does no search or embedding-model call.
 
 The required `id` is the exact opaque `fact_id` remember/recall already
-return (`facts[].fact_id`), or the legacy numeric id as a decimal string --
-the same two forms forget accepts. Any other shape (a page slug, an entity
-reference, a truncated or wrong-case id, a search query) is rejected as
-`invalid_params` before any lookup runs.
+return (`facts[].fact_id`) -- 64 lowercase hex characters, and nothing else.
+Unlike forget, this brand-new tool carries no compatibility obligation to
+also accept the pre-v1 legacy decimal id, so it does not: a legacy id, a
+page slug, an entity reference, a truncated or wrong-case hex string, or a
+search query are all rejected as `invalid_params` before any lookup runs.
 
 A resolvable id returns that fact's live `fact`/`kind`/`visibility`/
 `entity_slug`/`provenance`/`valid_until` directly, reusing the same
@@ -327,6 +328,15 @@ An id that is unknown, private, TTL-expired, explicitly forgotten, or fenced
 by an operation-key cancellation all produce the exact same `unavailable`
 error -- deliberately: a caller must not learn, from the shape of a failure,
 that a private or withdrawn fact exists under a given id.
+
+There is no fact-text length limit to inherit (remember only bounds
+`provenance`, at 500 characters; imported facts can be much larger than an
+interactive request). Rather than silently truncate an "exact" read, this
+tool measures the fully serialized response -- escaping, multibyte content,
+and every field, not just the raw fact string -- against the same
+`mcp.MaxFrameBytes` bound this server's own transport already enforces on
+inbound frames. An eligible fact whose serialized response would exceed it
+returns `response_too_large` instead of a truncated or partial body.
 
 Schemas: [request](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_read_fact_request.schema.json)
 and [response](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_read_fact_response.schema.json).

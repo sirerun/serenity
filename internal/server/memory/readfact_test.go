@@ -31,11 +31,10 @@ func readMemoryFactByID(t *testing.T, h *Handlers, ctx context.Context, id strin
 	return v.(readMemoryFactResponse), VerbError{}, false
 }
 
-// TestReadMemoryFactExactAndLegacyID is this task's "exact vs fuzzy ids"
-// acc line, positive half: both exact-id forms remember/recall document
-// (the opaque fact_id and the legacy decimal id) resolve the SAME live
-// fact, with no search/entity fallback involved.
-func TestReadMemoryFactExactAndLegacyID(t *testing.T) {
+// TestReadMemoryFactExactID is this task's "exact vs fuzzy ids" acc line,
+// positive half: the exact opaque fact_id resolves the live fact, with no
+// search/entity fallback involved.
+func TestReadMemoryFactExactID(t *testing.T) {
 	h, _ := newTestHandlers(t)
 	ctx := context.Background()
 
@@ -57,9 +56,22 @@ func TestReadMemoryFactExactAndLegacyID(t *testing.T) {
 	if resp.ValidUntil != nil {
 		t.Fatalf("valid_until should be nil for a never-expiring fact: %+v", resp)
 	}
+}
 
-	recallResp, bad2, err := h.recall(ctx, mustMarshal(t, recallRequest{Entity: "people/exact-read-target"}))
-	if err != nil || bad2 {
+// TestReadMemoryFactRejectsLegacyID is root review point 1's own acc line:
+// this brand-new tool carries no compatibility obligation to accept the
+// pre-v1 legacy decimal id forget/recall still support, so even a REAL
+// legacy id for a REAL live fact (obtained here the same way a caller
+// would, via recall) must still be rejected as invalid_params -- proving
+// the restriction is not merely "no legacy-shaped string happens to
+// exist" but an actual, enforced scope narrowing.
+func TestReadMemoryFactRejectsLegacyID(t *testing.T) {
+	h, _ := newTestHandlers(t)
+	ctx := context.Background()
+	rem := mustRemember(t, h, ctx, rememberRequest{Fact: "legacy rejection probe", Provenance: "test", Entity: "people/legacy-rejection"})
+
+	recallResp, bad, err := h.recall(ctx, mustMarshal(t, recallRequest{Entity: "people/legacy-rejection"}))
+	if err != nil || bad {
 		t.Fatalf("recall: %v %+v", err, recallResp)
 	}
 	facts := recallResp.(recallResponse).Facts
@@ -68,35 +80,32 @@ func TestReadMemoryFactExactAndLegacyID(t *testing.T) {
 	}
 	legacyID := strconv.FormatInt(facts[0].ID, 10)
 
-	byLegacy, verbErr2, bad3 := readMemoryFactByID(t, h, ctx, legacyID)
-	if bad3 {
-		t.Fatalf("read by legacy id failed: %+v", verbErr2)
+	_, verbErr, bad2 := readMemoryFactByID(t, h, ctx, legacyID)
+	if !bad2 {
+		t.Fatalf("legacy id %q for a real live fact: want rejected, got a live response", legacyID)
 	}
-	if byLegacy.ID != rem.ID || byLegacy.Fact != "exact read target" {
-		t.Fatalf("legacy id resolved to a different fact: %+v", byLegacy)
+	if verbErr.Error != ErrCodeInvalidParams {
+		t.Fatalf("legacy id %q: error = %q, want %q", legacyID, verbErr.Error, ErrCodeInvalidParams)
 	}
 }
 
 // TestReadMemoryFactRejectsInvalidShapes is this task's "invalid ids" acc
-// line: anything that is not the opaque fact_id shape or the legacy
-// decimal shape is rejected with invalid_params before any lookup runs --
-// a page slug, an entity reference, a search-shaped string, a truncated or
-// wrong-case hex id, and a legacy id with a leading zero all count.
+// line: anything that is not the exact 64-lowercase-hex opaque fact_id
+// shape is rejected with invalid_params before any lookup runs.
 func TestReadMemoryFactRejectsInvalidShapes(t *testing.T) {
 	h, _ := newTestHandlers(t)
 	ctx := context.Background()
 	rem := mustRemember(t, h, ctx, rememberRequest{Fact: "shape probe", Provenance: "test"})
 
 	cases := map[string]string{
-		"empty":                  "",
-		"page_slug":              "people/alice",
-		"search_query":           "onboarding decision",
-		"truncated_sha":          rem.ID[:32],
-		"uppercase_sha":          strings.ToUpper(rem.ID),
-		"non_hex_chars":          "zz" + rem.ID[2:],
-		"legacy_leading_zero":    "01",
-		"legacy_too_many_digits": "99999999999999999999",
-		"path_traversal":         "../../etc/passwd",
+		"empty":          "",
+		"page_slug":      "people/alice",
+		"search_query":   "onboarding decision",
+		"truncated_sha":  rem.ID[:32],
+		"uppercase_sha":  strings.ToUpper(rem.ID),
+		"non_hex_chars":  "zz" + rem.ID[2:],
+		"legacy_decimal": "1",
+		"path_traversal": "../../etc/passwd",
 	}
 	for name, id := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -108,6 +117,30 @@ func TestReadMemoryFactRejectsInvalidShapes(t *testing.T) {
 				t.Fatalf("id %q: error = %q, want %q", id, verbErr.Error, ErrCodeInvalidParams)
 			}
 		})
+	}
+}
+
+// TestReadMemoryFactBoundedResponse is root review point 2's own acc line:
+// remember has no fact-text length limit (only provenance is bounded), so
+// an eligible fact can still serialize larger than this tool's own bound.
+// It must be refused outright -- never silently truncated -- and the
+// refusal itself must not leak the oversize content into the error text.
+func TestReadMemoryFactBoundedResponse(t *testing.T) {
+	h, _ := newTestHandlers(t)
+	ctx := context.Background()
+
+	oversizeFact := strings.Repeat("a", readMemoryFactMaxResponseBytes+1024)
+	rem := mustRemember(t, h, ctx, rememberRequest{Fact: oversizeFact, Provenance: "test"})
+
+	_, verbErr, bad := readMemoryFactByID(t, h, ctx, rem.ID)
+	if !bad {
+		t.Fatal("want the oversize fact refused, got a live response")
+	}
+	if verbErr.Error != ErrCodeResponseTooLarge {
+		t.Fatalf("error = %q, want %q", verbErr.Error, ErrCodeResponseTooLarge)
+	}
+	if strings.Contains(verbErr.Message, oversizeFact) || strings.Contains(verbErr.Suggestion, oversizeFact) {
+		t.Fatal("refusal must not echo the oversize content itself")
 	}
 }
 
