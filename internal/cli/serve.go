@@ -38,13 +38,25 @@ func newServeCmd() *cobra.Command {
 		if !stdio && !httpMode {
 			return fmt.Errorf("choose --stdio or --http to serve MCP")
 		}
+		profile, hasProfile, err := resolveCredentialProfile(cmd)
+		if err != nil {
+			return err
+		}
 		if stdio {
+			// stdio has no bearer-token authentication at all (RFC-BRAIN-AUTH-02:
+			// "profile+stdio must reject rather than imply HTTP authentication
+			// applies to stdio") -- a profile flag here would silently do nothing,
+			// which is worse than refusing.
+			if hasProfile {
+				return fmt.Errorf("--%s has no effect with --stdio: stdio has no bearer-token authentication to select a credential for", credentialProfileFlagName)
+			}
 			return runServeStdio(cmd)
 		}
-		return runServeHTTP(cmd)
+		return runServeHTTP(cmd, profile, hasProfile)
 	}}
 	cmd.Flags().Bool("stdio", false, "read and write newline-delimited MCP JSON-RPC")
 	cmd.Flags().Bool("http", false, "serve authenticated MCP Streamable HTTP at /mcp (RFC 0001 section 14)")
+	addCredentialProfileFlag(cmd)
 	cmd.MarkFlagsMutuallyExclusive("stdio", "http")
 	return cmd
 }
@@ -102,7 +114,14 @@ func runServeStdio(cmd *cobra.Command) (runErr error) {
 // 0001 section 14) wholesale -- no bespoke auth or listener path -- and
 // the exact same memoryTools registry construction --stdio uses, so a
 // client sees the same five MEMORY_VERBS tools over either transport.
-func runServeHTTP(cmd *cobra.Command) (runErr error) {
+//
+// profile/hasProfile come from --credential-profile (RFC-BRAIN-AUTH-02):
+// absent (hasProfile=false) is the exact legacy path, byte-for-byte; a
+// given profile is validated by resolveCredentialProfile before this is
+// ever called, so a malformed name never reaches here, but an
+// unprovisioned valid one still must fail closed below rather than fall
+// back to the legacy shared token.
+func runServeHTTP(cmd *cobra.Command, profile string, hasProfile bool) (runErr error) {
 	stderr := cmd.ErrOrStderr()
 	tools, closeDeps, err := memoryTools(flagRoot, stderr)
 	if err != nil {
@@ -116,11 +135,22 @@ func runServeHTTP(cmd *cobra.Command) (runErr error) {
 		return err
 	}
 
-	if _, err := secrets.DaemonToken(); err != nil {
-		return fmt.Errorf("serve --http: daemon auth token missing -- run `serenity init` first: %w", err)
+	var tokenSource func() (string, error)
+	if hasProfile {
+		if _, err := secrets.ProfileDaemonToken(profile); err != nil {
+			return fmt.Errorf("serve --http --%s %s: token missing -- run `serenity connect --%s %s --provision-token` first: %w", credentialProfileFlagName, profile, credentialProfileFlagName, profile, err)
+		}
+		tokenSource = func() (string, error) { return secrets.ProfileDaemonToken(profile) }
+	} else {
+		if _, err := secrets.DaemonToken(); err != nil {
+			return fmt.Errorf("serve --http: daemon auth token missing -- run `serenity init` first: %w", err)
+		}
+		tokenSource = secrets.DaemonToken
 	}
 
-	srv := server.New(server.FromBrainConfig(loadServerConfig(flagRoot)))
+	cfg := server.FromBrainConfig(loadServerConfig(flagRoot))
+	cfg.TokenSource = tokenSource
+	srv := server.New(cfg)
 	httpHandler := mcp.NewHTTPHandler(mcpServer)
 	srv.Handle("/mcp", httpHandler)
 	if err := srv.Listen(); err != nil {
