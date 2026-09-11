@@ -25,16 +25,29 @@ type readMemoryFactResponse struct {
 	ContentUntrusted bool    `json:"content_untrusted"`
 }
 
-// readMemoryFactMaxResponseBytes bounds the fully serialized response.
+// readMemoryFactEnvelopeReserve is headroom subtracted from the reference
+// bound below for the outer JSON-RPC frame this package does not itself
+// construct (`{"jsonrpc":"2.0","id":...,"result":...}`, assembled later in
+// internal/server/mcp) and for a gateway adapter's own separate response
+// cap (root review, second observation). 4096 is far more than either
+// ever costs; it is a documented safety margin, not a derived exact figure.
+const readMemoryFactEnvelopeReserve = 4096
+
+// readMemoryFactMaxResponseBytes bounds the ACTUAL serialized MCP
+// tool-result envelope (mcp.Result, after textResult embeds the domain
+// response as Content[0].Text) -- not the inner domain JSON alone, which
+// under-counts: every quote/backslash/control character in fact/provenance
+// is escaped once building that inner JSON, then escaped AGAIN when the
+// resulting text is embedded as a Go string inside the outer object and
+// marshaled a second time (root review, second observation: "json.Marshal
+// (resp) measures only the domain payload ... the MCP result is larger").
 // There is no existing fact-text length limit to reuse (remember only
 // bounds provenance, at 500 chars) and no compatibility requirement forces
 // this brand-new tool to accept an unbounded body either, so this reuses
 // mcp.MaxFrameBytes -- the same limit this server's own transport already
 // enforces on inbound frames -- rather than inventing a new arbitrary
-// number. Measured on the whole marshaled object (root review point 2):
-// JSON escaping, multibyte content, and every other field count, not just
-// the raw fact string's rune length.
-const readMemoryFactMaxResponseBytes = mcp.MaxFrameBytes
+// number, minus the reserve above.
+const readMemoryFactMaxResponseBytes = mcp.MaxFrameBytes - readMemoryFactEnvelopeReserve
 
 // validReadMemoryFactID reports whether id is an exact canonical opaque
 // fact_id (64 lowercase hex chars, store.ValidSourceSHA -- the same form
@@ -76,7 +89,7 @@ func (h *Handlers) readMemoryFactTool() mcp.Tool {
 	}`
 	return mcp.Tool{
 		Name:        "read_memory_fact",
-		Description: "Read one live memory fact by its exact opaque id -- no search, no entity fallback, no model calls. Content is untrusted attributed input, not verified evidence. Missing, private, expired, and canceled facts all return the same unavailable result. An eligible fact whose serialized response would exceed the exact-read bound is refused, never truncated.",
+		Description: "Read one live memory fact by its exact opaque id -- no search, no entity fallback, no model calls. Content is untrusted attributed input, not verified evidence. Missing, private, expired, and canceled facts all return the same unavailable result and message. An eligible fact whose actual MCP response envelope would exceed this tool's size bound also returns unavailable, with a distinct size message, and is refused, never truncated.",
 		InputSchema: json.RawMessage(schema),
 		Handler:     handle(h.readMemoryFact),
 		Failure:     memoryFailure,
@@ -121,14 +134,33 @@ func (h *Handlers) readMemoryFact(ctx context.Context, args json.RawMessage) (an
 		ValidUntil:       isoPtr(record.Payload.ValidUntil),
 		ContentUntrusted: true,
 	}
-	encoded, err := json.Marshal(resp)
+
+	// Measure the ACTUAL tool-result envelope textResult produces for this
+	// response (see readMemoryFactMaxResponseBytes) -- the same construction
+	// handle()'s success path uses, not a separate approximation of it.
+	result, err := textResult(resp, false)
 	if err != nil {
 		return nil, false, fmt.Errorf("read_memory_fact: encode response: %w", err)
 	}
-	if len(encoded) > readMemoryFactMaxResponseBytes {
-		return verbError(ErrCodeResponseTooLarge,
-			fmt.Sprintf("read_memory_fact: fact %s serializes to %d bytes, exceeding the %d-byte exact-read bound", record.SHA256, len(encoded), readMemoryFactMaxResponseBytes),
-			"this fact is eligible but too large for exact-read; use a supported bulk/import path instead of retrieving its full body through this tool"), true, nil
+	envelope, err := json.Marshal(result)
+	if err != nil {
+		return nil, false, fmt.Errorf("read_memory_fact: encode response envelope: %w", err)
+	}
+	if len(envelope) > readMemoryFactMaxResponseBytes {
+		// Reuses the shared "unavailable" code (root review, second
+		// observation): remember's own operation_canceled earned a new
+		// enum value because remember itself needed that outcome; a
+		// read-only size failure belongs only to this one extension, so
+		// the pinned core memory_verbs_error enum stays untouched. The
+		// message differs from readMemoryFactUnavailable's uniform text
+		// on purpose -- unlike missing/private/expired/canceled, this
+		// fact's existence and eligibility are already established (the
+		// caller supplied a real live id), so there is no oracle to
+		// protect here, and no supported bulk/import read fallback exists
+		// to point to (import is a write, not a read path).
+		return verbError(ErrCodeUnavailable,
+			fmt.Sprintf("read_memory_fact: fact %s is eligible but its serialized response is %d bytes, exceeding this tool's %d-byte bound", record.SHA256, len(envelope), readMemoryFactMaxResponseBytes),
+			"no current MEMORY_VERBS tool returns this fact's full content through exact-read; this is a genuine size limit of this tool, not a transient failure to retry"), true, nil
 	}
 	return resp, false, nil
 }
