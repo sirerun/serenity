@@ -7,8 +7,8 @@
   "properties": {
     "id": {
       "type": "string",
-      "pattern": "^([0-9a-f]{64}|[1-9][0-9]{0,15})$",
-      "description": "Exact opaque fact id from remember/recall (facts[].fact_id), or the legacy numeric id as a decimal string. Never a page slug, entity reference, or search query."
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Exact opaque fact id from remember/recall (facts[].fact_id). Never a page slug, entity reference, search query, or the legacy numeric id."
     }
   },
   "required": ["id"],
