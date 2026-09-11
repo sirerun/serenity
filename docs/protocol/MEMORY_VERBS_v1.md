@@ -300,3 +300,33 @@ back a brain containing cancellations to an incompatible reader/writer.
 
 Schemas: [request](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_cancel_operation_request.schema.json)
 and [response](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_cancel_operation_response.schema.json).
+
+## Optional Serenity extension: read_memory_fact
+
+The five pinned MEMORY_VERBS tools are unchanged. Serenity additionally
+advertises `read_memory_fact` through MCP tools/list. Discover it before
+relying on this extension; older servers do not implement it. This is a read
+capability only: it never writes, and it is not recall or entity -- it takes
+no query, no entity reference, and does no search or embedding-model call.
+
+The required `id` is the exact opaque `fact_id` remember/recall already
+return (`facts[].fact_id`), or the legacy numeric id as a decimal string --
+the same two forms forget accepts. Any other shape (a page slug, an entity
+reference, a truncated or wrong-case id, a search query) is rejected as
+`invalid_params` before any lookup runs.
+
+A resolvable id returns that fact's live `fact`/`kind`/`visibility`/
+`entity_slug`/`provenance`/`valid_until` directly, reusing the same
+audience/eligibility filter recall's own facts arm applies (remote callers
+see only active, world-visibility facts) -- never an index-only lookup that
+could resurrect withdrawn data. `content_untrusted` is always `true`: this is
+raw attributed input, never verified evidence or an accepted claim, and
+reading it never promotes it into one.
+
+An id that is unknown, private, TTL-expired, explicitly forgotten, or fenced
+by an operation-key cancellation all produce the exact same `unavailable`
+error -- deliberately: a caller must not learn, from the shape of a failure,
+that a private or withdrawn fact exists under a given id.
+
+Schemas: [request](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_read_fact_request.schema.json)
+and [response](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_read_fact_response.schema.json).
