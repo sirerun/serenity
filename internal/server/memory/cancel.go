@@ -25,7 +25,10 @@ type cancelOperationResponse struct {
 // ExtensionTools are additive Serenity capabilities, separate from the pinned
 // five-verb MEMORY_VERBS v1 surface returned by Tools.
 func (h *Handlers) ExtensionTools() []mcp.Tool {
-	return []mcp.Tool{{Name: "cancel_memory_operation", Description: "Durably cancel a memory operation key, including a missing or unacknowledged write. Never replay a revoked body to recover its ID.", InputSchema: json.RawMessage(`{"type":"object","properties":{"operation_key":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9_.:-]+$"},"reason":{"type":"string"}},"required":["operation_key"],"additionalProperties":false}`), Handler: handle(h.cancelOperation), Failure: memoryFailure}}
+	return []mcp.Tool{
+		{Name: "cancel_memory_operation", Description: "Durably cancel a memory operation key, including a missing or unacknowledged write. Never replay a revoked body to recover its ID.", InputSchema: json.RawMessage(`{"type":"object","properties":{"operation_key":{"type":"string","minLength":1,"maxLength":128,"pattern":"^[A-Za-z0-9_.:-]+$"},"reason":{"type":"string"}},"required":["operation_key"],"additionalProperties":false}`), Handler: handle(h.cancelOperation), Failure: memoryFailure},
+		h.readMemoryFactTool(),
+	}
 }
 
 func (h *Handlers) cancelOperation(ctx context.Context, args json.RawMessage) (any, bool, error) {

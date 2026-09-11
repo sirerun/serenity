@@ -87,6 +87,8 @@ var Registry = []Entry{
 	{"memory_verbs", "cancel_operation_response", "memory_extensions_cancel_operation_response.schema.json", reflect.TypeOf(memory.CancelOperationResponse{})},
 	{"memory_verbs", "forget_request", "memory_verbs_forget_request.schema.json", reflect.TypeOf(memory.ForgetRequest{})},
 	{"memory_verbs", "forget_response", "memory_verbs_forget_response.schema.json", reflect.TypeOf(memory.ForgetResponse{})},
+	{"memory_verbs", "read_memory_fact_request", "memory_extensions_read_fact_request.schema.json", reflect.TypeOf(memory.ReadMemoryFactRequest{})},
+	{"memory_verbs", "read_memory_fact_response", "memory_extensions_read_fact_response.schema.json", reflect.TypeOf(memory.ReadMemoryFactResponse{})},
 	{"memory_verbs", "error", "memory_verbs_error.schema.json", reflect.TypeOf(memory.VerbError{})},
 
 	{"disposition", "item", "disposition_item.schema.json", reflect.TypeOf(coredisp.Item{})},

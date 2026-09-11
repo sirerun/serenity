@@ -18,4 +18,6 @@ type (
 	CancelOperationResponse = cancelOperationResponse
 	ForgetRequest           = forgetRequest
 	ForgetResponse          = forgetResponse
+	ReadMemoryFactRequest   = readMemoryFactRequest
+	ReadMemoryFactResponse  = readMemoryFactResponse
 )

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_read_fact_response.schema.json",
+  "title": "Exact memory fact read response",
+  "description": "internal/server/memory.ReadMemoryFactResponse. Live-only: a missing, private, expired, or canceled fact instead returns the shared memory_verbs error envelope with error=\"unavailable\", never a distinct shape per reason.",
+  "protocol_version": 1,
+  "type": "object",
+  "required": [
+    "protocol_version",
+    "id",
+    "fact",
+    "kind",
+    "visibility",
+    "entity_slug",
+    "provenance",
+    "valid_until",
+    "content_untrusted"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "type": "integer", "const": 1 },
+    "id": { "type": "string", "description": "The opaque fact_id (SHA256) -- the canonical form, regardless of which valid id shape the request used." },
+    "fact": { "type": "string" },
+    "kind": { "type": "string", "enum": ["event", "preference", "commitment", "belief", "fact"] },
+    "visibility": {
+      "type": "string",
+      "enum": ["world", "private"],
+      "description": "Always \"world\": a private fact is reported unavailable, never returned."
+    },
+    "entity_slug": { "type": ["string", "null"] },
+    "provenance": { "type": "string" },
+    "valid_until": { "type": ["string", "null"] },
+    "content_untrusted": {
+      "type": "boolean",
+      "const": true,
+      "description": "Always true: raw attributed input, never verified evidence or an accepted claim."
+    }
+  }
+}
