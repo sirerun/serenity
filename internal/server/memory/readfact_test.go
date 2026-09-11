@@ -275,14 +275,21 @@ func TestReadMemoryFactNoProviderCall(t *testing.T) {
 	ctx := context.Background()
 
 	rem := mustRemember(t, h, ctx, rememberRequest{Fact: "no provider probe", Provenance: "test"})
+	// remember's OWN search-indexing pipeline legitimately calls the
+	// embedder (index.RefreshMemoryFactSearch) when an index is configured
+	// -- that is unrelated to read_memory_fact and out of this test's
+	// scope. Baseline after remember, then assert the READ itself adds no
+	// further calls, rather than asserting zero calls across the whole
+	// test (which would also fail on remember's own unrelated behavior).
+	embedBefore, composeBefore := embedCalls.Load(), composeCalls.Load()
 	if _, verbErr, bad := readMemoryFactByID(t, h, ctx, rem.ID); bad {
 		t.Fatalf("read: %+v", verbErr)
 	}
-	if n := embedCalls.Load(); n != 0 {
-		t.Fatalf("embedder called %d times, want 0", n)
+	if n := embedCalls.Load() - embedBefore; n != 0 {
+		t.Fatalf("read_memory_fact called the embedder %d times, want 0", n)
 	}
-	if n := composeCalls.Load(); n != 0 {
-		t.Fatalf("composer called %d times, want 0", n)
+	if n := composeCalls.Load() - composeBefore; n != 0 {
+		t.Fatalf("read_memory_fact called the composer %d times, want 0", n)
 	}
 }
 
