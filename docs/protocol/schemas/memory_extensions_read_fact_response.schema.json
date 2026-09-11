@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_read_fact_response.schema.json",
   "title": "Exact memory fact read response",
-  "description": "internal/server/memory.ReadMemoryFactResponse. Live-only: a missing, private, expired, or canceled fact instead returns the shared memory_verbs error envelope with error=\"unavailable\", never a distinct shape per reason. An eligible fact whose fully serialized response would exceed the exact-read bound instead returns error=\"response_too_large\", never a truncated body.",
+  "description": "internal/server/memory.ReadMemoryFactResponse. Live-only: a missing, private, expired, or canceled fact instead returns the shared memory_verbs error envelope with error=\"unavailable\" and one uniform message/suggestion, never a distinct shape per reason. An eligible fact whose ACTUAL serialized MCP tool-result envelope (not just the inner domain JSON) would exceed this tool's own bound also returns error=\"unavailable\", but with a distinct, documented size message -- never a truncated body, and never a new shared error code.",
   "protocol_version": 1,
   "type": "object",
   "required": [

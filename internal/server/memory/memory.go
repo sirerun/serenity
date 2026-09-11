@@ -48,11 +48,6 @@ const (
 	ErrCodeUnavailable         = "unavailable"
 	ErrCodeBudgetUnsatisfiable = "budget_unsatisfiable" // reserved -- never emitted
 	ErrCodeInternal            = "internal"
-	// ErrCodeResponseTooLarge is read_memory_fact's own extension code
-	// (root review point 2): an eligible fact whose fully serialized
-	// response exceeds readMemoryFactMaxResponseBytes is refused this way,
-	// never silently truncated.
-	ErrCodeResponseTooLarge = "response_too_large"
 )
 
 // VerbError is MEMORY_VERBS v1's uniform error envelope (upstream-verbs.ts

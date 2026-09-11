@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -120,27 +121,83 @@ func TestReadMemoryFactRejectsInvalidShapes(t *testing.T) {
 	}
 }
 
-// TestReadMemoryFactBoundedResponse is root review point 2's own acc line:
-// remember has no fact-text length limit (only provenance is bounded), so
-// an eligible fact can still serialize larger than this tool's own bound.
-// It must be refused outright -- never silently truncated -- and the
-// refusal itself must not leak the oversize content into the error text.
+// TestReadMemoryFactBoundedResponse is root review's own acc line, now
+// corrected twice: remember has no fact-text length limit (only provenance
+// is bounded), so an eligible fact can still serialize larger than this
+// tool's own bound. Root's second interim observation named a specific
+// prior bug: measuring only json.Marshal(resp) (the inner domain object)
+// under-counts the real bound, because textResult then embeds that JSON as
+// a Go string inside mcp.Result.Content[0].Text, and every quote/backslash
+// in it gets escaped a SECOND time when the outer envelope is marshaled.
+// This proves the fix by picking a fact built from a quote/backslash/
+// control-character/multibyte unit, sized so the (wrong) inner-only size
+// still fits the bound -- reproducing the exact prior bug's blind spot --
+// while the REAL mcp.Result envelope, produced by calling the actual
+// registered tool handler (not the h.readMemoryFact bypass every other
+// case in this file uses), does not.
 func TestReadMemoryFactBoundedResponse(t *testing.T) {
 	h, _ := newTestHandlers(t)
 	ctx := context.Background()
 
-	oversizeFact := strings.Repeat("a", readMemoryFactMaxResponseBytes+1024)
-	rem := mustRemember(t, h, ctx, rememberRequest{Fact: oversizeFact, Provenance: "test"})
+	// A quote and a backslash each double their already-escaped length a
+	// second time on re-embedding (`\"` -> `\\\"`); a control character
+	// (newline) and a multibyte rune (CJK, 3 UTF-8 bytes) do not grow the
+	// same way, so mixing all four isolates the double-escaping gap
+	// specifically instead of just being "big."
+	const unit = "\"\\\n世"
+	const repeats = 100000
+	fact := strings.Repeat(unit, repeats)
+	rem := mustRemember(t, h, ctx, rememberRequest{Fact: fact, Provenance: "test"})
 
-	_, verbErr, bad := readMemoryFactByID(t, h, ctx, rem.ID)
-	if !bad {
-		t.Fatal("want the oversize fact refused, got a live response")
+	// The inner-only measurement root's review found insufficient: the
+	// exact domain response a live read produces, marshaled alone. This
+	// must still report "fits" -- proving the scenario actually reproduces
+	// the prior bug's blind spot, not a straw man.
+	inner := readMemoryFactResponse{
+		ProtocolVersion:  ProtocolVersion,
+		ID:               rem.ID,
+		Fact:             fact,
+		Kind:             "fact",
+		Visibility:       "world",
+		Provenance:       "test",
+		ContentUntrusted: true,
 	}
-	if verbErr.Error != ErrCodeResponseTooLarge {
-		t.Fatalf("error = %q, want %q", verbErr.Error, ErrCodeResponseTooLarge)
+	innerBytes, err := json.Marshal(inner)
+	if err != nil {
+		t.Fatalf("marshal expected inner response: %v", err)
 	}
-	if strings.Contains(verbErr.Message, oversizeFact) || strings.Contains(verbErr.Suggestion, oversizeFact) {
+	if len(innerBytes) > readMemoryFactMaxResponseBytes {
+		t.Fatalf("test setup: inner-only size %d already exceeds the bound %d -- this no longer isolates the double-escaping gap", len(innerBytes), readMemoryFactMaxResponseBytes)
+	}
+
+	// The real call, through the actual registered mcp.Tool.Handler --
+	// the same Content[0].Text construction production uses, not a
+	// bypass of it.
+	tool := h.readMemoryFactTool()
+	result, err := tool.Handler(ctx, mustMarshal(t, map[string]string{"id": rem.ID}))
+	if err != nil {
+		t.Fatalf("read_memory_fact handler: unexpected transport error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("want the real envelope refused (inner-only was %d bytes, fits in the %d-byte bound), got a live response", len(innerBytes), readMemoryFactMaxResponseBytes)
+	}
+	if len(result.Content) != 1 || result.Content[0].Type != "text" {
+		t.Fatalf("unexpected result shape: %+v", result)
+	}
+
+	var verbErr VerbError
+	if err := json.Unmarshal([]byte(result.Content[0].Text), &verbErr); err != nil {
+		t.Fatalf("decode error envelope: %v", err)
+	}
+	if verbErr.Error != ErrCodeUnavailable {
+		t.Fatalf("error = %q, want %q (reused, not a new core error code)", verbErr.Error, ErrCodeUnavailable)
+	}
+	if strings.Contains(verbErr.Message, unit) || strings.Contains(verbErr.Suggestion, unit) {
 		t.Fatal("refusal must not echo the oversize content itself")
+	}
+	lower := strings.ToLower(verbErr.Message + " " + verbErr.Suggestion)
+	if strings.Contains(lower, "bulk") || strings.Contains(lower, "import") {
+		t.Fatal("refusal must not claim an unsupported bulk/import read fallback")
 	}
 }
 

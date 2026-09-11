@@ -332,11 +332,20 @@ that a private or withdrawn fact exists under a given id.
 There is no fact-text length limit to inherit (remember only bounds
 `provenance`, at 500 characters; imported facts can be much larger than an
 interactive request). Rather than silently truncate an "exact" read, this
-tool measures the fully serialized response -- escaping, multibyte content,
-and every field, not just the raw fact string -- against the same
-`mcp.MaxFrameBytes` bound this server's own transport already enforces on
-inbound frames. An eligible fact whose serialized response would exceed it
-returns `response_too_large` instead of a truncated or partial body.
+tool measures the ACTUAL serialized MCP tool-result envelope -- after the
+domain response is embedded (and re-escaped) as `Content[0].Text`, not just
+the inner domain JSON, which under-counts every quote/backslash/control
+character in `fact`/`provenance` by ignoring that second escaping pass --
+against the same `mcp.MaxFrameBytes` bound this server's own transport
+already enforces on inbound frames, less a fixed reserve for the outer
+JSON-RPC frame and a gateway adapter's own separate cap. An eligible fact
+whose real envelope would exceed it still returns `unavailable` (no new
+shared error code -- this is a read-only, extension-local outcome, unlike
+`operation_canceled`, which remember itself needed), but with a distinct,
+documented size message rather than the uniform missing/private/expired/
+canceled text, and it never truncates the body. There is currently no
+supported bulk/import path this tool falls back to for such a fact --
+`serenity import` is a write, not a read.
 
 Schemas: [request](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_read_fact_request.schema.json)
 and [response](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_read_fact_response.schema.json).

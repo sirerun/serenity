@@ -29,8 +29,7 @@
         "unavailable",
         "budget_unsatisfiable",
         "internal",
-        "operation_canceled",
-        "response_too_large"
+        "operation_canceled"
       ]
     },
     "message": {
