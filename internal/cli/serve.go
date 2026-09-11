@@ -15,10 +15,16 @@ import (
 
 	"github.com/sirerun/serenity/internal/compose"
 	"github.com/sirerun/serenity/internal/config"
+	"github.com/sirerun/serenity/internal/direction"
+	coredisposition "github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/embed"
+	"github.com/sirerun/serenity/internal/events"
+	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/secrets"
 	"github.com/sirerun/serenity/internal/server"
+	serverdirection "github.com/sirerun/serenity/internal/server/direction"
+	serverdisposition "github.com/sirerun/serenity/internal/server/disposition"
 	"github.com/sirerun/serenity/internal/server/mcp"
 	"github.com/sirerun/serenity/internal/server/memory"
 	"github.com/sirerun/serenity/internal/store"
@@ -53,7 +59,7 @@ func newServeCmd() *cobra.Command {
 // newline-delimited JSON-RPC transport over the process's own stdin/
 // stdout, unchanged by T4.21.
 func runServeStdio(cmd *cobra.Command) (runErr error) {
-	tools, closeDeps, err := memoryTools(flagRoot, cmd.ErrOrStderr())
+	tools, closeDeps, _, _, err := memoryTools(flagRoot, cmd.ErrOrStderr())
 	if err != nil {
 		return err
 	}
@@ -97,14 +103,15 @@ func runServeStdio(cmd *cobra.Command) (runErr error) {
 }
 
 // runServeHTTP is `serenity serve --http` (T4.21): the authenticated MCP
-// Streamable HTTP transport at /mcp. It reuses internal/server's existing
+// Streamable HTTP transport at /mcp plus the existing DISPOSITION and
+// DIRECTION handlers. It reuses internal/server's existing
 // loopback-by-default listener with bearer auth and optional mTLS (RFC
 // 0001 section 14) wholesale -- no bespoke auth or listener path -- and
 // the exact same memoryTools registry construction --stdio uses, so a
 // client sees the same five MEMORY_VERBS tools over either transport.
 func runServeHTTP(cmd *cobra.Command) (runErr error) {
 	stderr := cmd.ErrOrStderr()
-	tools, closeDeps, err := memoryTools(flagRoot, stderr)
+	tools, closeDeps, eng, q, err := memoryTools(flagRoot, stderr)
 	if err != nil {
 		return err
 	}
@@ -123,6 +130,11 @@ func runServeHTTP(cmd *cobra.Command) (runErr error) {
 	srv := server.New(server.FromBrainConfig(loadServerConfig(flagRoot)))
 	httpHandler := mcp.NewHTTPHandler(mcpServer)
 	srv.Handle("/mcp", httpHandler)
+	if eng != nil && q != nil {
+		dispositionStore := coredisposition.NewStore(eng)
+		serverdirection.New(direction.NewStore(flagRoot, q), dispositionStore, flagRoot).Register(srv)
+		serverdisposition.New(dispositionStore, events.NewStore(eng)).Register(srv)
+	}
 	if err := srv.Listen(); err != nil {
 		return fmt.Errorf("serve --http: %w", err)
 	}
@@ -175,16 +187,16 @@ func loadServerConfig(root string) config.Server {
 // its derived index for real (providers.OpenIndex) is no longer optional:
 // a failure there is a genuine infra problem and is returned as a hard
 // error, the same posture internal/cli/ask.go's own runAsk takes.
-func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, error) {
+func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, *index.SQLite, *writer.Queue, error) {
 	cfg, err := config.Load(filepath.Join(root, config.FileName))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "serve: %s is not a brain repo -- serving MCP transport with no MEMORY_VERBS tools\n", root)
-		return nil, nil, nil
+		return nil, nil, nil, nil, nil
 	}
 
 	eng, err := providers.OpenIndex(root)
 	if err != nil {
-		return nil, nil, fmt.Errorf("serve: open index: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("serve: open index: %w", err)
 	}
 	// The writer queue is this daemon's own owned resource (memory-compat-
 	// mapping.md coordinator refinement #2: "stdio serve must close its
@@ -227,7 +239,7 @@ func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, error
 		Fence:                   store.NewFenceWriter(root),
 		Shard:                   store.NewShardStore(root),
 	}
-	return memory.New(deps).Tools(), closeDeps, nil
+	return memory.New(deps).Tools(), closeDeps, eng, q, nil
 }
 
 // Inherited stdin/stdout may be blocking descriptors outside Go's runtime poller.

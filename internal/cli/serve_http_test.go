@@ -91,13 +91,13 @@ func (s *syncBuffer) String() string {
 
 // TestServeHTTPEndToEnd drives the real `serenity serve --http` process
 // entry point (in-process, over a real TCP loopback listener) through
-// initialize/tools-list, an unauthenticated-request rejection, and a
-// persistent remember/recall/forget round trip on a throwaway brain, then
-// a clean shutdown. This is the CLI-level acc line: "the actual serve
-// command starts on configured loopback port zero and reports its bound
-// endpoint without secrets" plus the round-trip and auth acc lines,
-// exercised through the real command rather than internal/server/mcp's
-// own unit-level HTTPHandler tests.
+// initialize/tools-list, authenticated DIRECTION/DISPOSITION route
+// registration, an unauthenticated-request rejection, and a persistent
+// remember/recall/forget round trip on a throwaway brain, then a clean
+// shutdown. This is the CLI-level acc line: "the actual serve command
+// starts on configured loopback port zero and reports its bound endpoint
+// without secrets" plus the round-trip, protocol-route and auth acc lines,
+// exercised through the real command rather than package-level handlers.
 func TestServeHTTPEndToEnd(t *testing.T) {
 	requireGit(t)
 	root := pushFixture(t)
@@ -171,6 +171,36 @@ func TestServeHTTPEndToEnd(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated initialize: status = %d, want 401", resp.StatusCode)
+	}
+
+	baseEndpoint := strings.TrimSuffix(endpoint, "/mcp")
+	for _, route := range []string{"/direction/brief", "/disposition/list_pending"} {
+		unauthReq, err := http.NewRequest(http.MethodGet, baseEndpoint+route, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		unauthResp, err := http.DefaultClient.Do(unauthReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = unauthResp.Body.Close()
+		if unauthResp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("unauthenticated %s: status = %d, want 401", route, unauthResp.StatusCode)
+		}
+
+		authReq, err := http.NewRequest(http.MethodGet, baseEndpoint+route, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		authReq.Header.Set("Authorization", "Bearer "+token)
+		authResp, err := http.DefaultClient.Do(authReq)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = authResp.Body.Close()
+		if authResp.StatusCode == http.StatusNotFound {
+			t.Fatalf("authenticated %s was not registered", route)
+		}
 	}
 
 	status, header, reply := post("", nil, `{"jsonrpc":"2.0","id":"init","method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}`)
