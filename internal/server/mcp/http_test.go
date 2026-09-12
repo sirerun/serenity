@@ -503,3 +503,58 @@ func TestHTTPCloseJoinsInFlightWork(t *testing.T) {
 		t.Fatal("Close did not join the in-flight call's goroutine")
 	}
 }
+
+func TestHTTPMetricsTrackCallLifecycle(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	tools := []mcp.Tool{{Name: "block", InputSchema: json.RawMessage(`{"type":"object"}`), Handler: func(context.Context, json.RawMessage) (mcp.Result, error) {
+		close(started)
+		<-release
+		return mcp.Result{Content: []mcp.Content{{Type: "text", Text: "ok"}}}, nil
+	}}}
+	srv, err := mcp.New("test", tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mcp.NewHTTPHandler(srv)
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	t.Cleanup(h.Close)
+	c := &httpClient{t: t, srv: ts}
+	c.initialize()
+	req, err := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"block"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(mcp.SessionIDHeader, c.sessionID)
+	req.Header.Set(mcp.ProtocolVersionHeader, mcp.ProtocolVersion)
+	respCh := make(chan *http.Response, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		resp, requestErr := http.DefaultClient.Do(req)
+		if requestErr != nil {
+			errCh <- requestErr
+			return
+		}
+		respCh <- resp
+	}()
+	<-started
+	metrics := h.Metrics()
+	if metrics.ActiveCalls != 1 || metrics.CallsStarted != 1 || metrics.CallsFinished != 0 {
+		t.Fatalf("in-flight metrics = %+v, want one active unfinished call", metrics)
+	}
+	close(release)
+	select {
+	case err := <-errCh:
+		t.Fatal(err)
+	case resp := <-respCh:
+		_ = resp.Body.Close()
+	case <-time.After(3 * time.Second):
+		t.Fatal("blocked HTTP call did not finish")
+	}
+	metrics = h.Metrics()
+	if metrics.ActiveCalls != 0 || metrics.CallsFinished != 1 || metrics.CallsCanceled != 0 || metrics.CallLatencyNanos == 0 {
+		t.Fatalf("finished metrics = %+v, want one completed call with latency", metrics)
+	}
+}
