@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -634,5 +635,65 @@ func TestHTTPMetricsTrackRejectedSessions(t *testing.T) {
 	}
 	if got := h.Metrics().SessionsRejected; got != 1 {
 		t.Fatalf("SessionsRejected = %d, want 1", got)
+	}
+}
+
+func TestHTTPProcessWideAdmissionRejectsAndReleasesOnCancellation(t *testing.T) {
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	var calls atomic.Int32
+	tools := []mcp.Tool{{Name: "work", InputSchema: json.RawMessage(`{"type":"object"}`), Handler: func(ctx context.Context, _ json.RawMessage) (mcp.Result, error) {
+		if calls.Add(1) == 1 {
+			close(started)
+			<-ctx.Done()
+			close(finished)
+			return mcp.Result{}, ctx.Err()
+		}
+		return mcp.Result{Content: []mcp.Content{{Type: "text", Text: "ok"}}}, nil
+	}}}
+	srv, err := mcp.New("test", tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mcp.NewHTTPHandlerWithConfig(srv, mcp.HTTPConfig{MaxInFlightCalls: 1})
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	t.Cleanup(h.Close)
+	first := &httpClient{t: t, srv: ts}
+	second := &httpClient{t: t, srv: ts}
+	first.initialize()
+	second.initialize()
+
+	call := func(c *httpClient, id int) chan postResult {
+		out := make(chan postResult, 1)
+		go func() {
+			out <- c.post(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"tools/call","params":{"name":"work","arguments":{}}}`, id))
+		}()
+		return out
+	}
+	firstCall := call(first, 1)
+	<-started
+	if rejected := second.post(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"work","arguments":{}}}`); rejected.status != http.StatusOK || errCode(t, rejected) != -32029 {
+		t.Fatalf("overloaded call = status %d body %s, want JSON-RPC -32029", rejected.status, rejected.raw)
+	}
+	if cancelled := first.post(`{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}`); cancelled.status != http.StatusAccepted {
+		t.Fatalf("cancel notification status = %d, want 202", cancelled.status)
+	}
+	select {
+	case <-finished:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled call did not finish")
+	}
+	select {
+	case <-firstCall:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled HTTP call did not return")
+	}
+	if admitted := second.post(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"work","arguments":{}}}`); admitted.status != http.StatusOK || strings.Contains(string(admitted.raw), `"code":-32029`) {
+		t.Fatalf("post-cancellation call was not admitted: status %d body %s", admitted.status, admitted.raw)
+	}
+	metrics := h.Metrics()
+	if metrics.CallsRejected != 1 || metrics.CallsCanceled != 1 || metrics.CallsFinished != 2 || metrics.ActiveCalls != 0 {
+		t.Fatalf("admission metrics = %+v, want one rejection, one cancellation, two finishes", metrics)
 	}
 }
