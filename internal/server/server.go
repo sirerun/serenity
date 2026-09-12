@@ -37,6 +37,16 @@ const DefaultBind = "127.0.0.1:0"
 // finish once its context is canceled.
 const shutdownGrace = 5 * time.Second
 
+// HTTP transport limits keep slow or oversized clients from consuming an
+// unbounded amount of connection state. WriteTimeout is intentionally left
+// unset: MCP/tool requests may legitimately run longer than a transport
+// timeout, and cancellation remains the handler's responsibility.
+const (
+	readHeaderTimeout = 5 * time.Second
+	idleTimeout       = 2 * time.Minute
+	maxHeaderBytes    = 1 << 20
+)
+
 // Config configures the HTTP transport.
 type Config struct {
 	// Bind is the listen address ("host:port"). Empty selects
@@ -168,7 +178,12 @@ func (s *Server) Listen() error {
 	}
 
 	s.listener = ln
-	s.httpSrv = &http.Server{Handler: s.mux}
+	s.httpSrv = &http.Server{
+		Handler:           s.mux,
+		ReadHeaderTimeout: readHeaderTimeout,
+		IdleTimeout:       idleTimeout,
+		MaxHeaderBytes:    maxHeaderBytes,
+	}
 	return nil
 }
 

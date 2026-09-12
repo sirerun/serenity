@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +52,26 @@ func TestListenAcceptsLoopback(t *testing.T) {
 		if err := s.Close(); err != nil {
 			t.Fatalf("bind %q: Close err = %v", bind, err)
 		}
+	}
+}
+
+func TestListenConfiguresHTTPResourceLimits(t *testing.T) {
+	s := New(Config{Bind: "127.0.0.1:0", TokenSource: func() (string, error) { return "t", nil }})
+	if err := s.Listen(); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	if got := s.httpSrv.ReadHeaderTimeout; got != readHeaderTimeout {
+		t.Fatalf("ReadHeaderTimeout = %s, want %s", got, readHeaderTimeout)
+	}
+	if got := s.httpSrv.IdleTimeout; got != idleTimeout {
+		t.Fatalf("IdleTimeout = %s, want %s", got, idleTimeout)
+	}
+	if got := s.httpSrv.MaxHeaderBytes; got != maxHeaderBytes {
+		t.Fatalf("MaxHeaderBytes = %d, want %d", got, maxHeaderBytes)
+	}
+	if got := s.httpSrv.WriteTimeout; got != 0 {
+		t.Fatalf("WriteTimeout = %s, want zero for long-running tool calls", got)
 	}
 }
 
@@ -103,6 +124,61 @@ func startTestServer(t *testing.T, tokenSource func() (string, error)) (baseURL 
 		}
 	})
 	return "http://" + s.Addr()
+}
+
+func TestLongHandlerCallSurvivesTransportLimits(t *testing.T) {
+	const token = "long-call-token"
+	s := New(Config{Bind: "127.0.0.1:0", TokenSource: func() (string, error) { return token, nil }})
+	s.Handle("/v1/long", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(150 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	if err := s.Listen(); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ctx) }()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(8 * time.Second):
+			t.Fatal("server did not shut down")
+		}
+	}()
+	req, err := http.NewRequest(http.MethodGet, "http://"+s.Addr()+"/v1/long", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("long request: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("long request status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestOversizedHeaderRejectedByRealListener(t *testing.T) {
+	const token = "header-limit-token"
+	base := startTestServer(t, func() (string, error) { return token, nil })
+	req, err := http.NewRequest(http.MethodGet, base+"/v1/ping", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Overlarge", strings.Repeat("a", 2*maxHeaderBytes))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("oversized-header request: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusRequestHeaderFieldsTooLarge {
+		t.Fatalf("oversized-header status = %d, want %d", resp.StatusCode, http.StatusRequestHeaderFieldsTooLarge)
+	}
 }
 
 func get(t *testing.T, url, token string) *http.Response {
