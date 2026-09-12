@@ -83,6 +83,9 @@ type Server struct {
 	// required alongside ClientCAFile for mTLS.
 	ServerCertFile string `yaml:"server_cert_file,omitempty"`
 	ServerKeyFile  string `yaml:"server_key_file,omitempty"`
+	// MaxInFlightCalls bounds concurrent MCP tool calls for this daemon's
+	// HTTP handler. Zero uses the transport default.
+	MaxInFlightCalls int `yaml:"max_in_flight_calls,omitempty"`
 }
 
 type Config struct {

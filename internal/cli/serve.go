@@ -154,10 +154,11 @@ func runServeHTTP(cmd *cobra.Command, profile string, hasProfile bool) (runErr e
 		tokenSource = secrets.DaemonToken
 	}
 
-	cfg := server.FromBrainConfig(loadServerConfig(flagRoot))
+	serverConfig := loadServerConfig(flagRoot)
+	cfg := server.FromBrainConfig(serverConfig)
 	cfg.TokenSource = tokenSource
 	srv := server.New(cfg)
-	httpHandler := mcp.NewHTTPHandler(mcpServer)
+	httpHandler := mcp.NewHTTPHandlerWithConfig(mcpServer, mcp.HTTPConfig{MaxInFlightCalls: serverConfig.MaxInFlightCalls})
 	srv.Handle("/mcp", httpHandler)
 	if eng != nil && q != nil {
 		dispositionStore := coredisposition.NewStore(eng)

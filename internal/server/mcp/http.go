@@ -57,7 +57,7 @@ const (
 	SessionIdleTimeout = 30 * time.Minute
 
 	// DefaultMaxInFlightCalls preserves the existing protocol envelope
-	// (MaxHTTPSessions * MaxInFlight) while making the process-wide limit an
+	// (MaxHTTPSessions * MaxInFlight) while making the handler-wide limit an
 	// explicit admission point that hosted wiring can lower.
 	DefaultMaxInFlightCalls = MaxHTTPSessions * MaxInFlight
 )
@@ -86,7 +86,7 @@ type HTTPMetrics struct {
 	CallLatencyNanos uint64
 }
 
-// HTTPConfig controls process-wide HTTP admission. A zero limit selects
+// HTTPConfig controls admission for one HTTPHandler. A zero limit selects
 // DefaultMaxInFlightCalls. The limit applies only to tools/call work; MCP
 // initialization, notifications, and cancellation remain available while
 // tool slots are full.
@@ -154,10 +154,9 @@ func NewHTTPHandler(srv *Server) *HTTPHandler {
 	return NewHTTPHandlerWithConfig(srv, HTTPConfig{})
 }
 
-// NewHTTPHandlerWithConfig builds an HTTP handler with process-wide tool
-// admission. It is the real transport boundary, so callers can share one
-// budget across every authenticated session without inventing account
-// identity at this layer.
+// NewHTTPHandlerWithConfig builds an HTTP handler with a shared tool-call
+// admission budget across all sessions served by that handler. The CLI's
+// serve --http path constructs one handler for its MCP boundary.
 func NewHTTPHandlerWithConfig(srv *Server, cfg HTTPConfig) *HTTPHandler {
 	if cfg.MaxInFlightCalls <= 0 {
 		cfg.MaxInFlightCalls = DefaultMaxInFlightCalls
