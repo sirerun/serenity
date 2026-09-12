@@ -638,7 +638,7 @@ func TestHTTPMetricsTrackRejectedSessions(t *testing.T) {
 	}
 }
 
-func TestHTTPProcessWideAdmissionRejectsAndReleasesOnCancellation(t *testing.T) {
+func TestHTTPAdmissionRejectsAndReleasesOnCancellation(t *testing.T) {
 	started := make(chan struct{})
 	finished := make(chan struct{})
 	var calls atomic.Int32
@@ -695,5 +695,55 @@ func TestHTTPProcessWideAdmissionRejectsAndReleasesOnCancellation(t *testing.T) 
 	metrics := h.Metrics()
 	if metrics.CallsRejected != 1 || metrics.CallsCanceled != 1 || metrics.CallsFinished != 2 || metrics.ActiveCalls != 0 {
 		t.Fatalf("admission metrics = %+v, want one rejection, one cancellation, two finishes", metrics)
+	}
+}
+
+func TestHTTPAdmissionDoesNotReleaseBeforeWorkerReturns(t *testing.T) {
+	started := make(chan struct{})
+	cancelObserved := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	tools := []mcp.Tool{{Name: "work", InputSchema: json.RawMessage(`{"type":"object"}`), Handler: func(ctx context.Context, _ json.RawMessage) (mcp.Result, error) {
+		if calls.Add(1) == 1 {
+			close(started)
+			<-ctx.Done()
+			close(cancelObserved)
+			<-release // simulate a worker that cannot stop immediately
+			return mcp.Result{}, ctx.Err()
+		}
+		return mcp.Result{Content: []mcp.Content{{Type: "text", Text: "ok"}}}, nil
+	}}}
+	srv, err := mcp.New("test", tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mcp.NewHTTPHandlerWithConfig(srv, mcp.HTTPConfig{MaxInFlightCalls: 1})
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	t.Cleanup(h.Close)
+	first := &httpClient{t: t, srv: ts}
+	second := &httpClient{t: t, srv: ts}
+	first.initialize()
+	second.initialize()
+	firstCall := make(chan postResult, 1)
+	go func() {
+		firstCall <- first.post(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"work","arguments":{}}}`)
+	}()
+	<-started
+	if cancelled := first.post(`{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}`); cancelled.status != http.StatusAccepted {
+		t.Fatalf("cancel notification status = %d, want 202", cancelled.status)
+	}
+	<-cancelObserved
+	if rejected := second.post(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"work","arguments":{}}}`); rejected.status != http.StatusOK || errCode(t, rejected) != -32029 {
+		t.Fatalf("call admitted before worker returned: status %d body %s", rejected.status, rejected.raw)
+	}
+	close(release)
+	select {
+	case <-firstCall:
+	case <-time.After(3 * time.Second):
+		t.Fatal("worker did not return after release")
+	}
+	if admitted := second.post(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"work","arguments":{}}}`); admitted.status != http.StatusOK || strings.Contains(string(admitted.raw), `"code":-32029`) {
+		t.Fatalf("post-worker call was not admitted: status %d body %s", admitted.status, admitted.raw)
 	}
 }
