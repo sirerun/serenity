@@ -6,12 +6,11 @@ operator configures: where the daemon binds, how it authenticates, and how
 to rotate the token. RFC 0001 §14 ("Security and privacy") is the design
 contract this implements.
 
-The only route wired onto this transport today is `/mcp`
-(`serenity serve --http`, MEMORY_VERBS v1 over MCP's Streamable HTTP —
-see [mcp.md](mcp.md)) — everything below applies to it exactly as it does
-to `/healthz` and to any future DISPOSITION/DIRECTION HTTP handlers, since
-every route added via `Server.Handle` gets this same auth wrapping and
-there is no other kind of route.
+`serenity serve --http` wires `/mcp` (MEMORY_VERBS v1 over MCP's Streamable
+HTTP), `/direction/brief`, `/direction/check_plan`, `/direction/propose`, and
+the DISPOSITION `/disposition/*` routes. Every route is registered through
+`Server.Handle`, so the authentication and listener rules below apply
+uniformly.
 
 ## Default: loopback only, always authenticated
 

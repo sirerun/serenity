@@ -78,9 +78,10 @@ keychain and the `Authorization` header a client sends.
 
 ### Scope
 
-This transport implements MEMORY_VERBS v1 only. The `--http` flag does not
-serve DISPOSITION or DIRECTION over HTTP -- their own live daemon assembly
-is separate, still-outstanding work, tracked in the E4 plan.
+The `--http` transport exposes MEMORY_VERBS v1 at `/mcp` and also registers
+the authenticated DISPOSITION and DIRECTION protocol routes from the same
+brain index and writer queue. The protocol handlers retain their own wire
+contracts; this command only assembles them onto the shared transport.
 
 ### Upstream conformance
 
