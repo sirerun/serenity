@@ -55,6 +55,11 @@ const (
 	// POST/DELETE naming its id) for this long, bounding session resources
 	// held by a client that disconnected without sending DELETE.
 	SessionIdleTimeout = 30 * time.Minute
+
+	// DefaultMaxInFlightCalls preserves the existing protocol envelope
+	// (MaxHTTPSessions * MaxInFlight) while making the process-wide limit an
+	// explicit admission point that hosted wiring can lower.
+	DefaultMaxInFlightCalls = MaxHTTPSessions * MaxInFlight
 )
 
 // errTooManySessions is returned by HTTPHandler's internal session
@@ -77,7 +82,16 @@ type HTTPMetrics struct {
 	CallsFinished    uint64
 	CallsCanceled    uint64
 	SessionsRejected uint64
+	CallsRejected    uint64
 	CallLatencyNanos uint64
+}
+
+// HTTPConfig controls process-wide HTTP admission. A zero limit selects
+// DefaultMaxInFlightCalls. The limit applies only to tools/call work; MCP
+// initialization, notifications, and cancellation remain available while
+// tool slots are full.
+type HTTPConfig struct {
+	MaxInFlightCalls int
 }
 
 // HTTPHandler implements the Streamable HTTP transport over one Server's
@@ -114,7 +128,9 @@ type HTTPHandler struct {
 	callsFinished    atomic.Uint64
 	callsCanceled    atomic.Uint64
 	sessionsRejected atomic.Uint64
+	callsRejected    atomic.Uint64
 	callLatencyNanos atomic.Uint64
+	callSlots        chan struct{}
 }
 
 // Metrics returns a lock-free snapshot of transport work. CallLatencyNanos is
@@ -127,6 +143,7 @@ func (h *HTTPHandler) Metrics() HTTPMetrics {
 		CallsFinished:    h.callsFinished.Load(),
 		CallsCanceled:    h.callsCanceled.Load(),
 		SessionsRejected: h.sessionsRejected.Load(),
+		CallsRejected:    h.callsRejected.Load(),
 		CallLatencyNanos: h.callLatencyNanos.Load(),
 	}
 }
@@ -134,8 +151,19 @@ func (h *HTTPHandler) Metrics() HTTPMetrics {
 // NewHTTPHandler builds the Streamable HTTP MCP handler serving srv's tool
 // registry.
 func NewHTTPHandler(srv *Server) *HTTPHandler {
+	return NewHTTPHandlerWithConfig(srv, HTTPConfig{})
+}
+
+// NewHTTPHandlerWithConfig builds an HTTP handler with process-wide tool
+// admission. It is the real transport boundary, so callers can share one
+// budget across every authenticated session without inventing account
+// identity at this layer.
+func NewHTTPHandlerWithConfig(srv *Server, cfg HTTPConfig) *HTTPHandler {
+	if cfg.MaxInFlightCalls <= 0 {
+		cfg.MaxInFlightCalls = DefaultMaxInFlightCalls
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &HTTPHandler{srv: srv, ctx: ctx, cancel: cancel, sessions: make(map[string]*httpSession)}
+	return &HTTPHandler{srv: srv, ctx: ctx, cancel: cancel, sessions: make(map[string]*httpSession), callSlots: make(chan struct{}, cfg.MaxInFlightCalls)}
 }
 
 // Close cancels every in-flight tool call's context and blocks until each
@@ -228,9 +256,23 @@ func (h *HTTPHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
+	admitted := false
+	if req.method == "tools/call" {
+		select {
+		case h.callSlots <- struct{}{}:
+			admitted = true
+		default:
+			h.callsRejected.Add(1)
+			writeJSON(w, failure(req.id, -32029, "Server overloaded; retry later"))
+			return
+		}
+	}
 
 	reply, pending, fatal := sess.HandleRequest(h.ctx, req)
 	if fatal != nil {
+		if admitted {
+			<-h.callSlots
+		}
 		// HTTP has no persistent connection to end the way stdio ends
 		// Serve on a fatal protocol violation; report it as this one
 		// request's own JSON-RPC error instead of dropping the session.
@@ -238,6 +280,9 @@ func (h *HTTPHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if pending == nil {
+		if admitted {
+			<-h.callSlots
+		}
 		writeJSON(w, *reply)
 		return
 	}
@@ -248,6 +293,9 @@ func (h *HTTPHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 	h.activeCalls.Add(1)
 	h.workers.Go(func() {
 		defer func() {
+			if admitted {
+				<-h.callSlots
+			}
 			h.activeCalls.Add(^uint64(0))
 			h.callsFinished.Add(1)
 			h.callLatencyNanos.Add(uint64(time.Since(startedAt).Nanoseconds()))
