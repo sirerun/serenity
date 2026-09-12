@@ -2,6 +2,20 @@
 
 Newest first. Investigation findings, benchmarks, and ops notes for the greenfield code. Architecture goes to docs/design.md, decisions to docs/adr/.
 
+## 2026-09-11 Hosted-launch discovery (E23 groom)
+
+Facts verified for `docs/launch/hosted-plan.md`, recorded here because they are point-in-time:
+
+- `origin/main` `2d024726a5`; local `1dfecc828d` (direction/disposition wired into `serve --http`) exists only on `origin/feat/blink-still-protocol-routes-20260911`, no PR.
+- PR stack #220 `4e3c4150f5` -> #221 `3edf6d56b7` -> #222 `5ccb30b45b` -> #223 `86b0929da3` -> #224 `57166d6678` (draft) -> #225 `1c2ac6b0df` (draft), each based on the prior head, all 12/12 CI green, unreviewed, no holds; `main` has no branch protection.
+- `internal/secrets` has exactly one path (OS keychain, service `serenity`, key `daemon-auth-token`); no env, file or headless fallback, no credential-profile concept on main (that is PR #225).
+- MCP HTTP handler is JSON-only Streamable HTTP (no SSE stream), rejects any non-empty `Origin`, 64 sessions, 30-minute idle, 1 MiB frames; the README's "empty tool registry" claim is stale, `docs/operator/mcp.md` is right (five tools).
+- Rakazo client at `ef63e354`: MCP SDK `StreamableHTTPClientTransport`, `Authorization: Bearer`, `Accept: application/json, text/event-stream`, `redirect: manual` with any 3xx treated as an error, `tools/list` must include `recall` (+`remember`, `forget` with writes on); bot and space scope are `entity` slugs `rakazo-bot/<label>/<botId>`, `rakazo-space/<label>/<spaceId>`; empty label is the default.
+- Website is GitHub Pages from `site/`; `app.serenity.sire.run` does not resolve; DNS for `sire.run` lives in `sirerun/foundation` (Google Cloud DNS).
+- No Stripe secrets exist on `sirerun/serenity` or `sirerun/sire`; Sire's live monorepo has no product billing (Sire ADR 0091).
+- Nightly live eval 34574320406 failed for a missing `ANTHROPIC_API_KEY` before scoring; not a hosted-path issue and not to be fixed by adding that key.
+- Mini internal disk: 5.6 GB free (build preflight floor is 20 GB).
+
 ## 2026 09 07 -- T1.34 closeout: the said/prefers confusion, named by specific held-out span, both directions
 
 Task: docs/plans/E1-m1-ingest.md T1.34, minted by chief's T1.29 disposition ruling. Its acc line asks for a dedicated documented investigation naming the specific held-out spans where the model confuses `said` and `prefers`, plus either a fix that measurably improves `said`'s P/R or a founder-visible finding if no fix closes the gap. T1.29/PR #179 (previous entry) fixed the underlying confusion as part of its own critical path but left this row's own acc-line clause -- naming the specific spans, as a standalone artifact -- unclaimed, flagging it explicitly as a coordinator call. This entry is that write-up, verified directly against the real corpus and the real shipped code rather than reconstructed from any diagnostic tool's now-gone scratch output.
