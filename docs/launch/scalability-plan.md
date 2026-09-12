@@ -45,6 +45,14 @@ not a hosted throughput limit.
    typed overload responses with retry guidance; keep the existing per-session
    32-call protocol guard. Add queue depth and rejection metrics. Verify with
    a deterministic overload test and a two-account isolation test.
+
+   The current checkout has no `internal/hosted` package or hosted runtime
+   pool: the concrete boundaries are `internal/server.Server` and
+   `internal/server/mcp.HTTPHandler`. Admission should therefore be placed in
+   the future hosted request boundary immediately before MCP dispatch, where
+   account identity and billing context exist. Adding a global quota to the
+   self-hosted handler now would invent that missing boundary and cannot prove
+   account isolation.
 3. **Harden connection resource use.** Configure `ReadHeaderTimeout`, a
    bounded `IdleTimeout`, and `MaxHeaderBytes` on the HTTP server. Do not add a
    blanket `WriteTimeout` until long-tool behavior is measured; cancellation
