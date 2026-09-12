@@ -16,9 +16,13 @@ claim and makes no infrastructure or provider change.
 | SQLite index | `internal/index/sqlite.go:124-125` opens WAL SQLite with a 5-second busy timeout; `database/sql` pool limits are not set. | Concurrent readers/writers can contend unpredictably; lock waits and connection count are unmeasured. |
 | Vector search | `internal/index/vectors.go:96-140` reads every vector for a model, decodes and scores all vectors, sorts them, then hydrates hits with one query each (`:142-152`). | Search is O(V log V) per query with an N+1 hydration pattern. This is the clearest data-size bottleneck. The source comment in `internal/index/sqlite.go:23-25` already identifies Postgres+pgvector as the scale profile. |
 
-No throughput, p95 latency, per-brain RSS, queue wait, lock-wait, embedding
-latency, or vector-count limit was measured by this review. Existing green CI
-proves correctness for the tested suite, not surge capacity.
+The bounded synthetic receipt in
+[`scalability-benchmark-20260912.md`](scalability-benchmark-20260912.md)
+measured the existing SQLite retrieval path at 1/10/100 indexes. It does not
+measure hosted provisioning, HTTP load, writer contention, real embedding
+latency or cost, or per-brain RSS, so it is a baseline rather than a capacity
+claim. Existing green CI proves correctness for the tested suite, not surge
+capacity.
 
 ## Priority order
 
