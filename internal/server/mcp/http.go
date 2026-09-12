@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -66,6 +67,19 @@ type httpSession struct {
 	lastSeen time.Time
 }
 
+// HTTPMetrics is a point-in-time snapshot of work admitted by this HTTP
+// transport. It gives a future hosted boundary measurements for admission
+// and overload policy without making this self-hosted handler guess account
+// identity or impose a global quota it cannot enforce correctly.
+type HTTPMetrics struct {
+	ActiveCalls      uint64
+	CallsStarted     uint64
+	CallsFinished    uint64
+	CallsCanceled    uint64
+	SessionsRejected uint64
+	CallLatencyNanos uint64
+}
+
 // HTTPHandler implements the Streamable HTTP transport over one Server's
 // tool registry. Register it on an authenticated internal/server.Server
 // route (e.g. s.Handle("/mcp", h)) -- this handler performs no auth or
@@ -94,6 +108,27 @@ type HTTPHandler struct {
 	sessions map[string]*httpSession
 
 	workers sync.WaitGroup
+
+	activeCalls      atomic.Uint64
+	callsStarted     atomic.Uint64
+	callsFinished    atomic.Uint64
+	callsCanceled    atomic.Uint64
+	sessionsRejected atomic.Uint64
+	callLatencyNanos atomic.Uint64
+}
+
+// Metrics returns a lock-free snapshot of transport work. CallLatencyNanos is
+// the sum of completed pending-call lifetimes; immediate protocol responses
+// that never start tool work are excluded.
+func (h *HTTPHandler) Metrics() HTTPMetrics {
+	return HTTPMetrics{
+		ActiveCalls:      h.activeCalls.Load(),
+		CallsStarted:     h.callsStarted.Load(),
+		CallsFinished:    h.callsFinished.Load(),
+		CallsCanceled:    h.callsCanceled.Load(),
+		SessionsRejected: h.sessionsRejected.Load(),
+		CallLatencyNanos: h.callLatencyNanos.Load(),
+	}
 }
 
 // NewHTTPHandler builds the Streamable HTTP MCP handler serving srv's tool
@@ -208,10 +243,20 @@ func (h *HTTPHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	done := make(chan response, 1)
+	startedAt := time.Now()
+	h.callsStarted.Add(1)
+	h.activeCalls.Add(1)
 	h.workers.Go(func() {
+		defer func() {
+			h.activeCalls.Add(^uint64(0))
+			h.callsFinished.Add(1)
+			h.callLatencyNanos.Add(uint64(time.Since(startedAt).Nanoseconds()))
+		}()
 		reply, ok := pending.Run()
 		if ok {
 			done <- reply
+		} else {
+			h.callsCanceled.Add(1)
 		}
 		close(done)
 	})
@@ -251,6 +296,7 @@ func (h *HTTPHandler) bootstrap(w http.ResponseWriter, body []byte) {
 	id, sess, err := h.newSession()
 	if err != nil {
 		if errors.Is(err, errTooManySessions) {
+			h.sessionsRejected.Add(1)
 			http.Error(w, "too many concurrent MCP sessions", http.StatusServiceUnavailable)
 		} else {
 			http.Error(w, "internal error", http.StatusInternalServerError)

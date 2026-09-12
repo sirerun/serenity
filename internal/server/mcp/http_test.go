@@ -3,6 +3,7 @@ package mcp_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -501,5 +502,137 @@ func TestHTTPCloseJoinsInFlightWork(t *testing.T) {
 	case <-closed:
 	case <-time.After(3 * time.Second):
 		t.Fatal("Close did not join the in-flight call's goroutine")
+	}
+}
+
+func TestHTTPMetricsTrackCallLifecycle(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	tools := []mcp.Tool{{Name: "block", InputSchema: json.RawMessage(`{"type":"object"}`), Handler: func(context.Context, json.RawMessage) (mcp.Result, error) {
+		close(started)
+		<-release
+		return mcp.Result{Content: []mcp.Content{{Type: "text", Text: "ok"}}}, nil
+	}}}
+	srv, err := mcp.New("test", tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mcp.NewHTTPHandler(srv)
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	t.Cleanup(h.Close)
+	c := &httpClient{t: t, srv: ts}
+	c.initialize()
+	req, err := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"block"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(mcp.SessionIDHeader, c.sessionID)
+	req.Header.Set(mcp.ProtocolVersionHeader, mcp.ProtocolVersion)
+	respCh := make(chan *http.Response, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		resp, requestErr := http.DefaultClient.Do(req)
+		if requestErr != nil {
+			errCh <- requestErr
+			return
+		}
+		respCh <- resp
+	}()
+	<-started
+	metrics := h.Metrics()
+	if metrics.ActiveCalls != 1 || metrics.CallsStarted != 1 || metrics.CallsFinished != 0 {
+		t.Fatalf("in-flight metrics = %+v, want one active unfinished call", metrics)
+	}
+	close(release)
+	select {
+	case err := <-errCh:
+		t.Fatal(err)
+	case resp := <-respCh:
+		_ = resp.Body.Close()
+	case <-time.After(3 * time.Second):
+		t.Fatal("blocked HTTP call did not finish")
+	}
+	metrics = h.Metrics()
+	if metrics.ActiveCalls != 0 || metrics.CallsFinished != 1 || metrics.CallsCanceled != 0 || metrics.CallLatencyNanos == 0 {
+		t.Fatalf("finished metrics = %+v, want one completed call with latency", metrics)
+	}
+}
+
+func TestHTTPMetricsTrackCancellation(t *testing.T) {
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	tools := []mcp.Tool{{Name: "cancel", InputSchema: json.RawMessage(`{"type":"object"}`), Handler: func(ctx context.Context, _ json.RawMessage) (mcp.Result, error) {
+		close(started)
+		<-ctx.Done()
+		close(finished)
+		return mcp.Result{}, ctx.Err()
+	}}}
+	srv, err := mcp.New("test", tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mcp.NewHTTPHandler(srv)
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	t.Cleanup(h.Close)
+	c := &httpClient{t: t, srv: ts}
+	c.initialize()
+	req, err := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"cancel"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(mcp.SessionIDHeader, c.sessionID)
+	req.Header.Set(mcp.ProtocolVersionHeader, mcp.ProtocolVersion)
+	go func() {
+		resp, requestErr := http.DefaultClient.Do(req)
+		if requestErr == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	<-started
+	if r := c.post(`{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}`); r.status != http.StatusAccepted {
+		t.Fatalf("cancel notification status = %d, want 202", r.status)
+	}
+	select {
+	case <-finished:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled tool did not finish")
+	}
+	metrics := h.Metrics()
+	if metrics.ActiveCalls != 0 || metrics.CallsStarted != 1 || metrics.CallsFinished != 1 || metrics.CallsCanceled != 1 || metrics.CallLatencyNanos == 0 {
+		t.Fatalf("cancelled metrics = %+v, want one finished cancellation", metrics)
+	}
+}
+
+func TestHTTPMetricsTrackRejectedSessions(t *testing.T) {
+	c, h := newHTTPTestServer(t)
+	defer h.Close()
+	initialize := func(i int) int {
+		body := fmt.Sprintf(`{"jsonrpc":"2.0","id":"init-%d","method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`, i)
+		req, err := http.NewRequest(http.MethodPost, c.srv.URL, strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		return resp.StatusCode
+	}
+	for i := 0; i < mcp.MaxHTTPSessions; i++ {
+		if got := initialize(i); got != http.StatusOK {
+			t.Fatalf("initialize %d status = %d, want 200", i, got)
+		}
+	}
+	if got := initialize(mcp.MaxHTTPSessions); got != http.StatusServiceUnavailable {
+		t.Fatalf("overflow initialize status = %d, want 503", got)
+	}
+	if got := h.Metrics().SessionsRejected; got != 1 {
+		t.Fatalf("SessionsRejected = %d, want 1", got)
 	}
 }
