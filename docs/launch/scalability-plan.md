@@ -24,6 +24,14 @@ latency or cost, or per-brain RSS, so it is a baseline rather than a capacity
 claim. Existing green CI proves correctness for the tested suite, not surge
 capacity.
 
+The companion
+[`scalability-http-benchmark-20260912.md`](scalability-http-benchmark-20260912.md)
+exercised the real MCP HTTP handler with 100 session attempts and 2,048
+concurrent calls. The existing 64-session guard rejected 36 attempts, while a
+2 ms serialized synthetic writer produced p95 call latency of 4.85 seconds.
+This is evidence for prioritizing admission control and writer queue metrics,
+not a hosted throughput limit.
+
 ## Priority order
 
 1. **Measure before changing limits (T23.3).** Run the existing hosted spike
