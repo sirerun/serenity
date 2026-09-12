@@ -1,9 +1,11 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -178,6 +180,64 @@ func TestOversizedHeaderRejectedByRealListener(t *testing.T) {
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusRequestHeaderFieldsTooLarge {
 		t.Fatalf("oversized-header status = %d, want %d", resp.StatusCode, http.StatusRequestHeaderFieldsTooLarge)
+	}
+}
+
+func TestIncompleteHeaderTimesOutOnRealListener(t *testing.T) {
+	s := newWithTransportLimits(Config{Bind: "127.0.0.1:0", TokenSource: func() (string, error) { return "t", nil }}, 50*time.Millisecond, time.Second, maxHeaderBytes)
+	if err := s.Listen(); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = s.Serve(ctx) }()
+	conn, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := io.WriteString(conn, "GET /healthz HTTP/1.1\r\nHost: localhost\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bufio.NewReader(conn).ReadByte(); err == nil {
+		t.Fatal("incomplete header connection remained open")
+	}
+}
+
+func TestIdleKeepAliveClosesOnRealListener(t *testing.T) {
+	s := newWithTransportLimits(Config{Bind: "127.0.0.1:0", TokenSource: func() (string, error) { return "t", nil }}, time.Second, 50*time.Millisecond, maxHeaderBytes)
+	if err := s.Listen(); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = s.Serve(ctx) }()
+	conn, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := io.WriteString(conn, "GET /healthz HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer t\r\nConnection: keep-alive\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatalf("read keep-alive response: %v", err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bufio.NewReader(conn).ReadByte(); err == nil {
+		t.Fatal("idle keep-alive connection remained open")
 	}
 }
 
