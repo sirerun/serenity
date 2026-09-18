@@ -167,13 +167,21 @@ func (s *Service) Consume(ctx context.Context, raw string) (sessionToken string,
 	}
 	return
 }
-func (s *Service) Session(ctx context.Context, raw string) (session Session, err error) {
+func (s *Service) Session(ctx context.Context, raw string) (Session, error) {
+	return s.session(ctx, raw, false)
+}
+
+// DeletionSession allows an existing session only to finish an interrupted deletion.
+func (s *Service) DeletionSession(ctx context.Context, raw string) (Session, error) {
+	return s.session(ctx, raw, true)
+}
+func (s *Service) session(ctx context.Context, raw string, deletion bool) (session Session, err error) {
 	if len(raw) != 43 {
 		return session, store.ErrNotFound
 	}
 	err = s.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		var expires string
-		e := tx.QueryRowContext(ctx, `SELECT s.id,s.account_id,s.csrf_secret,s.expires_at FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND a.status='active'`, store.Hash(raw)).Scan(&session.ID, &session.AccountID, &session.CSRF, &expires)
+		e := tx.QueryRowContext(ctx, `SELECT s.id,s.account_id,s.csrf_secret,s.expires_at FROM sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND (a.status='active' OR (? AND a.status='deleting'))`, store.Hash(raw), deletion).Scan(&session.ID, &session.AccountID, &session.CSRF, &expires)
 		if errors.Is(e, sql.ErrNoRows) {
 			return store.ErrNotFound
 		}

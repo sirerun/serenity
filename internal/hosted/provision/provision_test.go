@@ -79,6 +79,10 @@ func TestRecoverAdditionalAllocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	resumed, err := p.Additional(ctx, a.ID, 2)
+	if err != nil || resumed.ID != id {
+		t.Fatalf("retry allocated %+v: %v", resumed, err)
+	}
 	for range 2 {
 		if err = p.Recover(ctx); err != nil {
 			t.Fatal(err)

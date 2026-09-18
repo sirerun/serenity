@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -308,6 +309,12 @@ func TestOperationKeysAreBrainScopedAndQuotaIsAccountScoped(t *testing.T) {
 		result, err := svc.Gateway.CallForAccount(ctx, a.ID, id, "remember", args)
 		if err != nil || result.IsError {
 			t.Fatalf("remember %+v %v", result, err)
+		}
+	}
+	for _, id := range []string{first.ID, second.ID} {
+		output, err := exec.Command("git", "-C", filepath.Join(dir, "brains", id), "status", "--porcelain", "--untracked-files=all").CombinedOutput()
+		if err != nil || len(bytes.TrimSpace(output)) != 0 {
+			t.Fatalf("acknowledged write not committed: %s %v", output, err)
 		}
 	}
 	var writes int

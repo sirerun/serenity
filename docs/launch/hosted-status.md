@@ -24,6 +24,12 @@ signup and memory-save passed on a loopback service with a test embedding provid
 CloudFormation syntax validation passed; no stack was created. These are local
 proofs, not real email, Stripe test-mode or hosted infrastructure qualification.
 
+Latest verification: 1,900 passing cases and six explicit skips in the fresh full
+race run; the final durability/recovery adjustments passed 16 focused hosted
+cases with zero skips. Vet, lint and build passed. All 12 CI checks on the first
+pushed candidate (2496e53) passed. Real Chrome also verified usage display, token
+issuance and its copy control after the service upgrade.
+
 Audit repairs include brain-scoped retry keys across billing windows, interrupted
 additional-brain recovery, restoring derived search on runtime open, per-account
 credential/handler bounds, persisted checkout attempts, usage/reset display,

@@ -18,3 +18,13 @@ CREATE TABLE IF NOT EXISTS subscriptions(id TEXT PRIMARY KEY,account_id TEXT NOT
 CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,account_id TEXT,actor TEXT NOT NULL,action TEXT NOT NULL,created_at TEXT NOT NULL,detail TEXT);
 INSERT OR IGNORE INTO schema_migrations(version,applied_at) VALUES(1,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 `
+
+const migration2 = `
+ALTER TABLE subscriptions ADD COLUMN plan_id TEXT NOT NULL DEFAULT 'free';
+INSERT INTO schema_migrations(version,applied_at) VALUES(2,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+`
+
+const migration3 = `
+ALTER TABLE subscriptions ADD COLUMN grace_until TEXT;
+INSERT INTO schema_migrations(version,applied_at) VALUES(3,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+`

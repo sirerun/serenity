@@ -61,6 +61,14 @@ func (p *Pool) Acquire(ctx context.Context, id string) (*Runtime, func(), error)
 	if p.closed || p.inFlight >= p.cfg.MaxInFlight {
 		return nil, nil, ErrCapacity
 	}
+	for key, item := range p.open {
+		if item.users == 0 && p.cfg.IdleTimeout > 0 && time.Since(item.last) >= p.cfg.IdleTimeout {
+			if err := item.close(); err != nil {
+				return nil, nil, err
+			}
+			delete(p.open, key)
+		}
+	}
 	r := p.open[id]
 	if r == nil {
 		if len(p.open) >= p.cfg.MaxOpen {
@@ -186,16 +194,8 @@ func open(ctx context.Context, cfg Config, id string) (*Runtime, error) {
 	if err != nil {
 		return fail(err)
 	}
-	// Canonical sources survive crashes and backups; derived search must recover
-	// before this runtime becomes available. Existing vectors remain reusable.
-	projection, err := store.LoadMemoryProjection(store.NewSourceStore(root))
-	if err != nil {
+	if err = recoverSearch(ctx, root, eng, cfg.Embedder); err != nil {
 		return fail(errors.Join(err, eng.Close()))
-	}
-	for _, fact := range projection.All() {
-		if _, _, err = index.RefreshMemoryFactSearch(ctx, root, fact.SHA256, eng, cfg.Embedder, time.Now); err != nil {
-			return fail(errors.Join(err, eng.Close()))
-		}
 	}
 	q := writer.NewQueue(nil)
 	handlers := memory.New(memory.Deps{Root: root, Config: c, Index: eng, Embedder: cfg.Embedder, Queue: q, Sources: store.NewSourceStore(root), Fence: store.NewFenceWriter(root), Shard: store.NewShardStore(root)})
@@ -246,3 +246,71 @@ func (p *Pool) FlushAll() error {
 }
 
 func (r *Runtime) Flush() error { return r.flush() }
+
+// recoverSearch scans canonical state once. Calling per-fact projection reloads
+// here would make cold opens quadratic in the number of saved memories.
+func recoverSearch(ctx context.Context, root string, eng *index.SQLite, embedding embed.Embedder) error {
+	projection, err := store.LoadMemoryProjection(store.NewSourceStore(root))
+	if err != nil {
+		return err
+	}
+	chunks, err := eng.AllChunks(ctx)
+	if err != nil {
+		return err
+	}
+	existing := make(map[string]index.Hit, len(chunks))
+	for _, hit := range chunks {
+		existing[hit.ChunkRef] = hit
+	}
+	eligible, err := index.RetrievalEligibility(root, projection, true, true, time.Now())
+	if err != nil {
+		return err
+	}
+	for _, fact := range projection.All() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if fact.Expired(time.Now()) {
+			continue
+		}
+		ref := "fact:" + fact.SHA256
+		hit := index.Hit{ChunkRef: ref, EntitySlug: fact.Payload.EntitySlug, Text: fact.Payload.Fact, SourceSHA256: fact.SHA256, Kind: store.SourceKindMemoryFact}
+		prior, found := existing[ref]
+		if !found {
+			if err = eng.InsertChunk(ctx, ref, hit.EntitySlug, hit.Text, hit.SourceSHA256, hit.Kind); err != nil {
+				return err
+			}
+		} else if prior != hit {
+			if err = index.RefreshMemoryFact(ctx, root, fact.SHA256, eng, time.Now()); err != nil {
+				return err
+			}
+		}
+		if !eligible(hit) || fact.Expired(time.Now()) {
+			continue
+		}
+		present, err := eng.HasVector(ctx, ref, embedding.ModelVersion())
+		if err != nil {
+			return err
+		}
+		if present {
+			continue
+		}
+		deadline := time.Now().Add(15 * time.Second)
+		if fact.Payload.ValidUntil != nil && fact.Payload.ValidUntil.Before(deadline) {
+			deadline = *fact.Payload.ValidUntil
+		}
+		callCtx, cancel := context.WithDeadline(ctx, deadline)
+		vec, err := embedding.Embed(callCtx, hit.Text)
+		cancel()
+		if err != nil {
+			return err
+		}
+		if fact.Expired(time.Now()) {
+			continue
+		}
+		if err = eng.UpsertVector(ctx, ref, embedding.ModelVersion(), vec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
