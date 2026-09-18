@@ -1,5 +1,7 @@
 # Hosted launch acceptance matrix
 
+Current execution: [post-PR234 completion plan](hosted-plan.md), with per-task receipts specified in [evidence.md](hosted-completion/evidence.md). PR234 is merged; none of the public qualification rows below becomes PASS merely from that merge. Coordinator folds accepted receipts here in T23.70.
+
 One row per requirement. States: `not-run`, `PASS`, `FAIL`, `PARTIAL`. Every PASS cites the source revision, the command or test, the observed result and the remaining limit. Real-process and protocol checks, not mocks. No secrets, no customer data.
 
 | Area | Requirement | Source rev | Command / test | Observed | Remaining limit | State |
@@ -17,7 +19,7 @@ One row per requirement. States: `not-run`, `PASS`, `FAIL`, `PARTIAL`. Every PAS
 
 ## Local candidate evidence — 2026-09-18
 
-Source: `feat/hosted-launch`, draft PR #234. The matrix above remains the public
+Historical source: `feat/hosted-launch`, PR #234 (subsequently merged at `b9863824`). The matrix above remains the public
 release gate; the following local evidence does not make a hosted-origin PASS.
 
 | Area | Local evidence | Remaining limit | State |
@@ -32,7 +34,7 @@ release gate; the following local evidence does not make a hosted-origin PASS.
 
 Full pre-audit local race suite: 1,895 passed cases, six explicit skips, 66 tested
 packages and eight packages with no tests. Focused post-repair tests, vet, lint
-and build passed; CI results are attached to the draft PR. Test adapters are
+and build passed; CI results are attached to PR #234. Test adapters are
 explicit and do not represent real email or embedding-provider qualification.
 
 ## Timing detail

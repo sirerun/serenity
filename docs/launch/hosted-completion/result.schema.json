@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Hosted task evidence",
+  "type": "object",
+  "required": [
+    "task_id",
+    "profile",
+    "status",
+    "source_sha",
+    "recorded_at",
+    "evidence_level",
+    "dependencies",
+    "commands",
+    "cases",
+    "acceptance",
+    "artifacts",
+    "cost",
+    "limitations",
+    "blockers"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^T23\\.(4[1-9]|[56][0-9]|7[0-4])$"
+    },
+    "profile": {
+      "enum": [
+        "pilot",
+        "paid"
+      ]
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "PARTIAL",
+        "FAIL",
+        "BLOCKED",
+        "NOT_RUN"
+      ]
+    },
+    "source_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "evidence_level": {
+      "enum": [
+        "static",
+        "fixture",
+        "local-process",
+        "live-provider",
+        "deployed",
+        "human"
+      ]
+    },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "commands": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cases": {
+      "type": "object",
+      "required": [
+        "planned",
+        "executed",
+        "passed",
+        "failed",
+        "skipped",
+        "skip_reasons"
+      ],
+      "properties": {
+        "planned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "executed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skip_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "acceptance": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "criterion",
+          "expected",
+          "observed",
+          "status"
+        ],
+        "properties": {
+          "criterion": {
+            "type": "string"
+          },
+          "expected": {
+            "type": "string"
+          },
+          "observed": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "BLOCKED",
+              "NOT_RUN"
+            ]
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      }
+    },
+    "cost": {
+      "type": "object",
+      "required": [
+        "actual_usd",
+        "approved_max_usd",
+        "authorization_refs"
+      ],
+      "properties": {
+        "actual_usd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "approved_max_usd": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "authorization_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "owner",
+          "required_input"
+        ],
+        "properties": {
+          "owner": {
+            "type": "string"
+          },
+          "required_input": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "binary_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "configuration_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "corpus_sha256": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "provider": {
+      "type": [
+        "object",
+        "null"
+      ]
+    }
+  }
+}
