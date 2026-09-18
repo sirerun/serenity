@@ -94,6 +94,9 @@ func (m *Meter) Reserve(ctx context.Context, accountID, metric string, amount, l
 		if e != nil {
 			return e
 		}
+		if _, e = tx.ExecContext(ctx, `DELETE FROM reservations WHERE status='released' AND created_at<?`, store.Stamp(now.Add(-24*time.Hour))); e != nil {
+			return e
+		}
 		if operationKey != "" {
 			var status string
 			e = tx.QueryRowContext(ctx, `SELECT id,status FROM reservations WHERE account_id=? AND metric=? AND operation_key=? AND status!='released' ORDER BY created_at LIMIT 1`, accountID, metric, operationKey).Scan(&r.ID, &status)

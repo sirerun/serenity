@@ -260,6 +260,9 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 	if err = json.Unmarshal(args, &input); err != nil {
 		return failure("invalid_params", time.Time{}), nil
 	}
+	if name == "remember" && !brainstore.ValidMemoryOperationKey(input.OperationKey) {
+		return failure("invalid_params", time.Time{}), nil
+	}
 	if name == "remember" && len(input.Fact) > 4096 {
 		return failure("input_too_large", time.Time{}), nil
 	}
@@ -312,40 +315,11 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		if e != nil {
 			return result, e
 		}
-		brains, e := g.Issuer.Store.Brains(ctx, binding.AccountID)
+		inventory, e := g.inventory(ctx, binding.AccountID, filepath.Dir(runtime.Root))
 		if e != nil {
 			return result, e
 		}
-		var live, size int64
-		for _, brain := range brains {
-			root := filepath.Join(filepath.Dir(runtime.Root), brain.PathKey)
-			projection, e := brainstore.LoadMemoryProjection(brainstore.NewSourceStore(root))
-			if e != nil {
-				return result, e
-			}
-			for _, fact := range projection.All() {
-				if !fact.Expired(time.Now()) {
-					live++
-				}
-			}
-			e = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-				if walkErr != nil {
-					return walkErr
-				}
-				if !entry.IsDir() {
-					info, err := entry.Info()
-					if err != nil {
-						return err
-					}
-					size += info.Size()
-				}
-				return nil
-			})
-			if e != nil {
-				return result, e
-			}
-		}
-		if !reservation.Replay && (live >= entitlement.Plan.Memories || size >= entitlement.Plan.StorageBytes) {
+		if !reservation.Replay && (inventory.Memories >= entitlement.Plan.Memories || inventory.StorageBytes >= entitlement.Plan.StorageBytes) {
 			return failure("limit_exceeded", entitlement.ResetAt), nil
 		}
 		codec, e := tokenizer.Get(tokenizer.Cl100kBase)
@@ -421,4 +395,60 @@ func (g *Gateway) CallForAccount(ctx context.Context, account, brain, name strin
 		return mcp.Result{}, err
 	}
 	return g.callBound(ctx, credential.Binding{AccountID: account, BrainID: brain, Scopes: []string{"memory:read", "memory:write"}}, name, args)
+}
+
+// Inventory reports current physical storage and live facts across an account.
+type Inventory struct{ Brains, Memories, StorageBytes int64 }
+
+func (g *Gateway) Inventory(ctx context.Context, account, root string) (Inventory, error) {
+	hash := sha256.Sum256([]byte(account))
+	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
+	lock.Lock()
+	defer lock.Unlock()
+	return g.inventory(ctx, account, root)
+}
+func (g *Gateway) inventory(ctx context.Context, account, root string) (out Inventory, err error) {
+	brains, err := g.Issuer.Store.Brains(ctx, account)
+	if err != nil {
+		return out, err
+	}
+	out.Brains = int64(len(brains))
+	for _, brain := range brains {
+		if err = ctx.Err(); err != nil {
+			return out, err
+		}
+		if brain.State != "ready" {
+			continue
+		}
+		if brain.ID != brain.PathKey || filepath.Base(brain.PathKey) != brain.PathKey {
+			return out, errors.New("invalid stored brain path")
+		}
+		path := filepath.Join(root, brain.PathKey)
+		projection, e := brainstore.LoadMemoryProjection(brainstore.NewSourceStore(path))
+		if e != nil {
+			return out, e
+		}
+		for _, fact := range projection.All() {
+			if !fact.Expired(time.Now()) {
+				out.Memories++
+			}
+		}
+		err = filepath.WalkDir(path, func(_ string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if !entry.IsDir() {
+				info, e := entry.Info()
+				if e != nil {
+					return e
+				}
+				out.StorageBytes += info.Size()
+			}
+			return nil
+		})
+		if err != nil {
+			return out, err
+		}
+	}
+	return out, nil
 }

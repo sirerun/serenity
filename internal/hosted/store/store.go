@@ -53,6 +53,9 @@ func Open(path string) (*Store, error) {
 		if e := tx.QueryRow(`SELECT max(version) FROM schema_migrations`).Scan(&version); e != nil {
 			return e
 		}
+		if version > 3 {
+			return fmt.Errorf("unsupported hosted schema version %d", version)
+		}
 		if version < 2 {
 			if _, e := tx.Exec(migration2); e != nil {
 				return e
