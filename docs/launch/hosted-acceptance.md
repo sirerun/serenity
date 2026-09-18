@@ -15,6 +15,26 @@ One row per requirement. States: `not-run`, `PASS`, `FAIL`, `PARTIAL`. Every PAS
 | Performance | Ten account-to-ready-endpoint runs with p95; landing-to-first-recall human walkthroughs; cold start; full-limit load; per-plan cost; initial capacity | | T23.32, T23.33, T23.36 | | | not-run |
 | Release | Immutable artifact; CI; migration rehearsal; readiness; rollback; deployed smoke | | T23.14, T23.17, T23.37 | | | not-run |
 
+## Local candidate evidence — 2026-09-18
+
+Source: `feat/hosted-launch`, draft PR #234. The matrix above remains the public
+release gate; the following local evidence does not make a hosted-origin PASS.
+
+| Area | Local evidence | Remaining limit | State |
+|---|---|---|---|
+| Signup and identity | Real Chrome loopback signup/save; concurrent single-use links, expiry, CSRF, logout and deletion-session tests | Resend delivery, public TLS and controlled mailbox runs | PARTIAL |
+| Provisioning | Concurrent default allocation; additional allocation resumes without restart | Actual SIGKILL fault injection | PARTIAL |
+| Isolation and credentials | Two-account real HTTP MCP test, cross-session 401, rotate/revoke and deletion | Complete browser/export adversarial battery | PARTIAL |
+| Memory and recovery | Save/recall, restart, coordinated backup canonical facts; wiped derived index rebuilt on open | Real Rakazo and semantic paraphrase negative control | PARTIAL |
+| Quotas and admission | 100 reservations admit exactly 60; cross-brain and cross-window retry tests; HTTP 429 with Retry-After | Complete storage boundary and multi-tenant capacity qualification | PARTIAL |
+| Billing | Signature, duplicate/out-of-order current-state reconciliation, checkout reuse after restart, fixed grace deadline, subscription-plan consistency fixtures | Real Stripe test clocks and full lifecycle table | PARTIAL |
+| Deployment | CloudFormation validate-template; shell syntax; backup units installed by deployment script | Fresh VM/bootstrap, alarms, backup upload and rollback rehearsal | PARTIAL |
+
+Full pre-audit local race suite: 1,895 passed cases, six explicit skips, 66 tested
+packages and eight packages with no tests. Focused post-repair tests, vet, lint
+and build passed; CI results are attached to the draft PR. Test adapters are
+explicit and do not represent real email or embedding-provider qualification.
+
 ## Timing detail
 
 ### Account-to-ready-endpoint (T23.32)

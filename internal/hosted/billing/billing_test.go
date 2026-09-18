@@ -92,6 +92,38 @@ func TestWebhookReconcilesCurrentStateAndDeduplicates(t *testing.T) {
 	if requests.Load() != 1 {
 		t.Fatal("duplicate fetched again")
 	}
+	// An unrelated historical subscription must not supply the current plan.
+	if _, err = db.DB().ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end) VALUES('sub_old',?,'price_scale','scale','canceled',?,?)`, a.ID, store.Stamp(now), store.Stamp(now.Add(48*time.Hour))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET plan_id='scale' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	ent, err = m.Entitlement(ctx, a.ID)
+	if err != nil || ent.Plan.ID != "builder" {
+		t.Fatalf("mixed subscription entitlement %+v %v", ent, err)
+	}
+	state = "past_due"
+	apply("evt_failed_payment")
+	ent, err = m.Entitlement(ctx, a.ID)
+	if err != nil || ent.Plan.ID != "builder" {
+		t.Fatalf("missing grace %+v %v", ent, err)
+	}
+	var deadline string
+	if err = db.DB().QueryRowContext(ctx, `SELECT grace_until FROM subscriptions WHERE id='sub_test'`).Scan(&deadline); err != nil {
+		t.Fatal(err)
+	}
+	apply("evt_failed_payment_again")
+	var repeated string
+	if err = db.DB().QueryRowContext(ctx, `SELECT grace_until FROM subscriptions WHERE id='sub_test'`).Scan(&repeated); err != nil || repeated != deadline {
+		t.Fatalf("grace extended: %q %q %v", deadline, repeated, err)
+	}
+	m.Clock = func() time.Time { return now.Add(96 * time.Hour) }
+	ent, err = m.Entitlement(ctx, a.ID)
+	if err != nil || ent.Plan.ID != "free" {
+		t.Fatalf("expired grace %+v %v", ent, err)
+	}
+	m.Clock = nil
 	state = "canceled"
 	apply("evt_old_delivered_late")
 	ent, err = m.Entitlement(ctx, a.ID)

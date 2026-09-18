@@ -31,7 +31,12 @@ type entry struct {
 	handler *mcp.HTTPHandler
 	last    time.Time
 }
+type sessionBinding struct {
+	credential string
+	last       time.Time
+}
 type Gateway struct {
+	admission    limiter
 	Maintenance  sync.RWMutex
 	accountLocks [64]sync.Mutex
 	Issuer       *credential.Issuer
@@ -39,11 +44,16 @@ type Gateway struct {
 	Meter        *meter.Meter
 	mu           sync.Mutex
 	handlers     map[string]*entry
-	sessions     map[string]string
+	sessions     map[string]sessionBinding
 	closed       bool
 }
 
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !g.admission.allow("ip:"+clientIP(r), 600, time.Now()) {
+		w.Header().Set("Retry-After", "60")
+		http.Error(w, "Request rate exceeded", http.StatusTooManyRequests)
+		return
+	}
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -53,6 +63,11 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	binding, err := g.Issuer.Verify(r.Context(), raw)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if !g.admission.allow("account:"+binding.AccountID, 120, time.Now()) {
+		w.Header().Set("Retry-After", "60")
+		http.Error(w, "Account request rate exceeded", http.StatusTooManyRequests)
 		return
 	}
 	if r.Header.Get("Origin") != "" {
@@ -68,12 +83,20 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if g.handlers == nil {
 		g.handlers = map[string]*entry{}
-		g.sessions = map[string]string{}
+		g.sessions = map[string]sessionBinding{}
 	}
-	if session != "" && g.sessions[session] != binding.CredentialID {
+	for id, owner := range g.sessions {
+		if time.Since(owner.last) > mcp.SessionIdleTimeout {
+			delete(g.sessions, id)
+		}
+	}
+	if session != "" && g.sessions[session].credential != binding.CredentialID {
 		g.mu.Unlock()
 		http.Error(w, "Unauthorized session", http.StatusUnauthorized)
 		return
+	}
+	if session != "" {
+		g.sessions[session] = sessionBinding{binding.CredentialID, time.Now()}
 	}
 	e := g.handlers[binding.CredentialID]
 	if e == nil {
@@ -84,7 +107,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				item.handler.Close()
 				delete(g.handlers, id)
 				for session, owner := range g.sessions {
-					if owner == id {
+					if owner.credential == id {
 						delete(g.sessions, session)
 					}
 				}
@@ -133,7 +156,11 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	e.last = time.Now()
 	g.mu.Unlock()
-	recorder := &sessionWriter{ResponseWriter: w, onSession: func(id string) { g.mu.Lock(); g.sessions[id] = binding.CredentialID; g.mu.Unlock() }}
+	recorder := &sessionWriter{ResponseWriter: w, onSession: func(id string) {
+		g.mu.Lock()
+		g.sessions[id] = sessionBinding{binding.CredentialID, time.Now()}
+		g.mu.Unlock()
+	}}
 	var method string
 	if r.Method == http.MethodPost {
 		body, readErr := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
@@ -348,6 +375,11 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 			callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			defer cancel()
 			result, err = tool.Handler(callCtx, args)
+			if (name == "remember" || name == "forget") && err == nil && !result.IsError {
+				// Acknowledged writes must already be in the canonical bundle,
+				// even if the process dies before its next backup or shutdown.
+				err = runtime.Flush()
+			}
 			if name == "remember" && err == nil && !result.IsError {
 				err = g.record(ctx, binding, "memory_saved")
 			}

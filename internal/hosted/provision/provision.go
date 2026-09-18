@@ -88,6 +88,14 @@ func (p *Provisioner) Additional(ctx context.Context, accountID string, limit in
 	defer p.mu.Unlock()
 	id := store.ID()
 	err = p.Store.Transaction(ctx, func(tx *sql.Tx) error {
+		// A retry after a partial failure resumes the same allocated brain.
+		e := tx.QueryRowContext(ctx, `SELECT b.id FROM brains b JOIN accounts a ON a.id=b.account_id WHERE b.account_id=? AND b.is_default=0 AND b.state='allocating' AND b.deleted_at IS NULL AND a.status='active' ORDER BY b.created_at LIMIT 1`, accountID).Scan(&id)
+		if e == nil {
+			return nil
+		}
+		if !errors.Is(e, sql.ErrNoRows) {
+			return e
+		}
 		var count int64
 		if e := tx.QueryRowContext(ctx, `SELECT count(*) FROM brains WHERE account_id=? AND deleted_at IS NULL`, accountID).Scan(&count); e != nil {
 			return e

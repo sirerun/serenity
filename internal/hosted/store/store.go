@@ -45,7 +45,26 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db}
-	if err = s.Transaction(context.Background(), func(tx *sql.Tx) error { _, e := tx.Exec(schema); return e }); err != nil {
+	if err = s.Transaction(context.Background(), func(tx *sql.Tx) error {
+		if _, e := tx.Exec(schema); e != nil {
+			return e
+		}
+		var version int
+		if e := tx.QueryRow(`SELECT max(version) FROM schema_migrations`).Scan(&version); e != nil {
+			return e
+		}
+		if version < 2 {
+			if _, e := tx.Exec(migration2); e != nil {
+				return e
+			}
+		}
+		if version < 3 {
+			if _, e := tx.Exec(migration3); e != nil {
+				return e
+			}
+		}
+		return nil
+	}); err != nil {
 		return nil, errors.Join(fmt.Errorf("migrate hosted database: %w", err), db.Close())
 	}
 	return s, nil

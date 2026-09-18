@@ -48,8 +48,8 @@ func (m *Meter) Entitlement(ctx context.Context, accountID string) (Entitlement,
 		return out, store.ErrNotFound
 	}
 	// Paid access requires a reconciled live subscription, never a browser return.
-	var start, end, subscriptionStatus string
-	err := m.Store.DB().QueryRowContext(ctx, `SELECT current_period_start,current_period_end,status FROM subscriptions WHERE account_id=? ORDER BY current_period_end DESC LIMIT 1`, accountID).Scan(&start, &end, &subscriptionStatus)
+	var start, end, subscriptionStatus, grace string
+	err := m.Store.DB().QueryRowContext(ctx, `SELECT current_period_start,current_period_end,status,plan_id,COALESCE(grace_until,'') FROM subscriptions WHERE account_id=? AND (status IN ('active','trialing') OR (status='past_due' AND grace_until>?)) ORDER BY current_period_end DESC LIMIT 1`, accountID, store.Stamp(now)).Scan(&start, &end, &subscriptionStatus, &plan, &grace)
 	if errors.Is(err, sql.ErrNoRows) {
 		return out, nil
 	}
@@ -59,6 +59,17 @@ func (m *Meter) Entitlement(ctx context.Context, accountID string) (Entitlement,
 	until, err := time.Parse(time.RFC3339Nano, end)
 	if err != nil {
 		return out, err
+	}
+	if subscriptionStatus == "past_due" {
+		deadline, e := time.Parse(time.RFC3339Nano, grace)
+		if e != nil {
+			return out, e
+		}
+		if deadline.After(now) {
+			out.Plan = plans.Get(plan)
+			out.Window = start
+			out.ResetAt = deadline
+		}
 	}
 	if (subscriptionStatus == "active" || subscriptionStatus == "trialing") && until.After(now) {
 		out.Plan = plans.Get(plan)

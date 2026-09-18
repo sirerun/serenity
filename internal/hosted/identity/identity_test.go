@@ -72,6 +72,18 @@ func TestSingleUseAndSession(t *testing.T) {
 	if identity.CheckCSRF(session, "") || identity.CheckCSRF(session, "wrong") || !identity.CheckCSRF(session, session.CSRF) {
 		t.Fatal("CSRF failure")
 	}
+	if _, e = db.DB().ExecContext(ctx, `UPDATE accounts SET status='deleting' WHERE id=?`, session.AccountID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.Session(ctx, raw); !errors.Is(e, store.ErrNotFound) {
+		t.Fatalf("deleting account admitted: %v", e)
+	}
+	if _, e = s.DeletionSession(ctx, raw); e != nil {
+		t.Fatalf("deletion retry blocked: %v", e)
+	}
+	if _, e = db.DB().ExecContext(ctx, `UPDATE accounts SET status='active' WHERE id=?`, session.AccountID); e != nil {
+		t.Fatal(e)
+	}
 	if e = s.Logout(ctx, raw); e != nil {
 		t.Fatal(e)
 	}

@@ -84,7 +84,8 @@ func (g *Gateway) DeleteBrain(ctx context.Context, account, brain string, root s
 	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
 	lock.Lock()
 	defer lock.Unlock()
-	owned, err := g.Issuer.Store.BrainByID(ctx, account, brain)
+	var owned hoststore.Brain
+	err := g.Issuer.Store.DB().QueryRowContext(ctx, `SELECT id,account_id,state,path_key FROM brains WHERE id=? AND account_id=?`, brain, account).Scan(&owned.ID, &owned.AccountID, &owned.State, &owned.PathKey)
 	if err != nil {
 		return err
 	}
@@ -115,12 +116,24 @@ func (g *Gateway) DeleteAccount(ctx context.Context, account, root string) error
 	}); err != nil {
 		return err
 	}
-	brains, err := g.Issuer.Store.Brains(ctx, account)
+	rows, err := g.Issuer.Store.DB().QueryContext(ctx, `SELECT id FROM brains WHERE account_id=?`, account)
 	if err != nil {
 		return err
 	}
-	for _, brain := range brains {
-		if err = g.DeleteBrain(ctx, account, brain.ID, root); err != nil {
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err = errors.Join(rows.Err(), rows.Close()); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err = g.DeleteBrain(ctx, account, id, root); err != nil {
 			return err
 		}
 	}

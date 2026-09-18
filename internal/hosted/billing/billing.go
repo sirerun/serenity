@@ -357,7 +357,7 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 			if e != nil {
 				return e
 			}
-			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,status,current_period_start,current_period_end,cancel_at_period_end) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end`, sub.ID, account, item.Price.ID, sub.Status, store.Stamp(time.Unix(item.CurrentPeriodStart, 0)), store.Stamp(time.Unix(item.CurrentPeriodEnd, 0)), sub.CancelAtPeriodEnd)
+			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET grace_until=CASE WHEN excluded.status='past_due' AND subscriptions.status IN ('active','trialing') THEN ? WHEN excluded.status='past_due' AND subscriptions.status='past_due' THEN subscriptions.grace_until ELSE NULL END,price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end`, sub.ID, account, item.Price.ID, plan, sub.Status, store.Stamp(time.Unix(item.CurrentPeriodStart, 0)), store.Stamp(time.Unix(item.CurrentPeriodEnd, 0)), sub.CancelAtPeriodEnd, store.Stamp(time.Now().Add(72*time.Hour)))
 			if e != nil {
 				return e
 			}

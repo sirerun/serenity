@@ -19,7 +19,8 @@ var ErrInvalidCredential = errors.New("invalid credential")
 var ErrRevoked = errors.New("credential revoked")
 var ErrLimit = errors.New("active credential limit reached; rotate or revoke an existing connection")
 
-const MaxActivePerAccount = 8
+// Covers all ten Scale brains with room for separate client connections.
+const MaxActivePerAccount = 16
 
 type Binding struct {
 	AccountID, BrainID, CredentialID string

@@ -26,6 +26,8 @@ explicit test mail/embedding adapters. It exercises two-account isolation,
 credential revocation, CSRF, MCP session ownership, memory writes/recalls,
 backup/restore, restart and deletion. Focused tests cover transactional admission,
 operation replay, interrupted allocation and Stripe signature/reconciliation.
+Successful memory writes now flush their canonical commit before acknowledgment.
+Recovery scans the canonical projection once and reuses existing vectors.
 The browser smoke exercises rendered forms; it does not prove real email delivery
 or the quality of embeddings.
 

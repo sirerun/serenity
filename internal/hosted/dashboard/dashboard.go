@@ -134,6 +134,9 @@ func (d *Dashboard) session(w http.ResponseWriter, r *http.Request, mutation boo
 		return identity.Session{}, false
 	}
 	s, err := d.Identity.Session(r.Context(), cookie.Value)
+	if err != nil && mutation && r.Method == http.MethodPost && r.URL.Path == "/account/delete" {
+		s, err = d.Identity.DeletionSession(r.Context(), cookie.Value)
+	}
 	if err != nil {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return s, false
