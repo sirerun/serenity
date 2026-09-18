@@ -1,57 +1,13 @@
-# Hosted implementation handoff
+# Hosted Serenity implementation handoff
 
-Status: implemented candidate, under verification; not deployed.
-Owner: Codex hosted implementation lane on `feat/hosted-launch`.
+PR [#234](https://github.com/sirerun/serenity/pull/234) is merged at `b9863824faaea77b0dbe059af0e0b25efdce5750`. The candidate is implemented and locally tested; it is not deployed or release-qualified.
 
-## Running locally
+Execution now follows the [prescriptive completion plan](hosted-plan.md), [machine-readable registry](hosted-completion/tasks.json), [individual contracts](hosted-completion/index.md) and [Sonnet worker prompt](hosted-completion/worker-prompt.md). These replace the previous coarse “remaining work” table. All40 original requirements have an explicit [crosswalk](hosted-completion/crosswalk.md).
 
-Build `./cmd/serenity`, copy `deploy/hosted/config.example.json`, and configure
-absolute data/secrets directories. Each secret file must be private and nonempty.
-Run `serenity hosted serve --config CONFIG`. Production requires HTTPS public
-origin, a loopback listener, Resend and embedding credentials. Development mode
-requires a loopback HTTP origin and prints disposable login links to the local log.
-Never enable development mode on a public listener.
+Start41/43/60 in parallel; after the schema/interface freeze,42/44/46/47/49/51 form the first six-way implementation batch. The coordinator owns shared schema, service/CLI assembly, CI, stack.json and aggregate docs. Every worker owns a scoped branch, contract and evidence directory. Do not edit another lane’s files or infer completion from a closed PR alone.
 
-`serenity hosted backup --data-dir DIR --snapshot DEST` coordinates with the
-running service over its private Unix socket, flushes acknowledged writes and
-snapshots SQLite plus canonical Git bundles. Offline backup acquires the service
-writer lock. `serenity hosted restore --snapshot SNAPSHOT --data-dir EMPTY_DIR`
-restores canonical data, revokes credentials/sessions and freezes accounts pending
-billing reconciliation. Reactivation tooling is still an open release gate.
+Critical unfinished work: crash-safe accounting/storage admission; deletion that closes pending provider billing; independent deletion journal; checksummed backup and safe restore reactivation; real all-version retention; fair cold-runtime admission; fresh-host deployment/rollback; observable failures; real provider/client/security/cost qualification. These are named tasks, not optional post-launch cleanup.
 
-## Verification and limitations
+Provider choice is configurable. Perplexity0.6b on OpenRouter is a candidate, not a live-tested pin. Resend and Stripe test credentials remain external prerequisites. Task61 prepares exact private secret references and bounded cost proposals. No provider key values belong in this handoff, PRs or ajent.social.
 
-The end-to-end Go test uses real HTTP, SQLite, Git and memory handlers with
-explicit test mail/embedding adapters. It exercises two-account isolation,
-credential revocation, CSRF, MCP session ownership, memory writes/recalls,
-backup/restore, restart and deletion. Focused tests cover transactional admission,
-operation replay, interrupted allocation and Stripe signature/reconciliation.
-Successful memory writes now flush their canonical commit before acknowledgment.
-Recovery scans the canonical projection once and reuses existing vectors.
-The browser smoke exercises rendered forms; it does not prove real email delivery
-or the quality of embeddings.
-
-Infrastructure templates have only been syntax-validated. Deploy requires a
-reviewed release version, archive SHA256 and stack-owned backup bucket; it
-requires an already mounted data volume and installed Caddy/AWS/Git. It starts
-an initial backup before enabling the hourly timer. No live resources or charges
-have been created by this implementation lane.
-
-## Remaining work with owners and acceptance triggers
-
-All rows below are owned by the Codex hosted implementation lane. Plan contracts
-remain authoritative; these rows record concrete follow-ups, not task acceptance.
-
-| Follow-up | Dependencies | Measurable completion trigger |
-|---|---|---|
-| Complete billing lifecycle and entitlement consistency | Stripe fixtures, T23.22 | Grace/downgrade/duplicate-subscription tests plus Stripe test-clock evidence |
-| Complete fair admission and rate-limit qualification | Gateway, T23.20 | Account/IP 429/Retry-After and multi-tenant capacity tests |
-| Complete deletion retry and restore reactivation | Lifecycle, T23.26–28 | Failure/retry and billing-reconciled restore exercises |
-| Bootstrap and observability | AWS config, T23.13–15/T23.29 | Fresh host deploy, disk/readiness/error/backup-age alarm evidence |
-| Finish usage/storage admission qualification | Metering, T23.21–23 | Full plan limits and exact remaining-capacity tests |
-| Actual client and public onboarding | Hosted origin, T23.17/T23.30–35 | Rakazo live connection and human walkthrough receipts |
-| Capacity, cost and release rehearsal | Provider credentials, T23.36–38 | Fixed-cap load results, restore/rollback evidence and release checklist |
-| Deployment and release | All release gates plus required credentials | Public HTTPS signup, real email, isolated memory and verified backups |
-
-No external prerequisite substitutes for completing the remaining code and
-fixture-based verification that can run without it.
+The source contains `serenity hosted serve`, `backup`, `restore`, and `plans`. Existing restore invalidates old sessions/credentials and freezes accounts; do not manually reactivate them. Task50 supplies the safe reconciliation commands. The existing deploy script assumes installed dependencies/mounted data; task51 closes bootstrap. Follow the current runbook only within its documented limitations until task70 publishes the rehearsed version.
