@@ -17,6 +17,9 @@ import (
 
 var ErrInvalidCredential = errors.New("invalid credential")
 var ErrRevoked = errors.New("credential revoked")
+var ErrLimit = errors.New("active credential limit reached; rotate or revoke an existing connection")
+
+const MaxActivePerAccount = 8
 
 type Binding struct {
 	AccountID, BrainID, CredentialID string
@@ -36,7 +39,16 @@ func generate(accountID, brainID string, scopes []string, generation int) (strin
 }
 func (i *Issuer) Issue(ctx context.Context, brainID, accountID string, scopes []string) (string, error) {
 	raw, c := generate(accountID, brainID, scopes, 1)
-	if err := i.Store.InsertCredential(ctx, c); err != nil {
+	if err := i.Store.Transaction(ctx, func(tx *sql.Tx) error {
+		var count int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM client_credentials WHERE account_id=? AND revoked_at IS NULL`, accountID).Scan(&count); err != nil {
+			return err
+		}
+		if count >= MaxActivePerAccount {
+			return ErrLimit
+		}
+		return store.InsertCredential(ctx, tx, c)
+	}); err != nil {
 		return "", err
 	}
 	return raw, nil

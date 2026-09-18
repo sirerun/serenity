@@ -3,13 +3,14 @@ package identity_test
 import (
 	"context"
 	"errors"
-	"github.com/sirerun/serenity/internal/hosted/identity"
-	"github.com/sirerun/serenity/internal/hosted/store"
 	"net/url"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/sirerun/serenity/internal/hosted/identity"
+	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
 type sender struct{ link string }
@@ -21,7 +22,11 @@ func TestSingleUseAndSession(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	mail := &sender{}
 	now := time.Now()
 	s := &identity.Service{Store: db, Sender: mail, Origin: "https://example.test", Clock: func() time.Time { return now }}
@@ -88,7 +93,11 @@ func TestRateLimit(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	s := &identity.Service{Store: db, Sender: &sender{}, Origin: "https://example.test"}
 	for i := 0; i < 6; i++ {
 		e = s.RequestLink(ctx, "person@example.com", "127.0.0.1")

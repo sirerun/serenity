@@ -35,7 +35,7 @@ type CredentialBinding = ClientCredential
 
 func ID() string               { return rand.Text() }
 func Hash(value string) string { h := sha256.Sum256([]byte(value)); return hex.EncodeToString(h[:]) }
-func Stamp(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
+func Stamp(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.000000000Z") }
 
 func Open(path string) (*Store, error) {
 	u := url.URL{Scheme: "file", Path: path}
@@ -96,7 +96,7 @@ func validID(id string) bool {
 		return false
 	}
 	for _, c := range id {
-		if !(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
+		if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') {
 			return false
 		}
 	}
@@ -153,4 +153,21 @@ func (s *Store) CredentialByPrefix(ctx context.Context, prefix string) (c Creden
 		c.RevokedAt = &t
 	}
 	return
+}
+
+func (s *Store) Brains(ctx context.Context, accountID string) ([]Brain, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id,account_id,state,path_key FROM brains WHERE account_id=? AND deleted_at IS NULL ORDER BY created_at`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Brain
+	for rows.Next() {
+		var b Brain
+		if err = rows.Scan(&b.ID, &b.AccountID, &b.State, &b.PathKey); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
 }

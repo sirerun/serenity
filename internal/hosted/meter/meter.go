@@ -6,9 +6,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/sirerun/serenity/internal/hosted/plans"
 	"github.com/sirerun/serenity/internal/hosted/store"
-	"time"
 )
 
 var ErrInProgress = errors.New("operation is already in progress")
@@ -84,7 +85,7 @@ func (m *Meter) Reserve(ctx context.Context, accountID, metric string, amount, l
 		}
 		if operationKey != "" {
 			var status string
-			e = tx.QueryRowContext(ctx, `SELECT id,status FROM reservations WHERE account_id=? AND window_key=? AND metric=? AND operation_key=? AND status!='released'`, accountID, window, metric, operationKey).Scan(&r.ID, &status)
+			e = tx.QueryRowContext(ctx, `SELECT id,status FROM reservations WHERE account_id=? AND metric=? AND operation_key=? AND status!='released' ORDER BY created_at LIMIT 1`, accountID, metric, operationKey).Scan(&r.ID, &status)
 			if e == nil {
 				if status == "committed" {
 					r.Replay = true

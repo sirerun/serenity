@@ -2,6 +2,52 @@
 
 Kept current by the launch-driving session at every task boundary. Exact heads, owners, reusable components, blockers, evidence. No secret values, ever.
 
+## Implementation checkpoint — 2026-09-18
+
+Owner: Codex hosted implementation lane, branch `feat/hosted-launch`, isolated
+from the shared checkout. Coordination is in the shared `ajent.social` file.
+Base: `f0c2158469426297e645e29774f34c85737e3a2d`; prerequisite stack and HTTP
+wiring have merged. Hosted changes are not deployed or release-qualified.
+
+Implemented for review: SQLite control store, email-link identity, private brain
+provisioning, bounded runtime pool, scoped/revocable credentials, four-tool MCP
+gateway, signup/dashboard and onboarding, atomic usage reservations, Stripe
+checkout/portal/webhooks, export/deletion, coordinated backup/restore, CLI service
+assembly, and AWS/deployment templates. Production uses the configured embedding
+provider; deterministic adapters exist only in verification fixtures.
+
+Evidence: full local race run before audit repairs passed 1,895 test/subtest
+cases across 66 tested packages, with six explicit test skips and eight packages
+without tests. Vet, lint and build passed. Subsequent focused hosted race runs,
+vet, lint and build passed after recovery/quota/checkout repairs. Actual Chrome
+signup and memory-save passed on a loopback service with a test embedding provider.
+CloudFormation syntax validation passed; no stack was created. These are local
+proofs, not real email, Stripe test-mode or hosted infrastructure qualification.
+
+Audit repairs include brain-scoped retry keys across billing windows, interrupted
+additional-brain recovery, restoring derived search on runtime open, per-account
+credential/handler bounds, persisted checkout attempts, usage/reset display,
+sliding browser cookies and installation of scheduled backups.
+
+Open implementation/release gates are tracked in
+[the implementation handoff](hosted-implementation-handoff.md). None of the
+40 plan tasks is declared accepted solely because code exists in this branch.
+
+## External prerequisites
+
+- Hosted embedding credential is unavailable in the inspected environment and
+  dedicated Secrets Manager names. No unrelated credential was repurposed.
+- Resend domain verification remains unconfirmed; the available credential
+  returned HTTP 401 on a read-only domain-list request.
+- Stripe restricted test and live keys and webhook secrets remain unavailable.
+- VM provisioning, persistent-volume bootstrap, DNS, real-mail delivery,
+  measured capacity/cost, recovery qualification and release gates remain open.
+
+## Superseded discovery snapshot
+
+The following 2026-09-11 snapshot is historical. Its PR states, ownership and
+“not started” entries are superseded by the checkpoint above.
+
 ## Pins (2026-09-11)
 
 | What | Value |

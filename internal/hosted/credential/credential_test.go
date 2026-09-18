@@ -3,11 +3,12 @@ package credential_test
 import (
 	"context"
 	"errors"
-	"github.com/sirerun/serenity/internal/hosted/credential"
-	"github.com/sirerun/serenity/internal/hosted/store"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/sirerun/serenity/internal/hosted/credential"
+	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
 func TestRotationAndOwnership(t *testing.T) {
@@ -16,7 +17,11 @@ func TestRotationAndOwnership(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer s.Close()
+	defer func() {
+		if err := s.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	a, e := s.CreateAccount(ctx, "a@example.com")
 	if e != nil {
 		t.Fatal(e)
