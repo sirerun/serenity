@@ -13,6 +13,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/embed"
+	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/server/mcp"
 	"github.com/sirerun/serenity/internal/server/memory"
@@ -29,11 +30,13 @@ type Config struct {
 	Embedder             embed.Embedder
 }
 type Runtime struct {
-	Tools []mcp.Tool
-	Root  string
-	close func() error
-	users int
-	last  time.Time
+	flush     func() error
+	Mutations sync.Mutex
+	Tools     []mcp.Tool
+	Root      string
+	close     func() error
+	users     int
+	last      time.Time
 }
 type Pool struct {
 	cfg      Config
@@ -120,7 +123,7 @@ func open(ctx context.Context, cfg Config, id string) (*Runtime, error) {
 		return nil, errors.New("invalid brain id")
 	}
 	for _, c := range id {
-		if !(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
+		if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') && (c < '0' || c > '9') {
 			return nil, errors.New("invalid brain id")
 		}
 	}
@@ -171,9 +174,28 @@ func open(ctx context.Context, cfg Config, id string) (*Runtime, error) {
 	} else if err != nil {
 		return fail(err)
 	}
+	if _, err := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--verify", "HEAD").Output(); err != nil {
+		if output, e := exec.CommandContext(ctx, "git", "-C", root, "add", "--", config.FileName, ".gitignore").CombinedOutput(); e != nil {
+			return fail(fmt.Errorf("stage brain baseline: %w: %s", e, output))
+		}
+		if output, e := exec.CommandContext(ctx, "git", "-C", root, "commit", "-m", "Initialize hosted brain").CombinedOutput(); e != nil {
+			return fail(fmt.Errorf("commit brain baseline: %w: %s", e, output))
+		}
+	}
 	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		return fail(err)
+	}
+	// Canonical sources survive crashes and backups; derived search must recover
+	// before this runtime becomes available. Existing vectors remain reusable.
+	projection, err := store.LoadMemoryProjection(store.NewSourceStore(root))
+	if err != nil {
+		return fail(errors.Join(err, eng.Close()))
+	}
+	for _, fact := range projection.All() {
+		if _, _, err = index.RefreshMemoryFactSearch(ctx, root, fact.SHA256, eng, cfg.Embedder, time.Now); err != nil {
+			return fail(errors.Join(err, eng.Close()))
+		}
 	}
 	q := writer.NewQueue(nil)
 	handlers := memory.New(memory.Deps{Root: root, Config: c, Index: eng, Embedder: cfg.Embedder, Queue: q, Sources: store.NewSourceStore(root), Fence: store.NewFenceWriter(root), Shard: store.NewShardStore(root)})
@@ -184,9 +206,43 @@ func open(ctx context.Context, cfg Config, id string) (*Runtime, error) {
 			tools = append(tools, tool)
 		}
 	}
-	return &Runtime{Root: root, Tools: tools, close: func() error {
+	return &Runtime{Root: root, Tools: tools, flush: func() error { _, err := writer.Flush(q, root); return err }, close: func() error {
 		q.Close()
 		_, flushErr := writer.Flush(q, root)
 		return errors.Join(flushErr, eng.Close(), owner.Close())
 	}}, nil
 }
+
+// Drop joins no new work and closes an idle runtime before its storage is removed.
+func (p *Pool) Drop(id string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	r := p.open[id]
+	if r == nil {
+		return nil
+	}
+	if r.users != 0 {
+		return ErrCapacity
+	}
+	if err := r.close(); err != nil {
+		return err
+	}
+	delete(p.open, id)
+	return nil
+}
+
+func (p *Pool) FlushAll() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, r := range p.open {
+		if r.users != 0 {
+			return ErrCapacity
+		}
+		if err := r.flush(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Runtime) Flush() error { return r.flush() }

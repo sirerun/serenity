@@ -1,0 +1,26 @@
+[Unit]
+Description=Hosted Serenity memory
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/var/lib/serenity
+
+[Service]
+Type=simple
+User=serenity
+Group=serenity
+ExecStart=/usr/local/bin/serenity hosted serve --config /etc/serenity/hosted.json
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/serenity
+ReadOnlyPaths=/etc/serenity
+LimitNOFILE=4096
+MemoryMax=1400M
+
+[Install]
+WantedBy=multi-user.target
