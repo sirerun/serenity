@@ -1,6 +1,8 @@
 // Package plans is the versioned source of truth for the hosted offer.
 package plans
 
+import "encoding/json"
+
 type Plan struct {
 	ID           string `json:"id"`
 	MonthlyCents int64  `json:"monthly_cents"`
@@ -25,4 +27,13 @@ func Get(id string) Plan {
 		}
 	}
 	return V1[0]
+}
+
+// JSON is the canonical public representation checked against the pricing artifact.
+func JSON() ([]byte, error) {
+	data, err := json.MarshalIndent(V1, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
 }

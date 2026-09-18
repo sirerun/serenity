@@ -14,12 +14,21 @@ import (
 	"github.com/sirerun/serenity/internal/writer"
 
 	"github.com/sirerun/serenity/internal/hosted/backup"
+	"github.com/sirerun/serenity/internal/hosted/plans"
 	"github.com/sirerun/serenity/internal/hosted/service"
 	"github.com/spf13/cobra"
 )
 
 func newHostedCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "hosted", Short: "Operate the managed Serenity service"}
+	cmd.AddCommand(&cobra.Command{Use: "plans", Short: "Print the version 1 hosted pricing and limits", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		data, err := plans.JSON()
+		if err != nil {
+			return err
+		}
+		_, err = cmd.OutOrStdout().Write(data)
+		return err
+	}})
 	var path string
 	serve := &cobra.Command{Use: "serve", Short: "Serve hosted signup, dashboard and authenticated memory", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) (runErr error) {
 		cfg, err := service.Load(path)

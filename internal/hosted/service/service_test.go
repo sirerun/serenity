@@ -304,6 +304,15 @@ func TestOperationKeysAreBrainScopedAndQuotaIsAccountScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	badArgs, _ := json.Marshal(map[string]string{"fact": "valid fact", "provenance": "test", "operation_key": strings.Repeat("x", 129)})
+	rejected, err := svc.Gateway.CallForAccount(ctx, a.ID, first.ID, "remember", badArgs)
+	if err != nil || !rejected.IsError {
+		t.Fatalf("oversized operation key %+v %v", rejected, err)
+	}
+	var reservations int
+	if err = db.DB().QueryRowContext(ctx, `SELECT count(*) FROM reservations WHERE account_id=?`, a.ID).Scan(&reservations); err != nil || reservations != 0 {
+		t.Fatalf("invalid key persisted: %d %v", reservations, err)
+	}
 	for _, id := range []string{first.ID, second.ID, first.ID} {
 		args := json.RawMessage(`{"fact":"The marker is amber heron","provenance":"quota regression","operation_key":"same-key"}`)
 		result, err := svc.Gateway.CallForAccount(ctx, a.ID, id, "remember", args)
@@ -316,6 +325,10 @@ func TestOperationKeysAreBrainScopedAndQuotaIsAccountScoped(t *testing.T) {
 		if err != nil || len(bytes.TrimSpace(output)) != 0 {
 			t.Fatalf("acknowledged write not committed: %s %v", output, err)
 		}
+	}
+	inventory, err := svc.Gateway.Inventory(ctx, a.ID, filepath.Join(dir, "brains"))
+	if err != nil || inventory.Brains != 2 || inventory.Memories != 2 || inventory.StorageBytes <= 0 {
+		t.Fatalf("inventory %+v %v", inventory, err)
 	}
 	var writes int
 	if err = db.DB().QueryRowContext(ctx, `SELECT sum(committed) FROM usage_windows WHERE account_id=? AND metric='writes'`, a.ID).Scan(&writes); err != nil || writes != 2 {

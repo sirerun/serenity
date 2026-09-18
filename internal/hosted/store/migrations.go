@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS login_tokens(id TEXT PRIMARY KEY,email TEXT NOT NULL,
 CREATE TABLE IF NOT EXISTS sessions(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),token_hash TEXT NOT NULL UNIQUE,created_at TEXT NOT NULL,expires_at TEXT NOT NULL,csrf_secret TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS usage_windows(account_id TEXT NOT NULL REFERENCES accounts(id),window_key TEXT NOT NULL,metric TEXT NOT NULL,committed INTEGER NOT NULL DEFAULT 0 CHECK(committed>=0),PRIMARY KEY(account_id,window_key,metric));
 CREATE TABLE IF NOT EXISTS reservations(id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),window_key TEXT NOT NULL,metric TEXT NOT NULL,amount INTEGER NOT NULL CHECK(amount>=0),operation_key TEXT,status TEXT NOT NULL,lease_expires_at TEXT,created_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS reservation_released_age ON reservations(created_at) WHERE status='released';
+CREATE INDEX IF NOT EXISTS reservation_open_expiry ON reservations(lease_expires_at) WHERE status='open';
+CREATE INDEX IF NOT EXISTS reservation_replay ON reservations(account_id,metric,operation_key,created_at) WHERE status!='released';
 CREATE UNIQUE INDEX IF NOT EXISTS reservation_operation ON reservations(account_id,window_key,metric,operation_key) WHERE operation_key IS NOT NULL AND status!='released';
 CREATE TABLE IF NOT EXISTS checkout_attempts(account_id TEXT PRIMARY KEY REFERENCES accounts(id),id TEXT NOT NULL,price_id TEXT NOT NULL,session_id TEXT,created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS stripe_events(id TEXT PRIMARY KEY,received_at TEXT NOT NULL,processed_at TEXT);
