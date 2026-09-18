@@ -129,3 +129,13 @@ slice has deployed and the spike numbers exist.
 
 Revisit if: T23.3 shows more than 30 MB RSS per open brain at 100 brains, if
 the free cap fills, or if full-limit load on t4g.small exceeds 70 percent CPU.
+
+## Candidate recovery seam (2026-09-18)
+
+The hosted pool calls `index.RecoverMemorySearch` in the existing canonical
+rebuild layer while holding exclusive brain writer ownership, before exposing
+the runtime. The helper reads canonical source files once, repairs derived
+chunks, and embeds only eligible facts missing vectors under the pinned model.
+It accepts no caller-supplied fact text. This keeps cold recovery linear in
+canonical scanning and preserves the existing file-first write gate; the
+hosted package does not write derived chunks or vectors directly.
