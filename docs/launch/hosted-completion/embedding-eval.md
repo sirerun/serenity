@@ -169,8 +169,8 @@ a broken TTL from a skewed clock. Either way it is never a pass.
 ## Harness
 
 `scripts/hosted/eval_embeddings.py` takes one of `--fixtures`, `--preflight`,
-`--seed` or `--live`, plus `--manifest PATH` and `--output PATH`. Code lives in
-`evals/hosted/lib/`:
+`--init-ledger`, `--seed` or `--live`, plus `--manifest PATH` and `--output PATH`.
+Code lives in `evals/hosted/lib/`:
 
 - `cosine.py`: cosine similarity, rejects empty/nonfinite/mismatched/zero
   vectors; `test_cosine.py` proves scale invariance.
@@ -191,6 +191,8 @@ a broken TTL from a skewed clock. Either way it is never a pass.
   guarantees".
 - `budget.py`: one `BudgetGuard` shared by `--seed` and `--live`. See "Budget
   units".
+- `ledger.py`: the durable, cumulative budget every request is reserved in before
+  it is sent. See "Cumulative budget ledger".
 - `seeding.py`: seed plan, empty-account proof, the forgotten/expired protocol
   (forget, TTL expiry and the wait), receipt writing and strict receipt
   verification.
@@ -212,6 +214,13 @@ a broken TTL from a skewed clock. Either way it is never a pass.
   `source-<sha256>` (the id `remember` returned), never the corpus id, so a live
   run needs the seed receipt's id map to attribute results. Facts are seeded
   without an entity so the slug keeps that shape.
+- **Session handshake.** The service's MCP transport requires the session id and
+  `MCP-Protocol-Version` on every request after `initialize`, and refuses
+  `tools/call` until `notifications/initialized` has been sent. `initialize()`
+  sends both and takes the version from the response; the notification is a
+  charged request like any other. The earlier client sent neither, and the fake
+  server accepted that, so the gap appeared only against the actual service.
+  `fake_hosted_mcp.py` now enforces the same rules.
 - **Redirects and proxies.** Any 3xx is an error; no header is forwarded
   anywhere. `http.client` reads no proxy environment variable.
 - **Wall-clock deadline.** A socket timeout bounds one `recv`, not the
@@ -252,7 +261,8 @@ a broken TTL from a skewed clock. Either way it is never a pass.
 before any counter moves or any socket opens, so a request that cannot fit is
 rejected whole.
 
-- `max_calls`: every HTTP request, including each `initialize`.
+- `max_calls`: every HTTP request, including each `initialize` and its
+  `notifications/initialized`.
 - `max_input_tokens`: charged at **one token per serialized request byte**. No
   tokenizer emits more tokens than bytes, so this is an upper bound (the earlier
   chars/4 estimate under-counted non-English text and JSON punctuation, and was
@@ -264,15 +274,104 @@ rejected whole.
   `cost.operator_ceiling_projection_usd`. `cost.actual_usd` is **null**: no
   billing measurement exists, and a projection reported as spend would be a
   fabricated figure.
-- `max_elapsed_seconds`: monotonic deadline for one invocation. `--seed`
+- `max_elapsed_seconds`: monotonic deadline for one invocation (a wall clock
+  cannot be carried across processes honestly, so it is not part of the ledger).
+  `--seed`
   waits out a real TTL, so its cap must exceed the whole run: positive-account
   seeding, the empty-account calls before the wait, the wait itself (60 s TTL +
   5 s margin, plus up to 1 s of rounding) and 30 s for the probes after it. The
   floor `TTL + margin + tail` = 95 s is **necessary, not sufficient**: a cap
   below it is BLOCKED before the first call (in `--preflight --phase seed` too),
   and a wait that no longer fits the remaining cap BLOCKS before it starts.
-- Spend recorded in the seed receipts counts against the live run's calls and
-  tokens, so seed then live cannot together exceed a cap each would satisfy.
+- The four spend caps bind the whole qualification through the ledger below, not
+  each invocation.
+
+### Cumulative budget ledger
+
+The manifest's caps bind the whole qualification: the seed, every retry of it and
+every live run, in any process and in any order. A per-invocation counter cannot
+enforce that. Three `--live` runs under `max_calls=237` sent 447 requests, and two
+seed retries under `max_calls=50` sent 100. Every request is now reserved in a
+ledger before its socket opens.
+
+- **Where.** `budget.ledger_path` names an append-only JSON-lines file (a relative
+  path resolves against the manifest's directory) with a sibling `<name>.lock`.
+  Each record carries the SHA-256 of the record before it. The first record binds
+  the ledger to the manifest's `budget.authorization_ref`, its four spend caps
+  (`max_calls`, `max_input_tokens`, `approved_max_usd`, `max_cost_per_call_usd`)
+  and an identity hash over the corpus, the supplemental plan, the declared
+  provider pin, the environment and both endpoints. `max_elapsed_seconds` and the
+  credentials are not part of the binding, so a seed retry against fresh accounts
+  still draws on the same budget.
+- **Reserve, then send.** A reservation takes an inter-process lock, reads and
+  validates the whole ledger, checks the cumulative totals, appends its record and
+  flushes it to the device before the request goes out. Concurrent processes
+  serialize on the lock, so they cannot each spend the remaining cap.
+- **No refunds.** A process that dies after reserving leaves an uncertain call
+  that stays counted, because the request may have left.
+- **Fail closed.** A corrupt, truncated, reordered, empty or unreadable ledger, a
+  lock that cannot be taken, and a manifest with a different authorization
+  reference, cap or identity all block before any request. Changing a cap or a
+  reference never resets a ledger.
+- **Created on purpose.** `--init-ledger` is the only step that creates a ledger.
+  It runs the seed-phase preflight first, because the caps it binds are the
+  authorization's caps from then on, and it refuses a path where a ledger, an
+  empty file or a lock file already exists. `--seed` and `--live` never create
+  one, and a missing ledger is never re-created. A new authorization takes a new
+  `budget.ledger_path`, chosen by whoever holds the EMBEDDINGS authority; nothing
+  renews a budget automatically, and no approval step exists beyond that
+  authority's `authorization_ref`.
+- **Receipts do not establish a budget.** A seed receipt carries the ledger's own
+  figures for its invocation. `--live` blocks a receipt with no ledger provenance,
+  provenance from another ledger, or counters that differ from the ledger, even
+  when the edited receipt is re-hashed into the manifest.
+- **Run deadline.** The absolute `max_elapsed_seconds` deadline goes into the lock
+  wait, so the 30 s lock timeout cannot outlast a shorter cap, and it is checked
+  again after the ledger is read and again after the record is durable, before the
+  request is sent. A reservation that lands past the cap stays counted, nothing is
+  sent, and the result reports it as `usage.reserved_not_sent`. Only this
+  process's monotonic clock and the request's socket deadline are controlled.
+
+**What the ledger is not.** It is an operator-side accident and crash guard. It is
+not tamper-proof against its owner, who can delete every file and start over,
+rewrite the ledger with fresh hashes or restore an older copy, and it cannot see
+spend that did not go through this harness. The hash chain detects an edited
+middle record, a removed or reordered record and a torn final line. It cannot
+detect the removal of a whole suffix that leaves a previously valid prefix, or an
+edit to the final record, which no later record hashes.
+`test_ledger.py::TestStatedLimits` pins both gaps. Owner tampering and rollback
+are outside this guard, and nothing here claims every possible truncation is
+caught.
+
+### Fixture and live-provider evidence
+
+The harness cannot tell a loopback oracle from a provider, so it classifies the
+endpoints it was given and never lets a local run stand for the qualification.
+
+- A loopback or private-network endpoint (a literal address, or `localhost`), or
+  `environment.kind: local-fixture`, makes the run a **fixture**: `evidence_level`
+  is `fixture` and the status cannot exceed `PARTIAL`, however the 95 rankings
+  score. The Hit@5 row is `NOT_RUN` when a fixture run meets the thresholds and
+  `FAIL` when it misses them.
+- `environment.kind` must be `local-fixture`, `disposable`, `staging` or
+  `production`; any other value blocks the run, and `local-fixture` may name only
+  local endpoints.
+- A remote endpoint does not prove the selected provider either: the recall
+  response reports no model or dimensions. `provider.declared` records the
+  manifest's pin, `provider.observed` lists only the endpoints called and their
+  class (`provider_identity_verified` is `false`), and
+  `provider.qualification_prerequisites` lists what still has to hold: a remote
+  run against the provisioned test accounts, deployment evidence showing which
+  provider served it, the EMBEDDINGS authority's approval of the caps, and the
+  task41 freeze confirmation.
+- Host names are not resolved, so a name pointed at a local address is not
+  detected as local.
+- The budget-boundary acceptance row is `PASS` only when the run was stopped by a
+  cap or an unavailable provider. Any other outcome, a full run or an inventory
+  drift block included, leaves it `NOT_RUN`; the unit tests carry that evidence.
+- A lexical control that fails or times out is a sanitized `BLOCKED` result and
+  exit 2 in `--fixtures` and `--live`; only the exit code or the timeout reaches
+  the result, never the binary's output.
 
 ### Manifest extensions
 
@@ -305,9 +404,16 @@ Beyond the shared template, a T23.43 `--seed`/`--live` manifest needs:
   "corpus_seeded_confirmation": "sha256:<printed by --seed>"
 },
 "seeding": { "authorized": true, "authorization_ref": "<separate approval>" },
-"budget": { "max_cost_per_call_usd": 0.0 }
+"budget": {
+  "max_cost_per_call_usd": 0.0,
+  "ledger_path": "qualification-ledger.jsonl"
+}
 ```
 
+- `budget.ledger_path` is required for `--seed` and `--live`; see "Cumulative
+  budget ledger". The template `qualification.example.json` is not edited.
+- `environment.kind` is one of `local-fixture`, `disposable`, `staging`,
+  `production`.
 - `seed_receipt_path` and `corpus_seeded_confirmation` are needed only for
   `--live`. The confirmation must be exactly `sha256:` plus the receipt file's
   hash; a hand-typed id or timestamp is rejected. `seeding` is needed only for
@@ -361,8 +467,15 @@ python3 scripts/hosted/eval_embeddings.py --preflight --phase seed \
 #    budget.max_elapsed_seconds (size it well above: it must also cover seeding
 #    the positive account first).
 
-# 2. Seed both accounts (paid; needs seeding.authorized). Writes two receipts and
-#    prints each confirmation. Refuses non-empty accounts and existing receipts.
+# 1b. Begin the cumulative ledger (offline, once per authorization). It binds the
+#    caps to budget.authorization_ref, so run step 1 first and size the caps from it.
+#    It refuses a path where a ledger, an empty file or a lock file exists.
+python3 scripts/hosted/eval_embeddings.py --init-ledger \
+  --manifest "$MANIFEST" --output "$PRIVATE/init-ledger.json"
+
+# 2. Seed both accounts (paid; needs seeding.authorized and the ledger). Writes two
+#    receipts and prints each confirmation. Refuses non-empty accounts and existing
+#    receipts.
 python3 scripts/hosted/eval_embeddings.py --seed --manifest "$MANIFEST" \
   --receipt-dir "$PRIVATE/receipts" --output "$PRIVATE/seed-result.json"
 #    Copy each receipt's seed_receipts[<role>].confirmation into the live manifest.
@@ -375,6 +488,19 @@ python3 scripts/hosted/eval_embeddings.py --preflight --phase live \
 python3 scripts/hosted/eval_embeddings.py --live --manifest "$LIVE_MANIFEST" \
   --output "$PRIVATE/live-result.json"
 ```
+
+Keep the ledger and its `.lock` file with the manifest. A seed retry and every
+live run draw on the same ledger, so a retry never gets a fresh budget; more
+budget means a new authorization and a new `budget.ledger_path`. If the ledger is
+corrupt, empty or missing, every step blocks until whoever holds the authority
+decides what to do; the harness never repairs or re-creates it.
+
+The hosted gateway allows 120 requests a minute per account (a fixed one-minute
+window, answered with HTTP 429 and `Retry-After: 60`) and 600 a minute per client
+IP. The positive account's seed and its live scoring each send about 100 to 110
+requests at full speed, so leave a minute between phases against one account.
+The harness does not pace requests: a 429 stops the run as `BLOCKED` with "live
+call failed: HTTP 429".
 
 Before step 2 the empty-case account must be a fresh account. A partial seed
 leaves an incomplete receipt and a non-empty account; reset the account
@@ -418,21 +544,92 @@ working tree under `evals/hosted` or `scripts/hosted` is recorded as a
 limitation in fixtures mode and blocks `--seed`/`--live`, because a recorded
 `source_sha` must name the code that ran.
 
+## Verification against the actual service (local)
+
+`evals/hosted/local_service_fixture.py` runs the pre-built `serenity hosted serve`
+binary on `127.0.0.1` in development mode behind a small synthetic embedding
+provider it starts itself, then runs this harness's own `--init-ledger`, `--seed`
+and `--live` against it. It is opt-in and starts a real process, so no default
+test run does it:
+
+```sh
+T2343_LOCAL_SERVICE=1 SERENITY_BIN=/abs/path/serenity \
+  python3 evals/hosted/local_service_fixture.py --output "$PRIVATE/local-service.json"
+# the same scenario as a test, from evals/hosted:
+T2343_LOCAL_SERVICE=1 SERENITY_BIN=/abs/path/serenity python3 -m unittest test_local_service
+```
+
+With the production constants (60 s TTL, 5 s margin) a run takes about three and a
+half minutes: the seed's real wait, plus a 61 s pause before each of two later
+phases so the gateway's per-account limit (see the recipe) does not stop the
+fixture. `--smoke-ttl-seconds` and `--smoke-margin-seconds` shorten the wait for a
+quick look; the report is then marked `SMOKE-NOT-QUALIFYING`.
+
+**What is real:** the service binary, its dashboard signup (development mode
+prints the login link to the service log), its scoped credential issuance, its MCP
+endpoint, its memory store on disk and its own clock. **What is synthetic:** the
+embedding provider, a cached-vector oracle that gives each query its answer's
+vector plus a hash-bag fallback at 1536 dimensions, and the two throwaway
+accounts. `fake_hosted_mcp.py` is a protocol stand-in for unit tests and is never
+called the service.
+
+What it checks, each through an ordinary interface:
+
+- The seed receipt, the dashboard's live-memory count and the brain export
+  (`facts.json`, current facts only) agree for the positive account, and both the
+  dashboard and the export show **zero** current facts for the empty-case account.
+- The canonical records on disk (read-only): all five expected-empty targets still
+  exist as `memory_fact` records, the two expire-mode targets carry the fixed
+  `valid_until` instant and have no expiry record, and exactly the three
+  forget-mode targets have `memory_expiry` records. The two TTL targets left the
+  current view by lapsing, not by being removed.
+- The expiry was crossed on the service's clock: the probe was past `valid_until`
+  by more than the measured skew plus the one-second resolution of the `Date`
+  header.
+- A second `--seed` is refused after the empty-account proof, writes nothing and
+  spends four ledger calls; a repeat into the same receipt directory spends none.
+- A `--live` run over the real service with the oracle ranking all 95 positive
+  queries correctly is still `PARTIAL`, `evidence_level: fixture`, with the Hit@5
+  row `NOT_RUN`.
+- Isolation: a marker written to one account never reaches the other, the
+  sentinel is unreachable from the empty-case account, and each export holds only
+  its own account's facts.
+- The exact PID the fixture started was stopped and confirmed gone, and its owned
+  directory was removed.
+
+**What it proves:** plumbing, the TTL and forget seed protocol, the actual
+service clock, account isolation and the ordinary APIs, on this machine. **What it
+does not prove:** retrieval quality (the oracle is the answer key), any real
+provider's latency, dimensions, model pin, availability or cost, deployment,
+billing, mail, or a remote network's latency against the TTL. Provider and
+semantic qualification stay BLOCKED, and the lexical-negative criterion is
+unchanged.
+
+The fixture refuses an existing path, a non-loopback bind, origin or embedding
+base URL, and any provider but its own. The child gets a minimal environment (no
+proxy variable, no credential, its own `HOME` and `TMPDIR`). Every synthetic
+credential is registered for redaction, and a report that still contains one is
+refused. It signals only the PID it spawned, after `ps` shows the command line
+still carries its marker. The sanitized report is
+`docs/launch/evidence/T23.43/local-service-verification.json`; the tests that
+need no binary are in `evals/hosted/test_local_service.py`.
+
 ## Known limits
 
-- **No live measurement has ever been taken.** `EMBEDDINGS_API_KEY` is not
-  provisioned, T23.42's real provider adapter is not merged, and no hosted
-  account is seeded. Every number here is a fixtures-only mechanical rehearsal
-  or a loopback test against `evals/hosted/fake_hosted_mcp.py`, which mirrors
-  the real wire shapes but embeds nothing. `--seed` and `--live` are
-  implemented and tested against it; this document claims no more.
-- **Both removal paths are exercised, but only against the loopback fake.** The
-  fake evaluates `now >= valid_until` at query time against a clock the harness
-  sleeps on (and, in one test, the real clock and a real wait), so expiry is
-  real semantics and not a fact that was never stored. It is not the hosted
-  service: whether the real service expires a fact on schedule, and drops it
-  from the search index at that moment, is exactly what a real `--seed` would
-  measure and this document does not claim it.
+- **No live-provider measurement has ever been taken.** `EMBEDDINGS_API_KEY` is
+  not provisioned, T23.42's real provider adapter is not merged, and no hosted
+  account is seeded. Every number here is a fixtures-only mechanical rehearsal, a
+  loopback test against `evals/hosted/fake_hosted_mcp.py` (a protocol stand-in
+  that embeds nothing), or the local run against the actual service described
+  above, behind a synthetic provider. Provider and semantic qualification stay
+  BLOCKED.
+- **Both removal paths are exercised against the actual service, locally.** The
+  fake evaluates `now >= valid_until` at query time, and the local run shows the
+  actual service does the same on its own clock with the frozen 60 s TTL and 5 s
+  margin (see "Verification against the actual service (local)"). That run used
+  a loopback provider and a throwaway account on this machine. It says nothing
+  about a remote deployment: network latency against the TTL, a real provider's
+  indexing delay and a service clock on another host are still untested.
 - **Expiry is judged on the service's clock.** A service clock more than the 5 s
   margin behind the harness's blocks the seed as "still visible after its
   expiry"; the harness cannot tell that from a service that ignores the TTL.
@@ -460,6 +657,10 @@ limitation in fixtures mode and blocks `--seed`/`--live`, because a recorded
   invoice. The worst-case reservation is `cost.operator_ceiling_projection_usd`.
 - **Provider fields are the manifest's declared pin.** The hosted recall
   response does not report a model or dimensions.
+- **The harness does not pace requests.** The gateway's 120-requests-a-minute
+  account limit answers a burst with HTTP 429, which the harness reports as
+  `BLOCKED` ("live call failed: HTTP 429") and does not retry. Leave a minute
+  between phases against one account.
 - **DNS resolution is not covered by the wall-clock deadline.** No claim is made
   of a total end-to-end time guarantee against a hostname.
 - **The lexical-negative criterion is an unapproved raw-count interpretation.**
@@ -477,6 +678,14 @@ python3 -m unittest discover -s evals/hosted -p "test_*.py"
 
 # Corpus drift check:
 python3 evals/hosted/corpus_gen.py --check
+
+# The cumulative-ledger tests (real second processes, a real lock, independently
+# counted loopback requests) run in the same command; test_ledger.py is theirs.
+
+# The actual hosted service on loopback, opt-in (see "Verification against the
+# actual service (local)"):
+T2343_LOCAL_SERVICE=1 SERENITY_BIN=/path/to/built/serenity \
+  python3 evals/hosted/local_service_fixture.py --output /private/path/local-service.json
 
 # Fixtures run including the real lexical-only control (build once under the
 # R-build-lease protocol; the harness and its tests never build automatically):
