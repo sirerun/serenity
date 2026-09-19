@@ -66,6 +66,7 @@ type BrainObs struct {
 	VectorsMissing        int              `json:"index_vectors_missing"`
 	VectorsExtra          int              `json:"index_vectors_extra_or_other_pin"`
 	VectorsBadLength      int              `json:"index_vectors_bad_length"`
+	ContentSHA256         string           `json:"content_sha256"`
 	ConfigPin             string           `json:"config_embedding_pin"`
 	GitCommits            int              `json:"git_commits"`
 	GitDirtyPaths         int              `json:"git_uncommitted_paths"`
@@ -113,6 +114,10 @@ type Report struct {
 	Reduced                  bool             `json:"reduced"`
 	Pass                     bool             `json:"pass"`
 	SatisfiesFullCardinality bool             `json:"satisfies_full_cardinality"`
+	FixtureContentSHA256     string           `json:"fixture_content_sha256"`
+	ControlDBSHA256          string           `json:"control_db_sha256"`
+	MarkerSHA256             string           `json:"marker_sha256"`
+	WorkloadSHA256           string           `json:"workload_sha256"`
 	Totals                   map[string]int64 `json:"totals"`
 	StorageAndHistory        map[string]any   `json:"storage_and_history_gap"`
 	Accounts                 []AccountObs     `json:"accounts"`
@@ -162,6 +167,12 @@ func Verify(ctx context.Context, o VerifyOptions) (*Report, error) {
 		return nil, err
 	}
 	r := &Report{Schema: "serenity-hosted-load-fixture-verification", Version: 1, FixtureDirName: filepath.Base(o.Dir), Expect: o.Expect, MarkerProfile: marker.Profile, Reduced: plan.Reduced, Notices: Notices, NotClaimed: notClaimed(plan)}
+	markerSum := sha256.Sum256(raw)
+	r.MarkerSHA256, r.WorkloadSHA256 = hex.EncodeToString(markerSum[:]), wl.SHA256
+	if db, e := os.ReadFile(filepath.Join(o.Dir, "data", "control.db")); e == nil {
+		dbSum := sha256.Sum256(db)
+		r.ControlDBSHA256 = hex.EncodeToString(dbSum[:])
+	}
 	r.eq("marker.profile_equals_expectation", o.Expect, marker.Profile)
 	r.eq("marker.workload_sha256_equals_frozen_workload", wl.SHA256, marker.WorkloadSHA256)
 	r.eq("marker.embedder_pin_shape", fmt.Sprintf("fixture-hash-embedder-d%d@%s", marker.EmbedderDim, EmbedderVersion), marker.EmbedderPin)
@@ -534,6 +545,11 @@ func observeBrain(ctx context.Context, dir string, wl *Workload, marker *Marker,
 	}
 	obs.foundSHA = map[string]struct{}{}
 	observeCanonical(root, obs)
+	found := make([]string, 0, len(obs.foundSHA))
+	for sha := range obs.foundSHA {
+		found = append(found, sha)
+	}
+	obs.ContentSHA256 = digestOf(found)
 	observeProjection(root, obs)
 	observeIndex(ctx, root, marker, obs)
 	observeConfig(root, obs)
@@ -810,6 +826,12 @@ func aggregate(r *Report, plan *Plan, marker *Marker, brains []*BrainObs, byLabe
 			bad = append(bad, fmt.Sprintf("%s/%d: %s", b.Label, b.Index, strings.Join(reasons, "; ")))
 		}
 	}
+	var lines []string
+	for _, b := range brains {
+		lines = append(lines, fmt.Sprintf("%s/%d %s", b.Label, b.Index, b.ContentSHA256))
+	}
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+	r.FixtureContentSHA256 = hex.EncodeToString(sum[:])
 	r.Totals = map[string]int64{"accounts": int64(len(byLabel)), "brains": int64(len(brains)), "canonical_memory_facts": facts, "memory_expiry_sources": expiries, "index_fact_chunks": chunks, "index_vectors_under_pin": vectors, "git_commits_all_brains": commits, "git_tracked_source_files": tracked}
 	r.eq("total.canonical_memory_facts", plan.TotalFacts, facts)
 	r.eq("total.index_fact_chunks", plan.TotalFacts, chunks)

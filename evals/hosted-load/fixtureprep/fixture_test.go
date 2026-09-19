@@ -274,6 +274,35 @@ func TestRefusedAtCapRule(t *testing.T) {
 	}
 }
 
+// Two independent preparations of the same profile hold the same facts, so their content digests agree even though every
+// brain id, credential and timestamp differs. That makes the digest a reproducible fixture identity.
+func TestContentDigestIsReproducibleAcrossPreparationsAndSensitiveToContent(t *testing.T) {
+	first := verify(t, sharedFixture(t), ProfileSmoke)
+	out := filepath.Join(t.TempDir(), "second")
+	o := testOptions(out)
+	o.CommitEvery = 2 // different Git history, same content.
+	if _, err := Prepare(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	second := verify(t, out, ProfileSmoke)
+	if len(first.FixtureContentSHA256) != 64 || first.FixtureContentSHA256 != second.FixtureContentSHA256 {
+		t.Fatalf("content digests differ: %s vs %s", first.FixtureContentSHA256, second.FixtureContentSHA256)
+	}
+	if first.ControlDBSHA256 == second.ControlDBSHA256 || first.MarkerSHA256 == second.MarkerSHA256 {
+		t.Fatal("the control database and marker are per-instance and must hash differently")
+	}
+	// A different smoke size holds different facts and must not share the digest.
+	third := filepath.Join(t.TempDir(), "third")
+	o3 := testOptions(third)
+	o3.SmokeFacts = smokeFactsInTests + 1
+	if _, err := Prepare(context.Background(), o3); err != nil {
+		t.Fatal(err)
+	}
+	if verify(t, third, ProfileSmoke).FixtureContentSHA256 == first.FixtureContentSHA256 {
+		t.Fatal("a different fixture content must change the digest")
+	}
+}
+
 func TestSmokePresentedAsFullOrWithTheWrongSizeFails(t *testing.T) {
 	dir := sharedFixture(t)
 	r := verify(t, dir, ProfileFull)
