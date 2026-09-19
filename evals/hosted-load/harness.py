@@ -273,3 +273,23 @@ def evaluate_thresholds(workload: dict, main_run: dict) -> dict:
     checks["disk_max_pct"] = {"limit": t["disk_max_pct"], "observed": None, "pass": None, "reason": "not measured in fixtures mode"}
     checks["isolation_durability_errors_max"] = {"limit": t["isolation_durability_errors_max"], "observed": 0, "pass": True, "reason": "fixtures mode has no real storage; zero by construction, not proof"}
     return checks
+
+
+_TEXT_VOCAB = [
+    "onboarding", "latency", "budget", "provenance", "brain", "recall", "remember",
+    "forget", "account", "plan", "migration", "cutover", "incident", "runbook",
+    "review", "threshold", "capacity", "gateway", "pool", "session", "credential",
+    "retention", "backup", "snapshot", "embedding", "index", "queue", "worker",
+    "deploy", "rollback", "signal", "metric", "alarm", "region", "instance",
+    "customer", "ticket", "escalation", "vendor", "invoice", "renewal", "quota",
+]
+
+
+def render_text(seed_str: str, tokens: int) -> str:
+    """Deterministic pseudo-natural text, roughly `tokens` whitespace-separated
+    words for a given seed. Not a real tokenizer count (words != model tokens)
+    -- an approximate sizing for exercising the wire protocol with real,
+    non-placeholder request bodies, never a claim about actual token billing."""
+    rng = random.Random(seed_str)
+    n = max(int(tokens), 1)
+    return " ".join(rng.choice(_TEXT_VOCAB) for _ in range(n))

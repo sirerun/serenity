@@ -203,5 +203,5 @@
     "reason": "fixtures mode does not exercise a real host or provider"
   },
   "source_workload_sha256": "2aa7c9b8e266036c9e28df583e99877fd6936416c3b88723b9c7d367a324d990",
-  "source_manifest_sha256": "c851a10300e550658daf187433672b8af67f2e7155d01f7ed34f455a9d30bbd8"
+  "source_manifest_sha256": "f7c8973be48ad996c3184704a92031ad827d1d731241ad3a6b10c85db9e30a99"
 }
