@@ -2,53 +2,91 @@
   "task_id": "T23.60",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "810349ba7c1ed2c05fe34e3892de764a26a4633c",
-  "recorded_at": "2026-09-19T02:20:00Z",
+  "source_sha": "bbcd286f842df431ccdb4558ae4370dd4e8c5462",
+  "recorded_at": "2026-09-19T01:28:14.680881+00:00",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
     "python3 -m unittest discover -s evals/hosted-load -p \"test_*.py\"",
-    "python3 scripts/hosted/load.py --fixtures --manifest /Volumes/BuildOffload/wt/serenity-launch-T23.60-20260918/docs/launch/evidence/T23.60/manifest.json --output /Volumes/BuildOffload/wt/serenity-launch-T23.60-20260918/docs/launch/evidence/T23.60/load-fixture.json",
-    "python3 scripts/hosted/cost_model.py --manifest /Volumes/BuildOffload/wt/serenity-launch-T23.60-20260918/docs/launch/evidence/T23.60/manifest.json --output /Volumes/BuildOffload/wt/serenity-launch-T23.60-20260918/docs/launch/evidence/T23.60/cost.json",
-    "python3 scripts/hosted/load.py --live --manifest /Volumes/BuildOffload/wt/serenity-launch-T23.60-20260918/docs/launch/evidence/T23.60/manifest.json --output /tmp/should-not-exist.json"
+    "python3 scripts/hosted/cost_model.py --manifest docs/launch/evidence/T23.60/manifest.json --output docs/launch/evidence/T23.60/cost.json"
   ],
   "cases": {
-    "planned": 90,
-    "executed": 90,
-    "passed": 90,
+    "planned": 91,
+    "executed": 91,
+    "passed": 91,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
   },
   "acceptance": [
     {
-      "criterion": "Cost math models the real backup-retention mechanism, every rate is a cited primary source, and all recurring categories (including embeddings/email/Secrets API/CloudWatch and per-plan contribution) have rates or explicit unknowns.",
-      "expected": "cost_model.py models deploy/hosted/backup.sh's actual unique-timestamped-prefix retention (Expiration 30d + NoncurrentVersionExpiration 30d in series, ~1441 retained hourly backup-sets, not a same-key-version model); every RATE_TABLE entry is tagged \"published\" or \"constant\" with a dated source URL; embeddings/email/Secrets-Manager-API/CloudWatch-logs/CloudWatch-custom-metrics/S3-GET-List-restore are each priced or an explicit unknown, never a silent zero; a per-plan cost breakdown exists.",
-      "observed": "cost.json's RETAINED_BACKUP_SETS=1441 (test_retained_backup_sets_is_about_sixty_days_not_thirty), every RATE_TABLE entry carries kind in (published, constant) with a source (test_every_published_rate_carries_a_source_citation), full_limit_mix's known_subtotal_usd=367.43 (s3_storage_backups=344.4422, up from the prior PARTIAL receipt's ~149.58 under the wrong same-key model), email/secrets_manager_api_calls/kms_requests/data_transfer_out are priced with free-tier netting applied, unknown_categories.embeddings reports write+query+rebuild+readiness token totals (72,692,871 tokens at full-limit mix) instead of just input allowance, and per_plan_contribution apportions the USD 344.50/mo variable total by storage share (Scale=USD 191.39, Builder=USD 114.83, Free=USD 38.28). ec2_t4g_burst_credit_usd_per_vcpu_hour corrected from an unverified 0.05 to the cited official 0.04; s3_standard_usd_per_gb_month corrected from the unlabeled us-east-1 0.023 to the cited us-west-2 0.0265.",
+      "criterion": "Cost math fixtures and complete recurring categories",
+      "expected": "Units and full-snapshot multiplication tested; primary rates or explicit unknowns",
+      "observed": "91 local tests pass, including cost units/retention and client tests. Regional S3 rate independently verified from the AWS offer catalog; assumptions/unknown costs remain explicit. Candidate full-limit known subtotal is $321.93/month, not an authorized quote.",
       "status": "PASS"
     },
     {
-      "criterion": "--live fails closed before any network call while incomplete, and once implemented speaks the real MCP protocol (session handshake, per-verb argument shapes, JSON-RPC/tool error inspection, real concurrency/pacing/repetitions, precharge budget including a dollar cap, remaining-elapsed-bounded timeouts, HTTPS/loopback transport security with redirect refusal, private 0600 per-account credentials) under a real local HTTP server test, not an injected mock transport.",
-      "expected": "Every offline guard (environment, budget shape including worst_case_usd_per_call, credential files, workload validity) runs before a socket opens; the first live network call is a read-only GET /readyz probe; McpSession performs a real initialize -> notifications/initialized -> tools/call handshake and inspects both JSON-RPC top-level errors and tool-level isError; run_live paces real concurrent dispatch across workload.repetitions and precharges calls/tokens/dollars/elapsed against the next request before sending it; a custom HTTPRedirectHandler raises on every 3xx instead of following it; evals/hosted-load/test_load_cli.py exercises all of this against a genuine http.server fixture with real request/response serialization.",
-      "observed": "python3 scripts/hosted/load.py --live against the committed manifest.json (environment.origin=null, live.credential_dir=null) exits 2 in 0.06s with {\"status\":\"BLOCKED\",\"reason\":\"manifest.environment.origin is required for --live\"} -- zero network calls made. Against a real local ThreadingHTTPServer fixture (evals/hosted-load/test_load_cli.py, 90/90 passing): full handshake succeeds (test_full_initialize_notified_tools_call_handshake_succeeds), JSON-RPC top-level errors and tool isError are both detected (ProtocolAndToolErrorTests, 4 cases), a redirect is refused and its target is provably never dialed (test_client_refuses_to_follow_a_redirect_and_never_dials_the_target asserts state.redirect_hit is False), all four budget caps (calls/tokens/dollar/elapsed) independently stop the run using the real precharge-before-send logic (RunLiveTests cap tests), credential file presence/permission is enforced before any network attempt (test_cli_blocks_before_any_network_when_credential_dir_missing points origin at a closed port and confirms fast BLOCKED exit), and a main()-level end-to-end run against the fake server completes. This corrects the prior PARTIAL receipt's load.py, which sent a literal \"REDACTED:<secret_ref>\" string as the credential, sent a \"query\" argument for every verb, never performed the session handshake, only checked HTTP status codes, ran one sequential pass ignoring schedule/concurrency/repetitions, checked already-sent budget totals instead of the next request's cost, never enforced a dollar cap, used a fixed 30s timeout, and could follow a redirect while sending the real credential.",
-      "status": "PASS"
+      "criterion": "Bounded live load execution",
+      "expected": "Finite caps, production guards, real outcomes and full workload evidence",
+      "observed": "CLI --live is deliberately disabled before manifest/credential reads/network, returning BLOCKED/exit2 with zero-call receipt. Candidate helpers have local HTTP tests but remaining outcome/deadline/budget/workload requirements are recorded in live-enable-requirements.md.",
+      "status": "BLOCKED"
     },
     {
-      "criterion": "Freeze with task41 reviewer before execution: CPU<70%, RSS<80% RAM, disk<80%, cold-ready<=60s, admitted recall p95<=2s/remember p95<=3s, >=99% offered non-injected eligible steady-state requests complete, unexpected 5xx<0.1%, unexpected steady admission rejection<1%, zero isolation/durability errors; never claim a full live-provider load test ran.",
-      "expected": "docs/launch/hosted-completion/interfaces.md's task41 reviewer signs evals/hosted-load/workload.json (reviewer/review_date filled) before any live or --measurements run is treated as an accepted capacity claim.",
-      "observed": "workload.json.reviewer and .review_date remain null; thresholds are transcribed verbatim as PROPOSED targets only. No live-provider load test was run or claimed to have run; the committed --fixtures run explicitly labels itself mechanics-only (resource_usage.available=false) and load-fixture.json shows 3 of 6 measurable thresholds failing against the synthetic model, which this task does not present as a real capacity result. This item is unchanged by this repair pass -- it depends on a human reviewer this task cannot self-authorize, not on anything this worker's own code could fix.",
+      "criterion": "Reviewer-frozen workload and thresholds",
+      "expected": "Named T23.41 review before execution; measured capacity supports published limits",
+      "observed": "Reviewer/date remain unset. Simulator is mechanics-only and no real provider or deployed-capacity run occurred.",
       "status": "BLOCKED"
     }
   ],
   "artifacts": [
-    {"path": "evals/hosted-load/workload.json", "sha256": "2aa7c9b8e266036c9e28df583e99877fd6936416c3b88723b9c7d367a324d990"},
-    {"path": "docs/launch/evidence/T23.60/manifest.json", "sha256": "f7c8973be48ad996c3184704a92031ad827d1d731241ad3a6b10c85db9e30a99"},
-    {"path": "docs/launch/evidence/T23.60/load-fixture.json", "sha256": "d117d0538adb2990182b5e7f8a7381cd396cdcb8e569da25258da24f75f3b83f"},
-    {"path": "docs/launch/evidence/T23.60/cost.json", "sha256": "c74fef5fa81cf34bad0ae78c13dab0d4987f7582869ac44f284b8839953e0a47"},
-    {"path": "docs/launch/hosted-economics.md", "sha256": "dcaaffd6bd51f373ce4e4b19ebf1eabbe82cafa6d1bbde93b74e4b5fc4514833"},
-    {"path": "scripts/hosted/cost_model.py", "sha256": "b1e88e26b40a7ca3ab6a2c3ce314413b34d82d33ddf73507d32fae098662be60"},
-    {"path": "scripts/hosted/load.py", "sha256": "ca7c52654169824b88b3210aa5c17e5149faf57b88c74bf6ffd41c5ffb6d7c6d"},
-    {"path": "evals/hosted-load/harness.py", "sha256": "2190325b670632e6b6203bc6618a1c8091495b40087f9b7004adeb5191202996"}
+    {
+      "path": "evals/hosted-load/workload.json",
+      "sha256": "2aa7c9b8e266036c9e28df583e99877fd6936416c3b88723b9c7d367a324d990"
+    },
+    {
+      "path": "docs/launch/evidence/T23.60/manifest.json",
+      "sha256": "f7c8973be48ad996c3184704a92031ad827d1d731241ad3a6b10c85db9e30a99"
+    },
+    {
+      "path": "docs/launch/evidence/T23.60/load-fixture.json",
+      "sha256": "d117d0538adb2990182b5e7f8a7381cd396cdcb8e569da25258da24f75f3b83f"
+    },
+    {
+      "path": "docs/launch/evidence/T23.60/cost.json",
+      "sha256": "c0361140553c76b9cc862fe3a26769cf95700ced49d2511ed6ddd8978e4f8f9d"
+    },
+    {
+      "path": "docs/launch/hosted-economics.md",
+      "sha256": "1a6f540f152a2a27565333a83021ecee172b284bb2883ac3abffa04b172ecfb5"
+    },
+    {
+      "path": "scripts/hosted/cost_model.py",
+      "sha256": "ec906dcdb4162edc1bd085dc44dda5329336d98006744ed7e898d6d56a0a8f59"
+    },
+    {
+      "path": "scripts/hosted/load.py",
+      "sha256": "951e39aced9e692fb48bbf93a16e338834fd72095ab37fbd99abd4042d893c62"
+    },
+    {
+      "path": "evals/hosted-load/harness.py",
+      "sha256": "2190325b670632e6b6203bc6618a1c8091495b40087f9b7004adeb5191202996"
+    },
+    {
+      "path": "docs/launch/evidence/T23.60/live-enable-requirements.md",
+      "sha256": "10ef8fe4b41590bd5e15b6cf359483c894895712d8e72cf4f1166d3cb57f3267"
+    },
+    {
+      "path": "docs/launch/evidence/T23.60/s3-rate.json",
+      "sha256": "d266bbb0bb6bde3f92833f123531535f783f039df1f8121444592bfd7bb09691"
+    },
+    {
+      "path": "evals/hosted-load/test_load_cli.py",
+      "sha256": "f51861c57d7295db4e4bc85573fe823d87cad985e88e05f0d16f4724dc1048f3"
+    },
+    {
+      "path": "evals/hosted-load/test_cost_model.py",
+      "sha256": "6c60b4ef88dd4e5f0e25b5bd188886160dc140d9af1f1a25fb9f2ac5714b402b"
+    }
   ],
   "cost": {
     "actual_usd": 0,
@@ -56,26 +94,23 @@
     "authorization_refs": []
   },
   "limitations": [
-    "One rate remains probable-not-confirmed: ec2_t4g_small_usd_per_hour's us-west-2 figure could not be extracted from any page fetched this session (JS-rendered pricing tables); the cited us-east-1 figure is used on the historical-parity assumption noted in cost.json's rate_table entry. Every other rate is region-pinned and cited.",
-    "--live has never run against a real deployed host. No hosted candidate is deployed yet at T23.60 (that is T23.64's job); the protocol implementation is exercised only against a local http.server fixture in this session.",
-    "SSE-streamed MCP tool responses are not parsed by load.py's --live transport; the real internal/server/mcp/http.go handler this task targets is JSON-only by design (no unsolicited SSE stream, GET returns 405), so this is a match to the actual target, not a known gap against it -- but it would need addressing before pointing --live at a differently-configured MCP endpoint.",
-    "10_accounts_light and 100_accounts_light scenario account mixes and usage fractions are this worker's documented assumption (SCENARIOS in cost_model.py), not a recorded product/growth decision.",
-    "The embeddings token accounting (write/query/rebuild-reembed/readiness) rests on several explicit, documented assumptions (AVG_QUERY_TOKENS=74, AVG_FACT_TOKENS=272, 30 cold reopens/account/month, 1% re-embed fraction per reopen, a 5-minute readiness probe cadence) -- real production telemetry from T23.53 should replace these once available.",
-    "cost_model.py's --measurements override path is unit-tested (test_measurements_override_assumption_and_are_tagged_measured) but has never been exercised with a real T23.68 live-load output, since none exists yet.",
-    "The committed docs/launch/evidence/T23.60/manifest.json deliberately leaves environment.origin and live.credential_dir null and budget.worst_case_usd_per_call at a placeholder 0.01 -- --live is never runnable from this manifest by construction (check_environment_guard refuses a null origin before any network call)."
+    "No supported live-load execution: CLI is fail-closed until live-enable-requirements.md is satisfied. Direct helper tests are candidate-client evidence only.",
+    "No provider calls or deployment occurred. No complete cost or capacity qualification is claimed.",
+    "EC2 regional pricing parity, backup byte sizes, mixes, query/rebuild/readiness usage and shared-account free allowances remain assumptions; provider price, log volumes, custom metrics and restore activity remain unknown.",
+    "Backup lifecycle model assumes about 60 days of full timestamped snapshots and needs measured/architecture validation; its full-limit exposure exceeds the historical $60 ceiling."
   ],
   "blockers": [
     {
-      "owner": "task41 reviewer",
-      "required_input": "Fill reviewer/review_date in evals/hosted-load/workload.json (freeze or amend the proposed thresholds with rationale) before any --live or --measurements run is treated as an accepted capacity claim, per docs/launch/hosted-completion/interfaces.md §Threshold review."
+      "owner": "T23.60 follow-up",
+      "required_input": "Implement and verify every item in live-enable-requirements.md before removing the unconditional CLI gate."
     },
     {
-      "owner": "T23.49 owner (R-hosted-backup) and task41 reviewer",
-      "required_input": "Review the corrected backup-retention finding in docs/launch/hosted-economics.md (~344 USD/month known-cost line at the ratified full-limit mix, 1441 retained hourly backup-sets, not 721) and decide a mitigation (frequency, retention window, or incremental format) before T23.68's live cost qualification; this is an architecture decision this task is not authorized to make. The corrected number raises this finding's priority relative to the earlier PARTIAL receipt, not lowers it."
+      "owner": "chief-architect / T23.41 reviewer",
+      "required_input": "Freeze workload/thresholds and review a backup design consistent with the budget and recovery/deletion requirements."
     },
     {
-      "owner": "T23.64 (deploy a hosted candidate)",
-      "required_input": "Once a real hosted candidate is deployed, provision a private live.credential_dir with 0600 per-account token files and set budget.worst_case_usd_per_call from a real conservative per-call ceiling before T23.68 exercises --live against it for the first time."
+      "owner": "T23.42 / T23.64 / T23.68",
+      "required_input": "Provider pin, exact cost authority and authorized isolated candidate for later live qualification."
     }
   ],
   "binary_sha256": null,
