@@ -43,7 +43,7 @@ func (fakeOperationLedger) ResolvePendingReview(context.Context, string, contrac
 
 type fakeDeletionJournal struct{}
 
-func (fakeDeletionJournal) Append(context.Context, contracts.DeletionEntry) (contracts.DeletionEntry, error) {
+func (fakeDeletionJournal) AppendDeletion(context.Context, contracts.DeletionEntry) (contracts.DeletionEntry, error) {
 	return contracts.DeletionEntry{}, nil
 }
 func (fakeDeletionJournal) ReadThrough(context.Context, contracts.DeletionWatermark) (contracts.DeletionRead, error) {

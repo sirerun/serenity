@@ -53,7 +53,7 @@ func TestLocalHighWaterCannotProveTailCompleteness(t *testing.T) {
 	writer := contractstest.NewRefJournal(store, "old-writer", 1, clock.Now)
 	var snapshot contracts.DeletionEntry
 	for i, s := range []string{"a1", "a2", "a3", "a4"} {
-		e, err := writer.Append(ctx, contracts.DeletionEntry{SubjectType: contracts.DeletionSubjectAccount, SubjectID: s, Outcome: contracts.DeletionIntentRequested})
+		e, err := writer.AppendDeletion(ctx, contracts.DeletionEntry{SubjectType: contracts.DeletionSubjectAccount, SubjectID: s, Outcome: contracts.DeletionIntentRequested})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,7 +81,7 @@ func TestJournalObjectLayoutIsSelfDescribing(t *testing.T) {
 	clock := contractstest.NewClock()
 	store := contractstest.NewMemObjectStore()
 	j := contractstest.NewRefJournal(store, "w1", 1, clock.Now)
-	e, err := j.Append(ctx, contracts.DeletionEntry{SubjectType: contracts.DeletionSubjectBrain, SubjectID: "brain-9", Outcome: contracts.DeletionOutcomePurged})
+	e, err := j.AppendDeletion(ctx, contracts.DeletionEntry{SubjectType: contracts.DeletionSubjectBrain, SubjectID: "brain-9", Outcome: contracts.DeletionOutcomePurged})
 	if err != nil {
 		t.Fatal(err)
 	}

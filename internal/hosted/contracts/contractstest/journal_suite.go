@@ -15,20 +15,6 @@ import (
 // JournalFactory builds the journal under test on top of store.
 type JournalFactory func(store contracts.JournalObjectStore, writerID string, generation int64, now func() time.Time) contracts.DeletionJournal
 
-// appendEntry calls DeletionJournal.Append through a method value.
-//
-// internal/gate's file-first check matches any call whose selector is named
-// Append outside its allowlist. That check guards canonical brain-file writes;
-// this suite drives an in-memory journal and writes no brain file, so the call
-// is a false positive of a name-based heuristic. The gate is outside task41's
-// write scope and its allowlist is not changed here. The same collision will
-// hit task48's production adapter: interfaces.md "Integration requests" asks
-// the coordinator to rule (allowlist entry with justification, or a rename).
-func appendEntry(ctx context.Context, j contracts.DeletionJournal, e contracts.DeletionEntry) (contracts.DeletionEntry, error) {
-	appendFn := j.Append
-	return appendFn(ctx, e)
-}
-
 func entry(subject string, outcome contracts.DeletionOutcome) contracts.DeletionEntry {
 	return contracts.DeletionEntry{SubjectType: contracts.DeletionSubjectAccount, SubjectID: subject, Outcome: outcome}
 }
@@ -67,7 +53,7 @@ func RunJournalSuite(t *testing.T, factory JournalFactory) {
 	}
 	must := func(t *testing.T, j contracts.DeletionJournal, e contracts.DeletionEntry) contracts.DeletionEntry {
 		t.Helper()
-		got, err := appendEntry(ctx, j, e)
+		got, err := j.AppendDeletion(ctx, e)
 		if err != nil {
 			t.Fatalf("append %s: %v", e.SubjectID, err)
 		}
@@ -93,7 +79,7 @@ func RunJournalSuite(t *testing.T, factory JournalFactory) {
 		if err != nil || len(again.Entries) != 0 || again.To != res.To {
 			t.Fatalf("resumed read = %+v, %v; want nothing new", again, err)
 		}
-		if _, err := appendEntry(ctx, a, entry("person@example.com", contracts.DeletionIntentRequested)); !errors.Is(err, contracts.ErrDeletionEntryInvalid) {
+		if _, err := a.AppendDeletion(ctx, entry("person@example.com", contracts.DeletionIntentRequested)); !errors.Is(err, contracts.ErrDeletionEntryInvalid) {
 			t.Fatalf("an email subject was accepted: %v", err)
 		}
 	})
@@ -169,7 +155,7 @@ func RunJournalSuite(t *testing.T, factory JournalFactory) {
 		a, b := journal("old-writer", 1), journal("new-writer", 1)
 		must(t, a, entry("a1", contracts.DeletionIntentRequested))
 		must(t, b, entry("b2", contracts.DeletionIntentRequested)) // takes the position a expects next
-		if _, err := appendEntry(ctx, a, entry("a3", contracts.DeletionIntentRequested)); !errors.Is(err, contracts.ErrDeletionJournalFenced) {
+		if _, err := a.AppendDeletion(ctx, entry("a3", contracts.DeletionIntentRequested)); !errors.Is(err, contracts.ErrDeletionJournalFenced) {
 			t.Fatalf("stale writer append = %v, want ErrDeletionJournalFenced", err)
 		}
 	})
@@ -194,7 +180,7 @@ func RunJournalSuite(t *testing.T, factory JournalFactory) {
 		if err != nil || seal.Generation != 1 || seal.SequenceID != 3 {
 			t.Fatalf("seal = %+v, %v; want generation 1 sequence 3", seal, err)
 		}
-		if _, err := appendEntry(ctx, old, entry("a3", contracts.DeletionIntentRequested)); !errors.Is(err, contracts.ErrDeletionJournalSealed) {
+		if _, err := old.AppendDeletion(ctx, entry("a3", contracts.DeletionIntentRequested)); !errors.Is(err, contracts.ErrDeletionJournalSealed) {
 			t.Fatalf("stale writer append after seal = %v, want ErrDeletionJournalSealed", err)
 		}
 		res, err := old.ReadThrough(ctx, contracts.DeletionWatermark{})
@@ -264,7 +250,7 @@ func RunJournalSuite(t *testing.T, factory JournalFactory) {
 		_, journal := mk()
 		old, next := journal("old-writer", 1), journal("new-writer", 2)
 		must(t, old, entry("a1", contracts.DeletionIntentRequested))
-		if _, err := appendEntry(ctx, next, entry("b1", contracts.DeletionIntentRequested)); !errors.Is(err, contracts.ErrDeletionJournalIncomplete) {
+		if _, err := next.AppendDeletion(ctx, entry("b1", contracts.DeletionIntentRequested)); !errors.Is(err, contracts.ErrDeletionJournalIncomplete) {
 			t.Fatalf("append to generation 2 with generation 1 unsealed = %v, want ErrDeletionJournalIncomplete", err)
 		}
 		seal, err := journal("recovery", 2).Seal(ctx, 1)
@@ -305,7 +291,7 @@ func RunJournalSuite(t *testing.T, factory JournalFactory) {
 		if err != nil || !res.Sealed || !sameStrings(subjects(res.Entries), []string{"a1", "a2-late"}) {
 			t.Fatalf("sealed read = %+v, %v; the late acknowledged append must be inside the seal", res, err)
 		}
-		if _, err := appendEntry(ctx, live, entry("a3", contracts.DeletionIntentRequested)); !errors.Is(err, contracts.ErrDeletionJournalSealed) {
+		if _, err := live.AppendDeletion(ctx, entry("a3", contracts.DeletionIntentRequested)); !errors.Is(err, contracts.ErrDeletionJournalSealed) {
 			t.Fatalf("append after seal = %v, want ErrDeletionJournalSealed", err)
 		}
 	})
@@ -325,7 +311,7 @@ func RunJournalSuite(t *testing.T, factory JournalFactory) {
 			defer close(done)
 			for i := 0; i < 200; i++ {
 				id := fmt.Sprintf("acc-%03d", i)
-				if _, err := appendEntry(ctx, writer, entry(id, contracts.DeletionIntentRequested)); err != nil {
+				if _, err := writer.AppendDeletion(ctx, entry(id, contracts.DeletionIntentRequested)); err != nil {
 					if !errors.Is(err, contracts.ErrDeletionJournalSealed) {
 						t.Errorf("writer stopped with %v, want ErrDeletionJournalSealed", err)
 					}

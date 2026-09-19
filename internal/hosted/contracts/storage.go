@@ -16,7 +16,8 @@ import (
 // design well enough to approve or reject; it does not lift the block. The
 // executable specification is contractstest.RunStagingSuite.
 //
-// Two defects of the previous draft are corrected here.
+// Three points are settled here: two defects of the previous draft, and what
+// the word "bound" does and does not mean.
 //
 //  1. Hard staging bound. The previous draft measured a stage after it had
 //     been written and only then admitted it, and serialized admission per
@@ -26,12 +27,12 @@ import (
 //     cannot retroactively stop a write already in progress. The bound here
 //     is enforced up front and during the write: ReserveStage takes a fixed
 //     ceiling from a global staging budget before any stage byte exists, the
-//     stager writes through a StageMeter that aborts the stage the moment its
-//     bytes pass that ceiling, and the ceiling is a configured constant
+//     stager reports every write to a StageMeter that aborts the stage the
+//     moment the reported bytes pass that ceiling, and the ceiling is a configured constant
 //     (MaxMutationStageBytes) that task44 must prove against the largest
 //     mutation the product accepts. Measured growth is then admitted against
-//     the account and the operator headroom, but it can never exceed the
-//     ceiling by construction.
+//     the account and the operator headroom, and cannot exceed the ceiling as
+//     accounted. Point 3 says what "as accounted" leaves open.
 //
 //  2. Feasibility. Canonical brain state is a live Git working tree committed
 //     by writer.Flush (internal/writer/commit.go); there is no existing
@@ -44,6 +45,36 @@ import (
 //     fallback is a proven per-mutation growth ceiling with a corner fixture
 //     (see interfaces.md §1); a statistical growth multiplier remains
 //     withdrawn.
+//
+//  3. Accounted bytes are not enforced bytes. Every byte figure in this file
+//     (StageTicket.CeilingBytes, StageMeter.Used, AdmitMeasured's
+//     measuredBytes, the staging budget, the headroom) means one unit:
+//     physical allocation. That is what the filesystem consumes: blocks
+//     rounded up per file, directory and inode metadata, Git loose objects,
+//     packs and the index, SQLite WAL and journal files, and vector-store
+//     growth. StageMeter does not measure any of it. It counts the values its
+//     caller passes to Add, so a stager that adds the serialized length of a
+//     write undercounts, because a small page still allocates a whole block
+//     and rewrites Git tree objects that the payload length does not show.
+//     Git and the index also write files the stager never serializes, so
+//     their allocation reaches the meter only if the seam reports it. Task44
+//     must convert each write to allocated bytes and account for the external
+//     Git and index writes before a CeilingBytes figure is a physical ceiling,
+//     and must measure MaxMutationStageBytes that way on the real runtime.
+//     No such measurement exists yet.
+//
+//     Even a correct accounting is cooperative. The meter refuses only what a
+//     stager asks it about; a stager defect, a child process, or a write the
+//     seam does not route through Add lands on disk with nothing to stop it.
+//     Neither this package, a reference model, nor a passing meter test can
+//     prove a hard bound. A production claim of "hard" needs an enforcement
+//     layer the writing process cannot exceed: the staging area on a dedicated
+//     size-limited filesystem or a quota-limited volume, sized to the global
+//     staging budget, so an overrun fails inside the stage (ENOSPC or a quota
+//     error) and cannot consume the shared device. The meter then gives an
+//     early, precise abort and the operating system gives the bound. Until
+//     task44 demonstrates that layer, the proposal claims an accounting
+//     ceiling, not a physical one.
 
 // StageRequest asks for room to stage one mutation.
 type StageRequest struct {
@@ -82,8 +113,9 @@ const (
 // bytes minus every outstanding ceiling must stay at or above the headroom.
 // It fails without touching disk. ErrStagingBusy is retryable.
 //
-// AdmitMeasured records the stage's real physical growth. It fails with
-// ErrStageCeilingExceeded if measured passes the ticket ceiling, with
+// AdmitMeasured records the stage's physical growth (allocated bytes, point 3
+// above). It fails with ErrStageCeilingExceeded if measured passes the ticket
+// ceiling, with
 // ErrStorageQuotaExceeded if the account's physical bytes plus growth
 // already admitted but not yet published plus this growth would pass the
 // account quota, and otherwise holds that growth for the account. Two
@@ -114,12 +146,15 @@ var (
 	ErrStageTicketUnknown = errors.New("hosted/contracts: unknown stage ticket")
 )
 
-// StageMeter enforces a StageTicket's ceiling on the writing side. The stager
-// calls Add for every byte it is about to write to the stage (file data, Git
-// objects, index and vector growth) before writing them; once the running
-// total would pass the ceiling Add refuses, so the stage never holds more than
-// the ceiling. It has no I/O and is not safe for concurrent use: one stage,
-// one goroutine, one meter.
+// StageMeter enforces a StageTicket's ceiling on the writing side, as a
+// cooperative counter. The stager calls Add with the allocated bytes of every
+// write it is about to make to the stage (file blocks, Git objects, index and
+// vector growth; see point 3 above) before making it; once the running total
+// would pass the ceiling Add refuses. The stage holds no more than the
+// ceiling only if the stager reports every write in allocated bytes: Add
+// records whatever it is told, does no I/O, and cannot see a write it is not
+// told about, so it is an accounting tool and not an OS-enforced limit. It is
+// not safe for concurrent use: one stage, one goroutine, one meter.
 type StageMeter struct {
 	ceiling int64
 	used    int64
@@ -128,8 +163,8 @@ type StageMeter struct {
 // NewStageMeter returns a meter bound to the ticket's ceiling.
 func NewStageMeter(t StageTicket) *StageMeter { return &StageMeter{ceiling: t.CeilingBytes} }
 
-// Add records n more bytes. It returns ErrStageCeilingExceeded, and records
-// nothing, if the total would pass the ceiling.
+// Add records n more allocated bytes. It returns ErrStageCeilingExceeded, and
+// records nothing, if the total would pass the ceiling.
 func (m *StageMeter) Add(n int64) error {
 	if n < 0 {
 		return fmt.Errorf("hosted/contracts: negative stage bytes %d", n)
@@ -141,5 +176,7 @@ func (m *StageMeter) Add(n int64) error {
 	return nil
 }
 
-// Used is the bytes accepted so far; pass it to StagingGate.AdmitMeasured.
+// Used is the bytes accepted so far. It is the sum of what the caller reported,
+// which is a physical figure only if the caller reported physical bytes; pass it
+// to StagingGate.AdmitMeasured.
 func (m *StageMeter) Used() int64 { return m.used }

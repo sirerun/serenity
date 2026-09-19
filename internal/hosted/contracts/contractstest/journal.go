@@ -195,7 +195,7 @@ func (j *RefJournal) loadHead(ctx context.Context) error {
 	return nil
 }
 
-func (j *RefJournal) Append(ctx context.Context, e contracts.DeletionEntry) (contracts.DeletionEntry, error) {
+func (j *RefJournal) AppendDeletion(ctx context.Context, e contracts.DeletionEntry) (contracts.DeletionEntry, error) {
 	if err := e.Validate(); err != nil {
 		return contracts.DeletionEntry{}, err
 	}

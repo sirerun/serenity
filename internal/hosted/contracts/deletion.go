@@ -42,8 +42,8 @@ import (
 // protocol.
 //
 // The journal records opaque account/brain IDs and deletion intent/outcome
-// only, never email or memory content. Append must durably succeed before the
-// corresponding delete is acknowledged to the caller.
+// only, never email or memory content. AppendDeletion must durably succeed
+// before the corresponding delete is acknowledged to the caller.
 
 type DeletionSubjectType string
 
@@ -65,16 +65,16 @@ const (
 // was rewritten under the same coordinates. The zero value means "before the
 // first object of generation 1".
 type DeletionWatermark struct {
-	Generation int64
-	SequenceID int64
-	EntryHash  string
+	Generation int64  `json:"generation"`
+	SequenceID int64  `json:"sequence_id"`
+	EntryHash  string `json:"entry_hash"`
 }
 
 // IsZero reports whether w is the "start of the journal" watermark.
 func (w DeletionWatermark) IsZero() bool { return w == DeletionWatermark{} }
 
 type DeletionEntry struct {
-	Watermark   DeletionWatermark // assigned by Append; immutable afterwards
+	Watermark   DeletionWatermark // assigned by AppendDeletion; immutable afterwards
 	SubjectType DeletionSubjectType
 	SubjectID   string // opaque account or brain ID, never an email address
 	Outcome     DeletionOutcome
@@ -150,13 +150,43 @@ func JournalKey(generation, sequence int64) string {
 // bucket, and an explicit filesystem/in-memory fake maps it locally.
 //
 // PutIfAbsent MUST be atomic across every writer: exactly one of two
-// concurrent calls for a key reports created=true. On AWS this is S3's
-// conditional PutObject (If-None-Match: *); that behavior is asserted here
-// from the provider's documented conditional-write feature and has NOT been
-// verified against the real service in this task. task48 must prove it with a
-// real-provider fixture before the adapter is accepted, and if it cannot the
-// substrate decision returns to the architecture review (a dedicated
-// conditional-write table would be a new service and needs its own approval).
+// concurrent calls for a key reports created=true. On AWS this maps to S3's
+// conditional PutObject (If-None-Match: *).
+//
+// What is and is not established. AWS documents conditional writes and their
+// bucket-policy enforcement (the s3:if-none-match and s3:if-match condition
+// keys); a coordinator check of those pages is recorded in
+// s3-conditional-write-source-check.md. That establishes that the feature
+// exists. It does not qualify this design: no request was made against our
+// bucket, our bucket policy, or the CLI/SDK build task48 will use, and
+// task48 must qualify all three against an authorized disposable resource
+// before the adapter is accepted. If it cannot, the substrate decision returns
+// to the architecture review (a dedicated conditional-write table would be a
+// new service and needs its own approval).
+//
+// Obligations that follow from the documented semantics, each for task48 to
+// satisfy and prove:
+//
+//   - Versioning. On a versioned bucket the existence test is against the
+//     current version, and a current delete marker permits a new write, so a
+//     key is immutable only while current versions and delete markers cannot be
+//     removed. The service role has no DeleteObject or DeleteObjectVersion on
+//     deletion-journal/, and a bucket policy requires the conditional header on
+//     that prefix so a writer cannot omit it. The conditional header alone is
+//     not enough.
+//   - Lifecycle. The journal prefix has no lifecycle rule, and snapshot purge
+//     and retention jobs never list, expire or delete it. Journal retention is
+//     a separate decision (interfaces.md decision 3).
+//   - Outcomes. created=false with a nil error means only that the provider
+//     definitively reported the key present (a 412). A concurrent-operation
+//     conflict (409), a 404, a 5xx, a timeout or a cancelled context is an
+//     error, never created=false: the caller treats it as unknown and retries
+//     the same bytes.
+//   - Ambiguity. A successful-looking response is not proof of durability or of
+//     tail completeness. After an ambiguous PUT the adapter reads the key back
+//     and accepts the position only if the stored bytes equal the bytes it
+//     tried to write, which is also how a retry after a lost response
+//     succeeds.
 type JournalObjectStore interface {
 	PutIfAbsent(ctx context.Context, key string, body []byte) (created bool, err error)
 	Get(ctx context.Context, key string) (body []byte, found bool, err error)
@@ -184,8 +214,14 @@ type DeletionRead struct {
 
 // DeletionJournal is the independent durable adapter task48 implements.
 //
-// Append chooses the next sequence by conditional create and returns the entry
-// with its assigned watermark. If the position is already taken by a different
+// The write method is named AppendDeletion, not Append. This journal is not a
+// canonical brain file, and internal/gate's file-first check matches the bare
+// selector Append as a canonical brain write. A specific name keeps that check's
+// coverage of canonical writes intact without an allowlist entry for a
+// different kind of write. ReadThrough and Seal keep their names.
+//
+// AppendDeletion chooses the next sequence by conditional create and returns
+// the entry with its assigned watermark. If the position is already taken by a different
 // object the writer has been fenced: it returns ErrDeletionJournalFenced (or
 // ErrDeletionJournalSealed when the occupant is the generation's seal) and the
 // service must stop acknowledging deletions. A retry of the very same append
@@ -200,7 +236,7 @@ type DeletionRead struct {
 // first free position, then verifies nothing exists beyond it. It is
 // idempotent and is the journal half of interfaces.md's activation barrier.
 type DeletionJournal interface {
-	Append(ctx context.Context, entry DeletionEntry) (DeletionEntry, error)
+	AppendDeletion(ctx context.Context, entry DeletionEntry) (DeletionEntry, error)
 	ReadThrough(ctx context.Context, from DeletionWatermark) (DeletionRead, error)
 	Seal(ctx context.Context, generation int64) (DeletionWatermark, error)
 }

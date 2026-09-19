@@ -11,11 +11,15 @@ import (
 // StagingConfig fixes the numbers a StagingGate enforces.
 type StagingConfig struct {
 	// Budget is the most stage bytes that may be reserved at once, across every
-	// account and brain on the host (the global hard bound).
+	// account and brain on the host. It is an accounting limit on reservations;
+	// it becomes a hard bound only with an OS-enforced size limit under the
+	// staging area (see the "Accounted bytes are not enforced bytes" point in
+	// contracts/storage.go), which no fixture here provides or proves.
 	Budget int64
 	// MaxStage is the ceiling granted to every stage: a configured constant
-	// task44 must prove at least as large as the biggest mutation the product
-	// accepts, and that the stager enforces with a StageMeter.
+	// task44 must prove, in allocated bytes, at least as large as the biggest
+	// mutation the product accepts, and that the stager accounts against with a
+	// StageMeter.
 	MaxStage int64
 	// Headroom is the free space that must remain on the device after every
 	// outstanding ceiling is written.

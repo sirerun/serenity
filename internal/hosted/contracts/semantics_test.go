@@ -1,7 +1,10 @@
 package contracts_test
 
 import (
+	"bytes"
 	"errors"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -228,6 +231,36 @@ func TestStageMeterEnforcesCeiling(t *testing.T) {
 	}
 	if err := m.Add(-1); err == nil {
 		t.Fatal("negative bytes accepted")
+	}
+}
+
+// TestStageMeterIsCooperativeNotEnforcing pins what the meter cannot do, so the
+// proposal never claims more than it proves. A stager that writes past its
+// ceiling without reporting the write is not stopped and the meter cannot see
+// it; the same holds for a child process such as git. The hard bound therefore
+// needs an OS-enforced limit under the staging area (contracts/storage.go,
+// "Accounted bytes are not enforced bytes"), and no counter in this package
+// substitutes for one.
+func TestStageMeterIsCooperativeNotEnforcing(t *testing.T) {
+	const ceiling = 64
+	m := contracts.NewStageMeter(contracts.StageTicket{CeilingBytes: ceiling})
+	if err := m.Add(10); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "stage.bin")
+	if err := os.WriteFile(path, bytes.Repeat([]byte{1}, 4*ceiling), 0o600); err != nil {
+		t.Fatalf("an unreported write past the ceiling was blocked by something other than the meter: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() <= ceiling {
+		t.Fatalf("test setup: stage file is %d bytes, want more than the %d-byte ceiling", info.Size(), ceiling)
+	}
+	if m.Used() != 10 {
+		t.Fatalf("the meter recorded %d bytes for a write it was never told about; it can only count what it is told (want 10)", m.Used())
 	}
 }
 
