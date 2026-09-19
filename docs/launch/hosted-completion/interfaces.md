@@ -20,6 +20,165 @@
 | Registration mode | 46, config41 | `public` or `invite_only`; default policy during qualification restricts new registration to controlled test identities; private allowlist stays outside Git/logs. Paid controls gated independently. | Direct login/account-creation enforcement; config validation; no UI-only access control |
 | Fault barriers | Feature44/46/47/48/49/50, harness58 | Named deterministic phase hooks compiled only with `hostedtest`; activated via private inherited control channel in test subprocess. Normal build has no active hook or externally triggerable pause/crash path. | Exact phase names/transport, build-tag test and actual tagged-vs-untagged binary proof |
 
+## Frozen Go interfaces (task41, this pass)
+
+`internal/hosted/contracts/**` now carries compileable, tested Go signatures
+for every seam in the table above whose shape does not depend on the four
+proposed decisions below: `BillingReconciler`/`ReconcileResult` (billing
+truth), `BillingCloser`/`CloseResult` (billing closure), `ManifestV2`/
+`BrainArtifact`/`SourceRef` (backup manifest v2), `RecoveryPlan`/
+`RecoveryPlanRequest`/`RecoveryApplyRequest`/`RecoveryApplyResult` (recovery
+CLI shape — the eligibility rule Apply enforces is still PROPOSED),
+`Telemetry`/`TelemetryEvent` (telemetry), `ProviderPin` (provider pin shape;
+task42 still verifies and pins the actual value), `AccountingUnit`
+(`UnitProductInputToken` vs `UnitProviderBilledToken`) and `RegistrationMode`
+(`RegistrationPublic`/`RegistrationInviteOnly`). Each interface has a
+compile-time conformance fixture in `contracts_test.go` (a `var _
+contracts.X = fakeX{}` assertion per interface) so a future signature change
+that breaks a dependent implementation fails `go vet`/`go build`, not just a
+prose diff — verified by a real spot-check mutation in this task's evidence.
+
+`internal/hosted/testhooks/**` freezes the fault-barrier transport: named
+phase constants (`PhaseOperationReserved`, `PhaseOperationCommitted`,
+`PhaseDeletionJournaled`, `PhaseDeletionPurged`,
+`PhaseBackupManifestWritten`, `PhaseRestoreFenced`, `PhaseRestoreUnfrozen`)
+and a single `testhooks.At(phase)` call site. A binary built without
+`-tags hostedtest` links a true no-op (`hook_prod.go`); only a
+`hostedtest`-tagged binary started with a harness-inherited control pipe
+(never an HTTP endpoint, never a bare env-var switch) can pause or crash at
+a named checkpoint (`hook_hostedtest.go`). Proven by five real subprocess
+tests in `testhooks_test.go`, including one spot-checked red→green.
+
+`OperationLedger`/`OperationRecord`, `AdmissionChecker`/`GrowthEnvelope` and
+`DeletionJournal`/`DeletionEntry` are also drafted in `contracts/` so
+dependent code has something to compile against, but they are marked
+PROPOSED in source and in the freeze receipt below — see "Proposed
+decisions" next. Freezing their *signature* here is not authority to treat
+the underlying mechanism as approved.
+
+## Proposed decisions — pending chief-architect review
+
+This task could not obtain live chief-architect review (headless worker
+session, no reviewer available synchronously). The four bounded decisions
+below are concrete, reviewed-ready proposals, not approvals. No dependent
+task may start production implementation against them until the freeze
+receipt below records an actual reviewer and revision. See
+`docs/launch/evidence/T23.41/architecture-review-request.md` for the
+standalone review request.
+
+### 1. Physical storage reservation/headroom (storage admission, task44)
+
+Least settled of the four. Proposal: `AdmissionChecker.ReserveGrowth`
+(`internal/hosted/contracts/storage.go`) reserves a conservative
+`ReservedBytes = ceil(LogicalBytes * growth_factor) + fixed_overhead` before
+acknowledging a mutation, covering Git object overhead, derived index/vector
+writes and WAL growth — not just the logical payload. `growth_factor` and
+`fixed_overhead` must come from an empirical fixture: task44 runs a corpus of
+synthetic writes across realistic size buckets, measures actual on-disk
+growth via the same `filepath.WalkDir` technique `gateway.Inventory` already
+uses, and derives a constant with an explicit safety margin (e.g. observed
+p95 growth ratio times 1.5), checked into a fixture test that fails if any
+corpus write's real growth ever exceeds its reserved envelope. Per-account
+admission stays serialized through the existing `accountLocks` sharding
+(`gateway.go`); a new global `HeadroomBytes` config field reserves a fixed
+operator floor that blocks *all* accounts' admission once crossed, regardless
+of individual quota headroom — the exact number is an operator input (ties to
+the AWS instance's actual disk size, SPEND gate) and is explicitly not set
+here. **Not approved**: no mathematical bound or fixture evidence exists yet;
+per interfaces.md's own words, task44 stays blocked until one does.
+
+### 2. Crash-safe canonical-operation accounting (task44)
+
+Proposal: a durable `operations` table (new schema migration, not yet
+applied — see below) matching `contracts.OperationRecord`: `id`,
+`account_id`, `brain_id`, `client_key` (nullable, scoped by a partial unique
+index over `(account_id, brain_id, client_key) WHERE phase != 'released'`,
+mirroring the existing `reservation_operation` index pattern in
+`store/migrations.go`), `metric`, `units`, `quota_period`, `phase`
+(`reserved`|`committed`|`released`, forward-only), `source`, `created_at`,
+`finalized_at`. `OperationLedger.Finalize` commits both this row and the
+`usage_windows` counter in one transaction, generalizing `meter.Meter.Finish`
+(`internal/hosted/meter/meter.go`) from an in-memory-lease-scoped reservation
+to a row that survives a crash. `ReconcilePending` is the required recovery
+query: it scans `phase='reserved' AND lease_expires_at <= now()` and resolves
+each by consulting the operation's own canonical evidence seam — task44
+defines the exact per-operation-kind check (e.g. for `remember`, whether the
+fact is present in the brain's canonical Git HEAD) in its own freeze
+evidence; this task only fixes the table shape and the phase state machine.
+**Not approved**: no chief-architect sign-off on the table shape or the
+"one transaction" mechanism yet.
+
+### 3. Independently durable deletion journal (task48, infra54)
+
+Proposal: versioned S3 objects (existing AWS substrate per ADR014, no new
+service), one object per entry at key
+`deletion-journal/<subject_type>/<subject_id>/<recorded_at-rfc3339nano>-<outcome>.json`,
+bucket versioning plus Object Lock in compliance mode for a bounded retention
+(task48 picks the exact window against the promised deletion SLA) so the
+journal is durable against deletion even by the hosted service's own
+credentials — the literal meaning of "independently durable." A dedicated
+IAM policy scopes the service role to `PutObject`/`ListBucket` under the
+`deletion-journal/` prefix only, with `DeleteObject` withheld entirely.
+`ReadThrough`'s watermark is an S3 `ListObjectsV2` continuation token;
+completeness is proven by requiring a non-truncated listing (S3's strong
+list-after-write consistency) before advancing the watermark, returning
+`ErrDeletionJournalIncomplete` otherwise — never a bare highest-sequence
+check. Cost model and exact retention window are owned by task61/task48's own
+evidence. **Not approved**: object-lock retention window and IAM prefix
+design are proposals, not a reviewed decision.
+
+### 4. Restore eligibility / activation barrier (task50)
+
+Proposal: a durable generation fence extending the existing
+`writer.AcquireBrain` exclusive-lock pattern (`internal/cli/hosted.go`'s
+`serve` command already acquires one). Before any account is unfrozen,
+`RecoveryApplyRequest` handling must, in order: (a) prove the old service's
+writer lock has been released and no live holder exists — either the
+existing lock file shows no live PID, or an explicit
+`serenity hosted recovery fence` operator step (task50) revokes the old
+instance's credentials under the approved runbook; (b) call
+`DeletionJournal.ReadThrough` from the manifest's own `JournalWatermark`
+through "now" and require a nil `ErrDeletionJournalIncomplete`; (c) call
+`BillingReconciler.ReconcileCustomer` per account so no stale entitlement
+resurrects. Only after all three succeed does `RecoveryApplyResult.Unfrozen`
+become true, applied atomically per account — never a manual `status='active'`
+SQL statement (evidence.md already forbids this explicitly). **Not
+approved**: the fence mechanism (lock-file liveness vs. explicit fence
+command) is a proposal; chief-architect must pick one before task50 starts.
+
+## Lock ordering and cancellation (task41, drafted)
+
+Documented from the current implementation, not yet a chief-architect-signed
+invariant:
+
+1. `Gateway.Maintenance` (RWMutex; write-locked only by `Service.Backup`,
+   read-locked by every mutating call in `callBound`).
+2. `Gateway.accountLocks[hash(account)]` (per-account mutex; also used by
+   `Export`/`DeleteBrain`/`DeleteAccount`).
+3. `Runtime.Mutations` (per-brain mutex; write/forget calls only).
+4. `store.Store.Transaction` (SQL transaction; `meter.Reserve`/`Finish`,
+   credential/brain writes).
+5. Canonical disk/provider I/O (`runtime.Flush`, embedding calls) — outside
+   any DB transaction, after step 4 has committed or been explicitly deferred
+   past it.
+
+**Known violation, not this task's to fix**: `Gateway.ServeHTTP`
+(`gateway.go`) holds the connection-bookkeeping map lock `Gateway.mu` across
+`Pool.Acquire`, which can hit a cold-open disk path — exactly the "do not
+hold the global gateway/pool map lock across disk/provider work" invariant
+this section is required to state. Flagged here for task45 (admission); not
+edited, since `gateway.go` is task45's write scope (`R-hosted-runtime`), not
+task41's.
+
+Export/delete/recovery calls bypass ordinary metering (`Export`,
+`DeleteBrain`, `DeleteAccount` take no `meter.Reservation`) — already true in
+the current implementation; this is the existing "bounded capacity
+independent of ordinary write allowance" behavior, not a new requirement.
+Every `context.Context` passed into a metered path already carries the
+caller's deadline; `Meter.Finish`'s deferred calls deliberately use
+`context.WithoutCancel` with their own bounded timeout so a canceled request
+still finalizes its reservation instead of leaking it open.
+
 ## File-change handshake
 
 1. Feature task submits `docs/launch/evidence/T23.N/integration-request.md`: desired signature/schema/config, failure semantics, exact shared-file diff and tests. This is a proposal, not worker authority to edit shared files.
@@ -37,11 +196,29 @@ Task41’s reviewer freezes the task43 Hit@5 corpus/scoring and task60 workload/
 
 ## Freeze receipt (to be filled by task41)
 
-- Source/PR/reviewer: **not yet executed**.
-- Exact Go interface and SQL revision: **not yet executed**.
-- Storage envelope design approved: **not yet executed**.
-- Journal completeness/old-writer fence approved: **not yet executed**.
-- Provider/model/accounting-unit contract approved: **not yet executed**.
-- Quality/load thresholds frozen: **not yet executed**.
+- Source/PR/reviewer: drafted in worktree `hosted/T23.41` on base
+  `810349ba7c1ed2c05fe34e3892de764a26a4633c`; **not yet reviewed by
+  chief-architect, not yet merged**. Headless Sonnet worker session had no
+  synchronous reviewer available — see
+  `docs/launch/evidence/T23.41/architecture-review-request.md`.
+- Exact Go interface and SQL revision: `internal/hosted/contracts/**` (9
+  non-gated seams frozen with compile-time conformance tests) and
+  `internal/hosted/testhooks/**` (fault barrier, frozen and tested) are
+  real, compiled, `go vet`-clean code in this worktree. No SQL migration
+  applied: the `operations` table proposed for decision 2 is design-only
+  pending review; `store/migrations.go` is unchanged this pass.
+- Storage envelope design approved: **not approved**. Proposal in "Proposed
+  decisions" §1 above; blocked on empirical growth-bound fixture evidence
+  task44 has not yet produced.
+- Journal completeness/old-writer fence approved: **not approved**.
+  Proposals in §3/§4 above (S3 versioned+object-locked substrate; generation
+  fence via `writer.AcquireBrain` or an explicit fence command).
+- Provider/model/accounting-unit contract approved: `AccountingUnit`,
+  `RegistrationMode` and the `ProviderPin` *shape* are frozen (not gated by
+  the four decisions); the actual provider/model/version value remains
+  task42's to verify and pin. Not evaluated by this task.
+- Quality/load thresholds frozen: out of this task's scope this pass; task43
+  (Hit@5 corpus) and task60 (workload/latency targets) own the actual
+  numbers and were not touched.
 
-These are real dependencies. This planning PR does not mark task41 accepted.
+These are real dependencies. This worktree does not mark task41 accepted.
