@@ -26,6 +26,29 @@ const (
 	// PhaseDeletionPurged fires after task48 purges canonical brain/account
 	// bytes, before the journal outcome record is appended.
 	PhaseDeletionPurged = "deletion_purged"
+	// PhaseOperationCanonicalEntered fires after task44's
+	// OperationLedger.EnterCanonical recorded entry inside the brain's commit
+	// section, before the first canonical byte is written. A crash here leaves
+	// a reserved row that has entered the canonical writer; only the fenced
+	// reconciler may resolve it.
+	PhaseOperationCanonicalEntered = "operation_canonical_entered"
+	// PhaseOperationCanonicalWritten fires after the canonical write (including
+	// writer.Flush) completed and the commit section was left, before
+	// Finalize. A crash here must reconcile to committed exactly once.
+	PhaseOperationCanonicalWritten = "operation_canonical_written"
+	// PhaseReconcileFenced fires after ReconcilePending acquired a brain's
+	// exclusive fence, before it runs the canonical checker. Pausing here
+	// proves a live writer is stopped or waited for rather than raced.
+	PhaseReconcileFenced = "reconcile_fenced"
+	// PhaseStageMeasured fires after task44 measured a staged mutation's
+	// physical growth, before StagingGate.AdmitMeasured.
+	PhaseStageMeasured = "stage_measured"
+	// PhaseStagePublished fires after a staged mutation was published into
+	// canonical storage, before the operation is finalized.
+	PhaseStagePublished = "stage_published"
+	// PhaseJournalSealed fires after DeletionJournal.Seal created and verified
+	// the seal object, before task50 assembles the fence receipt.
+	PhaseJournalSealed = "journal_sealed"
 	// PhaseBackupManifestWritten fires after task49 stages a manifest v2
 	// artifact, before it is atomically published as the current backup.
 	PhaseBackupManifestWritten = "backup_manifest_written"

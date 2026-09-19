@@ -1,97 +1,65 @@
 # T23.41 architecture review request
 
-**Requested reviewer:** chief-architect (per `docs/launch/hosted-plan.md`
-task41 required steps: "With chief-architect, resolve and publish the four
-bounded design decisions").
+**Requested reviewer:** chief-architect (`docs/launch/hosted-plan.md`, task41 required steps: "With chief-architect, resolve and publish the four bounded design decisions").
 
-**Requester:** headless Claude Code Sonnet worker, branch
-`hosted/t23.41-20260918`, base `810349ba7c1ed2c05fe34e3892de764a26a4633c`.
+**Requester:** headless Claude Code worker, branch `hosted/t23.41-20260918`, base `810349ba7c1ed2c05fe34e3892de764a26a4633c`. The exact revision to review is the commit named in `result.json` `source_sha`.
 
-**Why this is a request, not a receipt:** this session is non-interactive
-with no synchronous reviewer available. Per the worker protocol
-(`docs/launch/hosted-completion/worker-prompt.md`: "prepare concrete changes
-before escalating a genuinely missing approval") and this task's own
-instruction ("If architecture approval is missing, prepare concrete
-proposals and reviewed-ready implementation but report PARTIAL; never
-invent approval"), the four decisions below are drafted to the point a
-reviewer can approve, amend or reject them in one pass, but none is marked
-approved anywhere in this task's output.
+**This is a request, not a receipt.** No reviewer was available synchronously. Nothing below is approved, and no file in this change marks any decision approved. Until a reply names a reviewer and a revision, task44, 47, 48 and 50 treat all four decisions as blocked, per `docs/launch/hosted-plan.md`: "Unresolved decision means dependent task is blocked, not an agent guess."
 
-## Revision note
+## How to read the packet
 
-An independent code review found concrete defects in the first draft of
-decisions 2, 3 and 4 (not just missing approval — the proposed mechanisms
-did not actually satisfy the invariant each is supposed to close) and a
-real concurrency bug (data race plus a lost-wakeup hang) in the
-`internal/hosted/testhooks` fault-barrier package. All four are fixed in
-this revision; `docs/launch/hosted-completion/interfaces.md`'s
-"Proposed decisions" section states what was wrong in each prior draft and
-what changed. None of this moves any decision from "not approved" to
-"approved" — it only makes the proposal worth reviewing.
+`docs/launch/hosted-completion/interfaces.md` has the full text under "Proposed decisions". Each decision there lists what an earlier draft got wrong, the proposed rules, and the questions below with a recommendation. Every proposed rule has an executable scenario in `internal/hosted/contracts/contractstest`, and each reference model was mutation-tested (a deliberate defect fails the scenario meant to catch it). The reference models are test-support code. They show the rules are self-consistent and testable. They are not evidence about production code, which does not exist.
 
-## What needs a decision
+## Rulings requested
 
-`docs/launch/hosted-completion/interfaces.md` "Proposed decisions — pending
-chief-architect review" contains the full technical detail for each.
-Summary of what a reviewer must rule on:
+Reply per line: **approve**, **approve with amendment**, or **reject with required alternative**.
 
-1. **Storage admission (physical headroom).** Explicitly **BLOCKED with no
-   adopted mechanism** — the original growth-factor-multiplier proposal
-   (p95 growth ratio × 1.5) was withdrawn as unsound (a statistical
-   estimate, not a hard ceiling). §1 now proposes a staged-write mechanism
-   instead: stage a mutation in isolation, measure its real physical growth,
-   admit against that measured value, then atomically publish. The reviewer
-   rules on whether this staged-write shape is the right mechanism (or
-   requires a proven mathematical bound instead) before task44 can start
-   any implementation at all.
-2. **Crash-safe operation accounting.** §2's `OperationRecord` now carries a
-   `Deltas []OperationDelta` slice (not a single metric/unit pair), so one
-   logical mutation's multiple counters — e.g. a `remember` call's
-   `"writes"` and `"input_tokens"` deltas, currently two independent
-   `meter.Reserve`/`Finish` cycles — finalize together in one transaction,
-   plus a `CanonicalRef` field, a `LeaseExpiresAt` field aligned with the
-   proposed SQL column, and a fourth `pending_review` phase so
-   `ReconcilePending` never silently resolves an unprovable row to
-   committed or released. Approve, amend or reject the table shape and
-   phase state machine.
-3. **Independently durable deletion journal.** The watermark mechanism was
-   replaced: entries are now addressed by a monotonic `SequenceID` assigned
-   by the control DB's single fenced writer (paired with a `Generation`
-   from decision 4), not an S3 `ListObjectsV2` continuation token — the
-   prior design could permanently miss entries whose opaque subject ID
-   sorted lexicographically before an already-consumed key. Object Lock /
-   compliance-mode retention is withdrawn as a proposed mechanism (real
-   SPEND-gate cost/operational consequences); this proposal commits only to
-   bucket versioning as the durability floor pending a SPEND-gate decision
-   on retention. Approve, amend or reject the sequence/generation design,
-   IAM prefix scoping and the open retention question.
-4. **Restore eligibility / activation barrier.** The local-lock-file
-   fencing option is dropped entirely for cross-host restore: reading
-   `internal/writer/ownership_unix.go` in full confirmed `AcquireBrain`
-   never writes a PID and is a kernel-local `flock()` that cannot observe a
-   different host at all — restore's own primary scenario. §4 now requires
-   both an AWS-API-verified old-instance stop and explicit revocation of
-   every credential/session (including the old instance's live IAM
-   role/session, not just its database access) the old instance could still
-   use, offered alongside a fully specified distributed generation barrier
-   as the still-open alternative. Approve, amend or reject which mechanism
-   task50 builds against.
+### 1. Storage admission - currently BLOCKED
 
-## What is already concrete and does not need this review
+| Question | Recommendation | Ruling |
+|---|---|---|
+| Adopt the staged-write design (global staging budget reserved before any stage byte exists, a stager that aborts at its ceiling, admission of measured growth including unpublished growth)? | Approve. It is hard by construction. | |
+| Accept the prerequisite core-writer seam (Git quarantine objects, or equivalent) as a shared-seam request under T23.44 step 4? | Approve. Canonical state is a live Git worktree with no temp-and-rename step, so a stage cannot exist without it. | |
+| If the seam is rejected: adopt in-place admission with a proven per-mutation ceiling and a write-freezing tripwire instead? | Fallback only. It costs customers the last `MaxMutationStageBytes` of quota and is only as strong as the corner-case proof. | |
+| Statistical growth multiplier | Stays withdrawn. | |
 
-`internal/hosted/contracts/**` (billing truth/closure, backup manifest v2,
-recovery CLI shape, telemetry, provider pin, accounting units, registration
-mode) and `internal/hosted/testhooks/**` (fault barrier, including this
-pass's concurrency fix) are frozen, compiled, `go vet`/lint-clean, and
-covered by real tests — these seams do not depend on the four decisions
-above and can be reviewed as ordinary code, not an architecture question.
+### 2. Operation accounting, quiescence and retry-key binding
 
-## Requested outcome
+| Question | Recommendation | Ruling |
+|---|---|---|
+| State machine: `pending_review` is a holding phase that holds capacity and exits only through an operator | Approve. | |
+| Absence-based release only through a reconciler that holds the brain's exclusive fence across the canonical check and the ledger transition; writers call `EnterCanonical` inside a commit section and stop if the row is no longer reserved | Approve. Lease expiry alone cannot show a writer stopped. | |
+| Scope of the fence: in-process, plus host-exclusive brain ownership; other hosts only through decision 4 | Approve. | |
+| Commit section wraps the whole `remember` handler including the provider call | Accept. A slow embedding only defers that brain's reconciliation. | |
+| Retry key bound to a payload fingerprint; reuse with different content fails in every phase | Approve. | |
+| Working-tree state pending after a failed flush is Unknown, never Absent; task44 proposes a writer change so a failed flush rolls back | Approve. | |
+| Migration version 4 reserved for the `operations` table, applied only after approval | Approve. | |
 
-A reviewer reply (recorded in this file's own follow-up, in
-`ajent.social`, or as a PR review comment once this branch is published)
-naming, per decision: approved as proposed / approved with the following
-amendment / rejected with the following required alternative. Until that
-reply exists, task44/47/48/50 must treat all four as blocked, per
-`docs/launch/hosted-plan.md`: "Unresolved decision means dependent task is
-blocked, not an agent guess."
+### 3. Deletion journal
+
+| Question | Recommendation | Ruling |
+|---|---|---|
+| Journal completeness comes from the journal alone (hash chain, gapless sequence, generation seal), never the local control database | Approve. Restore replaces the control database with a snapshot copy that cannot know later entries. | |
+| Substrate: the existing versioned AWS object bucket with conditional create; no new service | Approve, conditional on task48 proving conditional create against the real provider. This was not verified in this task. | |
+| IAM: service role gets put, get and list under `deletion-journal/` only, no delete | Approve. | |
+| Retention beyond bucket versioning (Object Lock or compliance mode) | Not decided here. SPEND-gate territory. | |
+| Watermark read before the backup copies data; recovery replays after it; purge idempotent | Approve. | |
+
+### 4. Restore fencing
+
+| Question | Recommendation | Ruling |
+|---|---|---|
+| Unfreeze requires all three facts: journal generation sealed, provider-verified old-instance stop, revocation of every old credential and session | Approve. Each defeats a different failure and none implies another. | |
+| Versus a distributed generation barrier | Reject the alternative. It adds a coordination service this deployment does not otherwise need. | |
+| Recovery operator role gets read-only instance-state permission so the stop is verified through the provider | Approve. | |
+| Local writer lock as a fencing option for cross-host restore | Dropped. `TestLocalWriterLockCannotFenceAnotherHost` shows it cannot work. | |
+
+## Already concrete and not part of this review
+
+Billing truth and closure, backup manifest v2 (except its journal watermark), the recovery plan/apply shape (except the journal and fence fields), telemetry, provider pin, accounting units, registration mode and the fault-barrier package are frozen, compiled and covered by tests. They can be reviewed as ordinary code.
+
+## Not verified in this task
+
+- S3 conditional-create semantics against the real service (decision 3).
+- The worst-case physical growth of one mutation on the real runtime (decision 1, `MaxMutationStageBytes`). No measurement was taken; the packet requires task44 to produce one.
+- The actual `remember` handler's commit-section timing under provider load (decision 2).
