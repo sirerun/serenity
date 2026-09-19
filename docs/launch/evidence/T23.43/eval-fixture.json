@@ -163,9 +163,9 @@
   },
   "commands": [
     "python3 scripts/hosted/eval_embeddings.py --fixtures --manifest docs/launch/hosted-completion/qualification.example.json --output docs/launch/evidence/T23.43/eval-fixture.json",
-    "/Volumes/BuildOffload/wt/serenity-launch-T23.43-20260918/../serenity-launch-runs-20260918/bin/serenity --root <disposable> search <query> --limit 5"
+    "/Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/serenity --root <disposable> search <query> --limit 5"
   ],
-  "configuration_sha256": null,
+  "configuration_sha256": "1434535ba051e9c0eab21ae42fcbf46d1a1401c548b78a60afcd9441bd0ce737",
   "corpus_sha256": "f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6",
   "cost": {
     "actual_usd": null,
@@ -173,15 +173,3777 @@
     "authorization_refs": []
   },
   "dependencies": {},
+  "elapsed_seconds": 4.073,
   "evidence_level": "fixture",
   "limitations": [
-    "Empty-case fixture arm approximates 'forgotten/expired' as 'never authored': T23.43 does not own the remember/forget/expiry pipeline (T23.42/44/48), so isolated brains contain only an unrelated filler fact rather than a genuinely retracted one.",
+    "The local lexical control's empty cases run against isolated brains holding one unrelated filler fact (seedbrain refuses an empty brain) and are scored strictly: returning the filler fails. That arm is a control, not the forgotten-fact qualification. The real forgotten-fact protocol (remember a target, show it retrievable, forget it, show it absent) runs only under --seed/--live and has been exercised only against a loopback fake, never a hosted account.",
     "--live mode's actual semantic quality has never been measured (no EMBEDDINGS key, no seeded hosted account); this run is fixtures-only mechanical rehearsal."
   ],
+  "per_query": {
+    "fixed_vector": [
+      {
+        "case_id": "para-01a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-01a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 41,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-01b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-01b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 42,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-01c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-01c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 43,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-02a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-02a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 44,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-02b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-02b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 45,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-02c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-02c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 46,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-03a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-03a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 47,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-03b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-03b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 48,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-03c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-03c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 49,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-04a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-04a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 50,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-04b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-04b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 51,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-04c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-04c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 52,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-05a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-05a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 53,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-05b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-05b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 54,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-05c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-05c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 55,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-06a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-06a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 56,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-06b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-06b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 57,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-06c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-06c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 58,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-07a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-07a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 59,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-07b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-07b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 60,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-07c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-07c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 61,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-08a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-08a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 62,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-08b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-08b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 63,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-08c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-08c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 64,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-09a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-09a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 65,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-09b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-09b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 66,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-09c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-09c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 67,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-10a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-10a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 68,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-10b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-10b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 69,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-10c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-10c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 70,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-11a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-11a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 71,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-11b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-11b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 72,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-11c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-11c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 73,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-12a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-12a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 74,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-12b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-12b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 75,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-12c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-12c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 76,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-13a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-13a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 77,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-13b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-13b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 78,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-13c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-13c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 79,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "para-40",
+        "category": "paraphrase",
+        "expected_fact_id": "para-40-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 80,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-01a",
+        "category": "name_entity",
+        "expected_fact_id": "name-01a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 21,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-01b",
+        "category": "name_entity",
+        "expected_fact_id": "name-01b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 22,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-01c",
+        "category": "name_entity",
+        "expected_fact_id": "name-01c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 23,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-02a",
+        "category": "name_entity",
+        "expected_fact_id": "name-02a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 24,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-02b",
+        "category": "name_entity",
+        "expected_fact_id": "name-02b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 25,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-02c",
+        "category": "name_entity",
+        "expected_fact_id": "name-02c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 26,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-03a",
+        "category": "name_entity",
+        "expected_fact_id": "name-03a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 27,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-03b",
+        "category": "name_entity",
+        "expected_fact_id": "name-03b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 28,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-03c",
+        "category": "name_entity",
+        "expected_fact_id": "name-03c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 29,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-04a",
+        "category": "name_entity",
+        "expected_fact_id": "name-04a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 30,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-04b",
+        "category": "name_entity",
+        "expected_fact_id": "name-04b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 31,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-04c",
+        "category": "name_entity",
+        "expected_fact_id": "name-04c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 32,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-05a",
+        "category": "name_entity",
+        "expected_fact_id": "name-05a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 33,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-05b",
+        "category": "name_entity",
+        "expected_fact_id": "name-05b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 34,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-05c",
+        "category": "name_entity",
+        "expected_fact_id": "name-05c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 35,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-06a",
+        "category": "name_entity",
+        "expected_fact_id": "name-06a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 36,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-06b",
+        "category": "name_entity",
+        "expected_fact_id": "name-06b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 37,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-06c",
+        "category": "name_entity",
+        "expected_fact_id": "name-06c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 38,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-07a",
+        "category": "name_entity",
+        "expected_fact_id": "name-07a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 39,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "name-07b",
+        "category": "name_entity",
+        "expected_fact_id": "name-07b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 40,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-01a",
+        "category": "preference",
+        "expected_fact_id": "pref-01a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 81,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-02a",
+        "category": "preference",
+        "expected_fact_id": "pref-02a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 84,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-03a",
+        "category": "preference",
+        "expected_fact_id": "pref-03a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 87,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-04a",
+        "category": "preference",
+        "expected_fact_id": "pref-04a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 90,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-05a",
+        "category": "preference",
+        "expected_fact_id": "pref-05a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 93,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-06a",
+        "category": "preference",
+        "expected_fact_id": "pref-06a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 96,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-01b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-01b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 82,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-01c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-01c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 83,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-02b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-02b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 85,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-02c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-02c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 86,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-03b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-03b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 88,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-03c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-03c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 89,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-04b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-04b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 91,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-04c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-04c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 92,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-05b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-05b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 94,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-05c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-05c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 95,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-06b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-06b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 97,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-06c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-06c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 98,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-07a",
+        "category": "preference",
+        "expected_fact_id": "pref-07a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 99,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "pref-07b",
+        "category": "preference",
+        "expected_fact_id": "pref-07b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 100,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "ml-01",
+        "category": "multilingual",
+        "expected_fact_id": "ml-01-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 11,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "ml-02",
+        "category": "multilingual",
+        "expected_fact_id": "ml-02-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 12,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "ml-03",
+        "category": "multilingual",
+        "expected_fact_id": "ml-03-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 13,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "ml-04",
+        "category": "multilingual",
+        "expected_fact_id": "ml-04-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 14,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "ml-05",
+        "category": "multilingual",
+        "expected_fact_id": "ml-05-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 15,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "ml-06",
+        "category": "multilingual",
+        "expected_fact_id": "ml-06-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 16,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "ml-07",
+        "category": "multilingual",
+        "expected_fact_id": "ml-07-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 17,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "ml-08",
+        "category": "multilingual",
+        "expected_fact_id": "ml-08-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 18,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "ml-09",
+        "category": "multilingual",
+        "expected_fact_id": "ml-09-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 19,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "ml-10",
+        "category": "multilingual",
+        "expected_fact_id": "ml-10-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 20,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "temp-01",
+        "category": "temporal",
+        "expected_fact_id": "temp-01-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 101,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "temp-02",
+        "category": "temporal",
+        "expected_fact_id": "temp-02-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 102,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "temp-03",
+        "category": "temporal",
+        "expected_fact_id": "temp-03-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 103,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "temp-04",
+        "category": "temporal",
+        "expected_fact_id": "temp-04-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 104,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      },
+      {
+        "case_id": "temp-05",
+        "category": "temporal",
+        "expected_fact_id": "temp-05-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 105,
+        "top5": [
+          "filler-01",
+          "filler-02",
+          "filler-03",
+          "filler-04",
+          "filler-05"
+        ]
+      }
+    ],
+    "hashbag": [
+      {
+        "case_id": "para-01a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-01a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "para-01a-fact",
+          "name-06c-fact",
+          "para-01b-fact",
+          "temp-05-fact",
+          "para-13c-fact"
+        ]
+      },
+      {
+        "case_id": "para-01b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-01b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "para-01b-fact",
+          "name-06c-fact",
+          "para-08a-fact",
+          "para-08b-fact",
+          "para-08c-fact"
+        ]
+      },
+      {
+        "case_id": "para-01c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-01c-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 3,
+        "top5": [
+          "name-06c-fact",
+          "para-01a-fact",
+          "para-01c-fact",
+          "temp-05-fact",
+          "para-01b-fact"
+        ]
+      },
+      {
+        "case_id": "para-02a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-02a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 31,
+        "top5": [
+          "name-05a-fact",
+          "filler-08",
+          "ml-06-fact",
+          "pref-07a-fact",
+          "name-05b-fact"
+        ]
+      },
+      {
+        "case_id": "para-02b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-02b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 31,
+        "top5": [
+          "name-05a-fact",
+          "filler-08",
+          "ml-06-fact",
+          "pref-07a-fact",
+          "filler-02"
+        ]
+      },
+      {
+        "case_id": "para-02c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-02c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 10,
+        "top5": [
+          "name-07b-fact",
+          "para-13a-fact",
+          "filler-08",
+          "ml-06-fact",
+          "pref-07a-fact"
+        ]
+      },
+      {
+        "case_id": "para-03a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-03a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 2,
+        "top5": [
+          "pref-06c-fact",
+          "para-03a-fact",
+          "ml-02-fact",
+          "pref-03b-fact",
+          "pref-04a-fact"
+        ]
+      },
+      {
+        "case_id": "para-03b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-03b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 2,
+        "top5": [
+          "pref-06c-fact",
+          "para-03b-fact",
+          "pref-04a-fact",
+          "para-40-fact",
+          "name-05b-fact"
+        ]
+      },
+      {
+        "case_id": "para-03c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-03c-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 3,
+        "top5": [
+          "pref-06c-fact",
+          "name-05b-fact",
+          "para-03c-fact",
+          "para-05c-fact",
+          "pref-04a-fact"
+        ]
+      },
+      {
+        "case_id": "para-04a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-04a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 23,
+        "top5": [
+          "name-05a-fact",
+          "temp-01-fact",
+          "name-05b-fact",
+          "name-05c-fact",
+          "para-13c-fact"
+        ]
+      },
+      {
+        "case_id": "para-04b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-04b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 18,
+        "top5": [
+          "temp-01-fact",
+          "name-05a-fact",
+          "para-13c-fact",
+          "para-13a-fact",
+          "para-13b-fact"
+        ]
+      },
+      {
+        "case_id": "para-04c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-04c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 25,
+        "top5": [
+          "name-05a-fact",
+          "temp-01-fact",
+          "name-06a-fact",
+          "name-06b-fact",
+          "name-05b-fact"
+        ]
+      },
+      {
+        "case_id": "para-05a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-05a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 9,
+        "top5": [
+          "pref-07b-fact",
+          "pref-02c-fact",
+          "pref-07a-fact",
+          "name-04a-fact",
+          "pref-02b-fact"
+        ]
+      },
+      {
+        "case_id": "para-05b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-05b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 4,
+        "top5": [
+          "pref-02c-fact",
+          "pref-03b-fact",
+          "pref-07b-fact",
+          "para-05b-fact",
+          "pref-02b-fact"
+        ]
+      },
+      {
+        "case_id": "para-05c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-05c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 7,
+        "top5": [
+          "pref-02c-fact",
+          "pref-07b-fact",
+          "para-09c-fact",
+          "pref-02b-fact",
+          "pref-06a-fact"
+        ]
+      },
+      {
+        "case_id": "para-06a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-06a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 48,
+        "top5": [
+          "ml-09-fact",
+          "filler-02",
+          "name-07a-fact",
+          "para-13b-fact",
+          "name-02a-fact"
+        ]
+      },
+      {
+        "case_id": "para-06b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-06b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 8,
+        "top5": [
+          "filler-02",
+          "name-07a-fact",
+          "filler-05",
+          "ml-09-fact",
+          "para-13b-fact"
+        ]
+      },
+      {
+        "case_id": "para-06c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-06c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 59,
+        "top5": [
+          "filler-02",
+          "ml-09-fact",
+          "name-07a-fact",
+          "para-13b-fact",
+          "name-01c-fact"
+        ]
+      },
+      {
+        "case_id": "para-07a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-07a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 21,
+        "top5": [
+          "name-05a-fact",
+          "name-05b-fact",
+          "name-05c-fact",
+          "ml-01-fact",
+          "pref-04c-fact"
+        ]
+      },
+      {
+        "case_id": "para-07b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-07b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 22,
+        "top5": [
+          "name-05a-fact",
+          "name-05b-fact",
+          "name-05c-fact",
+          "para-10a-fact",
+          "ml-01-fact"
+        ]
+      },
+      {
+        "case_id": "para-07c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-07c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 19,
+        "top5": [
+          "name-05a-fact",
+          "name-05b-fact",
+          "name-05c-fact",
+          "para-12c-fact",
+          "name-01a-fact"
+        ]
+      },
+      {
+        "case_id": "para-08a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-08a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 29,
+        "top5": [
+          "pref-06a-fact",
+          "name-02a-fact",
+          "name-02c-fact",
+          "pref-01a-fact",
+          "pref-01b-fact"
+        ]
+      },
+      {
+        "case_id": "para-08b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-08b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 31,
+        "top5": [
+          "pref-06a-fact",
+          "pref-01a-fact",
+          "pref-01b-fact",
+          "pref-06b-fact",
+          "name-05c-fact"
+        ]
+      },
+      {
+        "case_id": "para-08c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-08c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 35,
+        "top5": [
+          "pref-06a-fact",
+          "pref-01a-fact",
+          "pref-01b-fact",
+          "pref-06b-fact",
+          "name-05c-fact"
+        ]
+      },
+      {
+        "case_id": "para-09a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-09a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "para-09a-fact",
+          "para-09b-fact",
+          "para-09c-fact",
+          "pref-06a-fact",
+          "para-05c-fact"
+        ]
+      },
+      {
+        "case_id": "para-09b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-09b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "para-09b-fact",
+          "pref-06a-fact",
+          "para-04a-fact",
+          "para-04b-fact",
+          "filler-01"
+        ]
+      },
+      {
+        "case_id": "para-09c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-09c-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "para-09c-fact",
+          "pref-06a-fact",
+          "pref-06c-fact",
+          "para-04a-fact",
+          "para-04b-fact"
+        ]
+      },
+      {
+        "case_id": "para-10a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-10a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 6,
+        "top5": [
+          "para-40-fact",
+          "filler-04",
+          "ml-03-fact",
+          "ml-05-fact",
+          "ml-06-fact"
+        ]
+      },
+      {
+        "case_id": "para-10b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-10b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "para-10b-fact",
+          "filler-04",
+          "ml-03-fact",
+          "ml-05-fact",
+          "para-10a-fact"
+        ]
+      },
+      {
+        "case_id": "para-10c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-10c-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 5,
+        "top5": [
+          "para-08a-fact",
+          "filler-04",
+          "ml-03-fact",
+          "ml-05-fact",
+          "para-10c-fact"
+        ]
+      },
+      {
+        "case_id": "para-11a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-11a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 3,
+        "top5": [
+          "para-09c-fact",
+          "para-09b-fact",
+          "para-11a-fact",
+          "name-05b-fact",
+          "name-05c-fact"
+        ]
+      },
+      {
+        "case_id": "para-11b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-11b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 5,
+        "top5": [
+          "name-05b-fact",
+          "name-05c-fact",
+          "para-09c-fact",
+          "name-05a-fact",
+          "para-11b-fact"
+        ]
+      },
+      {
+        "case_id": "para-11c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-11c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 9,
+        "top5": [
+          "pref-04a-fact",
+          "name-05b-fact",
+          "name-05c-fact",
+          "para-09c-fact",
+          "name-05a-fact"
+        ]
+      },
+      {
+        "case_id": "para-12a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-12a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 2,
+        "top5": [
+          "para-05c-fact",
+          "para-12a-fact",
+          "para-10c-fact",
+          "para-05a-fact",
+          "para-09b-fact"
+        ]
+      },
+      {
+        "case_id": "para-12b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-12b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 2,
+        "top5": [
+          "para-05c-fact",
+          "para-12b-fact",
+          "para-10c-fact",
+          "para-09b-fact",
+          "para-05b-fact"
+        ]
+      },
+      {
+        "case_id": "para-12c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-12c-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "para-12c-fact",
+          "para-05c-fact",
+          "para-07c-fact",
+          "para-10c-fact",
+          "para-05a-fact"
+        ]
+      },
+      {
+        "case_id": "para-13a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-13a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 12,
+        "top5": [
+          "para-05b-fact",
+          "pref-03c-fact",
+          "para-04a-fact",
+          "para-04b-fact",
+          "pref-03b-fact"
+        ]
+      },
+      {
+        "case_id": "para-13b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-13b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 13,
+        "top5": [
+          "para-05b-fact",
+          "filler-03",
+          "para-03c-fact",
+          "pref-03c-fact",
+          "para-04a-fact"
+        ]
+      },
+      {
+        "case_id": "para-13c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-13c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 9,
+        "top5": [
+          "pref-03c-fact",
+          "pref-02a-fact",
+          "para-04a-fact",
+          "para-04b-fact",
+          "para-02a-fact"
+        ]
+      },
+      {
+        "case_id": "para-40",
+        "category": "paraphrase",
+        "expected_fact_id": "para-40-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 3,
+        "top5": [
+          "pref-05a-fact",
+          "pref-06c-fact",
+          "para-40-fact",
+          "name-05b-fact",
+          "name-05c-fact"
+        ]
+      },
+      {
+        "case_id": "name-01a",
+        "category": "name_entity",
+        "expected_fact_id": "name-01a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-01a-fact",
+          "pref-06a-fact",
+          "pref-06c-fact",
+          "name-06b-fact",
+          "filler-09"
+        ]
+      },
+      {
+        "case_id": "name-01b",
+        "category": "name_entity",
+        "expected_fact_id": "name-01b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-01b-fact",
+          "pref-06a-fact",
+          "pref-06c-fact",
+          "name-06b-fact",
+          "ml-06-fact"
+        ]
+      },
+      {
+        "case_id": "name-01c",
+        "category": "name_entity",
+        "expected_fact_id": "name-01c-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-01c-fact",
+          "pref-06a-fact",
+          "filler-06",
+          "name-04a-fact",
+          "name-04b-fact"
+        ]
+      },
+      {
+        "case_id": "name-02a",
+        "category": "name_entity",
+        "expected_fact_id": "name-02a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-02a-fact",
+          "name-02b-fact",
+          "name-02c-fact",
+          "ml-03-fact",
+          "ml-06-fact"
+        ]
+      },
+      {
+        "case_id": "name-02b",
+        "category": "name_entity",
+        "expected_fact_id": "name-02b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-02b-fact",
+          "name-02a-fact",
+          "name-02c-fact",
+          "name-05b-fact",
+          "name-05c-fact"
+        ]
+      },
+      {
+        "case_id": "name-02c",
+        "category": "name_entity",
+        "expected_fact_id": "name-02c-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-02c-fact",
+          "name-02b-fact",
+          "name-02a-fact",
+          "filler-10",
+          "ml-03-fact"
+        ]
+      },
+      {
+        "case_id": "name-03a",
+        "category": "name_entity",
+        "expected_fact_id": "name-03a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-03a-fact",
+          "name-02b-fact",
+          "name-03b-fact",
+          "name-03c-fact",
+          "ml-03-fact"
+        ]
+      },
+      {
+        "case_id": "name-03b",
+        "category": "name_entity",
+        "expected_fact_id": "name-03b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 2,
+        "top5": [
+          "name-02b-fact",
+          "name-03b-fact",
+          "ml-03-fact",
+          "name-02c-fact",
+          "para-11a-fact"
+        ]
+      },
+      {
+        "case_id": "name-03c",
+        "category": "name_entity",
+        "expected_fact_id": "name-03c-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-03c-fact",
+          "name-02b-fact",
+          "name-03b-fact",
+          "name-03a-fact",
+          "ml-03-fact"
+        ]
+      },
+      {
+        "case_id": "name-04a",
+        "category": "name_entity",
+        "expected_fact_id": "name-04a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-04a-fact",
+          "name-04c-fact",
+          "name-04b-fact",
+          "para-08b-fact",
+          "para-08a-fact"
+        ]
+      },
+      {
+        "case_id": "name-04b",
+        "category": "name_entity",
+        "expected_fact_id": "name-04b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-04b-fact",
+          "name-04a-fact",
+          "name-04c-fact",
+          "para-08b-fact",
+          "ml-03-fact"
+        ]
+      },
+      {
+        "case_id": "name-04c",
+        "category": "name_entity",
+        "expected_fact_id": "name-04c-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-04c-fact",
+          "name-04a-fact",
+          "name-04b-fact",
+          "para-08b-fact",
+          "para-08a-fact"
+        ]
+      },
+      {
+        "case_id": "name-05a",
+        "category": "name_entity",
+        "expected_fact_id": "name-05a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-05a-fact",
+          "name-05b-fact",
+          "name-05c-fact",
+          "filler-04",
+          "filler-09"
+        ]
+      },
+      {
+        "case_id": "name-05b",
+        "category": "name_entity",
+        "expected_fact_id": "name-05b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-05b-fact",
+          "para-06c-fact",
+          "name-05c-fact",
+          "name-05a-fact",
+          "filler-04"
+        ]
+      },
+      {
+        "case_id": "name-05c",
+        "category": "name_entity",
+        "expected_fact_id": "name-05c-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-05c-fact",
+          "name-05b-fact",
+          "name-05a-fact",
+          "filler-04",
+          "filler-09"
+        ]
+      },
+      {
+        "case_id": "name-06a",
+        "category": "name_entity",
+        "expected_fact_id": "name-06a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-06a-fact",
+          "name-06b-fact",
+          "name-06c-fact",
+          "para-05a-fact",
+          "temp-03-fact"
+        ]
+      },
+      {
+        "case_id": "name-06b",
+        "category": "name_entity",
+        "expected_fact_id": "name-06b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-06b-fact",
+          "name-06a-fact",
+          "name-06c-fact",
+          "filler-09",
+          "pref-01b-fact"
+        ]
+      },
+      {
+        "case_id": "name-06c",
+        "category": "name_entity",
+        "expected_fact_id": "name-06c-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 2,
+        "top5": [
+          "name-06b-fact",
+          "name-06c-fact",
+          "name-06a-fact",
+          "filler-09",
+          "pref-01b-fact"
+        ]
+      },
+      {
+        "case_id": "name-07a",
+        "category": "name_entity",
+        "expected_fact_id": "name-07a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-07a-fact",
+          "name-07b-fact",
+          "para-13c-fact",
+          "filler-07",
+          "para-13a-fact"
+        ]
+      },
+      {
+        "case_id": "name-07b",
+        "category": "name_entity",
+        "expected_fact_id": "name-07b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "name-07b-fact",
+          "name-07a-fact",
+          "para-13c-fact",
+          "filler-07",
+          "ml-01-fact"
+        ]
+      },
+      {
+        "case_id": "pref-01a",
+        "category": "preference",
+        "expected_fact_id": "pref-01a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 2,
+        "top5": [
+          "pref-01b-fact",
+          "pref-01a-fact",
+          "name-06b-fact",
+          "para-01a-fact",
+          "pref-01c-fact"
+        ]
+      },
+      {
+        "case_id": "pref-02a",
+        "category": "preference",
+        "expected_fact_id": "pref-02a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 3,
+        "top5": [
+          "pref-01b-fact",
+          "pref-01a-fact",
+          "pref-02a-fact",
+          "temp-03-fact",
+          "name-06b-fact"
+        ]
+      },
+      {
+        "case_id": "pref-03a",
+        "category": "preference",
+        "expected_fact_id": "pref-03a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 73,
+        "top5": [
+          "pref-03c-fact",
+          "pref-02a-fact",
+          "para-13c-fact",
+          "filler-09",
+          "pref-02b-fact"
+        ]
+      },
+      {
+        "case_id": "pref-04a",
+        "category": "preference",
+        "expected_fact_id": "pref-04a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 9,
+        "top5": [
+          "pref-04b-fact",
+          "para-08b-fact",
+          "filler-04",
+          "filler-09",
+          "filler-07"
+        ]
+      },
+      {
+        "case_id": "pref-05a",
+        "category": "preference",
+        "expected_fact_id": "pref-05a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 2,
+        "top5": [
+          "ml-04-fact",
+          "pref-05a-fact",
+          "pref-05b-fact",
+          "name-06b-fact",
+          "pref-05c-fact"
+        ]
+      },
+      {
+        "case_id": "pref-06a",
+        "category": "preference",
+        "expected_fact_id": "pref-06a-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "pref-06a-fact",
+          "pref-06c-fact",
+          "pref-02c-fact",
+          "pref-03b-fact",
+          "pref-04a-fact"
+        ]
+      },
+      {
+        "case_id": "pref-01b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-01b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 7,
+        "top5": [
+          "name-03a-fact",
+          "name-03c-fact",
+          "name-03b-fact",
+          "name-05a-fact",
+          "para-13b-fact"
+        ]
+      },
+      {
+        "case_id": "pref-01c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-01c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 31,
+        "top5": [
+          "name-03a-fact",
+          "name-03c-fact",
+          "name-03b-fact",
+          "name-05a-fact",
+          "name-01b-fact"
+        ]
+      },
+      {
+        "case_id": "pref-02b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-02b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 20,
+        "top5": [
+          "name-03a-fact",
+          "name-03c-fact",
+          "name-03b-fact",
+          "name-05a-fact",
+          "para-13b-fact"
+        ]
+      },
+      {
+        "case_id": "pref-02c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-02c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 33,
+        "top5": [
+          "name-03a-fact",
+          "name-03c-fact",
+          "name-03b-fact",
+          "name-05a-fact",
+          "para-13b-fact"
+        ]
+      },
+      {
+        "case_id": "pref-03b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-03b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 32,
+        "top5": [
+          "name-03a-fact",
+          "name-03c-fact",
+          "name-05a-fact",
+          "para-13b-fact",
+          "ml-01-fact"
+        ]
+      },
+      {
+        "case_id": "pref-03c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-03c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 20,
+        "top5": [
+          "name-03a-fact",
+          "name-03c-fact",
+          "name-03b-fact",
+          "name-05a-fact",
+          "temp-02-fact"
+        ]
+      },
+      {
+        "case_id": "pref-04b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-04b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 97,
+        "top5": [
+          "name-03a-fact",
+          "name-03c-fact",
+          "ml-01-fact",
+          "pref-06b-fact",
+          "name-03b-fact"
+        ]
+      },
+      {
+        "case_id": "pref-04c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-04c-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 3,
+        "top5": [
+          "name-03a-fact",
+          "name-03c-fact",
+          "pref-04c-fact",
+          "name-03b-fact",
+          "name-05a-fact"
+        ]
+      },
+      {
+        "case_id": "pref-05b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-05b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 33,
+        "top5": [
+          "name-03a-fact",
+          "name-03c-fact",
+          "name-03b-fact",
+          "name-05a-fact",
+          "para-13b-fact"
+        ]
+      },
+      {
+        "case_id": "pref-05c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-05c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 89,
+        "top5": [
+          "name-03a-fact",
+          "name-03c-fact",
+          "name-05a-fact",
+          "name-03b-fact",
+          "name-05b-fact"
+        ]
+      },
+      {
+        "case_id": "pref-06b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-06b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 3,
+        "top5": [
+          "name-03a-fact",
+          "name-03c-fact",
+          "pref-06b-fact",
+          "name-03b-fact",
+          "name-05a-fact"
+        ]
+      },
+      {
+        "case_id": "pref-06c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-06c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 16,
+        "top5": [
+          "name-03a-fact",
+          "name-03c-fact",
+          "name-03b-fact",
+          "name-05a-fact",
+          "ml-01-fact"
+        ]
+      },
+      {
+        "case_id": "pref-07a",
+        "category": "preference",
+        "expected_fact_id": "pref-07a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 10,
+        "top5": [
+          "ml-04-fact",
+          "para-01b-fact",
+          "name-06b-fact",
+          "filler-03",
+          "filler-09"
+        ]
+      },
+      {
+        "case_id": "pref-07b",
+        "category": "preference",
+        "expected_fact_id": "pref-07b-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 2,
+        "top5": [
+          "pref-05a-fact",
+          "pref-07b-fact",
+          "pref-02b-fact",
+          "pref-02a-fact",
+          "pref-05b-fact"
+        ]
+      },
+      {
+        "case_id": "ml-01",
+        "category": "multilingual",
+        "expected_fact_id": "ml-01-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 4,
+        "top5": [
+          "para-10b-fact",
+          "para-10a-fact",
+          "para-10c-fact",
+          "ml-01-fact",
+          "pref-06b-fact"
+        ]
+      },
+      {
+        "case_id": "ml-02",
+        "category": "multilingual",
+        "expected_fact_id": "ml-02-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "ml-02-fact",
+          "para-11a-fact",
+          "para-02b-fact",
+          "filler-09",
+          "ml-07-fact"
+        ]
+      },
+      {
+        "case_id": "ml-03",
+        "category": "multilingual",
+        "expected_fact_id": "ml-03-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 2,
+        "top5": [
+          "ml-10-fact",
+          "ml-03-fact",
+          "ml-07-fact",
+          "name-01a-fact",
+          "name-01b-fact"
+        ]
+      },
+      {
+        "case_id": "ml-04",
+        "category": "multilingual",
+        "expected_fact_id": "ml-04-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 3,
+        "top5": [
+          "pref-04c-fact",
+          "para-01a-fact",
+          "ml-04-fact",
+          "para-04a-fact",
+          "filler-06"
+        ]
+      },
+      {
+        "case_id": "ml-05",
+        "category": "multilingual",
+        "expected_fact_id": "ml-05-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 4,
+        "top5": [
+          "para-03a-fact",
+          "pref-06a-fact",
+          "filler-06",
+          "ml-05-fact",
+          "ml-06-fact"
+        ]
+      },
+      {
+        "case_id": "ml-06",
+        "category": "multilingual",
+        "expected_fact_id": "ml-06-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 16,
+        "top5": [
+          "name-03b-fact",
+          "para-05b-fact",
+          "para-13b-fact",
+          "filler-05",
+          "pref-07a-fact"
+        ]
+      },
+      {
+        "case_id": "ml-07",
+        "category": "multilingual",
+        "expected_fact_id": "ml-07-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "ml-07-fact",
+          "ml-10-fact",
+          "filler-08",
+          "ml-02-fact",
+          "ml-03-fact"
+        ]
+      },
+      {
+        "case_id": "ml-08",
+        "category": "multilingual",
+        "expected_fact_id": "ml-08-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 12,
+        "top5": [
+          "para-09a-fact",
+          "filler-10",
+          "temp-05-fact",
+          "para-09b-fact",
+          "name-07a-fact"
+        ]
+      },
+      {
+        "case_id": "ml-09",
+        "category": "multilingual",
+        "expected_fact_id": "ml-09-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 12,
+        "top5": [
+          "para-10c-fact",
+          "para-10b-fact",
+          "name-06c-fact",
+          "ml-07-fact",
+          "name-01a-fact"
+        ]
+      },
+      {
+        "case_id": "ml-10",
+        "category": "multilingual",
+        "expected_fact_id": "ml-10-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 27,
+        "top5": [
+          "pref-04c-fact",
+          "pref-05b-fact",
+          "para-04a-fact",
+          "para-12c-fact",
+          "filler-08"
+        ]
+      },
+      {
+        "case_id": "temp-01",
+        "category": "temporal",
+        "expected_fact_id": "temp-01-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "temp-01-fact",
+          "para-07a-fact",
+          "para-10a-fact",
+          "para-10c-fact",
+          "temp-02-fact"
+        ]
+      },
+      {
+        "case_id": "temp-02",
+        "category": "temporal",
+        "expected_fact_id": "temp-02-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": 50,
+        "top5": [
+          "para-01a-fact",
+          "pref-06c-fact",
+          "para-04b-fact",
+          "para-01b-fact",
+          "para-02a-fact"
+        ]
+      },
+      {
+        "case_id": "temp-03",
+        "category": "temporal",
+        "expected_fact_id": "temp-03-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "temp-03-fact",
+          "ml-02-fact",
+          "filler-05",
+          "para-05a-fact",
+          "para-05c-fact"
+        ]
+      },
+      {
+        "case_id": "temp-04",
+        "category": "temporal",
+        "expected_fact_id": "temp-04-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "temp-04-fact",
+          "pref-06a-fact",
+          "filler-01",
+          "name-04a-fact",
+          "name-04b-fact"
+        ]
+      },
+      {
+        "case_id": "temp-05",
+        "category": "temporal",
+        "expected_fact_id": "temp-05-fact",
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": 1,
+        "top5": [
+          "temp-05-fact",
+          "filler-09",
+          "pref-04b-fact",
+          "name-04a-fact",
+          "name-04b-fact"
+        ]
+      }
+    ],
+    "lexical": [
+      {
+        "case_id": "para-01a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-01a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-01b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-01b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-01c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-01c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-02a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-02a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-02b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-02b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-02c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-02c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-03a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-03a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-03b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-03b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-03c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-03c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-04a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-04a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-04b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-04b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-04c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-04c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-05a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-05a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-05b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-05b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-05c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-05c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-06a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-06a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-06b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-06b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-06c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-06c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-07a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-07a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-07b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-07b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-07c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-07c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-08a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-08a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-08b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-08b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-08c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-08c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-09a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-09a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-09b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-09b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-09c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-09c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-10a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-10a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-10b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-10b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-10c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-10c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-11a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-11a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-11b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-11b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-11c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-11c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-12a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-12a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-12b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-12b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-12c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-12c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-13a",
+        "category": "paraphrase",
+        "expected_fact_id": "para-13a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-13b",
+        "category": "paraphrase",
+        "expected_fact_id": "para-13b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-13c",
+        "category": "paraphrase",
+        "expected_fact_id": "para-13c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "para-40",
+        "category": "paraphrase",
+        "expected_fact_id": "para-40-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-01a",
+        "category": "name_entity",
+        "expected_fact_id": "name-01a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-01b",
+        "category": "name_entity",
+        "expected_fact_id": "name-01b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-01c",
+        "category": "name_entity",
+        "expected_fact_id": "name-01c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-02a",
+        "category": "name_entity",
+        "expected_fact_id": "name-02a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-02b",
+        "category": "name_entity",
+        "expected_fact_id": "name-02b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-02c",
+        "category": "name_entity",
+        "expected_fact_id": "name-02c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-03a",
+        "category": "name_entity",
+        "expected_fact_id": "name-03a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-03b",
+        "category": "name_entity",
+        "expected_fact_id": "name-03b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-03c",
+        "category": "name_entity",
+        "expected_fact_id": "name-03c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-04a",
+        "category": "name_entity",
+        "expected_fact_id": "name-04a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-04b",
+        "category": "name_entity",
+        "expected_fact_id": "name-04b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-04c",
+        "category": "name_entity",
+        "expected_fact_id": "name-04c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-05a",
+        "category": "name_entity",
+        "expected_fact_id": "name-05a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-05b",
+        "category": "name_entity",
+        "expected_fact_id": "name-05b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-05c",
+        "category": "name_entity",
+        "expected_fact_id": "name-05c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-06a",
+        "category": "name_entity",
+        "expected_fact_id": "name-06a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-06b",
+        "category": "name_entity",
+        "expected_fact_id": "name-06b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-06c",
+        "category": "name_entity",
+        "expected_fact_id": "name-06c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-07a",
+        "category": "name_entity",
+        "expected_fact_id": "name-07a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "name-07b",
+        "category": "name_entity",
+        "expected_fact_id": "name-07b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-01a",
+        "category": "preference",
+        "expected_fact_id": "pref-01a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-02a",
+        "category": "preference",
+        "expected_fact_id": "pref-02a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-03a",
+        "category": "preference",
+        "expected_fact_id": "pref-03a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-04a",
+        "category": "preference",
+        "expected_fact_id": "pref-04a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-05a",
+        "category": "preference",
+        "expected_fact_id": "pref-05a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-06a",
+        "category": "preference",
+        "expected_fact_id": "pref-06a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-01b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-01b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-01c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-01c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-02b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-02b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-02c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-02c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-03b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-03b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-03c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-03c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-04b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-04b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-04c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-04c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-05b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-05b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-05c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-05c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-06b-q",
+        "category": "preference",
+        "expected_fact_id": "pref-06b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-06c-q",
+        "category": "preference",
+        "expected_fact_id": "pref-06c-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-07a",
+        "category": "preference",
+        "expected_fact_id": "pref-07a-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "pref-07b",
+        "category": "preference",
+        "expected_fact_id": "pref-07b-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "ml-01",
+        "category": "multilingual",
+        "expected_fact_id": "ml-01-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "ml-02",
+        "category": "multilingual",
+        "expected_fact_id": "ml-02-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "ml-03",
+        "category": "multilingual",
+        "expected_fact_id": "ml-03-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "ml-04",
+        "category": "multilingual",
+        "expected_fact_id": "ml-04-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "ml-05",
+        "category": "multilingual",
+        "expected_fact_id": "ml-05-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "ml-06",
+        "category": "multilingual",
+        "expected_fact_id": "ml-06-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "ml-07",
+        "category": "multilingual",
+        "expected_fact_id": "ml-07-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "ml-08",
+        "category": "multilingual",
+        "expected_fact_id": "ml-08-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "ml-09",
+        "category": "multilingual",
+        "expected_fact_id": "ml-09-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "ml-10",
+        "category": "multilingual",
+        "expected_fact_id": "ml-10-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "temp-01",
+        "category": "temporal",
+        "expected_fact_id": "temp-01-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "temp-02",
+        "category": "temporal",
+        "expected_fact_id": "temp-02-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "temp-03",
+        "category": "temporal",
+        "expected_fact_id": "temp-03-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "temp-04",
+        "category": "temporal",
+        "expected_fact_id": "temp-04-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "temp-05",
+        "category": "temporal",
+        "expected_fact_id": "temp-05-fact",
+        "forbidden_ids": [],
+        "hit": false,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "empty-01",
+        "category": "empty",
+        "expected_fact_id": null,
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "empty-02",
+        "category": "empty",
+        "expected_fact_id": null,
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "empty-03",
+        "category": "empty",
+        "expected_fact_id": null,
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "empty-04",
+        "category": "empty",
+        "expected_fact_id": null,
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": null,
+        "top5": []
+      },
+      {
+        "case_id": "empty-05",
+        "category": "empty",
+        "expected_fact_id": null,
+        "forbidden_ids": [],
+        "hit": true,
+        "rank": null,
+        "top5": []
+      }
+    ]
+  },
   "profile": "paid",
   "provider": null,
-  "recorded_at": "2026-09-19T01:29:54Z",
-  "source_sha": "7b8854945f94a5ffab28169f6cc6cf3df972d8c2",
+  "recorded_at": "2026-09-19T03:22:35Z",
+  "source_sha": "06b098fa62f19051be0d7a1adaa321a1a3ba7308",
   "status": "PARTIAL",
-  "task_id": "T23.43"
+  "task_id": "T23.43",
+  "usage": {
+    "calls_this_run": 0
+  }
 }
