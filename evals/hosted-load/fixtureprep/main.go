@@ -2,7 +2,9 @@
 //
 // It builds synthetic accounts, brains, credentials, entitlements and memories in a new directory using the real hosted
 // store, provisioner, credential issuer, writer queue and pool open path, with an infrastructure-only hash embedder in
-// place of a provider. It has no network code, reads no environment variable and contacts no billing or provider system.
+// place of a provider. It imports no network package, opens no socket, reads no environment variable and contacts no
+// billing or provider system. verify links the gateway package only to call its Inventory function and the meter's
+// Entitlement resolution on a scratch copy of the control database.
 // The fixture is preparation and an inventory. It is not a cold-open, load, steady-state or storage-saturation result.
 //
 //	fixtureprep plan    -profile full|smoke

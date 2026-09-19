@@ -94,6 +94,13 @@ type AccountObs struct {
 	StorageQuota      int64   `json:"storage_quota_bytes"`
 	StorageShare      float64 `json:"storage_share_of_quota"`
 	AtOrOverStorage   bool    `json:"at_or_over_storage_quota"`
+
+	// What the gateway's own Inventory and Entitlement return for the account (see verifyThroughTheGateway).
+	GatewayBrains          int64  `json:"gateway_inventory_brains"`
+	GatewayMemories        int64  `json:"gateway_inventory_memories"`
+	GatewayStorageBytes    int64  `json:"gateway_inventory_storage_bytes"`
+	GatewayPlan            string `json:"gateway_entitlement_plan"`
+	GatewayRefusesRemember bool   `json:"gateway_limit_inputs_refuse_a_nonreplay_remember"`
 }
 
 // Report is the verifier's output. Every number in it was read from the directory.
@@ -188,6 +195,7 @@ func Verify(ctx context.Context, o VerifyOptions) (*Report, error) {
 	r.Brains = jobs
 
 	aggregate(r, plan, &marker, jobs, acctByLabel)
+	verifyThroughTheGateway(ctx, r, o.Dir, plan, acctByLabel)
 	r.Pass = true
 	for _, c := range r.Checks {
 		r.Pass = r.Pass && c.Pass

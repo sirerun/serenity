@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/hosted/gateway"
+	"github.com/sirerun/serenity/internal/hosted/plans"
 	"github.com/sirerun/serenity/internal/store"
 )
 
@@ -202,6 +204,76 @@ func TestPreparedSmokeFixturePassesAndNeverSatisfiesFull(t *testing.T) {
 	}
 }
 
+// The gateway's own Inventory and Entitlement agree with the verifier on every account of the smoke fixture, and none of
+// them is at a cap, so the gateway's limit inputs would not refuse a remember.
+func TestGatewayInventoryAgreesWithTheVerifierOnTheSmokeFixture(t *testing.T) {
+	r := verify(t, sharedFixture(t), ProfileSmoke)
+	if !r.Pass {
+		t.Fatalf("failing: %v", failing(r))
+	}
+	plansSeen := map[string]int{}
+	for _, a := range r.Accounts {
+		if a.GatewayMemories != int64(a.Memories) || a.GatewayStorageBytes != a.StorageBytes || a.GatewayBrains != int64(a.Brains) {
+			t.Errorf("%s: gateway sees %d brains, %d memories, %d bytes; verifier %d, %d, %d", a.Label, a.GatewayBrains, a.GatewayMemories, a.GatewayStorageBytes, a.Brains, a.Memories, a.StorageBytes)
+		}
+		if a.GatewayPlan != a.PlanID || a.GatewayRefusesRemember {
+			t.Errorf("%s: entitlement %s, refuses a remember %v", a.Label, a.GatewayPlan, a.GatewayRefusesRemember)
+		}
+		plansSeen[a.GatewayPlan]++
+	}
+	if plansSeen["scale"] != 1 || plansSeen["builder"] != 3 || plansSeen["free"] != 10 {
+		t.Fatalf("the gateway resolved plans %v, want 1 scale, 3 builder, 10 free", plansSeen)
+	}
+}
+
+// Expiring a paid entitlement drops the account to Free in the gateway's own resolution.
+func TestGatewayEntitlementFallsBackToFreeWhenThePeriodEnds(t *testing.T) {
+	dir := mutable(t)
+	mutateDB(t, filepath.Join(dir, "data", "control.db"), `UPDATE subscriptions SET current_period_end='2020-01-01T00:00:00.000000000Z' WHERE account_id=(SELECT id FROM accounts WHERE email='scale-0@fixture.invalid')`)
+	r := verify(t, dir, ProfileSmoke)
+	wantFail(t, r, "gateway.entitlement_resolves_to_the_planned_plan", "scale-0: entitlement resolves to free")
+}
+
+// A brain removed from disk is a gateway inventory error, not a silent zero.
+func TestGatewayInventoryFailsClosedOnAMissingBrainDirectory(t *testing.T) {
+	dir := mutable(t)
+	if err := os.RemoveAll(firstMatch(t, dir, "data/brains/*")); err != nil { // a brain inside this test's own copy.
+		t.Fatal(err)
+	}
+	wantFail(t, verify(t, dir, ProfileSmoke), "gateway.inventory_readable_for_every_account", "[")
+}
+
+// The verifier copies the gateway's memory-limit expression. Pin it to the gateway source so a change there fails here.
+func TestRefusedAtCapMatchesTheGatewaySource(t *testing.T) {
+	src, err := os.ReadFile("../../../internal/hosted/gateway/gateway.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "!reservation.Replay && (inventory.Memories >= entitlement.Plan.Memories || inventory.StorageBytes >= entitlement.Plan.StorageBytes)"
+	if !strings.Contains(string(src), want) {
+		t.Fatalf("the gateway's remember limit rule changed; update refusedAtCap in gateway_check.go. Looked for:\n%s", want)
+	}
+}
+
+func TestRefusedAtCapRule(t *testing.T) {
+	free := plans.Get("free")
+	cases := []struct {
+		name string
+		inv  gateway.Inventory
+		want bool
+	}{
+		{"below both", gateway.Inventory{Memories: free.Memories - 1, StorageBytes: free.StorageBytes - 1}, false},
+		{"memories at the cap", gateway.Inventory{Memories: free.Memories}, true},
+		{"memories over the cap", gateway.Inventory{Memories: free.Memories + 1}, true},
+		{"storage at the quota", gateway.Inventory{Memories: 1, StorageBytes: free.StorageBytes}, true},
+	}
+	for _, c := range cases {
+		if got := refusedAtCap(c.inv, free); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
 func TestSmokePresentedAsFullOrWithTheWrongSizeFails(t *testing.T) {
 	dir := sharedFixture(t)
 	r := verify(t, dir, ProfileFull)
@@ -357,6 +429,26 @@ func TestNegativeExtraFactAndUntrackedFiles(t *testing.T) {
 	wantFail(t, r, "brains.every_brain_matches_its_planned_state", "canonical facts 3, want 2")
 	wantFail(t, r, "brains.every_brain_matches_its_planned_state", "1 unexpected")
 	wantFail(t, r, "brains.every_brain_matches_its_planned_state", "uncommitted paths")
+}
+
+// The count stays right, only the content changed: the plan's regenerated facts are the oracle, not the count.
+func TestNegativeSwappedFactKeepsTheCountButFailsTheContentOracle(t *testing.T) {
+	dir := mutable(t)
+	bytesPath := firstMatch(t, dir, "data/brains/*/brain/sources/*/*/bytes")
+	root := brainRootOf(bytesPath)
+	if err := os.RemoveAll(filepath.Dir(bytesPath)); err != nil { // a fact inside this test's own copy.
+		t.Fatal(err)
+	}
+	payload := factFor("intruder", 0, 0, 32, 64).Payload
+	payload.LegacyID = 9999
+	if _, err := store.NewSourceStore(root).WriteMemoryFact(payload); err != nil {
+		t.Fatal(err)
+	}
+	r := verify(t, dir, ProfileSmoke)
+	wantFail(t, r, "brains.every_brain_matches_its_planned_state", "1 expected facts missing, 1 unexpected")
+	if got := r.Totals["canonical_memory_facts"]; got != 29*smokeFactsInTests {
+		t.Fatalf("the swap must keep the total at %d, got %d", 29*smokeFactsInTests, got)
+	}
 }
 
 func TestNegativeTamperedFactBytes(t *testing.T) {
