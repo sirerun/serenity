@@ -1,135 +1,302 @@
 {
   "task_id": "T23.60",
   "profile": "paid",
+  "calculation": {
+    "status": "CALCULATED",
+    "meaning": "arithmetic over the listed rates, assumptions and validated measurements; it is not a launch cost qualification"
+  },
+  "launch_cost_qualification": {
+    "status": "NOT_QUALIFIED",
+    "full_maximum_computable": false,
+    "blocking_unknowns": [
+      "cloudwatch_custom_metrics",
+      "cloudwatch_logs",
+      "control_db_lifetime_growth",
+      "email_peak_volume",
+      "embeddings",
+      "s3_get_list_restore",
+      "s3_multipart_requests",
+      "ec2_cpu_credit_mode",
+      "global_free_allowances"
+    ],
+    "note": "A calculated subtotal or peak is not an approved spend, a measured bill or a capacity acceptance."
+  },
   "rate_table": {
     "ec2_t4g_small_usd_per_hour": {
       "value": 0.0168,
       "kind": "published",
-      "region_caveat": "us-east-1 confirmed",
-      "source": "https://www.economize.cloud/resources/aws/pricing/ec2/t4g.small/ (fetched 2026-09-19), which states the figure applies to us-east-1",
-      "note": "This session could not extract a us-west-2-specific on-demand rate from the AWS or third-party pricing pages fetched (JS-rendered tables). T-family/general-purpose On-Demand pricing has historically matched between us-east-1 and us-west-2 (unlike S3, which this session confirmed differs), but that parity is not independently reverified here. Treat as a probable, not confirmed, us-west-2 figure."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS EC2 on-demand price list, US West (Oregon), Linux, published 2026-09-18T20:33:44Z",
+      "receipt": {
+        "file": "aws-rates/ec2-oregon-rate-receipt.json",
+        "rate_code": "NTSJZ6S2KD2YFRVB.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Hrs",
+        "catalog_usd": "0.0168000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "On-demand Linux t4g.small in US West (Oregon), before credits, storage and network. No reservation, savings plan or account-specific offer is implied."
     },
     "ec2_t4g_burst_credit_usd_per_vcpu_hour": {
       "value": 0.04,
       "kind": "published",
-      "source": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-unlimited-mode-concepts.html (via WebSearch, fetched 2026-09-19)",
-      "note": "T4g Unlimited-mode surplus CPU credit price, Linux/RHEL/SLES, uniform across instance size, purchase option and region per AWS's own docs. Corrects this task's earlier PARTIAL receipt, which used an unverified $0.05 recollection."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonEC2 us-west-2 price list version 20260918212757, published 2026-09-18T21:27:57Z",
+      "receipt": {
+        "file": "aws-rates/ec2-ebs-oregon-rate-extract.json",
+        "rate_code": "U8TTEWHUFZA4FZYG.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "vCPU-Hours",
+        "catalog_usd": "0.0400000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "T4g surplus CPU credit, billed only when a burstable instance runs in unlimited credit mode and exhausts its balance."
     },
     "ebs_gp3_usd_per_gb_month": {
       "value": 0.08,
       "kind": "published",
-      "source": "AWS EBS pricing summary via WebSearch (fetched 2026-09-19), stated for US West (Oregon)",
-      "note": "Baseline 3,000 IOPS / 125 MB/s included free; this deployment's 8 GB root + 30 GB data volumes stay within baseline (unused overage rates recorded below for completeness)."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonEC2 us-west-2 price list version 20260918212757, published 2026-09-18T21:27:57Z",
+      "receipt": {
+        "file": "aws-rates/ec2-ebs-oregon-rate-extract.json",
+        "rate_code": "BB8UJWJ4XPFJB95G.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "GB-Mo",
+        "catalog_usd": "0.0800000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "Baseline 3,000 IOPS and 125 MiB/s are included; this deployment's 8 GB root and 30 GB data volumes are not modeled beyond that baseline."
     },
     "ebs_gp3_extra_iops_usd_per_iops_month": {
       "value": 0.005,
       "kind": "published",
-      "source": "same as ebs_gp3_usd_per_gb_month",
-      "note": "Beyond the 3,000 free baseline IOPS. Not applied: this deployment has no evidence of exceeding baseline."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonEC2 us-west-2 price list version 20260918212757, published 2026-09-18T21:27:57Z",
+      "receipt": {
+        "file": "aws-rates/ec2-ebs-oregon-rate-extract.json",
+        "rate_code": "XBTB827YUJSN6SSV.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "IOPS-Mo",
+        "catalog_usd": "0.0050000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "Beyond the 3,000 free baseline IOPS. Not applied: no evidence of exceeding baseline."
     },
-    "ebs_gp3_extra_throughput_usd_per_mbps_month": {
+    "ebs_gp3_extra_throughput_usd_per_mibps_month": {
       "value": 0.04,
       "kind": "published",
-      "source": "same as ebs_gp3_usd_per_gb_month",
-      "note": "Beyond the 125 MB/s free baseline throughput. Not applied, same reason."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonEC2 us-west-2 price list version 20260918212757, published 2026-09-18T21:27:57Z",
+      "receipt": {
+        "file": "aws-rates/ec2-ebs-oregon-rate-extract.json",
+        "rate_code": "3MQHJKUUZSKTF82F.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "GiBps-mo",
+        "catalog_usd": "40.9600000000",
+        "catalog_to_rate_factor": 0.0009765625
+      },
+      "note": "The catalog prices 40.96 USD per GiBps-month, which is 0.04 USD per MiBps-month (divide by 1,024). Beyond the 125 MiB/s free baseline. Not applied: no evidence of exceeding baseline."
     },
     "s3_standard_usd_per_gb_month": {
       "value": 0.023,
       "kind": "published",
-      "region_caveat": "us-west-2 confirmed",
-      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-west-2/index.json (regional catalog; see s3-rate.json)",
-      "note": "Confirmed directly against the AWS regional offer catalog; see s3-rate.json. The earlier claim of $0.0265 for Oregon was incorrect."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonS3 us-west-2 price list, published 2026-09-18T17:47:47Z, first 50 TB tier",
+      "receipt": {
+        "file": "s3-rate.json",
+        "rate_code": "sku:Z3FQZG73HYSPVABR@first-50-TB",
+        "catalog_unit": "GB-Mo",
+        "catalog_usd": "0.0230000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "First 50 TB tier. The earlier claim of 0.0265 for Oregon was incorrect."
     },
     "s3_put_usd_per_1000_requests": {
       "value": 0.005,
       "kind": "published",
-      "source": "https://aws.amazon.com/s3/pricing/ (fetched 2026-09-19)"
+      "verification": "secondary_summary_not_regionally_verified",
+      "source": "https://aws.amazon.com/s3/pricing/ (worker search summary, fetched 2026-09-19)",
+      "note": "Not confirmed against the us-west-2 catalog. Needs a regional primary receipt before any spend decision."
     },
     "s3_get_usd_per_1000_requests": {
       "value": 0.0004,
       "kind": "published",
-      "source": "https://aws.amazon.com/s3/pricing/ (fetched 2026-09-19)"
+      "verification": "secondary_summary_not_regionally_verified",
+      "source": "https://aws.amazon.com/s3/pricing/ (worker search summary, fetched 2026-09-19)",
+      "note": "Not confirmed against the us-west-2 catalog. No routine GET is modeled."
     },
     "kms_key_usd_per_month": {
       "value": 1.0,
       "kind": "published",
-      "source": "AWS KMS pricing summary via WebSearch (fetched 2026-09-19); AWS states this is region-uniform"
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS awskms us-west-2 price list version 20260911124601, published 2026-09-11T12:46:01Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "S8HBXBVJKWKDP9AS.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Keys",
+        "catalog_usd": "1.0000000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "One customer managed key version. The template sets EnableKeyRotation, and AWS adds 1 USD per month for each of the first two rotations (prorated hourly), capped after the second (https://aws.amazon.com/kms/pricing/), so storage can rise from 1 to 3 USD per month. 1 USD is the figure before any rotation."
+    },
+    "kms_rotation_billed_versions_max": {
+      "value": 2,
+      "kind": "published",
+      "verification": "secondary_summary_not_regionally_verified",
+      "source": "https://aws.amazon.com/kms/pricing/ ('the first and second rotation of the key adds $1/month (prorated hourly) ... capped at the second rotation'), page saved by the coordinator",
+      "note": "Number of rotations that add a key-version charge. A count from AWS's pricing page text, not a catalog rate, so it is not regionally verified."
     },
     "kms_usd_per_10000_requests": {
       "value": 0.03,
       "kind": "published",
-      "source": "same as kms_key_usd_per_month",
-      "note": "First 20,000 requests/month free across all regions -- modeled explicitly, not omitted."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS awskms us-west-2 price list version 20260911124601, published 2026-09-11T12:46:01Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "SE9KXT6M6JTP7E4W.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Requests",
+        "catalog_usd": "0.0000030000",
+        "catalog_to_rate_factor": 10000
+      },
+      "note": "The catalog prices one request at 0.000003 USD."
     },
     "kms_free_requests_per_month": {
       "value": 20000,
       "kind": "published",
-      "source": "same as kms_key_usd_per_month"
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS awskms us-west-2 price list version 20260911124601, published 2026-09-11T12:46:01Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "VTFSAGP364M6QE4A.A429C66SYZ.7K6Z2V4Y4Q",
+        "catalog_unit": "Requests",
+        "catalog_usd": "0.0000000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "A global free tier shared across every AWS KMS use in the account and all regions. The model cannot assume the whole allowance is unused; the peak exposure uses none of it."
     },
     "secrets_manager_usd_per_secret_month": {
       "value": 0.4,
       "kind": "published",
-      "source": "AWS Secrets Manager pricing summary via WebSearch (fetched 2026-09-19); AWS states this is uniform across regions"
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AWSSecretsManager us-west-2 price list version 20260911124610, published 2026-09-11T12:46:10Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "DWJP9S4V3HP98UNC.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Secrets",
+        "catalog_usd": "0.4000000000",
+        "catalog_to_rate_factor": 1.0
+      }
     },
     "secrets_manager_usd_per_10000_calls": {
       "value": 0.05,
       "kind": "published",
-      "source": "same as secrets_manager_usd_per_secret_month",
-      "note": "No published free tier for API calls, unlike KMS."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AWSSecretsManager us-west-2 price list version 20260911124610, published 2026-09-11T12:46:10Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "AEBQHWFEG8Q4Y7AT.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "API Requests",
+        "catalog_usd": "0.0000050000",
+        "catalog_to_rate_factor": 10000
+      },
+      "note": "The catalog prices one API request at 0.000005 USD. No free tier for API calls is listed."
     },
     "cloudwatch_alarm_usd_per_month": {
       "value": 0.1,
       "kind": "published",
-      "source": "AWS CloudWatch pricing summary via WebSearch (fetched 2026-09-19), US East (N. Virginia); AWS states standard-alarm pricing is not region-differentiated in the fetched summary",
-      "region_caveat": "us-east-1 source, applied as region-uniform per the summary"
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonCloudWatch us-west-2 price list version 20260918142158, published 2026-09-18T14:21:58Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "SJTFAZNHSW2WVZB2.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Alarms",
+        "catalog_usd": "0.1000000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "Standard resolution alarm metric."
     },
     "cloudwatch_custom_metric_usd_per_month": {
       "value": 0.3,
       "kind": "published",
-      "source": "same as cloudwatch_alarm_usd_per_month",
-      "note": "First 10,000 metrics/month tier."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonCloudWatch us-west-2 price list version 20260918142158, published 2026-09-18T14:21:58Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "CN6TP6ZEVS58RK7M.JRTCKXETXF.A6VD9GXV7W",
+        "catalog_unit": "Metrics",
+        "catalog_usd": "0.3000000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "First 10,000 metrics tier."
     },
     "cloudwatch_logs_ingest_usd_per_gb": {
       "value": 0.5,
       "kind": "published",
-      "source": "same as cloudwatch_alarm_usd_per_month"
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonCloudWatch us-west-2 price list version 20260918142158, published 2026-09-18T14:21:58Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "CWY7X4MZ4F3MP5SD.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "GB",
+        "catalog_usd": "0.5000000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "Custom log data ingested in the Standard log class."
     },
     "cloudwatch_logs_storage_usd_per_gb_month": {
       "value": 0.03,
       "kind": "published",
-      "source": "same as cloudwatch_alarm_usd_per_month"
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonCloudWatch us-west-2 price list version 20260918142158, published 2026-09-18T14:21:58Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "MN45SJANDTCPR9QA.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "GB-Mo",
+        "catalog_usd": "0.0300000000",
+        "catalog_to_rate_factor": 1.0
+      }
     },
     "eip_usd_per_hour": {
       "value": 0.005,
       "kind": "published",
-      "source": "https://aws.amazon.com/blogs/aws/new-aws-public-ipv4-address-charge-public-ip-insights (via WebSearch, fetched 2026-09-19)",
-      "note": "Every public IPv4 address, attached or not, since Feb 1 2024 -- matches ADR 014's own ~USD 4/month estimate."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonVPC us-west-2 price list version 20260917190528, published 2026-09-17T19:05:28Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "NBHXEKTE88TJDDQF.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Hrs",
+        "catalog_usd": "0.0050000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "In-use public IPv4 address. An idle address is priced the same (rate code 4KKZ7RH6GMEH6Q4Q.JRTCKXETXF.6YS6EN2CT7)."
     },
     "data_transfer_out_usd_per_gb": {
       "value": 0.09,
       "kind": "published",
-      "source": "AWS data transfer pricing summary via WebSearch (fetched 2026-09-19), first 10 TB tier, US regions including us-west-2"
+      "verification": "secondary_summary_not_regionally_verified",
+      "source": "AWS data transfer pricing summary via worker search (fetched 2026-09-19), first 10 TB tier, US regions including us-west-2",
+      "note": "Not confirmed against the us-west-2 catalog."
     },
     "data_transfer_out_free_gb_per_month": {
       "value": 100,
       "kind": "published",
-      "source": "same as data_transfer_out_usd_per_gb"
+      "verification": "secondary_summary_not_regionally_verified",
+      "source": "same as data_transfer_out_usd_per_gb",
+      "note": "An account-wide free allowance across services and regions. The model cannot assume it is unused; the peak exposure uses none of it."
     },
     "resend_free_emails_per_month": {
       "value": 3000,
       "kind": "published",
-      "source": "https://resend.com/pricing (via WebSearch, fetched 2026-09-19)"
+      "verification": "vendor_page_secondary",
+      "source": "https://resend.com/pricing (worker search summary, fetched 2026-09-19)"
     },
     "resend_free_emails_per_day_cap": {
       "value": 100,
       "kind": "published",
+      "verification": "vendor_page_secondary",
       "source": "same as resend_free_emails_per_month"
     },
     "resend_pro_usd_per_month_low": {
       "value": 20,
       "kind": "published",
+      "verification": "vendor_page_secondary",
       "source": "same as resend_free_emails_per_month",
-      "note": "Pro tier range (20-35 USD/mo) if free-tier volume/day-cap is exceeded; not applied in these scenarios (see email category)."
+      "note": "Pro tier range (20-35 USD/mo) if free-tier volume or the day cap is exceeded; not applied in these scenarios (see email category)."
     },
     "hours_per_month": {
       "value": 730,
@@ -137,19 +304,130 @@
       "note": "365*24/12."
     }
   },
+  "rate_receipts": {
+    "aws-rates/ec2-oregon-rate-receipt.json": {
+      "sha256": "d37a8d3dc613187bdbc105ab1cc105abaa86cea3e45a7491ffe4ed043526e370",
+      "sources": [
+        {
+          "name": "ec2-ondemand-without-sec-sel, US West (Oregon), Linux",
+          "url": "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20West%20(Oregon)/Linux/index.json",
+          "sha256": "858d2bdd6067c75ef9ae994b9640ab0153507723a676f161e165f364b603bb6a",
+          "publication_date": "2026-09-18T20:33:44Z"
+        }
+      ]
+    },
+    "aws-rates/ec2-ebs-oregon-rate-extract.json": {
+      "sha256": "946d3ed7b200b5a9b278602e92f54a00c24ff85b98e519d2d6e941d8f5056eb4",
+      "sources": [
+        {
+          "name": "AmazonEC2 us-west-2 price list (EBS gp3 and T4g CPU credits)",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/20260918212757/us-west-2/index.json",
+          "sha256": "ec1e0d93973aa692ae4c350df1f52688b0c5b76abc2523a2d536e374dca8e904",
+          "version": "20260918212757",
+          "publication_date": "2026-09-18T21:27:57Z"
+        }
+      ]
+    },
+    "aws-rates/aws-regional-rates-selected.json": {
+      "sha256": "e823dca1ab9c8367b8bb5bfb473d0ef951b2e99042d95ffc66f199e4ef399c78",
+      "sources": [
+        {
+          "name": "awskms",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/awskms/current/us-west-2/index.json",
+          "sha256": "1b76589db555229b457c8d8c22549bd4b39ed20ff70b8eacc37fc1871b9f4ed7",
+          "version": "20260911124601",
+          "publication_date": "2026-09-11T12:46:01Z"
+        },
+        {
+          "name": "AWSSecretsManager",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSSecretsManager/current/us-west-2/index.json",
+          "sha256": "eca00c993943f761212d1df8cc90dd12f85b85e9f865ce2f82379baa99c4ce7b",
+          "version": "20260911124610",
+          "publication_date": "2026-09-11T12:46:10Z"
+        },
+        {
+          "name": "AmazonVPC",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonVPC/current/us-west-2/index.json",
+          "sha256": "135af0c0e46094eb449afcd990a970fded51f409a3998c727ac0bad09e09a0e8",
+          "version": "20260917190528",
+          "publication_date": "2026-09-17T19:05:28Z"
+        },
+        {
+          "name": "AmazonCloudWatch",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/current/us-west-2/index.json",
+          "sha256": "cbc665d7f5c6ebf83792a44f342ce10c0e002dc2bf128d5b0b8ea088160c6c21",
+          "version": "20260918142158",
+          "publication_date": "2026-09-18T14:21:58Z"
+        }
+      ]
+    },
+    "s3-rate.json": {
+      "sha256": "d266bbb0bb6bde3f92833f123531535f783f039df1f8121444592bfd7bb09691",
+      "sources": [
+        {
+          "name": "AmazonS3 us-west-2 price list (Standard storage tiers)",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-west-2/index.json",
+          "publication_date": "2026-09-18T17:47:47Z"
+        }
+      ]
+    }
+  },
+  "cpu_credit_exposure": {
+    "kind": "sensitivity_not_measured_usage",
+    "instance": {
+      "type": "t4g.small",
+      "vcpus": 2,
+      "baseline_per_vcpu": 0.2,
+      "credits_earned_per_hour": 24
+    },
+    "hours_per_month": 730,
+    "usd_per_surplus_vcpu_hour": 0.04,
+    "sustained_100_percent_credits_exhausted": {
+      "mean_cpu_utilization": 1.0,
+      "surplus_vcpu_hours": 1168.0,
+      "monthly_usd": 46.72
+    },
+    "mean_70_percent": {
+      "mean_cpu_utilization": 0.7,
+      "surplus_vcpu_hours": 730.0,
+      "monthly_usd": 29.2
+    },
+    "mean_case_assumption_in_known_subtotal": {
+      "fraction_of_vcpu_hours_billed_as_surplus": 0.02,
+      "applies_when": "usage_fraction >= 1.0 only",
+      "note": "not a peak"
+    },
+    "credit_mode": {
+      "status": "unverified",
+      "template": "deploy/hosted/stack.json sets no CreditSpecification, so the instance takes the account default for T4g",
+      "requirement": "An owner confirms unlimited or standard mode. Unlimited bills the surplus above. Standard bills none and throttles the node at baseline, a capacity limit instead of a cost. The model sets neither and changes no infrastructure, threshold or retention."
+    }
+  },
   "unknown_rates": {
     "embeddings_usd_per_1k_tokens": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md)",
     "cloudwatch_logs_volume_gb_per_month": "rate is priced (cloudwatch_logs_ingest_usd_per_gb) but no log shipping is wired yet (ops go through SSM Run Command per ADR 014); volume unknown pending T23.53 telemetry",
     "cloudwatch_custom_metrics_count": "rate is priced (cloudwatch_custom_metric_usd_per_month) but T23.53's metric cardinality is not yet implemented",
-    "s3_get_list_restore": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+    "s3_get_list_restore": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here",
+    "control_db_lifetime_growth": "control.db is copied whole into every snapshot and no runtime code prunes committed reservations or audit_log rows, so it grows with lifetime writes and recalls. The 20 MB constant is a scenario assumption at snapshot time, not a lifetime bound. Each scenario reports a sensitivity at sampled row sizes, which is not an upper bound",
+    "ec2_cpu_credit_mode": "the template sets no CreditSpecification, so a t4g.small uses the account default for T4g, which is unverified (AWS's default is unlimited). Unlimited mode bills surplus credits; standard mode bills none and throttles at baseline. An owner must confirm the mode; the model sets neither",
+    "s3_multipart_requests": "aws s3 cp uploads objects larger than the CLI multipart threshold in parts, and each part is a request. The deployed CLI's setting is not in the template; each scenario reports a sensitivity at the CLI default, not in any subtotal",
+    "global_free_allowances": "the KMS request allowance and the data-transfer allowance are account-wide, and the shared AWS account's other use is unknown, so neither can be assumed unused; the peak exposure uses none of them",
+    "email_peak_volume": "Resend cost is modeled from average logins per month, and an average day is not a maximum: a burst past the 100-per-day free cap needs a paid tier. Peak login volume is unknown, so no email maximum is claimed"
   },
-  "measurements_applied": false,
+  "measurements": {
+    "supplied": false,
+    "schema": null,
+    "applied_count": 0,
+    "note": "A record changes only the scenario and quantity it names. A scenario with no record is priced on assumptions, and a measurement is never evidence of capacity acceptance."
+  },
   "scenarios": {
     "idle_0_accounts": {
       "scenario": "idle_0_accounts",
       "assumption": "no signups yet; fixed infrastructure cost floor",
+      "measurements_applied": [],
       "account_totals": {
         "accounts": 0,
+        "brains_allowed": 0,
         "recalls": 0,
         "writes": 0,
         "input_tokens": 0,
@@ -163,11 +441,16 @@
         "ec2_baseline": 12.264,
         "ec2_burst_credits": {
           "value": 0.0,
-          "kind": "assumption"
+          "kind": "assumption",
+          "note": "mean-case assumption, not a peak, and only if the account default credit mode is unlimited; see peak_exposure"
         },
         "ebs_fixed": 3.04,
         "eip": 3.65,
-        "kms_key": 1.0,
+        "kms_key": {
+          "value": 1.0,
+          "kind": "published",
+          "note": "key storage before any rotation; the template enables rotation, so it can reach 3 USD/month; see peak_exposure"
+        },
         "secrets_manager_storage": 1.6,
         "secrets_manager_api_calls": {
           "value": 0.0001,
@@ -178,10 +461,18 @@
         "s3_storage_backups": {
           "value": 0.6629,
           "kind": "assumption",
+          "measured_inputs": [],
+          "modeled_inputs": [
+            "retained_backup_sets",
+            "objects_per_backup",
+            "snapshot_size_bytes"
+          ],
           "snapshot_size_gb": 0.02,
           "retained_backup_sets": 1441,
           "objects_per_backup": 3,
-          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state -- see docs/launch/hosted-economics.md."
+          "brains_in_backup": 0,
+          "allowed_brains_ceiling": 0,
+          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state, the deployed-template baseline -- see docs/launch/hosted-economics.md. The control database is a scenario assumption at snapshot time, not a lifetime bound; see unknown_categories.control_db_lifetime_growth."
         },
         "s3_requests": {
           "value": 0.0108,
@@ -191,22 +482,48 @@
         "kms_requests": {
           "value": 0.0,
           "kind": "assumption",
-          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT; 20000/month free across all regions applied before this line."
+          "derived_from": "modeled PUT count",
+          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT (assumed; no bucket key is set in the template); 20000/month global free tier applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it."
         },
         "data_transfer_out": {
           "value": 0.0,
           "kind": "assumption",
-          "note": "4096B/recall response, 1024B/write request assumed; first 100 GB/month free applied before this line."
+          "note": "4096B/recall response, 1024B/write request assumed; first 100 GB/month free applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it."
         },
         "email": {
           "value": 0.0,
           "kind": "assumption",
           "emails_per_month": 0,
           "within_free_tier": true,
-          "note": "assumes 10 magic-link emails/account/month; Resend free tier is 3000/month capped 100/day"
+          "note": "assumes 10 magic-link emails/account/month, an average day and not a maximum; Resend free tier is 3000/month capped 100/day"
         }
       },
       "known_subtotal_usd": 22.43,
+      "peak_exposure": {
+        "kind": "sensitivity_not_forecast",
+        "note": "Replaces the mean-case CPU surplus, the pre-rotation KMS key, and the free-allowance offsets on KMS requests and transfer with their worst case. Every unknown category stays out, so this is not a full maximum. It is not a spending recommendation.",
+        "peak_known_subtotal_usd_sustained_100_percent_cpu": 71.15,
+        "peak_known_subtotal_usd_mean_70_percent_cpu": 53.63,
+        "components_usd": {
+          "ec2_surplus_credits_sustained_100_percent_cpu": 46.72,
+          "ec2_surplus_credits_mean_70_percent_cpu": 29.2,
+          "kms_key_storage_after_two_rotations": 3.0,
+          "kms_requests_no_free_allowance": 0.0065,
+          "data_transfer_out_no_free_allowance": 0.0
+        },
+        "replaced_known_lines_usd": 1.0,
+        "not_included": [
+          "embeddings",
+          "cloudwatch_logs",
+          "cloudwatch_custom_metrics",
+          "s3_get_list_restore",
+          "control_db_lifetime_growth",
+          "s3_multipart_requests",
+          "email_peak_volume"
+        ],
+        "full_maximum_computable": false,
+        "within_60usd_ceiling_peak_known_subtotal": false
+      },
       "per_plan_contribution": {
         "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
         "variable_total_usd": 0.6738,
@@ -251,15 +568,69 @@
         },
         "s3_get_list_restore": {
           "reason": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+        },
+        "control_db_lifetime_growth": {
+          "status": "unbounded_in_current_runtime",
+          "monthly_usd": null,
+          "assumed_control_db_gb_in_snapshot": 0.02,
+          "assumed_control_db_kind": "scenario assumption at snapshot time, never a lifetime bound",
+          "sampled_row_bytes": {
+            "reservation": 301,
+            "audit": 229,
+            "per_write": 1060,
+            "per_recall": 530
+          },
+          "sample": "launch-audit-real-writer-handoff.md sha256 cff5bb74012f404b345240e54acd83b62a8fdaeb3a4ae8cf9e0ed8b818a4ef40: one account, one brain, 1,500 writes, 11 recalls, 3-dimension stub embedder; the recall size is derived from row sizes",
+          "growth_bytes_per_month_at_scenario_usage": 0,
+          "sensitivity_by_horizon": [
+            {
+              "months": 1,
+              "control_db_gb": 0.02,
+              "added_s3_backup_storage_usd_per_month": 0.0
+            },
+            {
+              "months": 12,
+              "control_db_gb": 0.02,
+              "added_s3_backup_storage_usd_per_month": 0.0
+            },
+            {
+              "months": 24,
+              "control_db_gb": 0.02,
+              "added_s3_backup_storage_usd_per_month": 0.0
+            }
+          ],
+          "sensitivity_basis": "every month at this scenario's usage, no pruning, and every one of the retained backup sets carrying the full grown size (an upper approximation of a database that grows over the 60-day retention). A sensitivity at sampled row sizes, not a forecast and not a bound.",
+          "reason": "control.db is copied whole into every snapshot and no runtime code prunes committed reservations or audit_log rows, so it grows with lifetime writes and recalls. The 20 MB constant is a scenario assumption at snapshot time, not a lifetime bound. Each scenario reports a sensitivity at sampled row sizes, which is not an upper bound"
+        },
+        "s3_multipart_requests": {
+          "monthly_usd": null,
+          "chunk_bytes_assumed": 8388608,
+          "approx_parts_per_backup": 3,
+          "extra_put_requests_per_month_beyond_one_per_object": 0,
+          "sensitivity_usd_per_month": 0.0,
+          "basis": "ceil(snapshot bytes / chunk) parts per backup, less one request per object already counted; KMS requests per part are unverified and not counted; not in any subtotal",
+          "reason": "aws s3 cp uploads objects larger than the CLI multipart threshold in parts, and each part is a request. The deployed CLI's setting is not in the template; each scenario reports a sensitivity at the CLI default, not in any subtotal"
+        },
+        "ec2_cpu_credit_mode": {
+          "monthly_usd": null,
+          "reason": "the template sets no CreditSpecification, so a t4g.small uses the account default for T4g, which is unverified (AWS's default is unlimited). Unlimited mode bills surplus credits; standard mode bills none and throttles at baseline. An owner must confirm the mode; the model sets neither"
+        },
+        "global_free_allowances": {
+          "reason": "the KMS request allowance and the data-transfer allowance are account-wide, and the shared AWS account's other use is unknown, so neither can be assumed unused; the peak exposure uses none of them"
+        },
+        "email_peak_volume": {
+          "reason": "Resend cost is modeled from average logins per month, and an average day is not a maximum: a burst past the 100-per-day free cap needs a paid tier. Peak login volume is unknown, so no email maximum is claimed"
         }
       },
       "within_60usd_ceiling_known_subtotal": true
     },
     "10_accounts_light": {
       "scenario": "10_accounts_light",
-      "assumption": "early-adoption mix at 10% of each plan's allowance; product/growth input not yet recorded",
+      "assumption": "early-adoption mix at 10% of each plan's allowance, each account with its default brain only; product/growth input not yet recorded",
+      "measurements_applied": [],
       "account_totals": {
         "accounts": 10,
+        "brains_allowed": 14,
         "recalls": 28000,
         "writes": 1400,
         "input_tokens": 280000,
@@ -273,11 +644,16 @@
         "ec2_baseline": 12.264,
         "ec2_burst_credits": {
           "value": 0.0,
-          "kind": "assumption"
+          "kind": "assumption",
+          "note": "mean-case assumption, not a peak, and only if the account default credit mode is unlimited; see peak_exposure"
         },
         "ebs_fixed": 3.04,
         "eip": 3.65,
-        "kms_key": 1.0,
+        "kms_key": {
+          "value": 1.0,
+          "kind": "published",
+          "note": "key storage before any rotation; the template enables rotation, so it can reach 3 USD/month; see peak_exposure"
+        },
         "secrets_manager_storage": 1.6,
         "secrets_manager_api_calls": {
           "value": 0.0001,
@@ -288,10 +664,18 @@
         "s3_storage_backups": {
           "value": 9.9429,
           "kind": "assumption",
+          "measured_inputs": [],
+          "modeled_inputs": [
+            "retained_backup_sets",
+            "objects_per_backup",
+            "snapshot_size_bytes"
+          ],
           "snapshot_size_gb": 0.3,
           "retained_backup_sets": 1441,
           "objects_per_backup": 13,
-          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state -- see docs/launch/hosted-economics.md."
+          "brains_in_backup": 10,
+          "allowed_brains_ceiling": 14,
+          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state, the deployed-template baseline -- see docs/launch/hosted-economics.md. The control database is a scenario assumption at snapshot time, not a lifetime bound; see unknown_categories.control_db_lifetime_growth."
         },
         "s3_requests": {
           "value": 0.0468,
@@ -301,22 +685,48 @@
         "kms_requests": {
           "value": 0.0,
           "kind": "assumption",
-          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT; 20000/month free across all regions applied before this line."
+          "derived_from": "modeled PUT count",
+          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT (assumed; no bucket key is set in the template); 20000/month global free tier applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it."
         },
         "data_transfer_out": {
           "value": 0.0,
           "kind": "assumption",
-          "note": "4096B/recall response, 1024B/write request assumed; first 100 GB/month free applied before this line."
+          "note": "4096B/recall response, 1024B/write request assumed; first 100 GB/month free applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it."
         },
         "email": {
           "value": 0.0,
           "kind": "assumption",
           "emails_per_month": 100,
           "within_free_tier": true,
-          "note": "assumes 10 magic-link emails/account/month; Resend free tier is 3000/month capped 100/day"
+          "note": "assumes 10 magic-link emails/account/month, an average day and not a maximum; Resend free tier is 3000/month capped 100/day"
         }
       },
       "known_subtotal_usd": 31.74,
+      "peak_exposure": {
+        "kind": "sensitivity_not_forecast",
+        "note": "Replaces the mean-case CPU surplus, the pre-rotation KMS key, and the free-allowance offsets on KMS requests and transfer with their worst case. Every unknown category stays out, so this is not a full maximum. It is not a spending recommendation.",
+        "peak_known_subtotal_usd_sustained_100_percent_cpu": 80.5,
+        "peak_known_subtotal_usd_mean_70_percent_cpu": 62.98,
+        "components_usd": {
+          "ec2_surplus_credits_sustained_100_percent_cpu": 46.72,
+          "ec2_surplus_credits_mean_70_percent_cpu": 29.2,
+          "kms_key_storage_after_two_rotations": 3.0,
+          "kms_requests_no_free_allowance": 0.0281,
+          "data_transfer_out_no_free_allowance": 0.0105
+        },
+        "replaced_known_lines_usd": 1.0,
+        "not_included": [
+          "embeddings",
+          "cloudwatch_logs",
+          "cloudwatch_custom_metrics",
+          "s3_get_list_restore",
+          "control_db_lifetime_growth",
+          "s3_multipart_requests",
+          "email_peak_volume"
+        ],
+        "full_maximum_computable": false,
+        "within_60usd_ceiling_peak_known_subtotal": false
+      },
       "per_plan_contribution": {
         "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
         "variable_total_usd": 9.9898,
@@ -377,15 +787,69 @@
         },
         "s3_get_list_restore": {
           "reason": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+        },
+        "control_db_lifetime_growth": {
+          "status": "unbounded_in_current_runtime",
+          "monthly_usd": null,
+          "assumed_control_db_gb_in_snapshot": 0.02,
+          "assumed_control_db_kind": "scenario assumption at snapshot time, never a lifetime bound",
+          "sampled_row_bytes": {
+            "reservation": 301,
+            "audit": 229,
+            "per_write": 1060,
+            "per_recall": 530
+          },
+          "sample": "launch-audit-real-writer-handoff.md sha256 cff5bb74012f404b345240e54acd83b62a8fdaeb3a4ae8cf9e0ed8b818a4ef40: one account, one brain, 1,500 writes, 11 recalls, 3-dimension stub embedder; the recall size is derived from row sizes",
+          "growth_bytes_per_month_at_scenario_usage": 16324000,
+          "sensitivity_by_horizon": [
+            {
+              "months": 1,
+              "control_db_gb": 0.0363,
+              "added_s3_backup_storage_usd_per_month": 0.54
+            },
+            {
+              "months": 12,
+              "control_db_gb": 0.2159,
+              "added_s3_backup_storage_usd_per_month": 6.49
+            },
+            {
+              "months": 24,
+              "control_db_gb": 0.4118,
+              "added_s3_backup_storage_usd_per_month": 12.98
+            }
+          ],
+          "sensitivity_basis": "every month at this scenario's usage, no pruning, and every one of the retained backup sets carrying the full grown size (an upper approximation of a database that grows over the 60-day retention). A sensitivity at sampled row sizes, not a forecast and not a bound.",
+          "reason": "control.db is copied whole into every snapshot and no runtime code prunes committed reservations or audit_log rows, so it grows with lifetime writes and recalls. The 20 MB constant is a scenario assumption at snapshot time, not a lifetime bound. Each scenario reports a sensitivity at sampled row sizes, which is not an upper bound"
+        },
+        "s3_multipart_requests": {
+          "monthly_usd": null,
+          "chunk_bytes_assumed": 8388608,
+          "approx_parts_per_backup": 36,
+          "extra_put_requests_per_month_beyond_one_per_object": 16560,
+          "sensitivity_usd_per_month": 0.0828,
+          "basis": "ceil(snapshot bytes / chunk) parts per backup, less one request per object already counted; KMS requests per part are unverified and not counted; not in any subtotal",
+          "reason": "aws s3 cp uploads objects larger than the CLI multipart threshold in parts, and each part is a request. The deployed CLI's setting is not in the template; each scenario reports a sensitivity at the CLI default, not in any subtotal"
+        },
+        "ec2_cpu_credit_mode": {
+          "monthly_usd": null,
+          "reason": "the template sets no CreditSpecification, so a t4g.small uses the account default for T4g, which is unverified (AWS's default is unlimited). Unlimited mode bills surplus credits; standard mode bills none and throttles at baseline. An owner must confirm the mode; the model sets neither"
+        },
+        "global_free_allowances": {
+          "reason": "the KMS request allowance and the data-transfer allowance are account-wide, and the shared AWS account's other use is unknown, so neither can be assumed unused; the peak exposure uses none of them"
+        },
+        "email_peak_volume": {
+          "reason": "Resend cost is modeled from average logins per month, and an average day is not a maximum: a burst past the 100-per-day free cap needs a paid tier. Peak login volume is unknown, so no email maximum is claimed"
         }
       },
       "within_60usd_ceiling_known_subtotal": true
     },
     "100_accounts_light": {
       "scenario": "100_accounts_light",
-      "assumption": "at ADR 014's 100 free-account cap, light usage; product/growth input not yet recorded",
+      "assumption": "at ADR 014's 100 free-account cap, light usage, each account with its default brain only; product/growth input not yet recorded",
+      "measurements_applied": [],
       "account_totals": {
         "accounts": 100,
+        "brains_allowed": 134,
         "recalls": 230000,
         "writes": 12500,
         "input_tokens": 2500000,
@@ -399,11 +863,16 @@
         "ec2_baseline": 12.264,
         "ec2_burst_credits": {
           "value": 0.0,
-          "kind": "assumption"
+          "kind": "assumption",
+          "note": "mean-case assumption, not a peak, and only if the account default credit mode is unlimited; see peak_exposure"
         },
         "ebs_fixed": 3.04,
         "eip": 3.65,
-        "kms_key": 1.0,
+        "kms_key": {
+          "value": 1.0,
+          "kind": "published",
+          "note": "key storage before any rotation; the template enables rotation, so it can reach 3 USD/month; see peak_exposure"
+        },
         "secrets_manager_storage": 1.6,
         "secrets_manager_api_calls": {
           "value": 0.0001,
@@ -414,10 +883,18 @@
         "s3_storage_backups": {
           "value": 90.149,
           "kind": "assumption",
+          "measured_inputs": [],
+          "modeled_inputs": [
+            "retained_backup_sets",
+            "objects_per_backup",
+            "snapshot_size_bytes"
+          ],
           "snapshot_size_gb": 2.72,
           "retained_backup_sets": 1441,
           "objects_per_backup": 103,
-          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state -- see docs/launch/hosted-economics.md."
+          "brains_in_backup": 100,
+          "allowed_brains_ceiling": 134,
+          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state, the deployed-template baseline -- see docs/launch/hosted-economics.md. The control database is a scenario assumption at snapshot time, not a lifetime bound; see unknown_categories.control_db_lifetime_growth."
         },
         "s3_requests": {
           "value": 0.3708,
@@ -427,22 +904,48 @@
         "kms_requests": {
           "value": 0.1625,
           "kind": "assumption",
-          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT; 20000/month free across all regions applied before this line."
+          "derived_from": "modeled PUT count",
+          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT (assumed; no bucket key is set in the template); 20000/month global free tier applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it."
         },
         "data_transfer_out": {
           "value": 0.0,
           "kind": "assumption",
-          "note": "4096B/recall response, 1024B/write request assumed; first 100 GB/month free applied before this line."
+          "note": "4096B/recall response, 1024B/write request assumed; first 100 GB/month free applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it."
         },
         "email": {
           "value": 0.0,
           "kind": "assumption",
           "emails_per_month": 1000,
           "within_free_tier": true,
-          "note": "assumes 10 magic-link emails/account/month; Resend free tier is 3000/month capped 100/day"
+          "note": "assumes 10 magic-link emails/account/month, an average day and not a maximum; Resend free tier is 3000/month capped 100/day"
         }
       },
       "known_subtotal_usd": 112.44,
+      "peak_exposure": {
+        "kind": "sensitivity_not_forecast",
+        "note": "Replaces the mean-case CPU surplus, the pre-rotation KMS key, and the free-allowance offsets on KMS requests and transfer with their worst case. Every unknown category stays out, so this is not a full maximum. It is not a spending recommendation.",
+        "peak_known_subtotal_usd_sustained_100_percent_cpu": 161.3,
+        "peak_known_subtotal_usd_mean_70_percent_cpu": 143.78,
+        "components_usd": {
+          "ec2_surplus_credits_sustained_100_percent_cpu": 46.72,
+          "ec2_surplus_credits_mean_70_percent_cpu": 29.2,
+          "kms_key_storage_after_two_rotations": 3.0,
+          "kms_requests_no_free_allowance": 0.2225,
+          "data_transfer_out_no_free_allowance": 0.0859
+        },
+        "replaced_known_lines_usd": 1.1625,
+        "not_included": [
+          "embeddings",
+          "cloudwatch_logs",
+          "cloudwatch_custom_metrics",
+          "s3_get_list_restore",
+          "control_db_lifetime_growth",
+          "s3_multipart_requests",
+          "email_peak_volume"
+        ],
+        "full_maximum_computable": false,
+        "within_60usd_ceiling_peak_known_subtotal": false
+      },
       "per_plan_contribution": {
         "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
         "variable_total_usd": 90.6824,
@@ -503,15 +1006,69 @@
         },
         "s3_get_list_restore": {
           "reason": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+        },
+        "control_db_lifetime_growth": {
+          "status": "unbounded_in_current_runtime",
+          "monthly_usd": null,
+          "assumed_control_db_gb_in_snapshot": 0.02,
+          "assumed_control_db_kind": "scenario assumption at snapshot time, never a lifetime bound",
+          "sampled_row_bytes": {
+            "reservation": 301,
+            "audit": 229,
+            "per_write": 1060,
+            "per_recall": 530
+          },
+          "sample": "launch-audit-real-writer-handoff.md sha256 cff5bb74012f404b345240e54acd83b62a8fdaeb3a4ae8cf9e0ed8b818a4ef40: one account, one brain, 1,500 writes, 11 recalls, 3-dimension stub embedder; the recall size is derived from row sizes",
+          "growth_bytes_per_month_at_scenario_usage": 135150000,
+          "sensitivity_by_horizon": [
+            {
+              "months": 1,
+              "control_db_gb": 0.1551,
+              "added_s3_backup_storage_usd_per_month": 4.48
+            },
+            {
+              "months": 12,
+              "control_db_gb": 1.6418,
+              "added_s3_backup_storage_usd_per_month": 53.75
+            },
+            {
+              "months": 24,
+              "control_db_gb": 3.2636,
+              "added_s3_backup_storage_usd_per_month": 107.5
+            }
+          ],
+          "sensitivity_basis": "every month at this scenario's usage, no pruning, and every one of the retained backup sets carrying the full grown size (an upper approximation of a database that grows over the 60-day retention). A sensitivity at sampled row sizes, not a forecast and not a bound.",
+          "reason": "control.db is copied whole into every snapshot and no runtime code prunes committed reservations or audit_log rows, so it grows with lifetime writes and recalls. The 20 MB constant is a scenario assumption at snapshot time, not a lifetime bound. Each scenario reports a sensitivity at sampled row sizes, which is not an upper bound"
+        },
+        "s3_multipart_requests": {
+          "monthly_usd": null,
+          "chunk_bytes_assumed": 8388608,
+          "approx_parts_per_backup": 325,
+          "extra_put_requests_per_month_beyond_one_per_object": 159840,
+          "sensitivity_usd_per_month": 0.7992,
+          "basis": "ceil(snapshot bytes / chunk) parts per backup, less one request per object already counted; KMS requests per part are unverified and not counted; not in any subtotal",
+          "reason": "aws s3 cp uploads objects larger than the CLI multipart threshold in parts, and each part is a request. The deployed CLI's setting is not in the template; each scenario reports a sensitivity at the CLI default, not in any subtotal"
+        },
+        "ec2_cpu_credit_mode": {
+          "monthly_usd": null,
+          "reason": "the template sets no CreditSpecification, so a t4g.small uses the account default for T4g, which is unverified (AWS's default is unlimited). Unlimited mode bills surplus credits; standard mode bills none and throttles at baseline. An owner must confirm the mode; the model sets neither"
+        },
+        "global_free_allowances": {
+          "reason": "the KMS request allowance and the data-transfer allowance are account-wide, and the shared AWS account's other use is unknown, so neither can be assumed unused; the peak exposure uses none of them"
+        },
+        "email_peak_volume": {
+          "reason": "Resend cost is modeled from average logins per month, and an average day is not a maximum: a burst past the 100-per-day free cap needs a paid tier. Peak login volume is unknown, so no email maximum is claimed"
         }
       },
       "within_60usd_ceiling_known_subtotal": false
     },
     "full_limit_mix": {
       "scenario": "full_limit_mix",
-      "assumption": "the ratified 1 Scale + 3 Builder + 10 Free mix at full advertised allowance (90,000 total facts) per docs/launch/hosted-completion/evidence.md",
+      "assumption": "the ratified 1 Scale + 3 Builder + 10 Free mix at full advertised allowance (90,000 total facts) with every allowed brain (29) present, per docs/launch/hosted-completion/evidence.md",
+      "measurements_applied": [],
       "account_totals": {
         "accounts": 14,
+        "brains_allowed": 29,
         "recalls": 700000,
         "writes": 40000,
         "input_tokens": 8000000,
@@ -525,11 +1082,16 @@
         "ec2_baseline": 12.264,
         "ec2_burst_credits": {
           "value": 1.168,
-          "kind": "assumption"
+          "kind": "assumption",
+          "note": "mean-case assumption, not a peak, and only if the account default credit mode is unlimited; see peak_exposure"
         },
         "ebs_fixed": 3.04,
         "eip": 3.65,
-        "kms_key": 1.0,
+        "kms_key": {
+          "value": 1.0,
+          "kind": "published",
+          "note": "key storage before any rotation; the template enables rotation, so it can reach 3 USD/month; see peak_exposure"
+        },
         "secrets_manager_storage": 1.6,
         "secrets_manager_api_calls": {
           "value": 0.0001,
@@ -540,53 +1102,87 @@
         "s3_storage_backups": {
           "value": 298.9499,
           "kind": "assumption",
+          "measured_inputs": [],
+          "modeled_inputs": [
+            "retained_backup_sets",
+            "objects_per_backup",
+            "snapshot_size_bytes"
+          ],
           "snapshot_size_gb": 9.02,
           "retained_backup_sets": 1441,
-          "objects_per_backup": 17,
-          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state -- see docs/launch/hosted-economics.md."
+          "objects_per_backup": 32,
+          "brains_in_backup": 29,
+          "allowed_brains_ceiling": 29,
+          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state, the deployed-template baseline -- see docs/launch/hosted-economics.md. The control database is a scenario assumption at snapshot time, not a lifetime bound; see unknown_categories.control_db_lifetime_growth."
         },
         "s3_requests": {
-          "value": 0.0612,
+          "value": 0.1152,
           "kind": "assumption",
-          "monthly_put_count": 12240
+          "monthly_put_count": 23040
         },
         "kms_requests": {
-          "value": 0.0,
+          "value": 0.0091,
           "kind": "assumption",
-          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT; 20000/month free across all regions applied before this line."
+          "derived_from": "modeled PUT count",
+          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT (assumed; no bucket key is set in the template); 20000/month global free tier applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it."
         },
         "data_transfer_out": {
           "value": 0.0,
           "kind": "assumption",
-          "note": "4096B/recall response, 1024B/write request assumed; first 100 GB/month free applied before this line."
+          "note": "4096B/recall response, 1024B/write request assumed; first 100 GB/month free applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it."
         },
         "email": {
           "value": 0.0,
           "kind": "assumption",
           "emails_per_month": 140,
           "within_free_tier": true,
-          "note": "assumes 10 magic-link emails/account/month; Resend free tier is 3000/month capped 100/day"
+          "note": "assumes 10 magic-link emails/account/month, an average day and not a maximum; Resend free tier is 3000/month capped 100/day"
         }
       },
-      "known_subtotal_usd": 321.93,
+      "known_subtotal_usd": 322.0,
+      "peak_exposure": {
+        "kind": "sensitivity_not_forecast",
+        "note": "Replaces the mean-case CPU surplus, the pre-rotation KMS key, and the free-allowance offsets on KMS requests and transfer with their worst case. Every unknown category stays out, so this is not a full maximum. It is not a spending recommendation.",
+        "peak_known_subtotal_usd_sustained_100_percent_cpu": 369.87,
+        "peak_known_subtotal_usd_mean_70_percent_cpu": 352.35,
+        "components_usd": {
+          "ec2_surplus_credits_sustained_100_percent_cpu": 46.72,
+          "ec2_surplus_credits_mean_70_percent_cpu": 29.2,
+          "kms_key_storage_after_two_rotations": 3.0,
+          "kms_requests_no_free_allowance": 0.0691,
+          "data_transfer_out_no_free_allowance": 0.2617
+        },
+        "replaced_known_lines_usd": 2.1771,
+        "not_included": [
+          "embeddings",
+          "cloudwatch_logs",
+          "cloudwatch_custom_metrics",
+          "s3_get_list_restore",
+          "control_db_lifetime_growth",
+          "s3_multipart_requests",
+          "email_peak_volume"
+        ],
+        "full_maximum_computable": false,
+        "within_60usd_ceiling_peak_known_subtotal": false
+      },
       "per_plan_contribution": {
         "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
-        "variable_total_usd": 299.0112,
+        "variable_total_usd": 299.0743,
         "by_plan": {
           "free": {
             "accounts": 10,
             "storage_share": 0.1111,
-            "variable_cost_usd": 33.2235
+            "variable_cost_usd": 33.2305
           },
           "builder": {
             "accounts": 3,
             "storage_share": 0.3333,
-            "variable_cost_usd": 99.6704
+            "variable_cost_usd": 99.6914
           },
           "scale": {
             "accounts": 1,
             "storage_share": 0.5556,
-            "variable_cost_usd": 166.1173
+            "variable_cost_usd": 166.1524
           }
         }
       },
@@ -629,6 +1225,58 @@
         },
         "s3_get_list_restore": {
           "reason": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+        },
+        "control_db_lifetime_growth": {
+          "status": "unbounded_in_current_runtime",
+          "monthly_usd": null,
+          "assumed_control_db_gb_in_snapshot": 0.02,
+          "assumed_control_db_kind": "scenario assumption at snapshot time, never a lifetime bound",
+          "sampled_row_bytes": {
+            "reservation": 301,
+            "audit": 229,
+            "per_write": 1060,
+            "per_recall": 530
+          },
+          "sample": "launch-audit-real-writer-handoff.md sha256 cff5bb74012f404b345240e54acd83b62a8fdaeb3a4ae8cf9e0ed8b818a4ef40: one account, one brain, 1,500 writes, 11 recalls, 3-dimension stub embedder; the recall size is derived from row sizes",
+          "growth_bytes_per_month_at_scenario_usage": 413400000,
+          "sensitivity_by_horizon": [
+            {
+              "months": 1,
+              "control_db_gb": 0.4334,
+              "added_s3_backup_storage_usd_per_month": 13.7
+            },
+            {
+              "months": 12,
+              "control_db_gb": 4.9808,
+              "added_s3_backup_storage_usd_per_month": 164.42
+            },
+            {
+              "months": 24,
+              "control_db_gb": 9.9416,
+              "added_s3_backup_storage_usd_per_month": 328.83
+            }
+          ],
+          "sensitivity_basis": "every month at this scenario's usage, no pruning, and every one of the retained backup sets carrying the full grown size (an upper approximation of a database that grows over the 60-day retention). A sensitivity at sampled row sizes, not a forecast and not a bound.",
+          "reason": "control.db is copied whole into every snapshot and no runtime code prunes committed reservations or audit_log rows, so it grows with lifetime writes and recalls. The 20 MB constant is a scenario assumption at snapshot time, not a lifetime bound. Each scenario reports a sensitivity at sampled row sizes, which is not an upper bound"
+        },
+        "s3_multipart_requests": {
+          "monthly_usd": null,
+          "chunk_bytes_assumed": 8388608,
+          "approx_parts_per_backup": 1076,
+          "extra_put_requests_per_month_beyond_one_per_object": 751680,
+          "sensitivity_usd_per_month": 3.7584,
+          "basis": "ceil(snapshot bytes / chunk) parts per backup, less one request per object already counted; KMS requests per part are unverified and not counted; not in any subtotal",
+          "reason": "aws s3 cp uploads objects larger than the CLI multipart threshold in parts, and each part is a request. The deployed CLI's setting is not in the template; each scenario reports a sensitivity at the CLI default, not in any subtotal"
+        },
+        "ec2_cpu_credit_mode": {
+          "monthly_usd": null,
+          "reason": "the template sets no CreditSpecification, so a t4g.small uses the account default for T4g, which is unverified (AWS's default is unlimited). Unlimited mode bills surplus credits; standard mode bills none and throttles at baseline. An owner must confirm the mode; the model sets neither"
+        },
+        "global_free_allowances": {
+          "reason": "the KMS request allowance and the data-transfer allowance are account-wide, and the shared AWS account's other use is unknown, so neither can be assumed unused; the peak exposure uses none of them"
+        },
+        "email_peak_volume": {
+          "reason": "Resend cost is modeled from average logins per month, and an average day is not a maximum: a burst past the 100-per-day free cap needs a paid tier. Peak login volume is unknown, so no email maximum is claimed"
         }
       },
       "within_60usd_ceiling_known_subtotal": false
@@ -636,5 +1284,5 @@
   },
   "historical_ceiling_usd": 60.0,
   "ceiling_note": "The historical USD 60/month figure is a ceiling, not a budget target or new spend authorization (docs/launch/hosted-plan.md).",
-  "citation_note": "Candidate rates retain worker-provided citations and explicit assumptions. Coordinator verified S3 Standard directly against the AWS us-west-2 regional catalog (s3-rate.json). Other region/account-specific rates and free-tier availability require verification before spend approval; the EC2 hourly value remains an unverified regional-parity assumption."
+  "citation_note": "Rates marked aws_regional_catalog_primary are read from AWS's own US West (Oregon) price lists, with a receipt file, rate code, source hash and publication date each (docs/launch/evidence/T23.60/aws-rates/, s3-rate.json). Rates marked secondary_summary_not_regionally_verified (S3 request prices, data transfer) and vendor_page_secondary (Resend) still need a regional primary or vendor receipt. Receipts imply no account, credit, free-tier or spend authority. The retention baseline is the deployed template's; any thinning proposal is unapproved and not modeled."
 }

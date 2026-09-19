@@ -1,0 +1,30 @@
+{
+  "source_url": "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20West%20(Oregon)/Linux/index.json",
+  "retrieved_at": "2026-09-19T04:13:31.238634+00:00",
+  "source_sha256": "858d2bdd6067c75ef9ae994b9640ab0153507723a676f161e165f364b603bb6a",
+  "manifest": {
+    "serviceId": "ec2",
+    "accessType": "publish",
+    "hawkFilePublicationDate": "2026-09-18T20:33:44Z",
+    "ETLIngestionTriggerDate": "2026-09-18T20:33:44Z",
+    "currencyCode": "USD",
+    "source": "ec2-ondemand-without-sec-sel"
+  },
+  "product": {
+    "rateCode": "NTSJZ6S2KD2YFRVB.JRTCKXETXF.6YS6EN2CT7",
+    "price": "0.0168000000",
+    "Location": "US West (Oregon)",
+    "Instance Family": "General purpose",
+    "vCPU": "2",
+    "Instance Type": "t4g.small",
+    "Memory": "2 GiB",
+    "Storage": "EBS only",
+    "Network Performance": "Up to 5 Gigabit",
+    "plc:OperatingSystem": "Linux",
+    "plc:InstanceFamily": "General Purpose",
+    "Operating System": "Linux",
+    "Pre Installed S/W": "NA",
+    "License Model": "No License required"
+  },
+  "interpretation": "AWS published on-demand Linux t4g.small Oregon rate is USD0.0168/hour; 730hours yields USD12.264 before credits/storage/network. No free trial or reservation assumed; no account-specific offer or capacity is implied."
+}
