@@ -277,10 +277,27 @@ class OwnedTree:
             return
         if not self.owns():
             raise FixtureRefused("refusing to remove a directory whose ownership marker does not match")
-        shutil.rmtree(self.root)
-        self._removed = True
+        # A helper the service started (a git or sync child) can still be writing into the tree for a moment after
+        # the service exits, and rmtree then fails with "directory not empty". Retry a few times; the marker is gone
+        # after the first partial pass, so between attempts only the path's identity is re-checked.
+        last: OSError | None = None
+        for attempt in range(6):
+            if attempt:
+                if self.root.is_symlink() or not self.root.is_dir() or not self.root.name.startswith(OWNED_PREFIX):
+                    raise FixtureRefused("the owned directory changed identity during cleanup; not removing it")
+                time.sleep(0.5 * attempt)
+            try:
+                shutil.rmtree(self.root)
+            except OSError as e:
+                last = e
+            if not os.path.lexists(self.root):
+                break
         if os.path.lexists(self.root):
-            raise FixtureRefused("the owned directory is still present after cleanup")
+            raise FixtureRefused(
+                f"the owned directory {self.root.name} could not be fully removed "
+                f"({type(last).__name__ if last else 'still present'}); it is left for the operator"
+            )
+        self._removed = True
 
 
 # --------------------------------------------------------------------------
@@ -1190,7 +1207,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"local_service_fixture: refused: {e}", file=sys.stderr)
         return 2
     except Exception as e:  # noqa: BLE001 -- the class name only; nothing else is known to be free of secrets
-        print(f"local_service_fixture: failed with {type(e).__name__}; the owned service and directory were cleaned up", file=sys.stderr)
+        print(f"local_service_fixture: failed with {type(e).__name__}; the owned service was stopped by its exact PID; "
+              f"check the parent directory for a leftover {OWNED_PREFIX}* directory", file=sys.stderr)
         return 2
     fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
     with os.fdopen(fd, "w") as f:

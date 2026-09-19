@@ -111,6 +111,55 @@ class TestOwnedTree(TmpCase):
             tree.cleanup()
         self.assertTrue(tree.root.is_dir())  # left alone
 
+    def test_cleanup_retries_a_transient_failure_and_finishes(self):
+        tree = lsf.OwnedTree.create(self.tmp)
+        tree.subdir("data")
+        real = lsf.shutil.rmtree
+        calls = {"n": 0}
+
+        def flaky(path, *a, **k):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                real(Path(path) / "data")  # a partial pass, then the failure a late writer causes
+            if calls["n"] < 3:
+                raise OSError(66, "Directory not empty")
+            return real(path, *a, **k)
+
+        with mock.patch.object(lsf.shutil, "rmtree", side_effect=flaky), mock.patch.object(lsf.time, "sleep"):
+            tree.cleanup()
+        self.assertFalse(os.path.lexists(tree.root))
+        self.assertEqual(calls["n"], 3)
+
+    def test_cleanup_that_keeps_failing_says_so_and_names_the_leftover(self):
+        tree = lsf.OwnedTree.create(self.tmp)
+        with mock.patch.object(lsf.shutil, "rmtree", side_effect=OSError(66, "Directory not empty")), mock.patch.object(lsf.time, "sleep"):
+            with self.assertRaises(lsf.FixtureRefused) as cm:
+                tree.cleanup()
+        self.assertIn(tree.root.name, str(cm.exception))
+        self.assertIn("OSError", str(cm.exception))
+        self.assertIn("left for the operator", str(cm.exception))
+        self.assertTrue(tree.root.is_dir())
+        tree.cleanup()  # and once the cause is gone a later attempt succeeds
+        self.assertFalse(os.path.lexists(tree.root))
+
+    def test_a_retry_refuses_when_the_directory_is_swapped_for_a_symlink_between_attempts(self):
+        victim = self.tmp / "victim"
+        victim.mkdir()
+        (victim / "file").write_text("must survive")
+        tree = lsf.OwnedTree.create(self.tmp)
+
+        def swap_then_fail(path, *a, **k):
+            Path(path).rename(self.tmp / "moved-aside")
+            os.symlink(victim, path)
+            raise OSError(66, "Directory not empty")
+
+        with mock.patch.object(lsf.shutil, "rmtree", side_effect=swap_then_fail), mock.patch.object(lsf.time, "sleep"):
+            with self.assertRaises(lsf.FixtureRefused) as cm:
+                tree.cleanup()
+        self.assertIn("changed identity", str(cm.exception))
+        self.assertEqual((victim / "file").read_text(), "must survive")
+        os.unlink(tree.root)
+
     def test_cleanup_refuses_a_directory_swapped_for_a_symlink(self):
         victim = self.tmp / "victim"
         victim.mkdir()
