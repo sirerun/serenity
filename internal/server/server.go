@@ -37,6 +37,16 @@ const DefaultBind = "127.0.0.1:0"
 // finish once its context is canceled.
 const shutdownGrace = 5 * time.Second
 
+// HTTP transport limits keep slow or oversized clients from consuming an
+// unbounded amount of connection state. WriteTimeout is intentionally left
+// unset: MCP/tool requests may legitimately run longer than a transport
+// timeout, and cancellation remains the handler's responsibility.
+const (
+	readHeaderTimeout = 5 * time.Second
+	idleTimeout       = 2 * time.Minute
+	maxHeaderBytes    = 1 << 20
+)
+
 // Config configures the HTTP transport.
 type Config struct {
 	// Bind is the listen address ("host:port"). Empty selects
@@ -76,20 +86,27 @@ func FromBrainConfig(sc config.Server) Config {
 // Server is Serenity's HTTP transport: a loopback-by-default listener
 // with bearer-token auth wrapping every registered route.
 type Server struct {
-	cfg      Config
-	mux      *http.ServeMux
-	listener net.Listener
-	httpSrv  *http.Server
+	cfg               Config
+	mux               *http.ServeMux
+	listener          net.Listener
+	httpSrv           *http.Server
+	readHeaderTimeout time.Duration
+	idleTimeout       time.Duration
+	maxHeaderBytes    int
 }
 
 // New builds a Server. It registers /healthz (authenticated, like every
 // other route — RFC §14 has no anonymous endpoints). It does not bind a
 // socket; call Listen for that.
 func New(cfg Config) *Server {
+	return newWithTransportLimits(cfg, readHeaderTimeout, idleTimeout, maxHeaderBytes)
+}
+
+func newWithTransportLimits(cfg Config, readHeader, idle time.Duration, maxHeader int) *Server {
 	if cfg.TokenSource == nil {
 		cfg.TokenSource = secrets.DaemonToken
 	}
-	s := &Server{cfg: cfg, mux: http.NewServeMux()}
+	s := &Server{cfg: cfg, mux: http.NewServeMux(), readHeaderTimeout: readHeader, idleTimeout: idle, maxHeaderBytes: maxHeader}
 	s.Handle("/healthz", http.HandlerFunc(handleHealthz))
 	return s
 }
@@ -168,7 +185,12 @@ func (s *Server) Listen() error {
 	}
 
 	s.listener = ln
-	s.httpSrv = &http.Server{Handler: s.mux}
+	s.httpSrv = &http.Server{
+		Handler:           s.mux,
+		ReadHeaderTimeout: s.readHeaderTimeout,
+		IdleTimeout:       s.idleTimeout,
+		MaxHeaderBytes:    s.maxHeaderBytes,
+	}
 	return nil
 }
 

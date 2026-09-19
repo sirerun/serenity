@@ -87,7 +87,7 @@ func TestCheckCoexistsWithWriterWithoutWriteAuthority(t *testing.T) {
 
 func TestNoBrainMCPDoesNotCreateRuntimeState(t *testing.T) {
 	brain := t.TempDir()
-	tools, closeFn, err := memoryTools(brain, &bytes.Buffer{})
+	tools, closeFn, _, _, err := memoryTools(brain, &bytes.Buffer{})
 	if err != nil || len(tools) != 0 || closeFn != nil {
 		t.Fatalf("transport-only mode changed: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestConnectorsStatusDoesNotAcquireOwnership(t *testing.T) {
 
 func TestServeOwnershipHeldThroughBlockedFlush(t *testing.T) {
 	brain := pushFixture(t)
-	tools, closeDeps, err := memoryTools(brain, &bytes.Buffer{})
+	tools, closeDeps, _, _, err := memoryTools(brain, &bytes.Buffer{})
 	if err != nil {
 		t.Fatal(err)
 	}

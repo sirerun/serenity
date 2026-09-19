@@ -6,12 +6,11 @@ operator configures: where the daemon binds, how it authenticates, and how
 to rotate the token. RFC 0001 §14 ("Security and privacy") is the design
 contract this implements.
 
-The only route wired onto this transport today is `/mcp`
-(`serenity serve --http`, MEMORY_VERBS v1 over MCP's Streamable HTTP —
-see [mcp.md](mcp.md)) — everything below applies to it exactly as it does
-to `/healthz` and to any future DISPOSITION/DIRECTION HTTP handlers, since
-every route added via `Server.Handle` gets this same auth wrapping and
-there is no other kind of route.
+`serenity serve --http` wires `/mcp` (MEMORY_VERBS v1 over MCP's Streamable
+HTTP), `/direction/brief`, `/direction/check_plan`, `/direction/propose`, and
+the DISPOSITION `/disposition/*` routes. Every route is registered through
+`Server.Handle`, so the authentication and listener rules below apply
+uniformly.
 
 ## Default: loopback only, always authenticated
 
@@ -58,10 +57,19 @@ explicitly:
 server:
   bind: "0.0.0.0:8443"     # or a Tailscale interface address
   allow_lan: true           # required for a non-loopback bind to succeed
+  max_in_flight_calls: 256  # optional MCP tools/call admission budget
 ```
 
 Without `allow_lan: true`, the daemon refuses to start rather than
 silently exposing itself.
+
+`max_in_flight_calls` is optional. It sets the concurrent `tools/call` budget
+for this daemon's MCP HTTP handler; omitted or zero uses the default budget
+of 2,048. The `serve --http` daemon creates one such handler, so the budget
+covers all of its MCP sessions. Separate `HTTPHandler` instances have
+separate budgets. Calls rejected after the budget is full receive JSON-RPC
+error `-32029` and can be retried. The budget is released when the tool
+worker returns, including after a cancellation request.
 
 ### Optional mTLS
 

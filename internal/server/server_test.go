@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +54,26 @@ func TestListenAcceptsLoopback(t *testing.T) {
 		if err := s.Close(); err != nil {
 			t.Fatalf("bind %q: Close err = %v", bind, err)
 		}
+	}
+}
+
+func TestListenConfiguresHTTPResourceLimits(t *testing.T) {
+	s := New(Config{Bind: "127.0.0.1:0", TokenSource: func() (string, error) { return "t", nil }})
+	if err := s.Listen(); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	if got := s.httpSrv.ReadHeaderTimeout; got != readHeaderTimeout {
+		t.Fatalf("ReadHeaderTimeout = %s, want %s", got, readHeaderTimeout)
+	}
+	if got := s.httpSrv.IdleTimeout; got != idleTimeout {
+		t.Fatalf("IdleTimeout = %s, want %s", got, idleTimeout)
+	}
+	if got := s.httpSrv.MaxHeaderBytes; got != maxHeaderBytes {
+		t.Fatalf("MaxHeaderBytes = %d, want %d", got, maxHeaderBytes)
+	}
+	if got := s.httpSrv.WriteTimeout; got != 0 {
+		t.Fatalf("WriteTimeout = %s, want zero for long-running tool calls", got)
 	}
 }
 
@@ -103,6 +126,119 @@ func startTestServer(t *testing.T, tokenSource func() (string, error)) (baseURL 
 		}
 	})
 	return "http://" + s.Addr()
+}
+
+func TestLongHandlerCallSurvivesTransportLimits(t *testing.T) {
+	const token = "long-call-token"
+	s := New(Config{Bind: "127.0.0.1:0", TokenSource: func() (string, error) { return token, nil }})
+	s.Handle("/v1/long", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(150 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	if err := s.Listen(); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.Serve(ctx) }()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(8 * time.Second):
+			t.Fatal("server did not shut down")
+		}
+	}()
+	req, err := http.NewRequest(http.MethodGet, "http://"+s.Addr()+"/v1/long", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("long request: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("long request status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestOversizedHeaderRejectedByRealListener(t *testing.T) {
+	const token = "header-limit-token"
+	base := startTestServer(t, func() (string, error) { return token, nil })
+	req, err := http.NewRequest(http.MethodGet, base+"/v1/ping", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Overlarge", strings.Repeat("a", 2*maxHeaderBytes))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("oversized-header request: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusRequestHeaderFieldsTooLarge {
+		t.Fatalf("oversized-header status = %d, want %d", resp.StatusCode, http.StatusRequestHeaderFieldsTooLarge)
+	}
+}
+
+func TestIncompleteHeaderTimesOutOnRealListener(t *testing.T) {
+	s := newWithTransportLimits(Config{Bind: "127.0.0.1:0", TokenSource: func() (string, error) { return "t", nil }}, 50*time.Millisecond, time.Second, maxHeaderBytes)
+	if err := s.Listen(); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = s.Serve(ctx) }()
+	conn, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := io.WriteString(conn, "GET /healthz HTTP/1.1\r\nHost: localhost\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bufio.NewReader(conn).ReadByte(); err == nil {
+		t.Fatal("incomplete header connection remained open")
+	}
+}
+
+func TestIdleKeepAliveClosesOnRealListener(t *testing.T) {
+	s := newWithTransportLimits(Config{Bind: "127.0.0.1:0", TokenSource: func() (string, error) { return "t", nil }}, time.Second, 50*time.Millisecond, maxHeaderBytes)
+	if err := s.Listen(); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = s.Serve(ctx) }()
+	conn, err := net.Dial("tcp", s.Addr())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := io.WriteString(conn, "GET /healthz HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer t\r\nConnection: keep-alive\r\n\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatalf("read keep-alive response: %v", err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bufio.NewReader(conn).ReadByte(); err == nil {
+		t.Fatal("idle keep-alive connection remained open")
+	}
 }
 
 func get(t *testing.T, url, token string) *http.Response {

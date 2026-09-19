@@ -29,6 +29,41 @@ func memorySearchSource(t *testing.T, root string, until *time.Time) string {
 	return src.SHA256
 }
 
+func TestRecoverMemorySearchRepairsCanonicalTextAndReusesVectors(t *testing.T) {
+	root, eng := sourcePolicyIndex(t)
+	sha := memorySearchSource(t, root, nil)
+	ctx := context.Background()
+	if err := RecoverMemorySearch(ctx, root, eng, nil); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	e := &memoryCallbackEmbedder{call: func(_ context.Context, text string) ([]float32, error) {
+		calls++
+		if text != "egress marker" {
+			t.Fatalf("derived text reached provider: %q", text)
+		}
+		return []float32{1, 0}, nil
+	}}
+	for range 2 {
+		if err := RecoverMemorySearch(ctx, root, eng, e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("unchanged recovery made %d provider calls, want one", calls)
+	}
+	if _, err := eng.db.ExecContext(ctx, "UPDATE chunks SET text=? WHERE chunk_ref=?", "untrusted derived text", "fact:"+sha); err != nil {
+		t.Fatal(err)
+	}
+	if err := RecoverMemorySearch(ctx, root, eng, e); err != nil {
+		t.Fatal(err)
+	}
+	chunks, err := eng.AllChunks(ctx)
+	if err != nil || len(chunks) != 1 || chunks[0].Text != "egress marker" {
+		t.Fatalf("canonical repair: chunks=%v err=%v", chunks, err)
+	}
+}
+
 func TestMemorySearchRechecksTTLBeforeAndAfterEmbedding(t *testing.T) {
 	for _, during := range []bool{false, true} {
 		t.Run(map[bool]string{false: "before_egress", true: "during_provider"}[during], func(t *testing.T) {
