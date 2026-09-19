@@ -230,6 +230,32 @@ class RecountTests(unittest.TestCase):
             fr.build(full, smoke, b, p, {}, "a" * 40, BIN, None, None, {"full_wide": recount_of(full)})
 
 
+def partial_history(**over) -> dict:
+    doc = {"schema": fr.PARTIAL_HISTORY_SCHEMA, "scope": "partial", "brains_measured": 15, "brains_not_finished": ["free-0/0"], "facts": 66668,
+           "batched": {"commits": 150, "git_bytes": 105_000_000}, "per_write": {"commits": 66_683, "git_bytes": 195_000_000},
+           "extra_commits": 66_533, "extra_git_bytes": 90_000_000, "extra_git_bytes_per_extra_commit": 1352.7, "_sha256": "8" * 64}
+    doc.update(over)
+    return doc
+
+
+class PartialHistoryTests(unittest.TestCase):
+    def test_a_partial_measurement_is_recorded_and_labeled_partial(self):
+        full, smoke, b, p = inputs()
+        r = fr.build(full, smoke, b, p, {}, "a" * 40, BIN, None, None, None, partial_history())
+        h = r["storage_and_history_gap"]["history_partial_at_scale"]
+        self.assertEqual((h["brains_measured"], h["facts"], h["extra_git_bytes_per_extra_commit"]), (15, 66668, 1352.7))
+        self.assertEqual(h["brains_not_finished"], ["free-0/0"])
+        self.assertIsNone(r["storage_and_history_gap"]["history_at_scale"], "a partial run is never reported as history at scale")
+        self.assertIsNone(fr.build(full, smoke, b, p, {}, "a" * 40, BIN)["storage_and_history_gap"]["history_partial_at_scale"])
+
+    def test_a_partial_measurement_that_claims_the_whole_fixture_is_refused(self):
+        full, smoke, b, p = inputs()
+        for bad in (partial_history(brains_measured=29), partial_history(brains_not_finished=[]), partial_history(facts=90000), partial_history(brains_measured=0),
+                    partial_history(per_write={"commits": 100, "git_bytes": 1}), partial_history(extra_commits=1)):
+            with self.assertRaises(fr.ReceiptError, msg=str(bad)[:80]):
+                fr.build(full, smoke, b, p, {}, "a" * 40, BIN, None, None, None, bad)
+
+
 class CLITests(unittest.TestCase):
     def write(self, d: Path, name: str, data: dict) -> Path:
         path = d / name

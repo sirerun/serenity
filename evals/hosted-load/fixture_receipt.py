@@ -19,6 +19,7 @@ from pathlib import Path
 
 REPORT_SCHEMA = "serenity-hosted-load-fixture-verification"
 RECOUNT_SCHEMA = "serenity-hosted-load-fixture-recount"
+PARTIAL_HISTORY_SCHEMA = "serenity-hosted-load-partial-history-measurement"
 RECOUNT_NAMES = {"full": "full", "full_per_write": "full", "full_wide": "full", "smoke": "smoke", "history_batched": "smoke", "history_per_write": "smoke"}
 FULL_ACCOUNTS, FULL_BRAINS, FULL_FACTS = 14, 29, 90000
 
@@ -69,6 +70,23 @@ def _recounts(reports: dict[str, dict], recounts: dict[str, dict]) -> dict:
             "recount_report_sha256": rec["_sha256"],
         }
     return out
+
+
+def _load_partial_history(path: Path) -> dict:
+    doc = json.loads(path.read_text())
+    doc["_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return doc
+
+
+def _check_partial_history(doc: dict) -> None:
+    if doc.get("schema") != PARTIAL_HISTORY_SCHEMA:
+        raise ReceiptError("not a partial history measurement")
+    if not (0 < doc["brains_measured"] < FULL_BRAINS) or not doc["brains_not_finished"]:
+        raise ReceiptError("a partial measurement must cover some brains and name the ones that did not finish")
+    if doc["per_write"]["commits"] <= doc["batched"]["commits"] or doc["extra_commits"] != doc["per_write"]["commits"] - doc["batched"]["commits"]:
+        raise ReceiptError("the per-write brains must hold more commits than the batched ones")
+    if not 0 < doc["facts"] < FULL_FACTS:
+        raise ReceiptError("a partial measurement covers some but not all 90,000 facts")
 
 
 def _totals(report: dict) -> dict:
@@ -144,7 +162,7 @@ def _profile(report: dict) -> dict:
     }
 
 
-def build(full: dict, smoke: dict, sample_batched: dict, sample_per_write: dict, timings: dict[str, dict], source_sha: str, binaries: dict[str, str], full_per_write: dict | None = None, full_wide: dict | None = None, recounts: dict[str, dict] | None = None) -> dict:
+def build(full: dict, smoke: dict, sample_batched: dict, sample_per_write: dict, timings: dict[str, dict], source_sha: str, binaries: dict[str, str], full_per_write: dict | None = None, full_wide: dict | None = None, recounts: dict[str, dict] | None = None, history_partial: dict | None = None) -> dict:
     t = _totals(full)
     if (t["accounts"], t["brains"], t["canonical_memory_facts"]) != (FULL_ACCOUNTS, FULL_BRAINS, FULL_FACTS) or not full["satisfies_full_cardinality"] or full["reduced"]:
         raise ReceiptError("the full report does not hold 14 accounts, 29 brains and 90,000 memories")
@@ -230,6 +248,8 @@ def build(full: dict, smoke: dict, sample_batched: dict, sample_per_write: dict,
             "accounts_at_or_over_storage_quota_wide": gw["accounts_at_or_over_storage_quota"],
             "verification_report_sha256": {"narrow": full["_sha256"], "wide": full_wide["_sha256"]},
         }
+    if history_partial is not None:
+        _check_partial_history(history_partial)
     named = {"full": full, "smoke": smoke, "history_batched": sample_batched, "history_per_write": sample_per_write, "full_per_write": full_per_write, "full_wide": full_wide}
     recount_section = None
     if recounts:
@@ -261,6 +281,19 @@ def build(full: dict, smoke: dict, sample_batched: dict, sample_per_write: dict,
             "history_is_batched": "The full fixture commits facts in batches (commit_every in the marker). Production commits after every acknowledged remember, so production history is longer and larger. The maximum production history size is unmeasured; history_at_scale, when present, measures this fixture's own per-write history.",
             "history_at_scale": at_scale,
             "vector_width_at_scale": wide,
+            "history_partial_at_scale": None if history_partial is None else {
+                "scope": history_partial["scope"],
+                "brains_measured": history_partial["brains_measured"],
+                "brains_not_finished": history_partial["brains_not_finished"],
+                "facts": history_partial["facts"],
+                "commits_batched": history_partial["batched"]["commits"],
+                "commits_per_write": history_partial["per_write"]["commits"],
+                "git_bytes_batched": history_partial["batched"]["git_bytes"],
+                "git_bytes_per_write": history_partial["per_write"]["git_bytes"],
+                "extra_git_bytes": history_partial["extra_git_bytes"],
+                "extra_git_bytes_per_extra_commit": history_partial["extra_git_bytes_per_extra_commit"],
+                "measurement_sha256": history_partial["_sha256"],
+            },
             "history_sample": {
                 "scope": "Reduced smoke at 100 facts per brain, the same 2,900 facts, prepared twice: one commit per 500 facts and one commit per fact. It measures the Git size of extra commits at that brain size only. Tree objects grow with brain size, so it is not an estimate for 5,000-fact brains.",
                 "facts": sample_batched["totals"]["canonical_memory_facts"],
@@ -300,6 +333,7 @@ def main() -> int:
     p.add_argument("--full-per-write", type=Path, help="optional: verification report of the full fixture prepared with one commit per fact")
     p.add_argument("--full-wide", type=Path, help="optional: verification report of the full fixture prepared with wider vectors")
     p.add_argument("--recount", action="append", default=[], metavar="NAME=FILE", help="a fixture_recount.py result for one of: " + ", ".join(sorted(RECOUNT_NAMES)))
+    p.add_argument("--history-partial", type=Path, help="optional: partial_history_measure.py output for an interrupted per-write full preparation")
     p.add_argument("--prepare-binary-sha256", required=True)
     p.add_argument("--verify-binary-sha256", required=True)
     p.add_argument("--output", required=True, type=Path)
@@ -317,7 +351,8 @@ def main() -> int:
             recounts[name] = _load_recount(Path(path), RECOUNT_NAMES[name])
         per_write_full = _load(args.full_per_write, "full") if args.full_per_write else None
         receipt = build(_load(args.full, "full"), _load(args.smoke, "smoke"), _load(args.history_batched, "smoke"), _load(args.history_per_write, "smoke"), timings, args.source_sha,
-                        {"prepare": args.prepare_binary_sha256, "verify": args.verify_binary_sha256}, per_write_full, _load(args.full_wide, "full") if args.full_wide else None, recounts)
+                        {"prepare": args.prepare_binary_sha256, "verify": args.verify_binary_sha256}, per_write_full, _load(args.full_wide, "full") if args.full_wide else None, recounts,
+                        _load_partial_history(args.history_partial) if args.history_partial else None)
     except (ReceiptError, KeyError, ValueError, OSError) as exc:
         print(f"BLOCKED: {exc}", file=sys.stderr)
         return 2
