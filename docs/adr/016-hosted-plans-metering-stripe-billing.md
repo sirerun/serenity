@@ -108,3 +108,14 @@ Negative: publishing before the cost gate means a failed ceiling forces a
 visible correction; SQLite serializes reservation writes (acceptable at launch
 scale, revisit with the pool); Stripe is now a launch-critical dependency for
 paid access, though free access never depends on it.
+
+## Candidate implementation policy (2026-09-18)
+
+The hosted candidate gives an already active or trialing subscription a 72-hour
+payment-failure grace period, measured from the first reconciled transition to
+`past_due`. Duplicate or later `past_due` events do not extend that deadline.
+A subscription that never activated receives no grace. After the deadline,
+requests resolve to Free allowances; canonical memory is retained. This is a
+delegate implementation choice for review before live billing activation, not a
+claim of Stripe test-clock qualification. Entitlements use the plan and period
+from the same subscription row, rather than a separately updated account field.

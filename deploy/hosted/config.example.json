@@ -1,0 +1,13 @@
+{
+  "bind": "127.0.0.1:8090",
+  "data_dir": "/var/lib/serenity",
+  "secrets_dir": "/etc/serenity/secrets",
+  "public_origin": "https://app.serenity.sire.run",
+  "embedding_model": "text-embedding-3-small",
+  "embedding_version": "hosted-v1",
+  "sender": "login@serenity.sire.run",
+  "max_open": 8,
+  "max_in_flight": 16,
+  "account_cap": 100,
+  "billing_enabled": false
+}

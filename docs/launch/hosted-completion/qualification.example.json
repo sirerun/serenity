@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "task_id": "REPLACE",
+  "profile": "paid",
+  "mode": "fixtures",
+  "source_sha": null,
+  "binary_path": null,
+  "binary_sha256": null,
+  "environment": {
+    "kind": "disposable",
+    "origin": null,
+    "allowed_hosts": [
+      "127.0.0.1"
+    ],
+    "production_target_allowed": false
+  },
+  "provider": {
+    "base_url": "https://openrouter.ai/api/v1",
+    "model": "perplexity/pplx-embed-v1-0.6b",
+    "version_pin": null,
+    "dimensions": null,
+    "serving_provider": null,
+    "privacy_review_ref": null,
+    "allow_fallback": false,
+    "secret_ref": "EMBEDDINGS_API_KEY"
+  },
+  "mail": {
+    "secret_ref": "RESEND_API_KEY",
+    "controlled_recipient_ref": null
+  },
+  "stripe": {
+    "secret_ref": "STRIPE_SECRET_KEY",
+    "webhook_secret_ref": "STRIPE_WEBHOOK_SECRET",
+    "expected_account_ref": null,
+    "require_test_mode": true
+  },
+  "budget": {
+    "approved_max_usd": null,
+    "max_calls": null,
+    "max_input_tokens": null,
+    "max_elapsed_seconds": null,
+    "authorization_ref": null,
+    "automatic_reset": false,
+    "auto_top_up": false
+  },
+  "corpus_path": null,
+  "corpus_sha256": null,
+  "workload_path": null,
+  "workload_sha256": null,
+  "gate_evidence": {},
+  "artifact_destination": null
+}

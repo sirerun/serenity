@@ -5,7 +5,26 @@ Updated 2026-09-12 from `origin/main` at
 measurement plan for a possible hosted-user surge. It contains no capacity
 claim and makes no infrastructure or provider change.
 
-## What the current code proves
+## Current disposition — September 18, 2026
+
+Reconciled against merged `main` at `dc84df7de626b2dbe947423077440fd01319e37a`.
+The September 12 assessment below is retained as history. Its claims that the
+hosted boundary and transport limits are absent are superseded. Do not dispatch
+its S1–S5 slices or original T23.3 ID. Use the [hosted completion plan](hosted-plan.md).
+
+| Historical recommendation | Current implementation and remaining owner |
+|---|---|
+| S1: metrics and workload measurement | [T23.53](../tasks/hosted-completion/T23.53.md) owns telemetry; [T23.60](../tasks/hosted-completion/T23.60.md) owns the reproducible cost/load harness; [T23.68](../tasks/hosted-completion/T23.68.md) owns live capacity/cost qualification. |
+| S2: hosted admission boundary | Implemented in `internal/hosted/gateway/gateway.go` (account/IP admission) and `internal/hosted/pool/pool.go` (configured in-flight/runtime bounds). MCP call admission is also configurable. [T23.45](../tasks/hosted-completion/T23.45.md) addresses remaining fairness and cold-open contention; do not rebuild the boundary. |
+| S3: HTTP resource limits | Header-read timeout, idle timeout and maximum header size are implemented in `internal/server/server.go`. Preserve them in integration/adversarial qualification under [T23.57](../tasks/hosted-completion/T23.57.md) and [T23.59](../tasks/hosted-completion/T23.59.md). This implementation slice is complete, not a new task. |
+| S4/S5: SQLite tuning and alternative vector backend | No backend replacement or migration is approved by this document. T23.60/T23.68 own measurement of the first bottleneck. If measured capacity fails, those owners must record the evidence and obtain a scoped plan row with acceptance and rollback criteria before a tuning/backend experiment is dispatched. |
+
+The two dated benchmark receipts below remain historical synthetic baselines,
+not acceptance evidence for the merged hosted service. Session/call defaults
+in the old table describe that revision and are not supported capacity limits.
+Hosted throughput, fairness, recovery and provider economics remain unqualified.
+
+## Historical code assessment (September 12; superseded)
 
 | Surface | Evidence | Scaling implication |
 |---|---|---|
@@ -32,7 +51,7 @@ concurrent calls. The existing 64-session guard rejected 36 attempts, while a
 This is evidence for prioritizing admission control and writer queue metrics,
 not a hosted throughput limit.
 
-## Priority order
+## Historical priority order (not the execution queue)
 
 1. **Measure before changing limits (T23.3).** Run the existing hosted spike
    at 1, 10, and 100 brains with fixed synthetic workloads. Record request
@@ -74,7 +93,7 @@ not a hosted throughput limit.
    existing 5-second busy timeout unless evidence supports a change. A pool
    setting without a workload test is not a capacity fix.
 
-## Capacity policy
+## Historical capacity policy
 
 Until T23.3 produces measurements, the only safe capacity statement is that
 the current implementation has protocol guards of 64 sessions and 32 calls
@@ -83,7 +102,7 @@ user or request capacity. A surge policy should shed work before embedding or
 canonical-write queues exhaust memory, preserve per-account isolation, and
 surface an observable retryable overload state.
 
-## Reversible implementation slices
+## Historical implementation slices (not dispatchable tasks)
 
 - **S1:** metrics and benchmark harness; no production behavior change.
 - **S2:** hosted global admission semaphore and overload response, guarded by

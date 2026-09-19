@@ -582,3 +582,73 @@ func RefreshMemoryFactSearch(ctx context.Context, root, sha string, eng *SQLite,
 	}
 	return "semantic", expired, nil
 }
+
+// RecoverMemorySearch repairs the memory index from canonical sources in one
+// projection scan, reusing vectors under the unchanged model pin. The caller
+// must hold exclusive writer ownership for the entire pass. This is the named
+// hosted recovery seam: no caller-provided fact text becomes index authority.
+func RecoverMemorySearch(ctx context.Context, root string, eng *SQLite, embedding Embedder) error {
+	projection, err := store.LoadMemoryProjection(store.NewSourceStore(root))
+	if err != nil {
+		return err
+	}
+	chunks, err := eng.AllChunks(ctx)
+	if err != nil {
+		return err
+	}
+	existing := make(map[string]Hit, len(chunks))
+	for _, hit := range chunks {
+		existing[hit.ChunkRef] = hit
+	}
+	eligible, err := RetrievalEligibility(root, projection, true, true, time.Now())
+	if err != nil {
+		return err
+	}
+	for _, fact := range projection.All() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if fact.Expired(time.Now()) {
+			continue
+		}
+		ref := "fact:" + fact.SHA256
+		hit := Hit{ChunkRef: ref, EntitySlug: fact.Payload.EntitySlug, Text: fact.Payload.Fact, SourceSHA256: fact.SHA256, Kind: store.SourceKindMemoryFact}
+		prior, found := existing[ref]
+		if !found {
+			if err = eng.InsertChunk(ctx, ref, hit.EntitySlug, hit.Text, hit.SourceSHA256, hit.Kind); err != nil {
+				return err
+			}
+		} else if prior != hit {
+			if err = RefreshMemoryFact(ctx, root, fact.SHA256, eng, time.Now()); err != nil {
+				return err
+			}
+		}
+		if embedding == nil || !eligible(hit) || fact.Expired(time.Now()) {
+			continue
+		}
+		present, err := eng.HasVector(ctx, ref, embedding.ModelVersion())
+		if err != nil {
+			return err
+		}
+		if present {
+			continue
+		}
+		deadline := time.Now().Add(15 * time.Second)
+		if fact.Payload.ValidUntil != nil && fact.Payload.ValidUntil.Before(deadline) {
+			deadline = *fact.Payload.ValidUntil
+		}
+		callCtx, cancel := context.WithDeadline(ctx, deadline)
+		vec, err := embedding.Embed(callCtx, hit.Text)
+		cancel()
+		if err != nil {
+			return err
+		}
+		if fact.Expired(time.Now()) {
+			continue
+		}
+		if err = eng.UpsertVector(ctx, ref, embedding.ModelVersion(), vec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
