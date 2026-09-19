@@ -193,6 +193,43 @@ class VectorWidthTests(unittest.TestCase):
             fr.build(full, smoke, b, p, {}, "a" * 40, BIN, None, other)
 
 
+def recount_of(rep: dict) -> dict:
+    return {"schema": fr.RECOUNT_SCHEMA, "pass": True, "expect": rep["expect"], "fixture_content_sha256": rep["fixture_content_sha256"],
+            "totals": {"canonical_memory_facts": rep["totals"]["canonical_memory_facts"], "distinct_fact_sha256": rep["totals"]["canonical_memory_facts"]}, "_sha256": "9" * 64}
+
+
+class RecountTests(unittest.TestCase):
+    def test_a_matching_recount_is_recorded_per_fixture(self):
+        full, smoke, b, p = inputs()
+        r = fr.build(full, smoke, b, p, {}, "a" * 40, BIN, None, None, {"full": recount_of(full), "smoke": recount_of(smoke)})
+        section = r["independent_recount"]
+        self.assertTrue(section["full"]["content_sha256_equals_verifier"])
+        self.assertEqual(section["full"]["facts"], 90000)
+        self.assertEqual(section["smoke"]["content_sha256"], smoke["fixture_content_sha256"])
+        self.assertIn("shares no code with the Go verifier", section["scope"])
+        self.assertIsNone(fr.build(full, smoke, b, p, {}, "a" * 40, BIN)["independent_recount"])
+
+    def test_a_recount_with_another_digest_or_count_is_refused(self):
+        full, smoke, b, p = inputs()
+        bad = recount_of(full)
+        bad["fixture_content_sha256"] = "d" * 64
+        with self.assertRaises(fr.ReceiptError):
+            fr.build(full, smoke, b, p, {}, "a" * 40, BIN, None, None, {"full": bad})
+        short = recount_of(full)
+        short["totals"]["canonical_memory_facts"] = 89_999
+        with self.assertRaises(fr.ReceiptError):
+            fr.build(full, smoke, b, p, {}, "a" * 40, BIN, None, None, {"full": short})
+        repeated = recount_of(full)
+        repeated["totals"]["distinct_fact_sha256"] = 89_999
+        with self.assertRaises(fr.ReceiptError):
+            fr.build(full, smoke, b, p, {}, "a" * 40, BIN, None, None, {"full": repeated})
+
+    def test_a_recount_for_a_fixture_that_is_not_in_the_receipt_is_refused(self):
+        full, smoke, b, p = inputs()
+        with self.assertRaises(fr.ReceiptError):
+            fr.build(full, smoke, b, p, {}, "a" * 40, BIN, None, None, {"full_wide": recount_of(full)})
+
+
 class CLITests(unittest.TestCase):
     def write(self, d: Path, name: str, data: dict) -> Path:
         path = d / name

@@ -18,6 +18,8 @@ import sys
 from pathlib import Path
 
 REPORT_SCHEMA = "serenity-hosted-load-fixture-verification"
+RECOUNT_SCHEMA = "serenity-hosted-load-fixture-recount"
+RECOUNT_NAMES = {"full": "full", "full_per_write": "full", "full_wide": "full", "smoke": "smoke", "history_batched": "smoke", "history_per_write": "smoke"}
 FULL_ACCOUNTS, FULL_BRAINS, FULL_FACTS = 14, 29, 90000
 
 
@@ -36,6 +38,37 @@ def _load(path: Path, expect: str) -> dict:
         raise ReceiptError(f"{path.name}: expected a {expect} report, got expect={report.get('expect')} marker={report.get('marker_profile')}")
     report["_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
     return report
+
+
+def _load_recount(path: Path, expect: str) -> dict:
+    doc = json.loads(path.read_text())
+    if doc.get("schema") != RECOUNT_SCHEMA:
+        raise ReceiptError(f"{path.name}: not a fixture recount")
+    if doc.get("pass") is not True or doc.get("expect") != expect:
+        raise ReceiptError(f"{path.name}: the recount did not pass as a {expect} fixture")
+    doc["_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return doc
+
+
+def _recounts(reports: dict[str, dict], recounts: dict[str, dict]) -> dict:
+    """Cross-check the second, independent reading against the verifier's report for the same fixture."""
+    out = {}
+    for name, rec in recounts.items():
+        rep = reports.get(name)
+        if rep is None:
+            raise ReceiptError(f"--recount {name}: no such fixture in this receipt")
+        if rec["fixture_content_sha256"] != rep["fixture_content_sha256"]:
+            raise ReceiptError(f"--recount {name}: the independent recount's content digest differs from the verifier's")
+        if rec["totals"]["canonical_memory_facts"] != rep["totals"]["canonical_memory_facts"] or rec["totals"]["distinct_fact_sha256"] != rec["totals"]["canonical_memory_facts"]:
+            raise ReceiptError(f"--recount {name}: the fact counts differ or a fact repeats")
+        out[name] = {
+            "facts": rec["totals"]["canonical_memory_facts"],
+            "distinct_fact_sha256": rec["totals"]["distinct_fact_sha256"],
+            "content_sha256_equals_verifier": True,
+            "content_sha256": rec["fixture_content_sha256"],
+            "recount_report_sha256": rec["_sha256"],
+        }
+    return out
 
 
 def _totals(report: dict) -> dict:
@@ -111,7 +144,7 @@ def _profile(report: dict) -> dict:
     }
 
 
-def build(full: dict, smoke: dict, sample_batched: dict, sample_per_write: dict, timings: dict[str, dict], source_sha: str, binaries: dict[str, str], full_per_write: dict | None = None, full_wide: dict | None = None) -> dict:
+def build(full: dict, smoke: dict, sample_batched: dict, sample_per_write: dict, timings: dict[str, dict], source_sha: str, binaries: dict[str, str], full_per_write: dict | None = None, full_wide: dict | None = None, recounts: dict[str, dict] | None = None) -> dict:
     t = _totals(full)
     if (t["accounts"], t["brains"], t["canonical_memory_facts"]) != (FULL_ACCOUNTS, FULL_BRAINS, FULL_FACTS) or not full["satisfies_full_cardinality"] or full["reduced"]:
         raise ReceiptError("the full report does not hold 14 accounts, 29 brains and 90,000 memories")
@@ -197,6 +230,13 @@ def build(full: dict, smoke: dict, sample_batched: dict, sample_per_write: dict,
             "accounts_at_or_over_storage_quota_wide": gw["accounts_at_or_over_storage_quota"],
             "verification_report_sha256": {"narrow": full["_sha256"], "wide": full_wide["_sha256"]},
         }
+    named = {"full": full, "smoke": smoke, "history_batched": sample_batched, "history_per_write": sample_per_write, "full_per_write": full_per_write, "full_wide": full_wide}
+    recount_section = None
+    if recounts:
+        recount_section = {
+            "scope": "A second reading of each named fixture by evals/hosted-load/fixture_recount.py, stdlib Python that shares no code with the Go verifier. It recounts accounts, brains and canonical fact files, checks content addressing, and recomputes the content digest. It does not read the index, vectors, Git history, storage or credentials.",
+            **_recounts({k: v for k, v in named.items() if v is not None}, recounts),
+        }
     return {
         "schema": "serenity-hosted-load-fixture-receipt",
         "version": 1,
@@ -241,6 +281,7 @@ def build(full: dict, smoke: dict, sample_batched: dict, sample_per_write: dict,
             "facts_on_default_brains": _profile(full)["facts_on_default_brains"],
             "facts_on_other_brains": _profile(full)["facts_on_other_brains"],
         },
+        "independent_recount": recount_section,
         "preparer_timing": {
             "note": "Wall time from the preparer's own clock, copied from its manifest. The verifier does not read it, and it is not a service latency.",
             **timings,
@@ -258,6 +299,7 @@ def main() -> int:
     p.add_argument("--source-sha", required=True)
     p.add_argument("--full-per-write", type=Path, help="optional: verification report of the full fixture prepared with one commit per fact")
     p.add_argument("--full-wide", type=Path, help="optional: verification report of the full fixture prepared with wider vectors")
+    p.add_argument("--recount", action="append", default=[], metavar="NAME=FILE", help="a fixture_recount.py result for one of: " + ", ".join(sorted(RECOUNT_NAMES)))
     p.add_argument("--prepare-binary-sha256", required=True)
     p.add_argument("--verify-binary-sha256", required=True)
     p.add_argument("--output", required=True, type=Path)
@@ -267,9 +309,15 @@ def main() -> int:
         for item in args.timing:
             name, _, path = item.partition("=")
             timings[name] = json.loads(Path(path).read_text())
+        recounts = {}
+        for item in args.recount:
+            name, _, path = item.partition("=")
+            if name not in RECOUNT_NAMES:
+                raise ReceiptError(f"--recount name must be one of {sorted(RECOUNT_NAMES)}, got {name!r}")
+            recounts[name] = _load_recount(Path(path), RECOUNT_NAMES[name])
         per_write_full = _load(args.full_per_write, "full") if args.full_per_write else None
         receipt = build(_load(args.full, "full"), _load(args.smoke, "smoke"), _load(args.history_batched, "smoke"), _load(args.history_per_write, "smoke"), timings, args.source_sha,
-                        {"prepare": args.prepare_binary_sha256, "verify": args.verify_binary_sha256}, per_write_full, _load(args.full_wide, "full") if args.full_wide else None)
+                        {"prepare": args.prepare_binary_sha256, "verify": args.verify_binary_sha256}, per_write_full, _load(args.full_wide, "full") if args.full_wide else None, recounts)
     except (ReceiptError, KeyError, ValueError, OSError) as exc:
         print(f"BLOCKED: {exc}", file=sys.stderr)
         return 2
