@@ -1314,13 +1314,22 @@ class BoundedResolverTests(FakeServerTestCase):
         status, _headers, _body = load_cli._http_exchange("GET", ("http", "alias.test", self.port), "/readyz", {}, None, 5.0)
         self.assertEqual(status, 200)
 
-    def test_plain_http_refuses_a_hostname_that_resolves_off_loopback_before_any_socket(self):
+    def test_plain_http_refuses_only_when_no_resolved_address_is_loopback_and_dials_no_socket(self):
         patch_resolver(self, "import json, sys\nprint(json.dumps([[2, ['192.0.2.1', int(sys.argv[2])]]]))\n")
         opened = []
         with self.assertRaises(load_cli.ResolutionError) as ctx:
             load_cli._connect("http", "localhost", self.port, time.monotonic() + 5, opened.append)
         self.assertEqual(str(ctx.exception), "plain http resolved to no loopback address")
         self.assertEqual(opened, [])
+
+    def test_plain_http_filters_a_mixed_list_to_its_loopback_addresses_and_never_dials_the_rest(self):
+        """The non-loopback answer comes first: it is dropped, not tried and not a reason to refuse."""
+        patch_resolver(self, f"import json\nprint(json.dumps([[2, ['192.0.2.1', {self.port}]], [2, ['127.0.0.1', {self.port}]]]))\n")
+        opened = []
+        sock = load_cli._connect("http", "localhost", self.port, time.monotonic() + 5, opened.append)
+        self.addCleanup(sock.close)
+        self.assertEqual(len(opened), 1)  # exactly one socket was ever created: no attempt at 192.0.2.1
+        self.assertEqual(sock.getpeername(), ("127.0.0.1", self.port))
 
     def test_resolution_failure_from_the_real_resolver_is_a_fixed_class(self):
         with self.assertRaises(load_cli.ResolutionError) as ctx:

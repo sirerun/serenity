@@ -763,11 +763,13 @@ def _connect(scheme: str, host: str, port: int | None, deadline: float, hold) ->
 
     The connection goes to a resolved IP, but the origin's hostname stays the
     identity: TLS uses it for SNI and certificate verification (never the IP),
-    and the caller builds the Host header from it. Plain http is loopback-only,
-    so a hostname that resolves to any non-loopback address is refused."""
+    and the caller builds the Host header from it. Plain http is loopback-only:
+    the resolved list is filtered to its loopback addresses, only those are ever
+    connected to, and the exchange is refused only when none remain."""
     port = _DEFAULT_PORTS[scheme] if port is None else port
     addresses = _resolve(host, port, deadline)
     if scheme == "http":
+        # Filter, not refuse: non-loopback answers are dropped and never dialed.
         addresses = [a for a in addresses if ipaddress.ip_address(a[1][0]).is_loopback]
         if not addresses:
             raise ResolutionError("plain http resolved to no loopback address")
