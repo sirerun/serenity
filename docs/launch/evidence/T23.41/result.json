@@ -1,0 +1,141 @@
+{
+  "task_id": "T23.41",
+  "profile": "paid",
+  "status": "PARTIAL",
+  "source_sha": "3bf829d3af4984c2c11fd4ad2e265c6edcdd7d7d",
+  "recorded_at": "2026-09-19T00:44:35Z",
+  "evidence_level": "local-process",
+  "dependencies": {},
+  "commands": [
+    "go build ./internal/hosted/testhooks/...",
+    "go build -tags hostedtest ./internal/hosted/testhooks/...",
+    "go test -v -count=1 ./internal/hosted/testhooks/...",
+    "go build ./internal/hosted/contracts/...",
+    "go vet ./internal/hosted/contracts/...",
+    "go test -v -count=1 ./internal/hosted/contracts/...",
+    "GOFLAGS=-p=2 go test -race -count=1 ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts ./internal/hosted/testhooks ./internal/gate",
+    "GOFLAGS=-p=2 go vet ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts ./internal/hosted/testhooks ./internal/gate",
+    "golangci-lint run ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "go vet -tags hostedtest ./internal/hosted/testhooks/...",
+    "golangci-lint run --build-tags hostedtest ./internal/hosted/testhooks/..."
+  ],
+  "cases": {
+    "planned": 19,
+    "executed": 19,
+    "passed": 19,
+    "failed": 0,
+    "skipped": 0,
+    "skip_reasons": []
+  },
+  "acceptance": [
+    {
+      "criterion": "Architectural review names the exact revision and approves each of the four decisions; unresolved decision means dependent task is blocked, not an agent guess.",
+      "expected": "chief-architect reviews and rules (approve/amend/reject) on storage headroom, operation accounting, deletion journal and restore eligibility, recorded in interfaces.md's freeze receipt.",
+      "observed": "No synchronous reviewer is reachable from this headless worker session. Concrete, reviewed-ready proposals for all four decisions are drafted in interfaces.md's new 'Proposed decisions' section and docs/launch/evidence/T23.41/architecture-review-request.md is filed requesting review. Zero decisions are marked approved; freeze receipt explicitly records each as not approved.",
+      "status": "BLOCKED"
+    },
+    {
+      "criterion": "Migrate schema1/2/3 fixture DBs twice; facts, subscriptions, tokens and usage retained; future schema refused without writes; fresh DB and upgraded DB equivalent.",
+      "expected": "A new forward-only migration exists (needed by tasks44/47/48/50) and this round-trip test passes against it.",
+      "observed": "No new migration added. The operations-table design that would need one (proposed decision 2) is not yet chief-architect approved, and 'no worker chooses a weaker substitute' / 'schema owner cannot invent a hidden overage allowance' rules out adding it unreviewed. The existing schema1-3 migration path is unchanged and its own existing round-trip test (store_test.go TestMigrationAndRollback) still passes as part of the scoped verification run below, confirming no regression -- but there is no new migration for this criterion to exercise.",
+      "status": "BLOCKED"
+    },
+    {
+      "criterion": "Existing hosted tests and file-first gate pass.",
+      "expected": "go test -race -count=1 ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts ./internal/hosted/testhooks ./internal/gate exits 0 with no unexplained skips.",
+      "observed": "Ran exactly that command (GOFLAGS=-p=2, under the held R-build-lease, SHA 6143f680ea061ae02f82047c19ccc3105c8ebb28, released clean after). 19 test functions passed, 0 failed, 0 skipped, across store/service/testhooks/gate; contracts has no named tests (compile-time conformance assertions only, verified separately below). go vet and golangci-lint clean on both the plain and hostedtest-tagged build of internal/hosted/testhooks and internal/hosted/contracts.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Interface document lists owning task, exact signature, semantic contract, schema version and integration file for every shared seam.",
+      "expected": "Every row in interfaces.md's seam table has a frozen Go signature, contract and integration file.",
+      "observed": "9 of 13 seams (billing truth, billing closure, backup manifest v2, recovery CLI shape, telemetry, provider pin, accounting units, registration mode) are frozen with real compiled/tested Go types in internal/hosted/contracts and internal/hosted/testhooks, each proven by a compile-time conformance test (spot-checked red->green by mutating one interface signature and confirming go vet fails, then restoring). The remaining 4 seams tied to the unapproved decisions (operation accounting, storage admission, deletion journal, recovery activation barrier) have draft Go signatures in contracts/ marked PROPOSED, but no schema version, since no migration was added pending review.",
+      "status": "BLOCKED"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "internal/hosted/contracts/billing.go",
+      "sha256": "1a9eff3e53a44dcd80ef8fa0f0c78304e12df8c879c77b12b1e29095e8fbb915"
+    },
+    {
+      "path": "internal/hosted/contracts/operations.go",
+      "sha256": "9e61432d8a774cdbad424698c716c1742fb824596acd788696f626cdefb4a97f"
+    },
+    {
+      "path": "internal/hosted/contracts/deletion.go",
+      "sha256": "15abb93e9d39443f9ac31e480176314ac53c9cdb9980bcf1bf190465ed0d4fd8"
+    },
+    {
+      "path": "internal/hosted/contracts/storage.go",
+      "sha256": "ce1aed4028b1c0731173aec31dbe78a66613034093fbd81983ca32e5ebb294e0"
+    },
+    {
+      "path": "internal/hosted/contracts/backup.go",
+      "sha256": "8d86824becde6e20083f9c7fb9a4230ab14fbb1662ec4edfe4b5430ebc5bf008"
+    },
+    {
+      "path": "internal/hosted/contracts/telemetry.go",
+      "sha256": "8a4ef483c89646893cffadfb6e099f43479a714897831bac17414d7451ef2d0c"
+    },
+    {
+      "path": "internal/hosted/contracts/provider.go",
+      "sha256": "805de75c789f092ce5b58b93ccd17d5a0f602197de76d996d0e5d14501ce375b"
+    },
+    {
+      "path": "internal/hosted/contracts/contracts_test.go",
+      "sha256": "b824a3151c9d7eb4cbcc3c04fa34a2861ca6152bbf31baf1d4f2211bb74ec92a"
+    },
+    {
+      "path": "internal/hosted/testhooks/testhooks.go",
+      "sha256": "2d341b1833f9a1fd0ac06a492b10ffffa12e8976481431109ccde8db28d42b62"
+    },
+    {
+      "path": "internal/hosted/testhooks/hook_prod.go",
+      "sha256": "c424cf03e2b50cb02ae266a6a51491d82f3cbf6e348f5cbb2cd805e672203dfb"
+    },
+    {
+      "path": "internal/hosted/testhooks/hook_hostedtest.go",
+      "sha256": "e68590537028bc998bf7acd70070692ae2542604968abbb2d698cdf23d6ba54a"
+    },
+    {
+      "path": "internal/hosted/testhooks/testhooks_test.go",
+      "sha256": "f774ff392f7a0a385c6066c9083c126dad365ad24db5fdee40a81dbf73f99d5f"
+    },
+    {
+      "path": "docs/launch/hosted-completion/interfaces.md",
+      "sha256": "910d9cb9b3ea37a6b11c48cb19f321029cace5283bc43f1cff1f54ecae2b9a4f"
+    },
+    {
+      "path": "docs/launch/evidence/T23.41/architecture-review-request.md",
+      "sha256": "44a25fd0a0b1e4c6877f176b363a479e1e9c6cbae06c2413ba2a5b86657ee45e"
+    }
+  ],
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": null,
+    "authorization_refs": []
+  },
+  "limitations": [
+    "Ajent MCP tools (ajent_inbox/ajent_search/ajent_diagnose) require interactive permission grant unavailable in this headless session; coordination was cross-checked against ajent.social directly instead, per AGENTS.md fallback guidance.",
+    "No chief-architect review obtained; all four bounded design decisions remain PROPOSED, not approved.",
+    "No schema migration added this pass; store/migrations.go is unchanged.",
+    "internal/hosted/service/service.go and internal/cli/hosted.go were read but not edited -- no feature implementation exists yet to wire, and adding no-op registrations was explicitly disallowed.",
+    "gateway.go's global map-lock-across-Pool.Acquire violation is documented in interfaces.md's lock-ordering section but not fixed (out of task41's write scope, owned by task45/R-hosted-runtime).",
+    "Exact numeric values (growth-envelope multiplier, operator headroom bytes, object-lock retention window) are explicitly left unset in the proposals -- they require either empirical fixture evidence (task44) or an operator/cost decision (task60/61), not a worker guess."
+  ],
+  "blockers": [
+    {
+      "owner": "chief-architect",
+      "required_input": "Review and rule (approve/amend/reject) on the four proposed decisions in docs/launch/hosted-completion/interfaces.md and docs/launch/evidence/T23.41/architecture-review-request.md."
+    },
+    {
+      "owner": "task41 follow-up (integrator), after chief-architect rules on decision 2",
+      "required_input": "Apply the approved operations-table migration (schema version 4) so tasks44/47/48/50 can build against real SQL, not a draft."
+    }
+  ],
+  "binary_sha256": null,
+  "configuration_sha256": null,
+  "corpus_sha256": null,
+  "provider": null
+}
