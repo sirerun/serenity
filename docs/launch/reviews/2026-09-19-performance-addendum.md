@@ -1,0 +1,11 @@
+# Performance audit addendum — 2026-09-19
+
+This is review evidence, not launch acceptance. The audit used the real hosted gateway and service on macOS arm64 with loopback synthetic embeddings; it bypassed HTTP framing, credentials, rate limiting, real provider behavior, Linux capacity, and production history depth.
+
+The completed audit measured recall p50 at 12.5 ms for 100 facts, 498 ms for 1,000, 845 ms for 1,500, 8.8 s for 5,000, and 39.6 s for 10,000 using 3-dimensional synthetic vectors. At the default limit of 50, search widens because the one memory-fact kind is capped at five results. Each widening pass hydrates candidates through an FTS5 table whose `chunk_ref` column is unindexed; the measured query plan is a full virtual-table scan. A counted 5,000-fact call made six vector searches and 12,750 hydration lookups, returning five results.
+
+At 1,536 dimensions, 5,000-fact recall was about 42.6–43.1 s with only two timed operations. The near-duplicate cosine loop held about 75% of CPU samples in that synthetic iid geometry. Real embeddings may cluster differently, so this brackets a cost mechanism rather than qualifying production latency. `remember` grew roughly linearly (about 2.1 s p50 at 5,000 facts and 4.2 s at 10,000), with repeated projection loads dominating.
+
+The audit also measured complete serialization for calls on one account, cross-tenant capacity failures during cold brain opens, and backup `VACUUM INTO` times growing from seconds to tens of seconds as a synthetic control database grew. These are review findings; no runtime threshold, topology, search limit, or retention policy changed. Large-N samples are small (often one to seven operations), so no p95 claim is made. CPU profiles are unreliable for attributing SQLite leaf symbols on this host; wall-clock counters, counted calls, and query plans are the stronger evidence.
+
+Raw handoff: `runs/launch-audit-performance-handoff.md`; independent method review: `runs/T23.41-independent-performance-review.md`. The independent reviewer confirms the structural widening and hydration behavior, identifies the small-sample/provenance limits, and flags that the seed and measurement binaries were not identical. Full-scale target-Linux and provider-quality qualification remain open.

@@ -53,6 +53,8 @@ Lifecycle-only expiry is not an alternative guarantee: [AWS documents asynchrono
 
 ## Additional source preparation
 
+The completed runtime profiling is summarized in the [performance addendum](2026-09-19-performance-addendum.md). It confirms structural search widening and unindexed candidate hydration, and measures 3-D and 1,536-D synthetic-vector scaling. Small large-brain samples and the macOS/loopback setup keep this as diagnostic evidence; it does not qualify target-Linux latency or provider quality.
+
 [Compute options](2026-09-19-compute-options.md) compares current Oregon on-demand base charges for the existing burstable instance and fixed-compute candidates. It does not select a new machine or establish capacity. [Provider sources](2026-09-19-provider-sources.md) and the [selected public catalog rows](2026-09-19-provider-catalog-extract.json) now identify the candidate Perplexity embedding endpoint in OpenRouter's endpoint-specific ZDR list. This improves the privacy source trail; actual account policy, route enforcement, model identity and quality remain unqualified. All provider requests in this source check were public metadata reads without credentials or inference.
 
 ## Evidence and remaining work
