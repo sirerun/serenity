@@ -49,6 +49,10 @@ Lifecycle-only expiry is not an alternative guarantee: [AWS documents asynchrono
 
 **Requested decision:** approve this thinning policy with active purge, amend the windows, or require another independently costed design. Also assign control-DB retention/compaction ownership with explicit retry, billing and audit semantics; do not delete accounting history merely to meet a cost estimate. Task 49 owns verified manifests, 52 owns backup/purge schedules, 54 owns scoped infrastructure, and 66/68 own live recovery and cost qualification after their gates.
 
+## Additional source preparation
+
+[Compute options](2026-09-19-compute-options.md) compares current Oregon on-demand base charges for the existing burstable instance and fixed-compute candidates. It does not select a new machine or establish capacity. [Provider sources](2026-09-19-provider-sources.md) and the [selected public catalog rows](2026-09-19-provider-catalog-extract.json) now identify the candidate Perplexity embedding endpoint in OpenRouter's endpoint-specific ZDR list. This improves the privacy source trail; actual account policy, route enforcement, model identity and quality remain unqualified. All provider requests in this source check were public metadata reads without credentials or inference.
+
 ## Evidence and remaining work
 
 Raw local artifacts are retained in the coordinator's launch run directory; no credentials or customer data are included. This document records their hashes so later qualification cannot quietly substitute new measurements. These are audit artifacts, not task-completion receipts.
