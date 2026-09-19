@@ -23,11 +23,14 @@ import http.client
 import ipaddress
 import json
 import math
+import os
 import random
 import re
+import selectors
 import socket
 import ssl
 import stat
+import subprocess
 import sys
 import threading
 import time
@@ -77,6 +80,13 @@ ALL_OUTCOMES = (OK, TOOL_ERROR, PROTOCOL_ERROR, REJECTED_ADMISSION, UNEXPECTED_5
 OPERATIONS = ("readiness", "initialize", "notification", "tools_call", "close")
 
 TRANSPORT_ERRORS = (OSError, http.client.HTTPException)
+
+# Bounded name resolution (see _resolve). The resolver child gets the hostname and
+# port, and a self-destruct limit; nothing else, and an empty environment.
+RESOLVER_MAX_OUTPUT_BYTES = 64 * 1024
+RESOLVER_MAX_ADDRESSES = 32
+RESOLVER_TERMINATE_GRACE_S = 0.2  # SIGTERM to SIGKILL
+RESOLVER_REAP_TIMEOUT_S = 1.0  # SIGKILL to a reaped child; past it a daemon thread reaps
 
 
 def die(payload: dict, code: int) -> None:
@@ -606,19 +616,168 @@ class ExchangeDeadlineExceeded(TimeoutError):
     """The exchange hit its wall-clock deadline (an inactivity timeout never raises this)."""
 
 
+class ResolutionError(OSError):
+    """Name resolution failed, returned nothing usable, or produced malformed
+    output. It carries no resolver text: the class name is the whole report."""
+
+
+# getaddrinfo() cannot be interrupted, and a thread cannot be cancelled while it
+# blocks in one. So a hostname is resolved in a disposable child process, which
+# the parent can always kill. The source is fixed; the child receives only the
+# hostname, the port and a self-destruct limit (an orphan backstop should the
+# parent die), and it runs with an empty environment.
+_RESOLVER_SOURCE = """\
+import json, signal, socket, sys
+if hasattr(signal, "alarm"):
+    signal.alarm(int(sys.argv[3]))
+try:
+    infos = socket.getaddrinfo(sys.argv[1], int(sys.argv[2]), type=socket.SOCK_STREAM)
+except OSError:
+    sys.exit(3)
+sys.stdout.write(json.dumps([[int(i[0]), list(i[4])] for i in infos if i[0] in (socket.AF_INET, socket.AF_INET6)]))
+"""
+
+
+def _resolver_command(host: str, port: int, limit_s: int) -> list[str]:
+    """argv of the resolver child: the hostname, the port and the self-destruct limit."""
+    return [sys.executable, "-I", "-S", "-c", _RESOLVER_SOURCE, host, str(port), str(limit_s)]
+
+
+def _stop_process(proc: subprocess.Popen) -> None:
+    """Leave a resolver child dead and reaped: SIGTERM, then SIGKILL, each wait
+    bounded. A child that outlives SIGKILL (uninterruptible sleep) is handed to a
+    daemon thread that reaps it whenever the kernel releases it, so the exchange
+    is never held on it."""
+    try:
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=RESOLVER_TERMINATE_GRACE_S)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                try:
+                    proc.wait(timeout=RESOLVER_REAP_TIMEOUT_S)
+                except subprocess.TimeoutExpired:
+                    threading.Thread(target=proc.wait, daemon=True).start()
+    except OSError:
+        pass  # the child exited between the checks
+    finally:
+        if proc.stdout is not None:
+            proc.stdout.close()
+
+
+def _read_resolver_output(proc: subprocess.Popen, deadline: float) -> bytes:
+    """Read the child's stdout to EOF under the deadline, at most RESOLVER_MAX_OUTPUT_BYTES."""
+    fd = proc.stdout.fileno()
+    buf = bytearray()
+    with selectors.DefaultSelector() as selector:
+        selector.register(fd, selectors.EVENT_READ)
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not selector.select(remaining):
+                raise ExchangeDeadlineExceeded("exchange deadline reached")
+            chunk = os.read(fd, 4096)
+            if not chunk:
+                return bytes(buf)
+            buf += chunk
+            if len(buf) > RESOLVER_MAX_OUTPUT_BYTES:
+                raise ResolutionError("resolver output exceeds the size bound")
+
+
+def _parse_resolver_output(raw: bytes, port: int) -> list[tuple[int, tuple]]:
+    """Validate the child's JSON and rebuild each sockaddr from checked parts."""
+    bad = ResolutionError("resolver output is malformed")
+    try:
+        entries = json.loads(raw)
+    except ValueError:  # includes UnicodeDecodeError
+        raise bad from None
+    if not isinstance(entries, list) or not entries or len(entries) > RESOLVER_MAX_ADDRESSES:
+        raise bad
+    addresses: list[tuple[int, tuple]] = []
+    for entry in entries:
+        if not (isinstance(entry, list) and len(entry) == 2 and isinstance(entry[1], list)):
+            raise bad
+        family, sockaddr = entry
+        version = {int(socket.AF_INET): 4, int(socket.AF_INET6): 6}.get(family) if type(family) is int else None
+        if version is None or len(sockaddr) != (2 if version == 4 else 4):
+            raise bad
+        if not isinstance(sockaddr[0], str) or type(sockaddr[1]) is not int or sockaddr[1] != port:
+            raise bad
+        if any(type(part) is not int or part < 0 for part in sockaddr[2:]):
+            raise bad
+        try:
+            ip = ipaddress.ip_address(sockaddr[0])
+        except ValueError:
+            raise bad from None
+        if ip.version != version:
+            raise bad
+        addresses.append((socket.AddressFamily(family), tuple(sockaddr)))
+    return addresses
+
+
+def _resolve(host: str, port: int, deadline: float) -> list[tuple[int, tuple]]:
+    """Addresses for host, within the monotonic `deadline`.
+
+    An IP literal needs no resolution and returns at once, without a child. A
+    hostname is resolved in a disposable child (`_resolver_command`): the wait is
+    bounded by the time left, and on every exit path the child is terminated,
+    killed if it ignores that, and reaped before this returns.
+    """
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    if ip is not None:
+        return [(socket.AF_INET6, (host, port, 0, 0))] if ip.version == 6 else [(socket.AF_INET, (host, port))]
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise ExchangeDeadlineExceeded("exchange deadline reached")
+    proc = None
+    try:
+        try:
+            proc = subprocess.Popen(
+                _resolver_command(host, port, int(math.ceil(remaining)) + 2),
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env={}, close_fds=True,
+            )
+        except (OSError, ValueError, subprocess.SubprocessError):
+            raise ResolutionError("resolver child could not be started") from None
+        raw = _read_resolver_output(proc, deadline)
+        try:
+            proc.wait(timeout=max(deadline - time.monotonic(), 0.001))
+        except subprocess.TimeoutExpired:
+            raise ExchangeDeadlineExceeded("exchange deadline reached") from None
+        if proc.returncode != 0:
+            raise ResolutionError("name resolution failed")
+        return _parse_resolver_output(raw, port)
+    finally:
+        if proc is not None:
+            _stop_process(proc)
+
+
 def _connect(scheme: str, host: str, port: int | None, deadline: float, hold) -> socket.socket:
-    """Connect (and, for https, complete the TLS handshake) without ever leaving
-    a socket the watchdog cannot see: every socket created is passed to hold()
-    before it blocks. Each connect attempt is bounded by the time left, so a
-    multi-address host cannot spend the deadline once per address."""
+    """Resolve, connect and (for https) complete the TLS handshake, all under the
+    one monotonic `deadline`, without ever leaving a socket the watchdog cannot
+    see: every socket created is passed to hold() before it blocks. Each connect
+    attempt is bounded by the time left, so a multi-address host cannot spend the
+    deadline once per address.
+
+    The connection goes to a resolved IP, but the origin's hostname stays the
+    identity: TLS uses it for SNI and certificate verification (never the IP),
+    and the caller builds the Host header from it. Plain http is loopback-only,
+    so a hostname that resolves to any non-loopback address is refused."""
     port = _DEFAULT_PORTS[scheme] if port is None else port
+    addresses = _resolve(host, port, deadline)
+    if scheme == "http":
+        addresses = [a for a in addresses if ipaddress.ip_address(a[1][0]).is_loopback]
+        if not addresses:
+            raise ResolutionError("plain http resolved to no loopback address")
     last_error: OSError | None = None
     sock = None
-    for family, socktype, proto, _canon, sockaddr in socket.getaddrinfo(host, port, type=socket.SOCK_STREAM):
+    for family, sockaddr in addresses:
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise ExchangeDeadlineExceeded("exchange deadline reached")
-        candidate = socket.socket(family, socktype, proto)
+        candidate = socket.socket(family, socket.SOCK_STREAM)
         hold(candidate)
         candidate.settimeout(remaining)
         try:
@@ -630,7 +789,7 @@ def _connect(scheme: str, host: str, port: int | None, deadline: float, hold) ->
         sock = candidate
         break
     if sock is None:
-        raise last_error or OSError("name resolution returned no address")
+        raise last_error or ResolutionError("name resolution returned no address")
     if scheme == "https":
         # do_handshake_on_connect=False: keep a reference to the TLS socket, which
         # takes over the plain socket's descriptor, before the handshake can block.
@@ -659,9 +818,14 @@ def _http_exchange(method: str, origin: tuple[str, str, int | None], path: str, 
     returned to the caller) and http.client honors no environment proxy, so
     the exchange dials exactly the origin given.
 
-    Not bounded: name resolution. getaddrinfo() cannot be interrupted, so for a
-    hostname origin the deadline covers everything after resolution only; an
-    IP-literal origin resolves instantly, so its deadline is end to end.
+    One monotonic deadline covers name resolution (a bounded child process for a
+    hostname, nothing at all for an IP literal), every connect attempt, the TLS
+    handshake, the request, the headers and the body. Not covered: the watchdog
+    and thread-scheduling wake-up (DEADLINE_JITTER_S is the tolerance callers
+    allow), forking the resolver child, and, after a deadline, the bounded
+    SIGTERM/SIGKILL/reap of that child (RESOLVER_TERMINATE_GRACE_S and
+    RESOLVER_REAP_TIMEOUT_S). Anything the resolver child does before the
+    deadline is the operating system's resolver, unmodified.
     """
     scheme, host, port = origin
     deadline = time.monotonic() + timeout_s
@@ -1148,8 +1312,8 @@ def _deadline_scope(origin: object) -> str:
     try:
         ipaddress.ip_address(parsed[1])
     except ValueError:
-        return "excludes name resolution: getaddrinfo() cannot be interrupted, so a hostname origin has no hard end-to-end deadline guarantee"
-    return "end to end: an IP-literal origin needs no name resolution"
+        return "bounded resolver: a hostname is resolved in a disposable child killed at the deadline, so resolution, connect, TLS, headers and body share one monotonic deadline"
+    return "end to end: an IP-literal origin needs no name resolution, so no resolver child is started"
 
 
 def _build_result(workload, arrivals, records, run, budget, reason, elapsed_s, total_elapsed_s, cleanup, credentials, origin) -> dict:
@@ -1200,7 +1364,8 @@ def _build_result(workload, arrivals, records, run, budget, reason, elapsed_s, t
         "input tokens are precharged as encoded argument bytes, an upper bound rather than a provider-billed count",
         "no cross-tenant isolation probe exists; durability covers only forget of ids this run remembered",
         "the quota-boundary saturation run is separate and not implemented in this client",
-        "hostname origins: the per-exchange wall deadline is unqualified because getaddrinfo() cannot be interrupted by the standard library and no bounded resolver is implemented; only IP-literal origins have an end-to-end deadline",
+        "per-exchange deadline: one monotonic deadline bounds resolution, connect, TLS, headers and body within a scheduling tolerance (DEADLINE_JITTER_S) plus resolver-child fork and terminate/kill/reap time; it is a client-side guarantee checked against local sockets, not observed behavior of a live target",
+        "hostname origins: every exchange spawns one resolver child, whose time is inside the recorded latency, so latency samples for a hostname origin are not comparable with IP-literal samples; the child runs the operating-system resolver, which this client does not control",
     ]
     unevaluated = sorted({name for rep in by_repetition for name, c in rep["threshold_evaluation"].items() if c["pass"] is None})
     if unevaluated:

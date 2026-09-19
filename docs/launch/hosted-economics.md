@@ -12,15 +12,16 @@ estimates and local fixture results, not measured capacity or authority to spend
   deterministic simulator: three repetitions, replay, burst/cold/skewed tenants,
   quota saturation separate from the eligible workload, explicit failed thresholds.
 - A candidate MCP client has local tests against a real loopback HTTP server:
-  per-request outcomes over all offered requests, a wall-clock deadline on each
-  exchange, a cap check before every socket operation, byte-based token precharge,
-  canonical origins, redirect refusal, fixed error classes and confirmed-only
-  session cleanup. It never reports better than `PARTIAL` and is not a supported
-  live qualification runner.
+  per-request outcomes over all offered requests, one wall-clock deadline on each
+  exchange that includes name resolution (a disposable child process, killed at
+  the deadline, for hostnames), a cap check before every socket operation,
+  byte-based token precharge, canonical origins, redirect refusal, fixed error
+  classes and confirmed-only session cleanup. It never reports better than
+  `PARTIAL` and is not a supported live qualification runner.
 - **`--live` is disabled unconditionally**, returning BLOCKED/exit 2 and a zero-call
   receipt before manifest/credential reads or networking. Seeded state, a real
-  cold-open workload, host telemetry, a bounded resolver for hostname origins and
-  the reviewer freeze remain open in
+  cold-open workload, host telemetry, isolation probes and the reviewer freeze
+  remain open in
   [live-enable-requirements.md](evidence/T23.60/live-enable-requirements.md).
 
 ## Candidate monthly cost

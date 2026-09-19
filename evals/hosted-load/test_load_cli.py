@@ -1,5 +1,6 @@
 import http.server
 import importlib.util
+import ipaddress
 import json
 import os
 import random
@@ -473,13 +474,15 @@ class FakeServerTestCase(unittest.TestCase):
     def session(self, credential="test-cred", **budget_overrides):
         return load_cli.McpSession(self.server.origin, credential, make_run(**budget_overrides))
 
-    def run_live(self, workload=None, credential="test-credential-value", origin=None, **budget_overrides):
+    def run_live(self, workload=None, credential="test-credential-value", origin=None, allowed_hosts=None, **budget_overrides):
         workload = workload or small_workload()
         accounts = harness.build_accounts(workload["cardinalities"], "paid")
         cred_dir = make_credential_dir(self.tmp, accounts, value=credential)
         creds, error = load_cli.check_credentials(cred_dir, accounts)
         self.assertIsNone(error)
         manifest = live_manifest(origin or self.server.origin, **budget_overrides)
+        if allowed_hosts is not None:
+            manifest["environment"]["allowed_hosts"] = allowed_hosts
         return load_cli.run_live(manifest, workload, accounts, creds)
 
 
@@ -1102,6 +1105,372 @@ class TlsExchangeTests(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Bounded name resolution. getaddrinfo() cannot be interrupted, so a hostname is
+# resolved in a disposable child process that the parent kills at the deadline.
+# Resolver behavior is scripted by swapping the child's command for a real
+# Python process (a real stuck child, a real exit code), never a mocked result.
+# ---------------------------------------------------------------------------
+
+LOOPBACK_RESOLVER = "import json, sys\nprint(json.dumps([[2, ['127.0.0.1', int(sys.argv[2])]]]))\n"
+
+
+def patch_resolver(testcase, script):
+    """Run `script` in place of the real resolver child for the rest of the test."""
+    def command(host, port, limit_s):
+        return [sys.executable, "-I", "-S", "-c", script, host, str(port), str(limit_s)]
+    patcher = mock.patch.object(load_cli, "_resolver_command", command)
+    patcher.start()
+    testcase.addCleanup(patcher.stop)
+
+
+def stuck_resolver(pid_file, ignore_sigterm=False):
+    """A child that records its pid and then never answers (optionally ignoring SIGTERM)."""
+    return (
+        "import os, signal, time\n"
+        + ("signal.signal(signal.SIGTERM, signal.SIG_IGN)\n" if ignore_sigterm else "")
+        + f"with open({str(pid_file)!r}, 'a') as f:\n    f.write(str(os.getpid()) + '\\n')\n"
+        + "time.sleep(60)\n"
+    )
+
+
+def stalls_after_resolver(pid_file, answered):
+    """A child that records its pid, answers loopback for the first `answered` runs, then never answers."""
+    return (
+        "import json, os, sys, time\n"
+        + f"pid_file = {str(pid_file)!r}\n"
+        + "with open(pid_file, 'a') as f:\n    f.write(str(os.getpid()) + '\\n')\n"
+        + f"if sum(1 for _ in open(pid_file)) > {answered}:\n    time.sleep(60)\n"
+        + "print(json.dumps([[2, ['127.0.0.1', int(sys.argv[2])]]]))\n"
+    )
+
+
+def recorded_pids(pid_file):
+    return [int(p) for p in pid_file.read_text().split()] if pid_file.exists() else []
+
+
+def process_is_gone(pid):
+    """True only once the pid is fully reaped: a zombie still answers signal 0."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+    return False
+
+
+class UnkillableProcess:
+    """Stands in for a child that survives SIGKILL (uninterruptible sleep)."""
+
+    stdout = None
+
+    def __init__(self):
+        self.calls = []
+        self.reaper_waiting = threading.Event()
+        self.release = threading.Event()
+
+    def poll(self):
+        return None
+
+    def terminate(self):
+        self.calls.append("terminate")
+
+    def kill(self):
+        self.calls.append("kill")
+
+    def wait(self, timeout=None):
+        self.calls.append(("wait", timeout))
+        if timeout is not None:
+            raise subprocess.TimeoutExpired("resolver", timeout)
+        self.reaper_waiting.set()
+        self.release.wait(5)
+        return -9
+
+
+class BoundedResolverTests(FakeServerTestCase):
+    def setUp(self):
+        super().setUp()
+        self.pids = self.tmp / "resolver.pids"
+        self.port = self.server.httpd.server_address[1]
+
+    def hostname_origin(self):
+        return ("http", "localhost", self.port)
+
+    def assert_children_reaped(self, expected_at_least=1):
+        pids = recorded_pids(self.pids)
+        self.assertGreaterEqual(len(pids), expected_at_least)
+        for pid in pids:
+            self.assertTrue(process_is_gone(pid), f"resolver child {pid} was not killed and reaped")
+
+    def test_a_stuck_resolver_is_cut_off_at_the_deadline_and_its_child_is_reaped(self):
+        patch_resolver(self, stuck_resolver(self.pids))
+        start = time.monotonic()
+        with self.assertRaises(load_cli.ExchangeDeadlineExceeded):
+            load_cli._resolve("stuck.test", 80, time.monotonic() + 0.4)
+        elapsed = time.monotonic() - start
+        self.assertGreaterEqual(elapsed, 0.39)
+        self.assertLessEqual(elapsed, 0.4 + load_cli.DEADLINE_JITTER_S)
+        self.assert_children_reaped()
+        self.assertEqual(len(recorded_pids(self.pids)), 1)
+
+    def test_a_resolver_that_ignores_sigterm_is_killed_and_reaped_within_the_grace(self):
+        patch_resolver(self, stuck_resolver(self.pids, ignore_sigterm=True))
+        start = time.monotonic()
+        with self.assertRaises(load_cli.ExchangeDeadlineExceeded):
+            load_cli._resolve("stuck.test", 80, time.monotonic() + 0.4)
+        elapsed = time.monotonic() - start
+        self.assertGreaterEqual(elapsed, 0.4 + load_cli.RESOLVER_TERMINATE_GRACE_S - 0.05)  # SIGTERM was ignored, so SIGKILL ended it
+        self.assertLessEqual(elapsed, 0.4 + load_cli.RESOLVER_TERMINATE_GRACE_S + load_cli.DEADLINE_JITTER_S)
+        self.assert_children_reaped()
+
+    def test_a_child_that_survives_sigkill_is_handed_to_a_reaper_and_never_holds_the_exchange(self):
+        proc = UnkillableProcess()
+        self.addCleanup(proc.release.set)
+        with mock.patch.object(load_cli, "RESOLVER_TERMINATE_GRACE_S", 0.01), mock.patch.object(load_cli, "RESOLVER_REAP_TIMEOUT_S", 0.01):
+            start = time.monotonic()
+            load_cli._stop_process(proc)
+            elapsed = time.monotonic() - start
+        self.assertLess(elapsed, 0.5)
+        self.assertEqual(proc.calls[:4], ["terminate", ("wait", 0.01), "kill", ("wait", 0.01)])
+        self.assertTrue(proc.reaper_waiting.wait(2), "no daemon thread was left waiting to reap the child")
+
+    def test_a_stuck_resolver_ends_a_hostname_exchange_at_its_deadline_before_any_socket(self):
+        patch_resolver(self, stuck_resolver(self.pids))
+        start = time.monotonic()
+        with self.assertRaises(load_cli.ExchangeDeadlineExceeded):
+            load_cli._http_exchange("GET", self.hostname_origin(), "/readyz", {}, None, 0.5)
+        self.assertLessEqual(time.monotonic() - start, 0.5 + load_cli.DEADLINE_JITTER_S)
+        self.assert_children_reaped()
+        self.assertEqual(self.server.state.requests_seen, [])
+
+    def test_a_stuck_resolver_cannot_hold_the_run_or_executor_shutdown_past_the_cap(self):
+        """Readiness and both sessions' initialize/notification resolve (5 children);
+        every later resolution, in the executor's worker threads, never answers."""
+        patch_resolver(self, stalls_after_resolver(self.pids, answered=5))
+        workload = small_workload(traffic_mix={"recall": 1.0}, phases=[{"name": "steady", "minutes": 0.5, "rate_multiplier": 1}])
+        cap = 1.5
+        start = time.monotonic()
+        result = self.run_live(workload, origin=f"http://localhost:{self.port}", allowed_hosts=["localhost"], max_elapsed_seconds=cap)
+        wall = time.monotonic() - start
+        self.assertLess(wall, cap + 1.0)
+        self.assertLessEqual(result["elapsed_over_cap_s"], load_cli.DEADLINE_JITTER_S)
+        self.assertGreater(result["outcome_counts"]["network_error"], 0)  # the stuck workers, not a setup failure
+        classes = {r.get("error_class") for r in result["results"] if r["outcome"] == "network_error"}
+        self.assertEqual(classes, {"ExchangeDeadlineExceeded"})
+        self.assertNotEqual(result["status"], "PARTIAL")
+        self.assert_children_reaped(expected_at_least=7)
+
+    def test_the_resolution_time_and_the_tls_handshake_share_one_deadline(self):
+        """Resolution takes 0.3s, then the TLS handshake stalls: the exchange must end at
+        the 0.6s budget, not at 0.3s + 0.6s."""
+        silent = SilentListener()
+        self.addCleanup(silent.close)
+        patch_resolver(self, "import json, sys, time\ntime.sleep(0.3)\nprint(json.dumps([[2, ['127.0.0.1', int(sys.argv[2])]]]))\n")
+        start = time.monotonic()
+        with self.assertRaises(load_cli.ExchangeDeadlineExceeded):
+            load_cli._http_exchange("GET", ("https", "slow.test", silent.port), "/x", {}, None, 0.6)
+        elapsed = time.monotonic() - start
+        self.assertGreaterEqual(elapsed, 0.59)
+        self.assertLessEqual(elapsed, 0.6 + load_cli.DEADLINE_JITTER_S)
+
+    def test_an_expired_deadline_never_starts_a_child(self):
+        with mock.patch.object(load_cli, "_resolver_command", side_effect=AssertionError("resolver child started")):
+            with self.assertRaises(load_cli.ExchangeDeadlineExceeded):
+                load_cli._resolve("late.test", 80, time.monotonic() - 1)
+
+    def test_an_ip_literal_never_starts_a_resolver_child(self):
+        with mock.patch.object(load_cli, "_resolver_command", side_effect=AssertionError("resolver child started")):
+            deadline = time.monotonic() + 5
+            self.assertEqual(load_cli._resolve("127.0.0.1", 80, deadline), [(socket.AF_INET, ("127.0.0.1", 80))])
+            self.assertEqual(load_cli._resolve("::1", 80, deadline), [(socket.AF_INET6, ("::1", 80, 0, 0))])
+            status, _headers, body = load_cli._http_exchange("GET", self.server.parsed_origin, "/readyz", {}, None, 5.0)  # a whole exchange
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {"ready": True})
+
+    def test_localhost_resolves_through_a_child_to_loopback_addresses_only(self):
+        addresses = load_cli._resolve("localhost", 4321, time.monotonic() + 10)
+        self.assertGreaterEqual(len(addresses), 1)
+        for family, sockaddr in addresses:
+            self.assertIn(family, (socket.AF_INET, socket.AF_INET6))
+            self.assertEqual(sockaddr[1], 4321)
+            self.assertTrue(ipaddress.ip_address(sockaddr[0]).is_loopback)
+
+    def test_a_localhost_hostname_exchange_succeeds_and_keeps_the_origin_host_header(self):
+        status, _headers, body = load_cli._http_exchange("GET", self.hostname_origin(), "/readyz", {}, None, 10.0)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {"ready": True})
+        _method, _path, headers = self.server.state.requests_seen[-1]
+        self.assertEqual(headers["Host"], f"localhost:{self.port}")  # the origin, not the resolved IP
+
+    def test_a_full_run_against_a_localhost_hostname_origin_completes_and_states_the_scope(self):
+        result = self.run_live(origin=f"http://localhost:{self.port}", allowed_hosts=["localhost"])
+        self.assertEqual(result["status"], "PARTIAL")
+        self.assertEqual(result["outcome_counts"]["ok"], result["offered_total"])
+        self.assertTrue(result["exchange_deadline_scope"].startswith("bounded resolver"))
+        self.assertFalse(result["qualified"])
+
+    def test_addresses_are_tried_in_order_and_a_refused_one_falls_through(self):
+        patch_resolver(self, f"import json\nprint(json.dumps([[30, ['::1', {self.port}, 0, 0]], [2, ['127.0.0.1', {self.port}]]]))\n")
+        status, _headers, _body = load_cli._http_exchange("GET", ("http", "alias.test", self.port), "/readyz", {}, None, 5.0)
+        self.assertEqual(status, 200)
+
+    def test_plain_http_refuses_a_hostname_that_resolves_off_loopback_before_any_socket(self):
+        patch_resolver(self, "import json, sys\nprint(json.dumps([[2, ['192.0.2.1', int(sys.argv[2])]]]))\n")
+        opened = []
+        with self.assertRaises(load_cli.ResolutionError) as ctx:
+            load_cli._connect("http", "localhost", self.port, time.monotonic() + 5, opened.append)
+        self.assertEqual(str(ctx.exception), "plain http resolved to no loopback address")
+        self.assertEqual(opened, [])
+
+    def test_resolution_failure_from_the_real_resolver_is_a_fixed_class(self):
+        with self.assertRaises(load_cli.ResolutionError) as ctx:
+            load_cli._resolve("nonexistent.invalid", 80, time.monotonic() + 10)  # reserved: never resolves
+        self.assertEqual(load_cli.error_class(ctx.exception), "ResolutionError")
+        self.assertEqual(str(ctx.exception), "name resolution failed")
+
+    def test_resolution_failure_blocks_the_run_at_readiness_with_a_fixed_class(self):
+        patch_resolver(self, "import sys\nsys.exit(3)\n")
+        result = self.run_live(origin=f"http://localhost:{self.port}", allowed_hosts=["localhost"])
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("readiness probe failed: ResolutionError", result["reason"])
+        self.assertEqual(self.server.state.requests_seen, [])
+
+    def test_hostile_or_malformed_resolver_output_is_rejected_with_a_fixed_message(self):
+        many = "[" + ",".join(["[2, ['127.0.0.1', PORT]]"] * (load_cli.RESOLVER_MAX_ADDRESSES + 1)) + "]"
+        cases = {
+            "not json": ("print('SECRET-resolver-text')", "resolver output is malformed"),
+            "empty list": ("print('[]')", "resolver output is malformed"),
+            "wrong port": ("print('[[2, [\"127.0.0.1\", 1]]]')", "resolver output is malformed"),
+            "family and address disagree": ("import sys\nprint('[[2, [\"::1\", %s]]]' % sys.argv[2])", "resolver output is malformed"),
+            "not an address": ("import sys\nprint('[[2, [\"SECRET-name\", %s]]]' % sys.argv[2])", "resolver output is malformed"),
+            "unknown family": ("import sys\nprint('[[99, [\"127.0.0.1\", %s]]]' % sys.argv[2])", "resolver output is malformed"),
+            "too many addresses": ("import sys\nprint(%r.replace('PORT', sys.argv[2]))" % many, "resolver output is malformed"),
+            "oversize output": (f"import sys\nsys.stdout.write('x' * {load_cli.RESOLVER_MAX_OUTPUT_BYTES * 3})", "resolver output exceeds the size bound"),
+            "non-zero exit": ("import sys\nprint('SECRET-stderr-text')\nsys.exit(5)", "name resolution failed"),
+        }
+        for name, (script, message) in cases.items():
+            with self.subTest(name):
+                patch_resolver(self, script + "\n")
+                with self.assertRaises(load_cli.ResolutionError) as ctx:
+                    load_cli._resolve("hostile.test", 4321, time.monotonic() + 10)
+                self.assertEqual(str(ctx.exception), message)
+                self.assertNotIn("SECRET", str(ctx.exception))
+
+    def test_the_resolver_child_gets_only_the_hostname_port_and_limit_and_never_a_credential(self):
+        recorded = []
+        real_popen = subprocess.Popen
+
+        def recording_popen(args, **kwargs):
+            recorded.append((list(args), kwargs))
+            return real_popen(args, **kwargs)
+
+        with mock.patch.dict(os.environ, {"T2360_PARENT_SECRET": LONG_CRED}), mock.patch.object(load_cli.subprocess, "Popen", recording_popen):
+            session = load_cli.McpSession(f"http://localhost:{self.port}", LONG_CRED, make_run())
+            session.initialize()  # initialize and notification: two exchanges, two children
+        self.assertTrue(session.has_server_session)
+        self.assertEqual(len(recorded), 2)
+        for args, kwargs in recorded:
+            self.assertEqual(args[:4], [sys.executable, "-I", "-S", "-c"])
+            self.assertEqual(len(args), 8)  # interpreter flags, fixed source, then exactly hostname, port, limit
+            self.assertEqual((args[5], args[6]), ("localhost", str(self.port)))
+            self.assertGreaterEqual(int(args[7]), 1)
+            self.assertNotIn(LONG_CRED, " ".join(args))
+            self.assertEqual(kwargs["env"], {})
+            self.assertEqual(kwargs["stdin"], subprocess.DEVNULL)
+            self.assertEqual(kwargs["stderr"], subprocess.DEVNULL)
+            self.assertNotIn(LONG_CRED, repr(kwargs))
+        _method, _path, headers = self.server.state.requests_seen[-1]
+        self.assertEqual(headers["Authorization"], f"Bearer {LONG_CRED}")  # the credential reached the server, not the child
+
+    def test_the_resolver_child_sees_an_empty_environment(self):
+        env_file = self.tmp / "child.env"
+        patch_resolver(self, f"import json, os, sys\nopen({str(env_file)!r}, 'w').write(json.dumps(sorted(os.environ)))\n" + LOOPBACK_RESOLVER)
+        with mock.patch.dict(os.environ, {"T2360_PARENT_SECRET": LONG_CRED}):
+            load_cli._resolve("env.test", 4321, time.monotonic() + 10)
+        names = json.loads(env_file.read_text())
+        for name in ("T2360_PARENT_SECRET", "PATH", "HOME"):
+            self.assertNotIn(name, names)
+
+    def test_the_real_resolver_child_prints_only_the_address_list(self):
+        real = subprocess.run(load_cli._resolver_command("localhost", 4321, 5), stdin=subprocess.DEVNULL, capture_output=True, env={}, timeout=10)
+        self.assertEqual(real.returncode, 0)
+        self.assertEqual(real.stderr, b"")
+        self.assertEqual(json.dumps(json.loads(real.stdout)), real.stdout.decode())  # one JSON list, no trailing text
+        self.assertEqual(len(load_cli._parse_resolver_output(real.stdout, 4321)), len(json.loads(real.stdout)))
+
+
+def mint_certificate(tmp: Path, common_name: str, san: str):
+    cert, key = tmp / "cert.pem", tmp / "key.pem"
+    subprocess.run(
+        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key), "-out", str(cert),
+         "-days", "1", "-subj", f"/CN={common_name}", "-addext", f"subjectAltName={san}"],
+        check=True, capture_output=True,
+    )
+    return cert, key
+
+
+@unittest.skipUnless(shutil.which("openssl"), "openssl is needed to mint a throwaway certificate")
+class TlsHostnameTests(unittest.TestCase):
+    """Real TLS through the bounded resolver. The connection goes to a resolved IP
+    while the certificate is checked, and the SNI sent, for the origin's hostname.
+    The throwaway certificate is valid for the DNS name localhost only."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        tmp = Path(self.tmpdir.name)
+        self.cert, key = mint_certificate(tmp, "localhost", "DNS:localhost")
+        server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        server_ctx.load_cert_chain(str(self.cert), str(key))
+        self.sni_seen = []
+        server_ctx.sni_callback = lambda _sock, name, _ctx: self.sni_seen.append(name)  # returns None: carry on
+        self.server = FakeMcpServer(tls_context=server_ctx)
+        self.server.start()
+        self.addCleanup(self.server.stop)
+        self.port = self.server.httpd.server_address[1]
+        self.trusting_context = ssl.create_default_context(cafile=str(self.cert))
+
+    def exchange(self, host, trusted=True, timeout_s=10.0):
+        origin = ("https", host, self.port)
+        if not trusted:
+            return load_cli._http_exchange("GET", origin, "/readyz", {}, None, timeout_s)
+        with mock.patch.object(load_cli.ssl, "create_default_context", lambda: self.trusting_context):
+            return load_cli._http_exchange("GET", origin, "/readyz", {}, None, timeout_s)
+
+    def test_a_hostname_is_verified_against_its_certificate_and_sent_as_sni(self):
+        status, _headers, body = self.exchange("localhost")  # real resolver child; connects to a resolved loopback IP
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {"ready": True})
+        self.assertEqual(self.sni_seen, ["localhost"])  # the hostname, never the resolved IP
+
+    def test_the_hostname_not_the_resolved_ip_decides_certificate_acceptance(self):
+        """The same server, the same trusted certificate and the same resolved IP as
+        the success case: only the origin's hostname differs, and it is rejected."""
+        patch_resolver(self, LOOPBACK_RESOLVER)
+        with self.assertRaises(ssl.SSLCertVerificationError) as ctx:
+            self.exchange("other.test")
+        self.assertIn("mismatch", ctx.exception.verify_message.lower())
+        self.assertEqual(self.sni_seen, ["other.test"])
+
+    def test_an_ip_literal_origin_is_still_checked_and_a_hostname_only_certificate_fails(self):
+        with mock.patch.object(load_cli, "_resolver_command", side_effect=AssertionError("resolver child started")):
+            with self.assertRaises(ssl.SSLCertVerificationError):
+                self.exchange("127.0.0.1")
+
+    def test_default_verification_rejects_an_untrusted_certificate_for_a_hostname_origin(self):
+        with self.assertRaises(ssl.SSLCertVerificationError):
+            self.exchange("localhost", trusted=False)
+
+    def test_a_resolved_hostname_whose_peer_never_answers_tls_ends_at_the_deadline(self):
+        silent = SilentListener()
+        self.addCleanup(silent.close)
+        start = time.monotonic()
+        with self.assertRaises(load_cli.ExchangeDeadlineExceeded):
+            load_cli._http_exchange("GET", ("https", "localhost", silent.port), "/x", {}, None, 0.5)
+        self.assertLessEqual(time.monotonic() - start, 0.5 + load_cli.DEADLINE_JITTER_S)
+
+
+# ---------------------------------------------------------------------------
 # Every socket operation is guarded immediately before it opens.
 # ---------------------------------------------------------------------------
 
@@ -1372,11 +1741,16 @@ class OfferedOutcomeTests(FakeServerTestCase):
         for needle in ("seeded", "cold flag", "provider_work_bound", "unmeasured is not passed", "not reviewer-frozen"):
             self.assertIn(needle, joined)
 
-    def test_the_deadline_scope_is_stated_and_hostname_origins_stay_unqualified(self):
+    def test_the_deadline_scope_is_stated_with_its_limits_and_no_live_claim(self):
         result = self.run_live()
         self.assertTrue(result["exchange_deadline_scope"].startswith("end to end"))  # loopback IP literal
-        self.assertTrue(any("getaddrinfo" in g and "unqualified" in g for g in result["qualification_gaps"]))
-        for origin, expected in (("https://staging.example.com", "excludes name resolution"), ("http://localhost:9443", "excludes name resolution"), ("http://[::1]:9443", "end to end"), (None, "not applicable")):
+        gaps = result["qualification_gaps"]
+        self.assertTrue(any("per-exchange deadline" in g and "DEADLINE_JITTER_S" in g and "not observed behavior of a live target" in g for g in gaps))
+        self.assertTrue(any("resolver child" in g and "not comparable" in g and "operating-system resolver" in g for g in gaps))
+        self.assertFalse(any("getaddrinfo" in g for g in gaps))  # the old blanket "unqualified" gap is gone: the resolver is bounded
+        self.assertFalse(result["qualified"])
+        self.assertNotEqual(result["status"], "COMPLETE")
+        for origin, expected in (("https://staging.example.com", "bounded resolver"), ("http://localhost:9443", "bounded resolver"), ("http://[::1]:9443", "end to end"), (None, "not applicable")):
             with self.subTest(origin=origin):
                 self.assertTrue(load_cli._deadline_scope(origin).startswith(expected))
 
