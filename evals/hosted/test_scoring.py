@@ -36,19 +36,32 @@ class TestHitAtK(unittest.TestCase):
 
 
 class TestEmptyCaseLeakage(unittest.TestCase):
-    def test_no_leakage_when_only_allowed_ids_present(self):
-        r = scoring.score_empty_case("e1", ["filler-01"], allowed_ids={"filler-01"})
+    # T23.43.md: every expected-empty case must return NO current fact. An
+    # earlier revision let an account's own unrelated filler pass; that made
+    # the criterion vacuous, so these tests pin the strict reading.
+    def test_an_unrelated_filler_result_is_a_violation_not_allowed_content(self):
+        r = scoring.score_empty_case("e1", ["filler-01"])
+        self.assertFalse(r.hit)
+        self.assertEqual(r.forbidden_ids, ["filler-01"])
+
+    def test_leakage_when_foreign_id_present(self):
+        r = scoring.score_empty_case("e1", ["filler-01", "para-02a-fact"])
+        self.assertFalse(r.hit)
+        self.assertEqual(r.forbidden_ids, ["filler-01", "para-02a-fact"])
+
+    def test_a_fact_from_the_facts_arm_is_a_violation_even_with_no_search_result(self):
+        r = scoring.score_empty_case("e1", [], ["forgotten-empty-01"])
+        self.assertFalse(r.hit)
+        self.assertEqual(r.forbidden_ids, ["forgotten-empty-01"])
+
+    def test_empty_results_pass(self):
+        r = scoring.score_empty_case("e1", [])
         self.assertTrue(r.hit)
         self.assertEqual(r.forbidden_ids, [])
 
-    def test_leakage_when_foreign_id_present(self):
-        r = scoring.score_empty_case("e1", ["filler-01", "para-02a-fact"], allowed_ids={"filler-01"})
-        self.assertFalse(r.hit)
-        self.assertEqual(r.forbidden_ids, ["para-02a-fact"])
-
-    def test_empty_results_pass(self):
-        r = scoring.score_empty_case("e1", [], allowed_ids={"filler-01"})
-        self.assertTrue(r.hit)
+    def test_the_scorer_accepts_no_allowed_set(self):
+        with self.assertRaises(TypeError):
+            scoring.score_empty_case("e1", ["filler-01"], allowed_ids={"filler-01"})
 
 
 class TestSummary(unittest.TestCase):
@@ -102,12 +115,12 @@ class TestSummary(unittest.TestCase):
         self.assertFalse(summary.overall_floor_pass)
 
     def test_empty_all_pass_requires_all_5_and_zero_leakage(self):
-        empties = [scoring.score_empty_case(f"e{i}", [], {"filler-x"}) for i in range(5)]
+        empties = [scoring.score_empty_case(f"e{i}", []) for i in range(5)]
         summary = scoring.summarize([], empties)
         self.assertTrue(summary.empty_all_pass)
         self.assertEqual(summary.empty_leakage_total, 0)
 
-        empties_with_leak = empties[:4] + [scoring.score_empty_case("e4", ["foreign"], {"filler-x"})]
+        empties_with_leak = empties[:4] + [scoring.score_empty_case("e4", ["foreign"])]
         summary2 = scoring.summarize([], empties_with_leak)
         self.assertFalse(summary2.empty_all_pass)
         self.assertEqual(summary2.empty_leakage_total, 1)

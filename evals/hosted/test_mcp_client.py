@@ -162,6 +162,100 @@ class TestIsErrorRaisesRatherThanScoringEmpty(unittest.TestCase):
             client.call_tool("recall", {"query": "x", "limit": 5})
 
 
+class _DripHandler(http.server.BaseHTTPRequestHandler):
+    """Sends a valid status line, then trickles the body one byte every
+    0.05 s -- each recv succeeds well inside a 0.1 s socket timeout, yet the
+    exchange never finishes. (The coordinator's urllib reproduction ran 0.789 s
+    under a 0.1 s socket timeout.)"""
+
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        import time as _t
+
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", "100000")
+        self.end_headers()
+        try:
+            for _ in range(200):
+                self.wfile.write(b" ")
+                self.wfile.flush()
+                _t.sleep(0.05)
+        except OSError:
+            pass
+
+
+class _SlowHeaderHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_POST(self):
+        import time as _t
+
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        try:
+            self.wfile.write(b"HTTP/1.1 200 OK\r\n")
+            for _ in range(200):  # header bytes dripped one at a time, never finishing
+                self.wfile.write(b"X")
+                self.wfile.flush()
+                _t.sleep(0.05)
+        except OSError:
+            pass
+
+
+class TestWallClockDeadline(unittest.TestCase):
+    """A socket timeout bounds one recv, not the exchange. Every request runs
+    under a wall-clock deadline enforced by a watchdog that shuts the socket."""
+
+    def _elapsed_for(self, handler, timeout_s, budget=None):
+        import time
+
+        server = _serve(handler)
+        self.addCleanup(server.shutdown)
+        self.addCleanup(server.server_close)
+        client = MCPClient(f"{_origin(server)}/mcp", "tok", allowed_origins=[_origin(server)], timeout_s=timeout_s, budget=budget)
+        started = time.monotonic()
+        with self.assertRaises(MCPError) as ctx:
+            client.initialize()
+        return time.monotonic() - started, str(ctx.exception)
+
+    def test_a_dripped_body_is_cut_off_at_the_deadline_not_at_the_drip_end(self):
+        elapsed, message = self._elapsed_for(_DripHandler, timeout_s=0.3)
+        self.assertLess(elapsed, 0.9, f"a 0.3 s deadline took {elapsed:.3f}s")
+        self.assertIn("deadline exceeded", message)
+
+    def test_dripped_response_headers_are_also_cut_off(self):
+        elapsed, message = self._elapsed_for(_SlowHeaderHandler, timeout_s=0.3)
+        self.assertLess(elapsed, 0.9, f"a 0.3 s deadline took {elapsed:.3f}s")
+        self.assertIn("deadline exceeded", message)
+
+    def test_the_budget_deadline_shortens_the_request_deadline(self):
+        class _Budget:
+            def precharge(self, n):
+                pass
+
+            def remaining_seconds(self):
+                return 0.3
+
+        elapsed, message = self._elapsed_for(_DripHandler, timeout_s=30.0, budget=_Budget())
+        self.assertLess(elapsed, 0.9)
+        self.assertIn("deadline exceeded", message)
+
+    def test_a_fast_response_is_unaffected(self):
+        server = _serve(_CaptureAuth)
+        self.addCleanup(server.shutdown)
+        self.addCleanup(server.server_close)
+        client = MCPClient(f"{_origin(server)}/mcp", "tok", allowed_origins=[_origin(server)], timeout_s=5.0)
+        self.assertEqual(client.initialize(), {})
+
+    def test_the_deadline_message_never_contains_upstream_text_or_the_credential(self):
+        _, message = self._elapsed_for(_DripHandler, timeout_s=0.2)
+        self.assertNotIn("tok", message.replace("took", ""))
+
+
 class TestCallToolRequiresExplicitInitialize(unittest.TestCase):
     def test_call_tool_before_initialize_raises_without_any_http_call(self):
         # No server is even started: if call_tool silently auto-initialized,

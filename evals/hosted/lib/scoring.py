@@ -44,14 +44,18 @@ def score_positive_case(case_id: str, category: str, expected_fact_id: str, rank
     return CaseResult(case_id, category, expected_fact_id, ranked_ids, hit, rank)
 
 
-def score_empty_case(case_id: str, ranked_ids: list[str], allowed_ids: set[str]) -> CaseResult:
-    """allowed_ids is the isolated brain's own legitimate content (its
-    filler fact). Anything else in ranked_ids is a leakage violation --
-    either a hallucinated forgotten fact or, in a live multi-tenant run,
-    content from a different account/brain.
-    """
-    forbidden = [rid for rid in ranked_ids if rid not in allowed_ids]
-    return CaseResult(case_id, "empty", None, ranked_ids, hit=(len(forbidden) == 0), rank=None, forbidden_ids=forbidden)
+def score_empty_case(case_id: str, result_ids: list[str], fact_ids: list[str] | tuple = ()) -> CaseResult:
+    """An expected-empty case passes only when NOTHING current comes back:
+    no search result and no fact from recall's facts arm. There is no allowed
+    set. T23.43.md requires every expected-empty case to "return no current
+    fact"; an earlier revision let an account's own unrelated filler fact
+    pass, which made the criterion vacuous, so any returned id -- a forgotten
+    fact that resurfaced, another account's content, or unrelated filler --
+    is a violation."""
+    forbidden = [*result_ids, *fact_ids]
+    return CaseResult(
+        case_id, "empty", None, list(result_ids), hit=(len(forbidden) == 0), rank=None, forbidden_ids=forbidden
+    )
 
 
 @dataclass

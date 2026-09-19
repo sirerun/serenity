@@ -33,6 +33,7 @@ def _target(endpoint: str, cred_ref: str, receipt: str) -> dict:
         "endpoint_url": endpoint,
         "credential_secret_ref": cred_ref,
         "corpus_seeded_confirmation": receipt,
+        "seed_receipt_path": "receipts/" + cred_ref + ".json",
         "allowed_origins": [f"{parts.scheme}://{parts.netloc}"],
     }
 
@@ -51,9 +52,15 @@ def _fully_authorized_manifest() -> dict:
     }
     m["provider"]["secret_ref"] = "EMBEDDINGS_API_KEY"
     m["provider"]["allow_fallback"] = False
-    m["hosted_mcp"] = _target("https://app.serenity.sire.run/mcp", "T2343_HOSTED_CREDENTIAL", "receipt-2026-09-18")
+    m["provider"].update(model="m", version_pin="pin-1", dimensions=1024, serving_provider="sp", privacy_review_ref="pr-1")
+    m["environment"] = {
+        "kind": "staging", "origin": None,
+        "allowed_hosts": ["app.serenity.sire.run", "isolated.app.serenity.sire.run"],
+        "production_target_allowed": False,
+    }
+    m["hosted_mcp"] = _target("https://app.serenity.sire.run/mcp", "T2343_HOSTED_CREDENTIAL", "sha256:" + "a" * 64)
     m["empty_case_hosted_mcp"] = _target(
-        "https://isolated.app.serenity.sire.run/mcp", "T2343_EMPTY_CASE_CREDENTIAL", "receipt-2026-09-18-empty"
+        "https://isolated.app.serenity.sire.run/mcp", "T2343_EMPTY_CASE_CREDENTIAL", "sha256:" + "b" * 64
     )
     m["corpus_sha256"] = "0" * 64
     return m
@@ -185,6 +192,82 @@ class TestManifestValidation(unittest.TestCase):
         m["hosted_mcp"]["allowed_origins"] = ["https://app.serenity.sire.run"]
         problems = manifest_lib.validate_live_manifest(m)
         self.assertTrue(any("hosted_mcp.endpoint_url" in p for p in problems))
+
+
+class TestSeedAndLivePhaseValidation(unittest.TestCase):
+    def _seed(self, m):
+        return manifest_lib.validate_live_manifest(m, manifest_lib.PHASE_SEED)
+
+    def test_seed_phase_needs_no_receipts_but_needs_explicit_authorization(self):
+        m = _fully_authorized_manifest()
+        for t in ("hosted_mcp", "empty_case_hosted_mcp"):
+            del m[t]["seed_receipt_path"]
+            m[t]["corpus_seeded_confirmation"] = None
+        self.assertTrue(any("seeding.authorized" in p for p in self._seed(m)))
+        m["seeding"] = {"authorized": True, "authorization_ref": "hq-dec-x"}
+        self.assertEqual(self._seed(m), [])
+
+    def test_seed_authorization_must_be_the_boolean_true_with_a_reference(self):
+        m = _fully_authorized_manifest()
+        for value in ("true", 1, "yes"):
+            m["seeding"] = {"authorized": value, "authorization_ref": "hq-dec-x"}
+            self.assertTrue(any("seeding.authorized" in p for p in self._seed(m)), value)
+        m["seeding"] = {"authorized": True}
+        self.assertTrue(any("seeding.authorization_ref" in p for p in self._seed(m)))
+
+    def test_live_phase_requires_a_receipt_path_and_a_sha256_confirmation(self):
+        m = _fully_authorized_manifest()
+        del m["hosted_mcp"]["seed_receipt_path"]
+        self.assertTrue(any("hosted_mcp.seed_receipt_path" in p for p in manifest_lib.validate_live_manifest(m)))
+        m = _fully_authorized_manifest()
+        for hand_typed in ("receipt-2026-09-18", "sha256:short", "SHA256:" + "a" * 64):
+            m["hosted_mcp"]["corpus_seeded_confirmation"] = hand_typed
+            self.assertTrue(any("sha256:<64 hex>" in p for p in manifest_lib.validate_live_manifest(m)), hand_typed)
+
+    def test_provider_pin_fields_are_required(self):
+        for field in ("model", "version_pin", "serving_provider", "privacy_review_ref", "dimensions"):
+            with self.subTest(field=field):
+                m = _fully_authorized_manifest()
+                m["provider"][field] = None
+                self.assertTrue(any(f"provider.{field}" in p for p in manifest_lib.validate_live_manifest(m)))
+
+    def test_dimensions_must_be_a_positive_integer(self):
+        for bad in (True, 0, -8, 1.5, "1024"):
+            m = _fully_authorized_manifest()
+            m["provider"]["dimensions"] = bad
+            self.assertTrue(any("provider.dimensions" in p for p in manifest_lib.validate_live_manifest(m)), bad)
+
+    def test_endpoint_host_must_be_in_the_environment_allowlist(self):
+        m = _fully_authorized_manifest()
+        m["environment"]["allowed_hosts"] = ["some-other-host.example"]
+        problems = manifest_lib.validate_live_manifest(m)
+        self.assertTrue(any("not in environment.allowed_hosts" in p for p in problems))
+
+    def test_environment_allowlist_and_kind_are_required(self):
+        m = _fully_authorized_manifest()
+        m["environment"]["allowed_hosts"] = []
+        self.assertTrue(any("allowed_hosts" in p for p in manifest_lib.validate_live_manifest(m)))
+        m = _fully_authorized_manifest()
+        m["environment"]["kind"] = None
+        self.assertTrue(any("environment.kind" in p for p in manifest_lib.validate_live_manifest(m)))
+
+    def test_a_production_kind_without_the_explicit_flag_is_refused(self):
+        m = _fully_authorized_manifest()
+        m["environment"]["kind"] = "production"
+        self.assertTrue(any("production targets are refused" in p for p in manifest_lib.validate_live_manifest(m)))
+
+    def test_both_targets_may_not_share_one_credential_reference(self):
+        m = _fully_authorized_manifest()
+        m["empty_case_hosted_mcp"]["credential_secret_ref"] = m["hosted_mcp"]["credential_secret_ref"]
+        self.assertTrue(any("one credential is one account" in p for p in manifest_lib.validate_live_manifest(m)))
+
+    def test_a_credential_reference_must_be_an_env_var_name_and_is_never_echoed(self):
+        m = _fully_authorized_manifest()
+        secret_looking = "sk-live-abc123-DO-NOT-ECHO"
+        m["hosted_mcp"]["credential_secret_ref"] = secret_looking
+        problems = manifest_lib.validate_live_manifest(m)
+        self.assertTrue(any("environment variable NAME" in p for p in problems))
+        self.assertFalse(any(secret_looking in p for p in problems))
 
 
 if __name__ == "__main__":

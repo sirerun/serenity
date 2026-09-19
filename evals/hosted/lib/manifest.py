@@ -20,9 +20,15 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .mcp_client import validate_endpoint_url
+
+
+PHASE_SEED = "seed"
+PHASE_LIVE = "live"
 
 
 def load_manifest(path: str) -> dict:
@@ -51,18 +57,33 @@ def _positive_finite_number(value, name: str, problems: list[str]) -> None:
         problems.append(f"{name} must be positive, got {value!r}")
 
 
-def _validate_hosted_mcp_target(prefix: str, target: dict, problems: list[str]) -> None:
+_CONFIRMATION = re.compile(r"^sha256:[0-9a-f]{64}$")
+_ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+
+
+def _validate_hosted_mcp_target(prefix: str, target: dict, problems: list[str], phase: str) -> None:
     if not target.get("endpoint_url"):
         problems.append(f"{prefix}.endpoint_url is missing; no real hosted MCP endpoint to target")
-    if not target.get("credential_secret_ref"):
+    ref = target.get("credential_secret_ref")
+    if not ref:
         problems.append(f"{prefix}.credential_secret_ref is missing; no client credential reference")
-    if not target.get("corpus_seeded_confirmation"):
-        problems.append(
-            f"{prefix}.corpus_seeded_confirmation is missing; T23.43 does not own the hosted "
-            "write path and never seeds a live account itself -- the coordinator/operator must "
-            "seed the frozen corpus into the target account/brain out-of-band and record an "
-            "explicit confirmation (e.g. a timestamp or receipt id) here before a live run"
-        )
+    elif not (isinstance(ref, str) and _ENV_NAME.match(ref)):
+        # Not echoed: a value pasted here by mistake would be a credential.
+        problems.append(f"{prefix}.credential_secret_ref must be an environment variable NAME, never a credential value")
+    if phase == PHASE_LIVE:
+        # A live run scores against ids the seed run assigned. The receipt
+        # that maps them is bound by hash, so a hand-typed confirmation
+        # string or an edited receipt is rejected before any network call.
+        if not target.get("seed_receipt_path"):
+            problems.append(
+                f"{prefix}.seed_receipt_path is missing; run --seed first and point this at its receipt "
+                "(the live run cannot attribute recall results to corpus facts without it)"
+            )
+        if not _CONFIRMATION.match(str(target.get("corpus_seeded_confirmation") or "")):
+            problems.append(
+                f"{prefix}.corpus_seeded_confirmation must be 'sha256:<64 hex>' of the seed receipt file "
+                "(printed by --seed); a free-form receipt id or timestamp is not accepted"
+            )
     allowed_origins = target.get("allowed_origins")
     if not allowed_origins or not isinstance(allowed_origins, list):
         problems.append(f"{prefix}.allowed_origins is missing or empty; the endpoint origin must be explicitly allowlisted")
@@ -73,7 +94,38 @@ def _validate_hosted_mcp_target(prefix: str, target: dict, problems: list[str]) 
             problems.append(f"{prefix}.endpoint_url: {e}")
 
 
-def validate_live_manifest(manifest: dict) -> list[str]:
+def _validate_provider_pin(provider: dict, problems: list[str]) -> None:
+    """T23.43.md step 2: record model pin, provider and dimensions. Evidence
+    that omits them cannot be tied to an embedding space, so a live or seed
+    run without them is blocked rather than recorded as null."""
+    for field in ("model", "version_pin", "serving_provider", "privacy_review_ref"):
+        if not provider.get(field):
+            problems.append(f"provider.{field} is missing; the qualified embedding pin must be recorded, not implied")
+    dims = provider.get("dimensions")
+    if isinstance(dims, bool) or not isinstance(dims, int) or dims <= 0:
+        problems.append(f"provider.dimensions must be a positive integer, got {dims!r}")
+
+
+def _validate_environment(manifest: dict, problems: list[str]) -> None:
+    environment = manifest.get("environment") or {}
+    kind = environment.get("kind")
+    if not kind:
+        problems.append("environment.kind is missing")
+    if environment.get("production_target_allowed") and kind != "production":
+        problems.append("environment.production_target_allowed is true but environment.kind is not 'production'")
+    if kind == "production" and not environment.get("production_target_allowed"):
+        problems.append("environment.kind is 'production' but production_target_allowed is not true; production targets are refused")
+    hosts = environment.get("allowed_hosts")
+    if not hosts or not isinstance(hosts, list):
+        problems.append("environment.allowed_hosts is missing or empty; the explicit host allowlist is required")
+        return
+    for prefix in ("hosted_mcp", "empty_case_hosted_mcp"):
+        url = (manifest.get(prefix) or {}).get("endpoint_url")
+        if url and urlsplit(url).hostname not in hosts:
+            problems.append(f"{prefix}.endpoint_url host {urlsplit(url).hostname!r} is not in environment.allowed_hosts")
+
+
+def validate_live_manifest(manifest: dict, phase: str = PHASE_LIVE) -> list[str]:
     """Returns a list of human-readable problems. Empty means the manifest
     carries enough concrete authority to attempt a live run (still subject
     to the live call itself failing on bad credentials/network -- this only
@@ -105,8 +157,20 @@ def validate_live_manifest(manifest: dict) -> list[str]:
     if provider.get("allow_fallback"):
         problems.append("provider.allow_fallback must be false; no silent alternative-model routing")
 
+    _validate_provider_pin(provider, problems)
+
+    if phase == PHASE_SEED:
+        seeding = manifest.get("seeding") or {}
+        if seeding.get("authorized") is not True:
+            problems.append(
+                "seeding.authorized must be exactly true; writing the corpus into a hosted account "
+                "needs its own explicit authorization, separate from the recall budget"
+            )
+        if not seeding.get("authorization_ref"):
+            problems.append("seeding.authorization_ref is missing; no recorded authorization for the seed writes")
+
     hosted_mcp = manifest.get("hosted_mcp") or {}
-    _validate_hosted_mcp_target("hosted_mcp", hosted_mcp, problems)
+    _validate_hosted_mcp_target("hosted_mcp", hosted_mcp, problems, phase)
 
     # T23.43.md's own acceptance criterion requires cross-account leakage
     # to be checked -- impossible to test honestly with a single shared
@@ -124,11 +188,16 @@ def validate_live_manifest(manifest: dict) -> list[str]:
             "unambiguous -- reusing hosted_mcp's single account cannot test cross-account leakage=0"
         )
     else:
-        _validate_hosted_mcp_target("empty_case_hosted_mcp", empty_case_mcp, problems)
+        _validate_hosted_mcp_target("empty_case_hosted_mcp", empty_case_mcp, problems, phase)
+        if empty_case_mcp.get("credential_secret_ref") and empty_case_mcp.get("credential_secret_ref") == hosted_mcp.get(
+            "credential_secret_ref"
+        ):
+            problems.append(
+                "empty_case_hosted_mcp.credential_secret_ref equals hosted_mcp.credential_secret_ref; "
+                "one credential is one account, so cross-account leakage could not be tested"
+            )
 
-    environment = manifest.get("environment") or {}
-    if environment.get("production_target_allowed") and environment.get("kind") != "production":
-        problems.append("environment.production_target_allowed is true but environment.kind is not 'production'")
+    _validate_environment(manifest, problems)
 
     corpus_sha256 = manifest.get("corpus_sha256")
     if not corpus_sha256:

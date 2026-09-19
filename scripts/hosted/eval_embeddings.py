@@ -30,9 +30,16 @@ REPO_ROOT = HERE.parents[1]
 EVALS_HOSTED = REPO_ROOT / "evals" / "hosted"
 sys.path.insert(0, str(EVALS_HOSTED))
 
-from lib import lexical_control, manifest as manifest_lib, mcp_client, scoring  # noqa: E402
+from lib import forgotten_targets, lexical_control, manifest as manifest_lib, mcp_client, scoring, seeding  # noqa: E402
+from lib.budget import BudgetGuard  # noqa: E402
 from lib.cosine import rank_by_cosine  # noqa: E402
 from lib.fixture_embedder import FixedVectorEmbedder, HashBagEmbedder  # noqa: E402
+
+# Uncommitted changes here would make a recorded source_sha name code that
+# did not run. Evidence output paths (docs/launch/evidence) are deliberately
+# outside this list so writing a result never dirties the check.
+DIRTY_CHECK_PATHS = ("evals/hosted", "scripts/hosted")
+TARGETS = ((seeding.ROLE_POSITIVE, "hosted_mcp"), (seeding.ROLE_EMPTY_CASE, "empty_case_hosted_mcp"))
 
 EXIT_PASS = 0
 EXIT_TESTED_FAILURE = 1
@@ -40,9 +47,23 @@ EXIT_BLOCKED = 2
 EXIT_INVALID_INPUT = 3
 
 
+def canonical_sha256(obj) -> str:
+    # Same recipe as evals/hosted/corpus_gen.py (canonical_json + sha256_of).
+    text = json.dumps(obj, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def load_corpus(corpus_path: Path, facts_path: Path):
     corpus = json.loads(corpus_path.read_text(encoding="utf-8"))
     facts = json.loads(facts_path.read_text(encoding="utf-8"))
+    # The frozen hashes live in the same file as the cases they pin, so
+    # reading meta alone would let an edited case or fact text keep a stale
+    # hash. Recompute both and refuse a mismatch: a corpus edit must go
+    # through corpus_gen.py and a reviewed new hash, never around it.
+    if canonical_sha256(corpus["cases"]) != corpus["meta"]["corpus_hash_sha256"]:
+        raise ValueError("corpus.json cases do not hash to its frozen meta.corpus_hash_sha256; the corpus was edited outside corpus_gen.py")
+    if canonical_sha256(facts["facts"]) != corpus["meta"]["facts_hash_sha256"]:
+        raise ValueError("facts.json does not hash to the frozen meta.facts_hash_sha256; a fact was edited outside corpus_gen.py")
     fact_by_id = {f["id"]: f for f in facts["facts"]}
     return corpus, facts, fact_by_id
 
@@ -110,7 +131,9 @@ def run_lexical_arm(serenity_bin: str, seedbrain_bin: str, corpus: dict, fact_by
         isolated = lexical_control.build_disposable_brain(serenity_bin, seedbrain_bin, [filler])
         refs = isolated.search(case["query"], limit=scoring.K)
         ranked_ids = [chunk_ref_to_fact_id(r) for r in refs]
-        empty_results.append(scoring.score_empty_case(case["id"], ranked_ids, allowed_ids={filler["id"]}))
+        # Strict: the control brain holds one unrelated filler fact, and
+        # returning it counts as a violation like any other result.
+        empty_results.append(scoring.score_empty_case(case["id"], ranked_ids))
 
     return positive_results, empty_results
 
@@ -178,12 +201,15 @@ def base_result(task_id: str, profile: str, source_sha: str, evidence_level: str
 
 
 def run_fixtures(args: argparse.Namespace) -> tuple[dict, int]:
+    started = time.time()
     corpus, facts, fact_by_id = load_corpus(args.corpus, args.facts)
+    manifest_lib.load_manifest(args.manifest)  # unreadable/non-object manifest is invalid input, not silently ignored
     source_sha = git_source_sha(REPO_ROOT)
     all_fact_ids = sorted(fact_by_id.keys())
 
     result = base_result(args.task_id, args.profile, source_sha, "fixture")
     result["corpus_sha256"] = corpus["meta"]["corpus_hash_sha256"]
+    result["configuration_sha256"] = sha256_file(args.manifest)
     result["commands"].append(
         f"python3 {Path(__file__).relative_to(REPO_ROOT)} --fixtures --manifest {args.manifest} --output {args.output}"
     )
@@ -282,8 +308,17 @@ def run_fixtures(args: argparse.Namespace) -> tuple[dict, int]:
         "hosted account); this run is fixtures-only mechanical rehearsal."
     )
 
-    overall_status = "PARTIAL" if lexical_summary is not None else "PARTIAL"
-    result["status"] = overall_status
+    dirty = dirty_paths(REPO_ROOT)
+    if dirty:
+        result["limitations"].append(dirty_message(dirty) + " -- recorded, not blocked, because fixtures qualify nothing")
+    result["per_query"] = {
+        "hashbag": [case_row(r) for r in hashbag_results],
+        "fixed_vector": [case_row(r) for r in fixed_results],
+        "lexical": [case_row(r) for r in (lexical_pos or []) + (lexical_empty or [])],
+    }
+    result["usage"] = {"calls_this_run": 0}
+    result["elapsed_seconds"] = round(time.time() - started, 3)
+    result["status"] = "PARTIAL"
     result["blockers"] = [
         {
             "owner": "David / EMBEDDINGS gate owner",
@@ -306,8 +341,10 @@ def run_fixtures(args: argparse.Namespace) -> tuple[dict, int]:
     return result, EXIT_PASS
 
 
-def build_blocked_result(args: argparse.Namespace, corpus: dict, source_sha: str, problems: list[str]) -> dict:
-    result = base_result(args.task_id, args.profile, source_sha, "live-provider")
+def build_blocked_result(
+    args: argparse.Namespace, corpus: dict, source_sha: str, problems: list[str], *, evidence_level: str = "live-provider"
+) -> dict:
+    result = base_result(args.task_id, args.profile, source_sha, evidence_level)
     result["corpus_sha256"] = corpus["meta"]["corpus_hash_sha256"]
     result["status"] = "BLOCKED"
     result["cases"]["planned"] = len(corpus["cases"])
@@ -316,7 +353,7 @@ def build_blocked_result(args: argparse.Namespace, corpus: dict, source_sha: str
     result["acceptance"] = [
         acceptance_row(
             criterion="Budget exhausted/provider unavailable yields BLOCKED with partial results and no further calls",
-            expected="Missing/null budget or credential refuses the run rather than defaulting to unlimited access",
+            expected="Missing/null budget, credential, seed receipt or provider pin refuses the run rather than defaulting to unlimited access",
             observed="; ".join(problems),
             status="PASS",
         )
@@ -325,155 +362,248 @@ def build_blocked_result(args: argparse.Namespace, corpus: dict, source_sha: str
     return result
 
 
-def run_live(args: argparse.Namespace) -> tuple[dict, int]:
-    corpus, facts, fact_by_id = load_corpus(args.corpus, args.facts)
-    source_sha = git_source_sha(REPO_ROOT)
+def dirty_paths(repo_root: Path, paths: tuple[str, ...] = DIRTY_CHECK_PATHS) -> list[str]:
+    """Uncommitted changes under the harness's own code. A recorded
+    source_sha names a commit; if the code that ran differs from it, the
+    evidence would name bytes nobody ran."""
+    out = subprocess.run(
+        ["git", "status", "--porcelain", "--", *paths], cwd=repo_root, capture_output=True, text=True, check=True
+    )
+    return [line[3:] for line in out.stdout.splitlines() if line.strip()]
 
-    m = manifest_lib.load_manifest(args.manifest)
-    problems = manifest_lib.validate_live_manifest(m)
-    if problems:
-        return build_blocked_result(args, corpus, source_sha, problems), EXIT_BLOCKED
 
-    expected_hash = m.get("corpus_sha256")
-    actual_hash = corpus["meta"]["corpus_hash_sha256"]
-    if expected_hash != actual_hash:
-        return (
-            build_blocked_result(
-                args, corpus, source_sha,
-                [f"manifest corpus_sha256={expected_hash!r} does not match on-disk corpus={actual_hash!r}"],
-            ),
-            EXIT_BLOCKED,
+def resolve_receipt_path(manifest_path: Path, raw: str) -> Path:
+    p = Path(raw)
+    return p if p.is_absolute() else (manifest_path.resolve().parent / p)
+
+
+def load_target_receipts(m: dict, manifest_path: Path, corpus: dict, facts_sha256: str) -> tuple[dict, list[str]]:
+    """Loads and verifies both seed receipts against this manifest, offline.
+    Returns ({role: receipt}, problems)."""
+    corpus_sha256 = corpus["meta"]["corpus_hash_sha256"]
+    receipts: dict[str, dict] = {}
+    problems: list[str] = []
+    for role, key in TARGETS:
+        target = m[key]
+        receipt, errs = seeding.load_receipt(
+            resolve_receipt_path(manifest_path, target["seed_receipt_path"]), target["corpus_seeded_confirmation"]
         )
+        if receipt is not None:
+            errs += seeding.verify_receipt(
+                receipt,
+                role=role,
+                corpus=corpus,
+                corpus_sha256=corpus_sha256,
+                facts_sha256=facts_sha256,
+                endpoint_url=target["endpoint_url"],
+                credential_secret_ref=target["credential_secret_ref"],
+            )
+            receipts[role] = receipt
+        problems += [f"{key}: {e}" for e in errs]
+    return receipts, problems
 
-    budget = m["budget"]
-    max_calls = int(budget["max_calls"])
-    max_elapsed = float(budget["max_elapsed_seconds"])
-    max_input_tokens = float(budget["max_input_tokens"])
-    max_cost_per_call_usd = float(budget["max_cost_per_call_usd"])
-    approved_max_usd = float(budget["approved_max_usd"])
 
-    started = time.time()
-    clients: list[mcp_client.MCPClient] = []
+def credential_problems(m: dict) -> tuple[dict[str, str], list[str]]:
+    """Both credentials must be present in the environment and differ (one
+    credential is one account). Values are never logged or returned in a
+    message -- only the env-var names."""
+    tokens: dict[str, str] = {}
+    problems: list[str] = []
+    for role, key in TARGETS:
+        ref = m[key]["credential_secret_ref"]
+        val = os.environ.get(ref)
+        if not val:
+            problems.append(f"${ref} is not set in the environment ({key})")
+        else:
+            tokens[role] = val
+    if len(tokens) == 2 and tokens[seeding.ROLE_POSITIVE] == tokens[seeding.ROLE_EMPTY_CASE]:
+        problems.append("hosted_mcp and empty_case_hosted_mcp resolve to the same credential value; they must be separate accounts")
+    return tokens, problems
 
-    def combined_calls_made() -> int:
-        return sum(c.calls_made for c in clients)
 
-    def combined_tokens_used() -> float:
-        # char/4 estimate, the same convention internal/server/memory's
-        # own charEstimate uses for budget packing -- an approximation,
-        # disclosed as such, not a provider-reported token count.
-        return sum(c.usage().request_bytes for c in clients) / 4.0
+def case_row(r: scoring.CaseResult) -> dict:
+    return {
+        "case_id": r.case_id,
+        "category": r.category,
+        "expected_fact_id": r.expected_fact_id,
+        "rank": r.rank,
+        "hit": r.hit,
+        "top5": r.ranked_ids[: scoring.K],
+        "forbidden_ids": r.forbidden_ids,
+    }
 
-    def budget_exhausted_reason() -> str | None:
-        """Checked before every single real HTTP request this run makes,
-        including each client's own initialize() -- never only before a
-        tools/call. A missing/unenforceable dollar cap blocks before any
-        network call at all (see manifest.py's max_cost_per_call_usd)."""
-        calls_made = combined_calls_made()
-        if calls_made >= max_calls:
-            return f"max_calls={max_calls} reached"
-        if time.time() - started >= max_elapsed:
-            return f"max_elapsed_seconds={max_elapsed} reached"
-        if combined_tokens_used() >= max_input_tokens:
-            return f"max_input_tokens={max_input_tokens} reached"
-        projected_cost = (calls_made + 1) * max_cost_per_call_usd
-        if projected_cost > approved_max_usd:
-            return f"approved_max_usd={approved_max_usd} would be exceeded by the next call (max_cost_per_call_usd={max_cost_per_call_usd})"
-        return None
 
-    def make_client(prefix: str, target: dict) -> tuple[mcp_client.MCPClient | None, str | None]:
-        cred_ref = target["credential_secret_ref"]
-        cred_token = os.environ.get(cred_ref)
-        if not cred_token:
-            return None, f"${cred_ref} is not set in the environment ({prefix})"
-        c = mcp_client.MCPClient(target["endpoint_url"], cred_token, allowed_origins=target["allowed_origins"])
-        clients.append(c)
-        return c, None
+def default_lexical_provider(args, corpus: dict, fact_by_id: dict):
+    serenity_bin, seedbrain_bin = lexical_control.resolve_binaries(args.serenity_bin, args.seedbrain_bin)
+    return run_lexical_arm(serenity_bin, seedbrain_bin, corpus, fact_by_id)
 
-    def initialize_within_budget(client: mcp_client.MCPClient) -> str | None:
-        reason = budget_exhausted_reason()
-        if reason:
-            return reason
-        try:
-            client.initialize()
-        except mcp_client.MCPError as e:
-            return f"initialize failed: {e}"
-        return None
 
-    def run_phase(client: mcp_client.MCPClient, cases: list[dict], scorer) -> tuple[list, str | None]:
-        results = []
-        for case in cases:
-            reason = budget_exhausted_reason()
-            if reason:
-                return results, reason
-            try:
-                resp = client.call_tool("recall", {"query": case["query"], "limit": scoring.K})
-            except mcp_client.MCPError as e:
-                return results, f"live call failed for case {case['id']}: {e}"
-            ranked_ids = [r.get("slug") for r in resp.get("results", []) if r.get("slug")]
-            results.append(scorer(case, ranked_ids))
-        return results, None
-
-    result = base_result(args.task_id, args.profile, source_sha, "live-provider")
-    result["corpus_sha256"] = actual_hash
-    result["provider"] = {
-        "base_url": m["provider"].get("base_url"),
-        "model": m["provider"].get("model"),
+def provider_record(m: dict) -> dict:
+    p = m["provider"]
+    return {
+        "base_url": p.get("base_url"),
+        "model": p.get("model"),
+        "version_pin": p.get("version_pin"),
+        "dimensions": p.get("dimensions"),
+        "serving_provider": p.get("serving_provider"),
+        "privacy_review_ref": p.get("privacy_review_ref"),
         "hosted_endpoint": m["hosted_mcp"].get("endpoint_url"),
     }
 
-    pos_client, err = make_client("hosted_mcp", m["hosted_mcp"])
-    blocked_reason = err
-    positive_results: list = []
-    if blocked_reason is None:
-        blocked_reason = initialize_within_budget(pos_client)
-    if blocked_reason is None:
-        positive_results, blocked_reason = run_phase(
-            pos_client,
-            positive_cases(corpus),
-            lambda case, ranked: scoring.score_positive_case(case["id"], case["category"], case["expected_fact_id"], ranked),
+
+def guard_check_for(guard: BudgetGuard):
+    def check() -> None:
+        reason = guard.exhausted_reason()
+        if reason:
+            raise seeding.SeedBlocked(reason)
+
+    return check
+
+
+def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, int]:
+    """Scores the real hosted recall endpoint. Everything that can be
+    checked without spending is checked first (manifest, clean tree, seed
+    receipts, credentials, the local lexical control), so a missing
+    prerequisite blocks before the first paid call."""
+    started = time.time()
+    corpus, facts, fact_by_id = load_corpus(args.corpus, args.facts)
+    source_sha = git_source_sha(REPO_ROOT)
+    actual_hash = corpus["meta"]["corpus_hash_sha256"]
+
+    m = manifest_lib.load_manifest(args.manifest)
+    problems = manifest_lib.validate_live_manifest(m, manifest_lib.PHASE_LIVE)
+    if problems:
+        return build_blocked_result(args, corpus, source_sha, problems), EXIT_BLOCKED
+    if m.get("corpus_sha256") != actual_hash:
+        return (
+            build_blocked_result(
+                args, corpus, source_sha,
+                [f"manifest corpus_sha256={m.get('corpus_sha256')!r} does not match on-disk corpus={actual_hash!r}"],
+            ),
+            EXIT_BLOCKED,
         )
+    dirty = dirty_paths(REPO_ROOT)
+    if dirty:
+        return build_blocked_result(args, corpus, source_sha, [dirty_message(dirty)]), EXIT_BLOCKED
 
-    # The empty-case phase requires its own separately seeded, isolated
-    # account/credential (manifest.py's empty_case_hosted_mcp) -- reusing
-    # the positive-case account cannot honestly test "cross-account/
-    # forgotten leakage=0" (T23.43.md's own acceptance wording), since a
-    # near-miss hit against one of the 95 positive facts sitting in the
-    # SAME account would be indistinguishable from genuine leakage.
+    receipts, problems = load_target_receipts(m, args.manifest, corpus, corpus["meta"]["facts_hash_sha256"])
+    tokens, cred_problems = credential_problems(m)
+    problems += cred_problems
+    if problems:
+        return build_blocked_result(args, corpus, source_sha, problems), EXIT_BLOCKED
+
+    # The lexical control is local and free; run it before any paid call so
+    # a missing binary blocks here and not after the spend.
+    try:
+        lexical_pos, _lexical_empty = (lexical_provider or (lambda: default_lexical_provider(args, corpus, fact_by_id)))()
+    except lexical_control.LexicalControlUnavailable as e:
+        return build_blocked_result(args, corpus, source_sha, [f"lexical control unavailable: {e}"]), EXIT_BLOCKED
+
+    guard = BudgetGuard(
+        m["budget"],
+        prior_calls=sum(r["usage"]["calls_made"] for r in receipts.values()),
+        prior_request_bytes=sum(r["usage"]["request_bytes"] for r in receipts.values()),
+    )
+    check = guard_check_for(guard)
+
+    def run_target(role: str, key: str, cases: list[dict], scorer) -> tuple[list, str | None]:
+        target, receipt = m[key], receipts[role]
+        client = guard.client(target["endpoint_url"], tokens[role], target["allowed_origins"])
+        id_map = receipt["id_map"]
+        # The positive account must still hold exactly what was seeded. The
+        # empty-case account must hold NOTHING: every target was forgotten.
+        expected_current = set(id_map) if role == seeding.ROLE_POSITIVE else set()
+        results: list = []
+        try:
+            check()
+            client.initialize()
+            # Drift/contamination proof at evaluation time, not only at seed time.
+            facts_now = seeding.fetch_inventory(client, check)
+            if set(facts_now) != expected_current:
+                raise seeding.SeedBlocked(
+                    f"{key}: account inventory differs from its seed receipt (extra, missing or replaced facts)"
+                )
+            for case in cases:
+                ranked, fact_ids = seeding.recall_query(client, check, case["query"], id_map)
+                if role == seeding.ROLE_POSITIVE and any(x.startswith("unresolved:") for x in ranked):
+                    raise seeding.SeedBlocked(
+                        f"case {case['id']}: recall returned a result that is not in the seed receipt "
+                        "(foreign content in the account, or the recall slug contract changed)"
+                    )
+                results.append(scorer(case, ranked, fact_ids))
+        except (seeding.SeedBlocked, mcp_client.BudgetExceeded) as e:
+            return results, str(e)  # authored by this harness, never upstream text
+        except mcp_client.MCPError as e:
+            return results, f"live call failed: {e}"  # fixed classes only
+        return results, None
+
+    positive_results, blocked_reason = run_target(
+        seeding.ROLE_POSITIVE,
+        "hosted_mcp",
+        positive_cases(corpus),
+        lambda case, ranked, _facts: scoring.score_positive_case(
+            case["id"], case["category"], case["expected_fact_id"], ranked
+        ),
+    )
     empty_results: list = []
+    sentinel_results: list = []
     if blocked_reason is None:
-        empty_client, err2 = make_client("empty_case_hosted_mcp", m["empty_case_hosted_mcp"])
-        blocked_reason = err2
-        if blocked_reason is None:
-            blocked_reason = initialize_within_budget(empty_client)
-        if blocked_reason is None:
-            empty_results, blocked_reason = run_phase(
-                empty_client,
-                empty_cases(corpus),
-                lambda case, ranked: scoring.score_empty_case(case["id"], ranked, allowed_ids=set()),
-            )
+        # The 5 frozen expected-empty queries, then the cross-account
+        # sentinel probe. All are scored strictly: any returned result or
+        # fact fails. The sentinel is not one of the 5 cases and is reported
+        # separately.
+        probe = {"id": "sentinel-probe", "query": forgotten_targets.SENTINEL_FACT_TEXT}
+        both, blocked_reason = run_target(
+            seeding.ROLE_EMPTY_CASE,
+            "empty_case_hosted_mcp",
+            empty_cases(corpus) + [probe],
+            lambda case, ranked, facts_arm: scoring.score_empty_case(case["id"], ranked, facts_arm),
+        )
+        n_empty = len(empty_cases(corpus))
+        empty_results, sentinel_results = both[:n_empty], both[n_empty:]
 
-    summary = scoring.summarize(positive_results, empty_results)
-    client_calls_made = combined_calls_made()
+    ln_results = lexical_negative_check(positive_results, lexical_pos, corpus) if blocked_reason is None else []
+    summary = scoring.summarize(positive_results, empty_results, ln_results)
 
-    result["cases"]["planned"] = len(corpus["cases"])
-    result["cases"]["executed"] = len(positive_results) + len(empty_results)
-    result["cases"]["passed"] = summary.overall_hits + sum(1 for r in empty_results if r.hit)
-    result["cases"]["failed"] = len(positive_results) - summary.overall_hits + sum(1 for r in empty_results if not r.hit)
-    result["cases"]["skipped"] = len(corpus["cases"]) - result["cases"]["executed"]
-    result["cases"]["skip_reasons"] = [blocked_reason] if blocked_reason else []
-
+    result = base_result(args.task_id, args.profile, source_sha, "live-provider")
+    result["corpus_sha256"] = actual_hash
+    result["configuration_sha256"] = sha256_file(args.manifest)
+    result["provider"] = provider_record(m)
+    result["commands"].append(f"python3 {Path(__file__).relative_to(REPO_ROOT)} --live --manifest {args.manifest} --output {args.output}")
+    executed = len(positive_results) + len(empty_results)
+    result["cases"].update(
+        planned=len(corpus["cases"]),
+        executed=executed,
+        passed=summary.overall_hits + sum(1 for r in empty_results if r.hit),
+        failed=(len(positive_results) - summary.overall_hits) + sum(1 for r in empty_results if not r.hit),
+        skipped=len(corpus["cases"]) - executed,
+        skip_reasons=[blocked_reason] if blocked_reason else [],
+    )
+    sentinel_leaked = sum(len(r.forbidden_ids) for r in sentinel_results)
+    sentinel_ok = len(sentinel_results) == 1 and sentinel_leaked == 0
+    quality_pass = (
+        summary.overall_floor_pass and summary.empty_all_pass and summary.lexical_negative_pass and sentinel_ok
+    )
     result["acceptance"] = [
         acceptance_row(
+            criterion="Seed receipts verified: controlled seeding, empty-account proof and exact inventory for both accounts",
+            expected="Both receipts complete, hash-bound to the manifest, matching this corpus and endpoint origin",
+            observed="; ".join(
+                f"{role}: {len(r['seeded'])} facts, calls={r['usage']['calls_made']}, empty_proof={r['empty_account_proof']['passed']}"
+                for role, r in sorted(receipts.items())
+            ),
+            status="PASS",
+        ),
+        acceptance_row(
             criterion="Hit@5 thresholds (overall>=0.90, category floors, empty leakage=0, lexical-negative>=18/20) met over live results",
-            expected="overall>=0.90; paraphrase>=36/40; name_entity>=19/20; preference>=19/20; multilingual>=9/10; temporal=5/5; empty leakage=0",
+            expected="overall>=0.90; paraphrase>=36/40; name_entity>=19/20; preference>=19/20; multilingual>=9/10; temporal=5/5; empty leakage=0; lexical-negative>=18 of the flagged paraphrases",
             observed=(
                 f"overall={summary.overall_hits}/{summary.overall_total} ({summary.overall_hit_rate:.3f}); "
-                f"by_category={summary.by_category}; empty_leakage={summary.empty_leakage_total}"
+                f"by_category={summary.by_category}; empty_leakage={summary.empty_leakage_total}; "
+                f"cross_account_sentinel_leakage={sentinel_leaked if sentinel_results else 'not run'}; "
+                f"lexical_negative={summary.lexical_negative_hits}/{summary.lexical_negative_total}"
             ),
-            status="PASS" if (summary.overall_floor_pass and summary.empty_all_pass and blocked_reason is None) else (
-                "BLOCKED" if blocked_reason else "FAIL"
-            ),
+            status="BLOCKED" if blocked_reason else ("PASS" if quality_pass else "FAIL"),
         ),
         acceptance_row(
             criterion="Fixed-vector/lexical-only stub fails the quality predicate (proven in a prior --fixtures run)",
@@ -483,37 +613,312 @@ def run_live(args: argparse.Namespace) -> tuple[dict, int]:
         ),
         acceptance_row(
             criterion="Budget exhausted/provider unavailable yields BLOCKED with partial results and no further calls",
-            expected="On exhaustion, stop immediately and report partial results, never continue calling",
-            observed=blocked_reason or f"budget not exhausted: {client_calls_made}/{max_calls} calls used",
-            status="PASS" if blocked_reason or client_calls_made <= max_calls else "FAIL",
+            expected="On exhaustion or search_degraded, stop immediately and report partial results, never continue calling",
+            observed=blocked_reason or f"budget not exhausted: {guard.total_calls()}/{guard.max_calls} calls used",
+            status="PASS" if blocked_reason or guard.total_calls() <= guard.max_calls else "FAIL",
         ),
     ]
-
-    result["cost"]["actual_usd"] = round(client_calls_made * max_cost_per_call_usd, 6)
-    result["cost"]["approved_max_usd"] = approved_max_usd
-    result["cost"]["authorization_refs"] = [budget.get("authorization_ref")] if budget.get("authorization_ref") else []
+    result["usage"] = {
+        "calls_this_run": guard.calls_made(),
+        "calls_from_seed_receipts": guard.prior_calls,
+        "request_bytes": guard.request_bytes(),
+        "response_bytes": guard.response_bytes(),
+        "input_token_upper_bound_including_seed": guard.tokens_used(),  # one token per request byte
+    }
+    result["elapsed_seconds"] = round(time.time() - started, 3)
+    result["seed_receipts"] = {
+        role: {"confirmation": m[key]["corpus_seeded_confirmation"], "facts": len(receipts[role]["seeded"])}
+        for role, key in TARGETS
+    }
+    result["per_query"] = {
+        "positive": [case_row(r) for r in positive_results],
+        "empty": [case_row(r) for r in empty_results],
+        "cross_account_sentinel": [case_row(r) for r in sentinel_results],
+        "lexical_negative": [case_row(r) for r in ln_results],
+    }
+    result["limitations"] += [
+        "Expected-empty scoring is strict: any returned search result or fact fails the case. The empty-case "
+        "account holds zero current facts because each synthetic target was remembered, shown retrievable, and "
+        "forgotten through the ordinary forget API by the seed run (see the seed receipt). Only `forget` was "
+        "exercised; TTL expiry was not.",
+        "The forgotten-target and sentinel texts (lib/forgotten_targets.py) are outside corpus.json and are a "
+        "proposed addition pending task41 reviewer confirmation; the frozen queries, positive cases and "
+        "thresholds are unchanged.",
+        "cost.actual_usd is calls * budget.max_cost_per_call_usd (an operator ceiling), not a provider invoice.",
+        "provider fields are the manifest's declared pin; the hosted recall response does not report a model or dimensions.",
+    ]
+    result["cost"]["actual_usd"] = guard.projected_cost_usd()
+    result["cost"]["approved_max_usd"] = guard.approved_max_usd
+    result["cost"]["authorization_refs"] = [m["budget"]["authorization_ref"]]
 
     if blocked_reason:
-        result["status"] = "BLOCKED"
+        result["status"], exit_code = "BLOCKED", EXIT_BLOCKED
         result["blockers"] = [{"owner": "coordinator", "required_input": blocked_reason}]
-        exit_code = EXIT_BLOCKED
-    elif summary.overall_floor_pass and summary.empty_all_pass:
-        result["status"] = "PASS"
+    elif quality_pass:
+        result["status"], exit_code = "PASS", EXIT_PASS
+    else:
+        result["status"], exit_code = "FAIL", EXIT_TESTED_FAILURE
+    return result, exit_code
+
+
+def dirty_message(dirty: list[str]) -> str:
+    return (
+        f"uncommitted changes under the harness code ({', '.join(dirty[:5])}); commit them so source_sha "
+        "names the code that ran"
+    )
+
+
+def run_seed(args: argparse.Namespace) -> tuple[dict, int]:
+    """Seeds both qualification accounts under the same budget caps the live
+    run uses, after proving each was empty. Never runs without
+    seeding.authorized, never overwrites a receipt, stops at the first
+    blocked step, and prints each receipt's confirmation string for the live
+    manifest."""
+    started = time.time()
+    corpus, facts, fact_by_id = load_corpus(args.corpus, args.facts)
+    source_sha = git_source_sha(REPO_ROOT)
+    corpus_sha256 = corpus["meta"]["corpus_hash_sha256"]
+    facts_sha256 = corpus["meta"]["facts_hash_sha256"]
+
+    m = manifest_lib.load_manifest(args.manifest)
+    problems = manifest_lib.validate_live_manifest(m, manifest_lib.PHASE_SEED)
+    if m.get("corpus_sha256") != corpus_sha256:
+        problems.append(f"manifest corpus_sha256={m.get('corpus_sha256')!r} does not match on-disk corpus={corpus_sha256!r}")
+    if not args.receipt_dir:
+        problems.append("--receipt-dir is required for --seed; receipts are the only attribution record")
+    if not problems:
+        dirty = dirty_paths(REPO_ROOT)
+        if dirty:
+            problems.append(dirty_message(dirty))
+        tokens, cred_problems = credential_problems(m)
+        problems += cred_problems
+    if not problems:
+        existing = [p for p in receipt_paths(args.receipt_dir).values() if p.exists()]
+        if existing:
+            problems.append(f"refusing to overwrite existing seed receipt(s): {', '.join(str(p) for p in existing)}")
+    if problems:
+        return build_blocked_result(args, corpus, source_sha, problems), EXIT_BLOCKED
+
+    guard = BudgetGuard(m["budget"])
+    check = guard_check_for(guard)
+    paths = receipt_paths(args.receipt_dir)
+    outcomes: dict[str, seeding.SeedOutcome] = {}
+    confirmations: dict[str, str] = {}
+    blocked_reason: str | None = None
+    for role, key in TARGETS:
+        target = m[key]
+        client = guard.client(target["endpoint_url"], tokens[role], target["allowed_origins"])
+        outcome = seeding.seed_target(
+            client, check, role=role, corpus=corpus, fact_by_id=fact_by_id, corpus_sha256=corpus_sha256,
+            facts_sha256=facts_sha256, source_sha=source_sha, recorded_at=now_iso(),
+            credential_secret_ref=target["credential_secret_ref"],
+            preceded_by_seeded_facts=sum(len(o.receipt["seeded"]) for o in outcomes.values()),
+        )
+        outcomes[role] = outcome
+        confirmations[role] = seeding.write_receipt(paths[role], outcome.receipt)
+        if outcome.blocked_reason:
+            blocked_reason = f"{key}: {outcome.blocked_reason}"
+            break
+
+    seeded = sum(len(o.receipt["seeded"]) for o in outcomes.values())
+    result = base_result(args.task_id, args.profile, source_sha, "live-provider")
+    result["corpus_sha256"] = corpus_sha256
+    result["configuration_sha256"] = sha256_file(args.manifest)
+    result["provider"] = provider_record(m)
+    result["commands"].append(
+        f"python3 {Path(__file__).relative_to(REPO_ROOT)} --seed --manifest {args.manifest} --receipt-dir {args.receipt_dir} --output {args.output}"
+    )
+    planned = sum(len(seeding.plan_fact_ids(corpus, role)) for role, _ in TARGETS)
+    empty_receipt = outcomes[seeding.ROLE_EMPTY_CASE].receipt if seeding.ROLE_EMPTY_CASE in outcomes else {}
+    result["cases"].update(
+        planned=planned, executed=seeded, passed=seeded, failed=0, skipped=planned - seeded,
+        skip_reasons=[blocked_reason] if blocked_reason else [],
+    )
+    both_complete = len(outcomes) == 2 and all(o.receipt["complete"] for o in outcomes.values())
+    result["acceptance"] = [
+        acceptance_row(
+            criterion="Empty-account proof before the first seed write, for each account",
+            expected="recall facts_total=0, no search results, search not degraded",
+            observed="; ".join(
+                f"{role}: {(o.receipt['empty_account_proof'] or {'passed': 'not reached'})['passed']}" for role, o in sorted(outcomes.items())
+            ),
+            status="PASS" if len(outcomes) == 2 and all((o.receipt["empty_account_proof"] or {}).get("passed") for o in outcomes.values()) else "BLOCKED",
+        ),
+        acceptance_row(
+            criterion="Controlled seeding: every planned fact inserted with a stored vector, inventory equals the seed",
+            expected="status=inserted and search_state=semantic for each fact; post-seed inventory equals the seeded ids exactly",
+            observed=blocked_reason or f"{seeded}/{planned} facts seeded across both accounts",
+            status="PASS" if both_complete else "BLOCKED",
+        ),
+        acceptance_row(
+            criterion="Forgotten-fact protocol: each expected-empty target shown present, forgotten via forget, then absent from inventory and search; cross-account sentinel unreachable",
+            expected="presence rank<=5 for 5/5, forget expired=true for 5/5, post-forget inventory 0 and zero results/facts for 5/5, sentinel probe empty",
+            observed=blocked_reason or (
+                f"presence={len(empty_receipt.get('presence') or [])}/5, forgotten={len(empty_receipt.get('forget') or [])}/5, "
+                f"post_forget_inventory={(empty_receipt.get('post_forget') or {}).get('inventory_total')}, "
+                f"sentinel_probe_passed={(empty_receipt.get('cross_account_probe') or {}).get('passed')}"
+            ),
+            status="PASS" if both_complete else "BLOCKED",
+        ),
+    ]
+    result["usage"] = {
+        "calls_this_run": guard.calls_made(),
+        "request_bytes": guard.request_bytes(),
+        "response_bytes": guard.response_bytes(),
+        "input_token_upper_bound": guard.tokens_used(),  # one token per request byte
+    }
+    result["elapsed_seconds"] = round(time.time() - started, 3)
+    result["seed_receipts"] = {
+        role: {"path": str(paths[role]), "confirmation": confirmations[role], "complete": outcomes[role].receipt["complete"]}
+        for role in outcomes
+    }
+    result["cost"]["actual_usd"] = guard.projected_cost_usd()
+    result["cost"]["approved_max_usd"] = guard.approved_max_usd
+    result["cost"]["authorization_refs"] = [m["budget"]["authorization_ref"], m["seeding"]["authorization_ref"]]
+    result["limitations"].append(
+        "Seeding proves the accounts held the corpus; it measures no retrieval quality. Status stays PARTIAL until a "
+        "separate --live run scores recall against the receipts."
+    )
+    if both_complete:
+        result["status"] = "PARTIAL"
         exit_code = EXIT_PASS
     else:
-        result["status"] = "FAIL"
-        exit_code = EXIT_TESTED_FAILURE
-
+        result["status"] = "BLOCKED"
+        result["blockers"] = [{"owner": "coordinator", "required_input": blocked_reason or "seeding incomplete"}]
+        exit_code = EXIT_BLOCKED
     return result, exit_code
+
+
+def receipt_paths(receipt_dir) -> dict[str, Path]:
+    d = Path(receipt_dir or ".")
+    return {role: d / f"T23.43-seed-{role}.json" for role, _ in TARGETS}
+
+
+def plan_requests(corpus: dict, fact_by_id: dict, corpus_sha256: str) -> dict:
+    """Exact call and request-byte plan for the whole qualification (seed
+    then live), computed from the frozen corpus with no network. It mirrors
+    seeding.seed_target and run_live request for request; the preflight test
+    compares it with a real run, so drift fails a test."""
+    K = scoring.K
+    tool = lambda name, args: ("tools/call", mcp_client.tool_call_params(name, args))  # noqa: E731
+    recall = lambda args: tool("recall", args)  # noqa: E731
+    init = ("initialize", mcp_client.INITIALIZE_PARAMS)
+    inventory = recall({"limit": seeding.INVENTORY_LIMIT})
+    probes = [recall({"limit": 1}), recall({"query": seeding.EMPTY_PROBE_QUERY, "limit": K})]
+    empty = empty_cases(corpus)
+    sentinel = recall({"query": forgotten_targets.SENTINEL_FACT_TEXT, "limit": K})
+    empty_queries = [recall({"query": c["query"], "limit": K}) for c in empty]
+
+    def remembers(role: str) -> list:
+        return [
+            tool("remember", {
+                "fact": text,
+                "provenance": seeding.provenance(corpus_sha256, fid),
+                "operation_key": seeding.operation_key(corpus_sha256, fid),
+            })
+            for fid, text in seeding.plan_facts(corpus, fact_by_id, role)
+        ]
+
+    forgets = [tool("forget", {"id": "0" * 64, "reason": "T23.43 expected-empty qualification: forgotten target"}) for _ in empty]
+    requests = {
+        (seeding.ROLE_POSITIVE, "seed"): [init, *probes, *remembers(seeding.ROLE_POSITIVE), inventory],
+        (seeding.ROLE_EMPTY_CASE, "seed"): [
+            init, *probes, *remembers(seeding.ROLE_EMPTY_CASE), inventory,
+            *empty_queries, *forgets, inventory, *empty_queries, sentinel,
+        ],
+        (seeding.ROLE_POSITIVE, "live"): [
+            init, inventory, *[recall({"query": c["query"], "limit": K}) for c in positive_cases(corpus)]
+        ],
+        (seeding.ROLE_EMPTY_CASE, "live"): [init, inventory, *empty_queries, sentinel],
+    }
+    size = lambda reqs: sum(len(mcp_client.request_body(1000, m, p)) for m, p in reqs)  # noqa: E731
+    plan: dict = {"per_role": {}}
+    for role, _ in TARGETS:
+        plan["per_role"][role] = {
+            "facts_to_seed": len(seeding.plan_fact_ids(corpus, role)),
+            "seed_calls": len(requests[(role, "seed")]),
+            "live_calls": len(requests[(role, "live")]),
+            "request_bytes": size(requests[(role, "seed")]) + size(requests[(role, "live")]),
+        }
+    plan["total_calls"] = sum(r["seed_calls"] + r["live_calls"] for r in plan["per_role"].values())
+    plan["total_request_bytes"] = sum(r["request_bytes"] for r in plan["per_role"].values())
+    # Charged at one token per request byte (lib/budget.py), an upper bound.
+    plan["input_token_upper_bound"] = plan["total_request_bytes"]
+    return plan
+
+
+def run_preflight(args: argparse.Namespace) -> tuple[dict, int]:
+    """Offline readiness check for a separately authorized real run: makes
+    no network call and spends nothing. Validates the manifest for the
+    chosen phase, the corpus pin, the clean tree, credentials present (names
+    only), receipts (live phase), the lexical-control binaries, and that the
+    manifest's caps cover the exact planned calls, bytes and cost."""
+    corpus, facts, fact_by_id = load_corpus(args.corpus, args.facts)
+    source_sha = git_source_sha(REPO_ROOT)
+    corpus_sha256 = corpus["meta"]["corpus_hash_sha256"]
+    m = manifest_lib.load_manifest(args.manifest)
+    phase = args.phase
+    problems = manifest_lib.validate_live_manifest(m, phase)
+    if m.get("corpus_sha256") != corpus_sha256:
+        problems.append(f"manifest corpus_sha256={m.get('corpus_sha256')!r} does not match on-disk corpus={corpus_sha256!r}")
+    dirty = dirty_paths(REPO_ROOT)
+    if dirty:
+        problems.append(dirty_message(dirty))
+    plan = plan_requests(corpus, fact_by_id, corpus_sha256)
+    budget = m.get("budget") or {}
+    if not [p for p in problems if p.startswith("budget.")]:
+        if plan["total_calls"] > budget["max_calls"]:
+            problems.append(f"budget.max_calls={budget['max_calls']} is below the {plan['total_calls']} calls the full seed+live plan needs")
+        if plan["input_token_upper_bound"] > budget["max_input_tokens"]:
+            problems.append(
+                f"budget.max_input_tokens={budget['max_input_tokens']} is below the {plan['input_token_upper_bound']} "
+                "the plan needs (one token per serialized request byte, an upper bound)"
+            )
+        if plan["total_calls"] * budget["max_cost_per_call_usd"] > budget["approved_max_usd"]:
+            problems.append(
+                f"budget.approved_max_usd={budget['approved_max_usd']} is below {plan['total_calls']} calls x "
+                f"max_cost_per_call_usd={budget['max_cost_per_call_usd']}"
+            )
+    if all(k in m for _, k in TARGETS):
+        _tokens, cred_problems = credential_problems(m)
+        problems += cred_problems
+    if phase == manifest_lib.PHASE_LIVE and not problems:
+        _receipts, receipt_problems = load_target_receipts(m, args.manifest, corpus, corpus["meta"]["facts_hash_sha256"])
+        problems += receipt_problems
+    result = build_blocked_result(args, corpus, source_sha, problems, evidence_level="static") if problems else base_result(
+        args.task_id, args.profile, source_sha, "static"
+    )
+    result["corpus_sha256"] = corpus_sha256
+    result["configuration_sha256"] = sha256_file(args.manifest)
+    result["commands"].append(f"python3 {Path(__file__).relative_to(REPO_ROOT)} --preflight --phase {phase} --manifest {args.manifest} --output {args.output}")
+    result["plan"] = plan
+    if not problems:
+        result["status"] = "PARTIAL"
+        result["cases"]["planned"] = len(corpus["cases"])
+        result["acceptance"] = [
+            acceptance_row(
+                criterion=f"Preflight ({phase} phase): manifest, pins, credentials, caps cover the planned run; no network call made",
+                expected="No problems",
+                observed=f"{plan['total_calls']} planned calls, {plan['input_token_upper_bound']} input-token upper bound; nothing executed",
+                status="PASS",
+            )
+        ]
+        result["limitations"].append("Preflight is an offline readiness check. It measures no retrieval quality and authorizes nothing.")
+        return result, EXIT_PASS
+    return result, EXIT_BLOCKED
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     mode = p.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fixtures", action="store_true", help="local synthetic provider only; no network")
-    mode.add_argument("--live", action="store_true", help="real hosted MCP endpoint; requires a valid manifest")
+    mode.add_argument("--preflight", action="store_true", help="offline readiness check for --seed/--live; no network")
+    mode.add_argument("--seed", action="store_true", help="seed both hosted accounts (writes; needs seeding.authorized)")
+    mode.add_argument("--live", action="store_true", help="real hosted MCP endpoint; requires a valid manifest and seed receipts")
     p.add_argument("--manifest", required=True, help="path to the qualification manifest JSON")
     p.add_argument("--output", required=True, help="path to write the result JSON")
+    p.add_argument("--phase", default="seed", choices=["seed", "live"], help="--preflight only: which phase to validate")
+    p.add_argument("--receipt-dir", default=None, help="--seed only: directory the seed receipts are written to")
     p.add_argument("--corpus", default=str(EVALS_HOSTED / "corpus.json"))
     p.add_argument("--facts", default=str(EVALS_HOSTED / "facts.json"))
     p.add_argument("--task-id", default="T23.43")
@@ -524,6 +929,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     args.corpus = Path(args.corpus)
     args.facts = Path(args.facts)
     args.output = Path(args.output)
+    args.manifest = Path(args.manifest)
     return args
 
 
@@ -533,10 +939,21 @@ def main(argv: list[str]) -> int:
         print(f"eval_embeddings: corpus/facts not found ({args.corpus}, {args.facts})", file=sys.stderr)
         return EXIT_INVALID_INPUT
 
-    if args.fixtures:
-        result, exit_code = run_fixtures(args)
-    else:
-        result, exit_code = run_live(args)
+    try:
+        if args.fixtures:
+            result, exit_code = run_fixtures(args)
+        elif args.preflight:
+            result, exit_code = run_preflight(args)
+        elif args.seed:
+            result, exit_code = run_seed(args)
+        else:
+            result, exit_code = run_live(args)
+    except (OSError, ValueError) as e:
+        # Unreadable or malformed manifest/receipt: invalid input, but the
+        # contract still requires a result file explaining why.
+        corpus = json.loads(args.corpus.read_text(encoding="utf-8"))
+        result = build_blocked_result(args, corpus, git_source_sha(REPO_ROOT), [f"invalid input: {type(e).__name__}: {e}"], evidence_level="static")
+        exit_code = EXIT_INVALID_INPUT
 
     write_result(args.output, result)
     print(f"eval_embeddings: status={result['status']} written to {args.output}")
