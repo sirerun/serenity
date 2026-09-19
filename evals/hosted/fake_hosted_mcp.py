@@ -8,6 +8,13 @@ internal/server/memory and internal/server/mcp:
 - `remember` returns `id` (64 hex), `status`, `search_state`.
 - `forget` expires a fact by id (`expired` true the first time, false after);
   recall then omits it from both arms.
+- `remember` accepts `ttl`: an absolute ISO 8601 timestamp, or (without an
+  `operation_key`) a "45m"/"12h"/"30d" shorthand; a keyed shorthand is refused,
+  as the real service refuses it. A fact whose `valid_until` has passed on the
+  SERVER clock (`now >= valid_until`, the real service's `TTLExpired`) drops
+  out of both recall arms. Expiry is evaluated at query time against a clock
+  the test can share with the harness (FakeClock), so a test exercises real
+  expiry semantics without waiting, and can also use the real clock.
 - `recall` returns a `facts` arm (all world-visible facts, newest first,
   capped by `limit`, not query-ranked) and, with a query, a `results` arm
   whose `slug` is `source-<id>` for an entity-less fact, plus
@@ -22,18 +29,92 @@ plumbing, never retrieval quality of a real provider.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import http.server
 import json
+import re
 import threading
+import time
 
 from lib.cosine import rank_by_cosine
 from lib.fixture_embedder import HashBagEmbedder
 
 
+_DURATION = re.compile(r"^(\d+)(d|h|m)$")
+_UNIT_SECONDS = {"d": 86400, "h": 3600, "m": 60}
+
+
+class RealClock:
+    def now(self) -> float:
+        return time.time()
+
+    def sleep(self, seconds: float) -> None:
+        time.sleep(seconds)
+
+
+class FakeClock:
+    """A wall clock that moves only when told to. The harness sleeps on it
+    and the fake server reads it, so a 60 s expiry is crossed instantly and
+    deterministically while the server still evaluates `now >= valid_until`
+    against a real, monotonically advancing time."""
+
+    def __init__(self, start: float | None = None):
+        self._t = time.time() if start is None else float(start)
+        self._lock = threading.Lock()
+
+    def now(self) -> float:
+        with self._lock:
+            return self._t
+
+    def advance(self, seconds: float) -> None:
+        with self._lock:
+            self._t += seconds
+
+    def sleep(self, seconds: float) -> None:
+        self.advance(seconds)
+
+
+def parse_ttl(ttl: str, now: float, keyed: bool) -> float | None:
+    """Epoch seconds a remember `ttl` resolves to, or ValueError. Mirrors
+    internal/server/memory's parseTTL: empty never expires; ISO-8601
+    durations are refused; shorthand is relative and refused when keyed; an
+    absolute timestamp is RFC 3339, a zone-less datetime (UTC) or a date."""
+    if not ttl:
+        return None
+    if ttl[:1] in ("P", "p"):
+        raise ValueError("iso duration")
+    m = _DURATION.match(ttl)
+    if m:
+        if keyed:
+            raise ValueError("keyed ttl must be absolute")
+        n = int(m.group(1))
+        if n <= 0:
+            raise ValueError("ttl must be positive")
+        return now + n * _UNIT_SECONDS[m.group(2)]
+    for parse in (
+        lambda v: datetime.datetime.fromisoformat(v),
+        lambda v: datetime.datetime.strptime(v, "%Y-%m-%d"),
+    ):
+        try:
+            t = parse(ttl)
+        except ValueError:
+            continue
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=datetime.timezone.utc)
+        return t.timestamp()
+    raise ValueError("unrecognized ttl")
+
+
+def iso_utc(epoch: float) -> str:
+    return datetime.datetime.fromtimestamp(epoch, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 class FakeHostedMCP:
-    def __init__(self, tokens: dict[str, str]):
-        """tokens maps a bearer token to an account name."""
+    def __init__(self, tokens: dict[str, str], clock=None):
+        """tokens maps a bearer token to an account name. `clock` (RealClock
+        or FakeClock) is the server's wall clock."""
+        self.clock = clock or RealClock()
         self.tokens = dict(tokens)
         self.accounts: dict[str, list[dict]] = {a: [] for a in self.tokens.values()}
         self.log: list[dict] = []
@@ -49,6 +130,13 @@ class FakeHostedMCP:
         self.forgotten_search_leak = False  # True: forgotten facts stay in the search index
         self.search_blackhole: set[str] = set()  # accounts whose search returns nothing (target never retrievable)
         self.inject_on_query: dict[str, tuple[str, str]] = {}  # query -> (other account, its fact text) surfaced at rank 1
+        # Expiry faults. Each models a real way a service could fail to honour a TTL.
+        self.ttl_ignored = False  # remember accepts ttl but stores none and reports none: the fact never expires
+        self.ttl_lie = False  # remember reports the requested valid_until but stores none: claims an expiry it never applies
+        self.ttl_not_echoed = False  # the fact expires, but remember's response omits valid_until
+        self.expired_searchable = False  # an expired fact stays in the search index
+        self.clock_skew_seconds = 0.0  # the server clock runs this many seconds BEHIND the harness's
+        self.advance_per_call = 0.0  # every request moves a FakeClock forward: a slow endpoint
         # Reflect the caller's Authorization token into one server-controlled
         # channel: "jsonrpc_error" | "status" | "search_degraded" | "slug" | "http_error".
         self.reflect: str | None = None
@@ -83,6 +171,19 @@ class FakeHostedMCP:
     def calls(self, tool: str | None = None) -> int:
         return sum(1 for e in self.log if tool is None or e.get("tool") == tool or e.get("method") == tool)
 
+    def _now(self) -> float:
+        return self.clock.now() - self.clock_skew_seconds
+
+    def current_facts(self, account: str) -> list[dict]:
+        """Facts a query at the server's `now` can see: not forgotten (already
+        removed from the list) and not past their valid_until."""
+        now = self._now()
+        return [f for f in self.accounts[account] if f.get("valid_until") is None or f["valid_until"] > now]
+
+    def _expired_unforgotten(self, account: str) -> list[dict]:
+        now = self._now()
+        return [f for f in self.accounts[account] if f.get("valid_until") is not None and f["valid_until"] <= now]
+
     def preload(self, account: str, text: str) -> str:
         return self._remember(account, {"fact": text, "provenance": "preloaded", "operation_key": ""})["id"]
 
@@ -94,11 +195,13 @@ class FakeHostedMCP:
         token = auth[len("Bearer "):] if auth.startswith("Bearer ") else ""
         account = self.tokens.get(token)
         with self._lock:
+            if self.advance_per_call and hasattr(self.clock, "advance"):
+                self.clock.advance(self.advance_per_call)
             self.bytes_received += len(raw)
             self._auth = auth
             self.log.append(
                 {"method": body.get("method"), "tool": (body.get("params") or {}).get("name"), "account": account,
-                 "auth": auth, "args": (body.get("params") or {}).get("arguments")}
+                 "auth": auth, "args": (body.get("params") or {}).get("arguments"), "now": self._now()}
             )
         if account is None:
             h.send_response(401)
@@ -149,14 +252,24 @@ class FakeHostedMCP:
     def _remember(self, account: str, args: dict) -> dict:
         facts = self.accounts[account]
         key = args.get("operation_key") or ""
+        try:
+            valid_until = parse_ttl(args.get("ttl") or "", self._now(), keyed=bool(key))
+        except ValueError:
+            return {"__is_error__": True, "error": {"code": "invalid_params"}}
+        stored_until = None if (self.ttl_ignored or self.ttl_lie) else valid_until
+        echoed_epoch = valid_until if self.ttl_lie else stored_until
+        echoed = None if (self.ttl_not_echoed or self.ttl_ignored or echoed_epoch is None) else iso_utc(echoed_epoch)
         fid = hashlib.sha256(f"{account}|{args['fact']}|{args['provenance']}|{key}".encode()).hexdigest()
-        if any(f["id"] == fid for f in facts):
+        prior = next((f for f in facts if f["id"] == fid), None)
+        if prior is not None:
+            if key and prior.get("valid_until") != stored_until:
+                return {"__is_error__": True, "error": {"code": "operation_conflict"}}
             return {"protocol_version": 1, "id": fid, "status": "duplicate", "status_text": "already knew this",
-                    "search_state": self.search_state, "entity_slug": None, "valid_until": None, "degraded_dedup": True}
-        facts.append({"id": fid, "fact": args["fact"], "provenance": args["provenance"]})
+                    "search_state": self.search_state, "entity_slug": None, "valid_until": echoed, "degraded_dedup": True}
+        facts.append({"id": fid, "fact": args["fact"], "provenance": args["provenance"], "valid_until": stored_until})
         status = self._auth if self.reflect == "status" else "inserted"
         return {"protocol_version": 1, "id": fid, "status": status, "status_text": "remembered",
-                "search_state": self.search_state, "entity_slug": None, "valid_until": None, "degraded_dedup": True}
+                "search_state": self.search_state, "entity_slug": None, "valid_until": echoed, "degraded_dedup": True}
 
     def _tool_remember(self, account: str, args: dict) -> dict:
         return self._remember(account, args)
@@ -166,6 +279,8 @@ class FakeHostedMCP:
             return {"__is_error__": True, "error": {"code": "not_found"}}
         fid = args.get("id")
         own = self.accounts[account]
+        if any(f["id"] == fid for f in self._expired_unforgotten(account)):
+            return {"protocol_version": 1, "id": fid, "expired": False, "reason": None}
         for f in own:
             if f["id"] == fid:
                 if not self.forget_noop:
@@ -178,7 +293,7 @@ class FakeHostedMCP:
 
     def _tool_recall(self, account: str, args: dict) -> dict:
         limit = args.get("limit", 50)
-        own = self.accounts[account]
+        own = self.current_facts(account)
         facts = list(reversed(own))[:limit]
         env: dict = {
             "protocol_version": 1,
@@ -192,11 +307,13 @@ class FakeHostedMCP:
         query = args.get("query", "")
         if query:
             searchable = list(own) + (self.forgotten[account] if self.forgotten_search_leak else [])
+            if self.expired_searchable:
+                searchable += self._expired_unforgotten(account)
             if account in self.leak_into:
-                searchable += self.accounts[self.leak_into[account]]
+                searchable += self.current_facts(self.leak_into[account])
             for q, (other, text) in self.inject_on_query.items():
                 if q == query:
-                    searchable += [f for f in self.accounts[other] if f["fact"] == text]
+                    searchable += [f for f in self.current_facts(other) if f["fact"] == text]
             by_id = {f["id"]: f for f in searchable}
             qvec = self.embedder.embed(query)
             keyed = [(self.tiebreak.get(f["fact"], "") + "|" + f["id"], self.embedder.embed(f["fact"])) for f in searchable]

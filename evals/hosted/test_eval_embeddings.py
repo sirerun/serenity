@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -26,7 +28,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(SCRIPTS_HOSTED))
 
 import eval_embeddings  # noqa: E402
-from fake_hosted_mcp import FakeHostedMCP  # noqa: E402
+from fake_hosted_mcp import FakeClock, FakeHostedMCP, RealClock  # noqa: E402
 from lib import mcp_client, scoring, seeding  # noqa: E402
 from lib.fixture_embedder import HashBagEmbedder  # noqa: E402
 
@@ -145,7 +147,11 @@ class LiveFixture(unittest.TestCase):
     reflect: str | None = None
 
     def setUp(self):
-        self.fake = FakeHostedMCP({POS_TOKEN: "acct-pos", EMPTY_TOKEN: "acct-empty"})
+        # One wall clock shared by the harness and the fake server. The seed run
+        # sleeps on it, so the empty-case account's real TTL expiry is crossed
+        # instantly while the server still evaluates now >= valid_until.
+        self.clock = FakeClock()
+        self.fake = FakeHostedMCP({POS_TOKEN: "acct-pos", EMPTY_TOKEN: "acct-empty"}, clock=self.clock)
         self.origin = self.fake.start()
         self.addCleanup(self.fake.stop)
         self.tmp = Path(tempfile.mkdtemp(prefix="t2343-live-"))
@@ -186,11 +192,11 @@ class LiveFixture(unittest.TestCase):
         path.write_text(json.dumps(m))
         return path
 
-    def seed(self, name: str = "receipts", **budget) -> tuple[dict, int]:
+    def seed(self, name: str = "receipts", *, clock=None, sleep=None, **budget) -> tuple[dict, int]:
         rdir = self.tmp / name
         mp = self.write_manifest(self.manifest_dict("seed", **budget), f"{name}-seed-manifest.json")
         args = _mode_args("seed", self.tmp / f"{name}-seed-result.json", mp, "--receipt-dir", str(rdir))
-        result, code = eval_embeddings.run_seed(args)
+        result, code = eval_embeddings.run_seed(args, clock=clock or self.clock.now, sleep=sleep or self.clock.sleep)
         self.seed_result, self.receipt_dir = result, rdir
         return result, code
 
@@ -228,10 +234,12 @@ class TestSeeding(LiveFixture):
         self.assertEqual((result["status"], code), ("PARTIAL", eval_embeddings.EXIT_PASS))
         self.assertEqual(len(self.fake.accounts["acct-pos"]), len(self.positive_ids()))
         # The empty-case account ends with ZERO current facts: 5 targets were
-        # remembered and then forgotten, not never-authored or left as filler.
-        self.assertEqual(self.fake.accounts["acct-empty"], [])
-        self.assertEqual(len(self.fake.forgotten["acct-empty"]), 5)
-        self.assertEqual(self.fake.calls("forget"), 5)
+        # remembered and then removed (3 forgotten, 2 left to expire), not
+        # never-authored or left as filler.
+        self.assertEqual(self.fake.current_facts("acct-empty"), [])
+        self.assertEqual(len(self.fake.forgotten["acct-empty"]), 3)
+        self.assertEqual(self.fake.calls("forget"), 3)
+        self.assertEqual(len(self.fake.accounts["acct-empty"]), 2)  # the two that lapsed, still stored but expired
         rows = {r["criterion"]: r["status"] for r in result["acceptance"]}
         self.assertTrue(all(v == "PASS" for v in rows.values()), rows)
         for role, info in result["seed_receipts"].items():
@@ -324,14 +332,14 @@ class TestForgottenFactProtocol(LiveFixture):
         cases = seeding.empty_case_ids(self.corpus)
         self.assertEqual([p["case_id"] for p in receipt["presence"]], cases)
         self.assertTrue(all(1 <= p["rank"] <= 5 for p in receipt["presence"]))
-        self.assertEqual([f["case_id"] for f in receipt["forget"]], cases)
+        self.assertEqual([f["case_id"] for f in receipt["forget"]], seeding.ft.cases_with_mode("forget"))
         self.assertTrue(all(f["expired"] is True and f["remember_id"] in receipt["id_map"] for f in receipt["forget"]))
         self.assertEqual(receipt["post_forget"]["inventory_total"], 0)
         self.assertTrue(all(c["results_returned"] == 0 and c["facts_returned"] == 0 for c in receipt["post_forget"]["cases"]))
         self.assertTrue(receipt["cross_account_probe"]["passed"])
         forget_calls = [e for e in self.fake.log if e["tool"] == "forget"]
-        self.assertEqual({e["args"]["id"] for e in forget_calls}, set(receipt["id_map"]))
-        row = next(r for r in result["acceptance"] if r["criterion"].startswith("Forgotten-fact protocol"))
+        self.assertEqual({e["args"]["id"] for e in forget_calls}, {f["remember_id"] for f in receipt["forget"]})
+        row = next(r for r in result["acceptance"] if r["criterion"].startswith("Forgotten/expired protocol"))
         self.assertEqual(row["status"], "PASS")
 
     def test_targets_use_the_frozen_queries_and_do_not_touch_the_corpus(self):
@@ -376,7 +384,7 @@ class TestForgottenFactProtocol(LiveFixture):
     def test_receipt_without_the_forget_proofs_is_rejected(self):
         self.seed()
         receipts = self.seeded_receipts()
-        for field in ("presence", "forget", "post_forget", "cross_account_probe"):
+        for field in ("presence", "forget", "expiry", "expiry_check", "post_forget", "cross_account_probe"):
             with self.subTest(field=field):
                 path = Path(receipts["empty_case"]["path"])
                 original = path.read_text()
@@ -390,6 +398,342 @@ class TestForgottenFactProtocol(LiveFixture):
                 path.write_text(original)
                 self.assertEqual(code, eval_embeddings.EXIT_BLOCKED, field)
                 self.assertEqual(self.fake.calls(), before, field)
+
+
+class TestExpiryProtocol(LiveFixture):
+    """The TTL half of forgotten/expired. Two of the five empty-case targets are
+    remembered with one fixed absolute expiry, shown visible before it, and
+    shown absent only after the service's own clock has passed it, with nothing
+    called to remove them. The fake evaluates now >= valid_until at query time
+    against a clock the harness sleeps on, so the expiry is real semantics, not
+    a fact that was simply never stored."""
+
+    ft = seeding.ft
+
+    def empty_receipt(self, result) -> dict:
+        return json.loads(Path(result["seed_receipts"]["empty_case"]["path"]).read_text())
+
+    def assert_blocked(self, expect: str, **kw) -> tuple[dict, dict]:
+        result, code = self.seed(**kw)
+        self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED))
+        self.assertIn(expect, result["blockers"][0]["required_input"])
+        row = next(r for r in result["acceptance"] if r["criterion"].startswith("Forgotten/expired protocol"))
+        self.assertEqual(row["status"], "BLOCKED")  # never a misleading PASS
+        receipt = self.empty_receipt(result)
+        self.assertIs(receipt["complete"], False)
+        return result, receipt
+
+    def test_expire_targets_carry_one_absolute_ttl_and_lapse_on_the_server_clock(self):
+        ttl, margin = self.ft.EXPIRY_TTL_SECONDS, self.ft.EXPIRY_MARGIN_SECONDS
+        started = self.clock.now()
+        result, code = self.seed()
+        self.assertEqual(code, eval_embeddings.EXIT_PASS)
+        receipt = self.empty_receipt(result)
+        valid_until, epoch = receipt["expiry"]["valid_until"], receipt["expiry"]["valid_until_epoch"]
+        self.assertRegex(valid_until, r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")  # absolute, whole seconds, UTC
+        self.assertGreaterEqual(epoch, started + ttl)
+        self.assertLess(epoch, started + ttl + 2)  # rounded up to a whole second, no more
+
+        empty_log = [e for e in self.fake.log if e["account"] == "acct-empty"]
+        remembers = {e["args"]["fact"]: e["args"] for e in empty_log if e["tool"] == "remember"}
+        for cid in self.ft.cases_with_mode("expire"):
+            self.assertEqual(remembers[self.ft.FORGOTTEN_TARGET_TEXT[cid]]["ttl"], valid_until)  # one shared instant
+        for cid in self.ft.cases_with_mode("forget"):
+            self.assertNotIn("ttl", remembers[self.ft.FORGOTTEN_TARGET_TEXT[cid]])
+        forgot = {e["args"]["id"] for e in empty_log if e["tool"] == "forget"}
+        self.assertEqual(forgot, {f["remember_id"] for f in receipt["forget"]})
+        for e in empty_log:
+            if e["tool"] == "forget":
+                self.assertIn(receipt["id_map"][e["args"]["id"]], {self.ft.target_id(c) for c in self.ft.cases_with_mode("forget")})
+
+        # On the SERVER's clock: the remembers and every presence probe happen
+        # before the expiry, no recall lands inside the margin, and the first
+        # recall after the wait is a full margin past it.
+        self.assertTrue(all(e["now"] < epoch for e in empty_log if e["tool"] == "remember"))
+        recalls = [e for e in empty_log if e["tool"] == "recall"]
+        self.assertFalse([e for e in recalls if epoch <= e["now"] < epoch + margin])
+        before = [e for e in recalls if e["now"] < epoch]
+        after = [e for e in recalls if e["now"] >= epoch + margin]
+        self.assertGreaterEqual(len(before), 5 + 2)  # 2 emptiness probes, 1 inventory, 5 presence
+        self.assertTrue(after)
+        self.assertGreaterEqual(self.clock.now() - started, ttl + margin)  # the wait really happened
+        check = receipt["expiry_check"]
+        self.assertTrue(check["expired_absent_from_inventory"] and check["forget_targets_still_present"])
+        self.assertEqual(check["unexpected_facts"], 0)
+        self.assertEqual([c["case_id"] for c in check["cases"]], self.ft.cases_with_mode("expire"))
+        self.assertTrue(all(not c["target_in_results"] and not c["target_in_facts"] for c in check["cases"]))
+        self.assertGreaterEqual(receipt["expiry"]["probed_after_valid_until_seconds"], margin)
+        # ...and the account ends with zero current facts.
+        self.assertEqual(self.fake.current_facts("acct-empty"), [])
+        self.assertEqual(receipt["post_forget"]["inventory_total"], 0)
+
+    def test_a_service_that_ignores_the_ttl_blocks_because_it_reports_no_expiry(self):
+        self.fake.ttl_ignored = True
+        self.assert_blocked("did not report the requested expiry")
+
+    def test_a_service_that_does_not_report_valid_until_blocks(self):
+        self.fake.ttl_not_echoed = True  # it would expire the fact, but the harness cannot know that
+        self.assert_blocked("did not report the requested expiry")
+
+    def test_a_service_that_reports_an_expiry_it_never_applies_blocks_after_the_wait(self):
+        self.fake.ttl_lie = True
+        started = self.clock.now()
+        _, receipt = self.assert_blocked("still visible after its expiry")
+        self.assertGreaterEqual(self.clock.now() - started, self.ft.EXPIRY_TTL_SECONDS + self.ft.EXPIRY_MARGIN_SECONDS)
+        self.assertEqual(self.fake.calls("forget"), 0)  # blocked at the expiry check, before any forget
+        self.assertFalse(receipt["expiry_check"]["expired_absent_from_inventory"])
+
+    def test_an_expired_fact_that_stays_searchable_blocks(self):
+        self.fake.expired_searchable = True
+        _, receipt = self.assert_blocked("still visible after its expiry")
+        check = receipt["expiry_check"]
+        self.assertTrue(check["expired_absent_from_inventory"])  # the facts arm dropped them...
+        self.assertTrue(any(c["target_in_results"] for c in check["cases"]))  # ...the search index did not
+
+    def test_a_small_clock_skew_is_tolerated_and_a_large_one_blocks(self):
+        margin = self.ft.EXPIRY_MARGIN_SECONDS
+        self.fake.clock_skew_seconds = margin - 2  # server clock a little behind: still past valid_until after the margin
+        result, code = self.seed()
+        self.assertEqual((result["status"], code), ("PARTIAL", eval_embeddings.EXIT_PASS), result.get("blockers"))
+        self.setUp()
+        self.fake.clock_skew_seconds = margin + 30  # far behind: the fact is still alive on the server
+        self.assert_blocked("still visible after its expiry")
+
+    def test_a_ttl_that_lapses_before_presence_can_be_shown_blocks_and_names_the_ttl(self):
+        self.fake.advance_per_call = 9  # a slow endpoint: the expiry passes between the inventory and the presence probes
+        _, receipt = self.assert_blocked("TTL is too short")
+        self.assertEqual(self.fake.calls("forget"), 0)
+        self.assertNotIn("expiry_check", receipt)
+
+    def test_a_ttl_that_lapses_during_the_remembers_blocks_at_the_inventory(self):
+        self.fake.advance_per_call = 15
+        self.assert_blocked("TTL is too short")
+
+    def test_an_elapsed_cap_below_the_expiry_floor_blocks_before_any_call(self):
+        floor = self.ft.expiry_wait_floor_seconds()
+        result, code = self.seed(max_elapsed_seconds=floor - 1)
+        self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED))
+        self.assertIn("max_elapsed_seconds", result["blockers"][0]["required_input"])
+        self.assertIn(str(floor), result["blockers"][0]["required_input"])
+        self.assertEqual(self.fake.calls(), 0)  # nothing written, nothing to clean up
+        # The floor is a necessary minimum, not a sufficient one: the expiry instant is rounded up
+        # to a whole second and the run has already spent real time by the wait, so a cap of exactly
+        # the floor blocks at the wait ("too little time") instead of starting a wait it cannot finish.
+        result, code = self.seed(name="at-floor", max_elapsed_seconds=floor)
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assertIn("too little time", result["blockers"][0]["required_input"])
+        self.setUp()
+        result, code = self.seed(name="above-floor", max_elapsed_seconds=floor + 10)
+        self.assertEqual(code, eval_embeddings.EXIT_PASS, result.get("blockers"))
+
+    def test_a_wait_that_no_longer_fits_the_remaining_cap_blocks_before_sleeping(self):
+        clock = FakeClock()
+        slept: list[float] = []
+        expiry = seeding.plan_expiry(clock.now)
+        with self.assertRaisesRegex(seeding.SeedBlocked, "too little time"):
+            seeding._await_expiry(lambda: None, expiry, clock.now, slept.append, lambda: 10)
+        self.assertEqual(slept, [])
+        # exactly enough: wait + tail fits
+        needed = expiry.epoch + self.ft.EXPIRY_MARGIN_SECONDS - clock.now()
+        seeding._await_expiry(lambda: None, expiry, clock.now, clock.sleep, lambda: needed + self.ft.EXPIRY_TAIL_SECONDS)
+
+    def test_the_wait_sleeps_in_bounded_chunks_and_is_never_shortened(self):
+        clock = FakeClock()
+        slept: list[float] = []
+        expiry = seeding.plan_expiry(clock.now)
+        start = clock.now()
+
+        def sleep(n):
+            slept.append(n)
+            clock.sleep(n)
+
+        seeding._await_expiry(lambda: None, expiry, clock.now, sleep, None)
+        self.assertTrue(all(0 < n <= seeding.WAIT_CHUNK_SECONDS for n in slept))
+        self.assertGreater(len(slept), 1)
+        self.assertGreaterEqual(clock.now() - start, self.ft.EXPIRY_TTL_SECONDS + self.ft.EXPIRY_MARGIN_SECONDS)
+        self.assertGreaterEqual(clock.now(), expiry.epoch + self.ft.EXPIRY_MARGIN_SECONDS)
+
+    def test_a_cap_reached_mid_wait_stops_the_wait(self):
+        clock = FakeClock()
+        slept: list[float] = []
+        expiry = seeding.plan_expiry(clock.now)
+        checks = []
+
+        def guard_check():
+            checks.append(1)
+            if len(checks) == 3:
+                raise seeding.SeedBlocked("max_elapsed_seconds reached")
+
+        def sleep(n):
+            slept.append(n)
+            clock.sleep(n)
+
+        with self.assertRaisesRegex(seeding.SeedBlocked, "max_elapsed_seconds reached"):
+            seeding._await_expiry(guard_check, expiry, clock.now, sleep, None)
+        self.assertEqual(len(slept), 2)  # the third check refused a third chunk
+
+    def test_a_clock_that_never_advances_blocks_instead_of_spinning(self):
+        clock = FakeClock()
+        expiry = seeding.plan_expiry(clock.now)
+        with self.assertRaisesRegex(seeding.SeedBlocked, "did not advance"):
+            seeding._await_expiry(lambda: None, expiry, clock.now, lambda n: None, None)
+
+    def test_a_stray_fact_or_a_vanished_forget_target_during_the_wait_blocks(self):
+        def stray(n):
+            self.fake.preload("acct-empty", "a fact nobody seeded")
+            self.clock.sleep(n)
+
+        self.assert_blocked("changed while the expiry was pending", sleep=stray)
+        self.setUp()
+
+        def vanish(n):
+            for f in list(self.fake.accounts["acct-empty"]):
+                if f["fact"] == self.ft.FORGOTTEN_TARGET_TEXT["empty-01"]:
+                    self.fake.accounts["acct-empty"].remove(f)  # the wait sleeps in chunks; only the first has a victim
+            self.clock.sleep(n)
+
+        self.assert_blocked("changed while the expiry was pending", sleep=vanish)
+
+    def test_real_clock_real_wait_end_to_end(self):
+        """No fake time anywhere: the real wall clock, a real sleep, and the
+        server evaluating expiry against the real clock. Timing constants are
+        shortened for the test only; the reviewed plan's values are untouched."""
+        self.fake.clock = RealClock()
+        with mock.patch.object(seeding.ft, "EXPIRY_TTL_SECONDS", 2), mock.patch.object(seeding.ft, "EXPIRY_MARGIN_SECONDS", 1), \
+                mock.patch.object(seeding.ft, "EXPIRY_TAIL_SECONDS", 1):
+            began = time.time()
+            result, code = self.seed(clock=time.time, sleep=time.sleep, max_elapsed_seconds=60)
+            elapsed = time.time() - began
+        self.assertEqual((result["status"], code), ("PARTIAL", eval_embeddings.EXIT_PASS), result.get("blockers"))
+        receipt = self.empty_receipt(result)
+        self.assertGreaterEqual(elapsed, 3.0 - 1.0)  # the empty account alone waits >= ttl + margin after its own start
+        self.assertGreaterEqual(receipt["expiry"]["probed_after_valid_until_seconds"], 1)
+        self.assertEqual(self.fake.current_facts("acct-empty"), [])
+
+
+class TestExpiryReceiptVerification(LiveFixture):
+    """A receipt cannot claim an expiry it did not wait for: every expiry field
+    is type- and value-checked, and a forged or truncated proof blocks the live
+    run before its first call."""
+
+    def setUp(self):
+        super().setUp()
+        self.seed()
+        self.receipts = self.seeded_receipts()
+
+    def blocked_after(self, mutate, label: str, expect: str | None = None):
+        path = Path(self.receipts["empty_case"]["path"])
+        original = path.read_text()
+        r = json.loads(original)
+        mutate(r)
+        path.write_text(json.dumps(r, indent=2, sort_keys=True) + "\n")
+        mutated = json.loads(json.dumps(self.receipts))
+        mutated["empty_case"]["confirmation"] = seeding.receipt_confirmation(json.loads(path.read_text()))
+        before = self.fake.calls()
+        try:
+            result, code = self.live(mutated)
+        finally:
+            path.write_text(original)
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED, label)
+        self.assertEqual(self.fake.calls(), before, label)
+        if expect:
+            self.assertIn(expect, result["blockers"][0]["required_input"], label)
+
+    def test_the_untouched_receipt_is_accepted(self):
+        result, code = self.live(self.receipts)
+        self.assertNotEqual(code, eval_embeddings.EXIT_BLOCKED, result.get("blockers"))
+
+    def test_forged_or_truncated_expiry_evidence_is_rejected(self):
+        mutations = {
+            "probed less than a margin after expiry": lambda r: r["expiry"].update(probed_after_valid_until_seconds=1),
+            "probe evidence is a bool": lambda r: r["expiry"].update(probed_after_valid_until_seconds=True),
+            "probe evidence is a string": lambda r: r["expiry"].update(probed_after_valid_until_seconds="60"),
+            "valid_until is not the epoch": lambda r: r["expiry"].update(valid_until_epoch=r["expiry"]["valid_until_epoch"] + 1),
+            "valid_until is not RFC 3339": lambda r: r["expiry"].update(valid_until="next tuesday"),
+            "epoch is a bool": lambda r: r["expiry"].update(valid_until_epoch=True),
+            "wrong expiry cases": lambda r: r["expiry"].update(cases=["empty-01"]),
+            "wrong ttl": lambda r: r["expiry"].update(ttl_seconds=1),
+            "wrong margin": lambda r: r["expiry"].update(margin_seconds=0),
+            "an expire target has no valid_until": lambda r: next(x for x in r["seeded"] if x["corpus_fact_id"] == "forgotten-empty-03").pop("valid_until"),
+            "the service reported a different expiry": lambda r: next(x for x in r["seeded"] if x["corpus_fact_id"] == "forgotten-empty-04").update(valid_until_returned="2001-01-01T00:00:00Z"),
+            "a forget target carries an expiry": lambda r: next(x for x in r["seeded"] if x["corpus_fact_id"] == "forgotten-empty-01").update(valid_until=r["expiry"]["valid_until"]),
+            "expired fact still in inventory": lambda r: r["expiry_check"].update(expired_absent_from_inventory=False),
+            "control target was not present": lambda r: r["expiry_check"].update(forget_targets_still_present=False),
+            "unknown fact during the wait": lambda r: r["expiry_check"].update(unexpected_facts=1),
+            "unknown fact as a bool": lambda r: r["expiry_check"].update(unexpected_facts=False),
+            "search still returned an expired target": lambda r: r["expiry_check"]["cases"][0].update(target_in_results=True),
+            "facts arm still returned an expired target": lambda r: r["expiry_check"]["cases"][1].update(target_in_facts=True),
+            "expiry check covers the wrong cases": lambda r: r["expiry_check"].update(cases=r["expiry_check"]["cases"][:1]),
+            "an expire target was also forgotten": lambda r: r["forget"].append({"case_id": "empty-03", "remember_id": next(iter(r["id_map"])), "expired": True}),
+            "a forget target is missing from forget": lambda r: r["forget"].pop(),
+            "expiry block absent": lambda r: r.pop("expiry"),
+            "expiry_check absent": lambda r: r.pop("expiry_check"),
+            "expiry is not an object": lambda r: r.update(expiry=[]),
+            "stale schema version 1": lambda r: r.update(schema_version=1),
+            "schema version is a bool": lambda r: r.update(schema_version=True),
+            "supplemental hash from an older plan": lambda r: r.update(forgotten_targets_sha256="0" * 64),
+        }
+        for label, mutate in mutations.items():
+            with self.subTest(mutation=label):
+                self.blocked_after(mutate, label)
+
+    def test_the_positive_account_receipt_needs_no_expiry_block(self):
+        r = json.loads(Path(self.receipts["positive"]["path"]).read_text())
+        self.assertNotIn("expiry", r)
+        self.assertEqual(r["schema_version"], seeding.RECEIPT_SCHEMA_VERSION)
+
+
+class TestCostReporting(LiveFixture):
+    """cost.actual_usd is null unless a billing measurement exists. None does,
+    so it stays null; the guard's worst-case reservation has its own name."""
+
+    CEILING = 0.001
+
+    def assert_cost_shape(self, cost: dict):
+        self.assertIsNone(cost["actual_usd"])
+        self.assertIsInstance(cost["operator_ceiling_projection_usd"], float)
+        self.assertGreaterEqual(cost["operator_ceiling_projection_usd"], 0)
+        self.assertIsInstance(cost["approved_max_usd"], float)
+        self.assertTrue(all(isinstance(x, str) for x in cost["authorization_refs"]))
+
+    def test_seed_reports_null_actual_and_a_named_projection(self):
+        result, _ = self.seed()
+        self.assert_cost_shape(result["cost"])
+        self.assertEqual(result["cost"]["operator_ceiling_projection_usd"], round(result["usage"]["calls_this_run"] * self.CEILING, 6))
+        self.assertIn(eval_embeddings.COST_LIMITATION, result["limitations"])
+
+    def test_live_projection_counts_seed_receipt_calls_and_actual_stays_null(self):
+        self.seed()
+        receipts = self.seeded_receipts()
+        result, _ = self.live(receipts)
+        self.assert_cost_shape(result["cost"])
+        calls = self.prior(receipts)[0] + result["usage"]["calls_this_run"]
+        self.assertEqual(result["cost"]["operator_ceiling_projection_usd"], round(calls * self.CEILING, 6))
+        self.assertGreater(result["cost"]["operator_ceiling_projection_usd"], 0)
+        self.assertIn(eval_embeddings.COST_LIMITATION, result["limitations"])
+        self.assertNotIn("actual_usd is calls", " ".join(result["limitations"]))  # the old mislabel is gone
+
+    def test_a_blocked_run_still_reports_null_actual(self):
+        self.seed()
+        receipts = self.seeded_receipts()
+        result, code = self.live(receipts, extra_calls=4)
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assert_cost_shape(result["cost"])
+        self.assertEqual(result["cost"]["operator_ceiling_projection_usd"], round((self.prior(receipts)[0] + 4) * self.CEILING, 6))
+
+    def test_a_seed_blocked_before_any_call_reports_zero_projection_and_null_actual(self):
+        result, _ = self.seed(max_elapsed_seconds=seeding.ft.expiry_wait_floor_seconds() - 1)
+        self.assertIsNone(result["cost"]["actual_usd"])
+        self.assertEqual(result["cost"].get("operator_ceiling_projection_usd", 0), 0)
+
+    def test_fixtures_mode_reports_null_actual(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = json.loads(TEMPLATE_PATH.read_text())
+            manifest["task_id"] = "T23.43"
+            mp = Path(tmp) / "m.json"
+            mp.write_text(json.dumps(manifest))
+            result, _ = eval_embeddings.run_fixtures(_args(Path(tmp) / "o.json", mp, fixtures=True))
+        self.assertIsNone(result["cost"]["actual_usd"])
 
 
 class TestLiveModeBudgetEnforcement(LiveFixture):
@@ -800,6 +1144,34 @@ class TestPreflight(LiveFixture):
             result, code = self.preflight()
         self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
 
+    def test_plan_reports_the_expiry_timing_and_the_supplemental_hash(self):
+        result, _ = self.preflight()
+        expiry = result["plan"]["expiry"]
+        ft = seeding.ft
+        self.assertEqual(expiry["expire_cases"], ft.cases_with_mode("expire"))
+        self.assertEqual(expiry["forget_cases"], ft.cases_with_mode("forget"))
+        self.assertEqual(
+            (expiry["ttl_seconds"], expiry["margin_seconds"], expiry["tail_seconds"]),
+            (ft.EXPIRY_TTL_SECONDS, ft.EXPIRY_MARGIN_SECONDS, ft.EXPIRY_TAIL_SECONDS),
+        )
+        self.assertEqual(expiry["min_elapsed_seconds"], ft.expiry_wait_floor_seconds())
+        self.assertEqual(expiry["supplemental_sha256"], ft.targets_sha256())
+
+    def test_seed_phase_blocks_an_elapsed_cap_below_the_expiry_floor(self):
+        floor = seeding.ft.expiry_wait_floor_seconds()
+        result, code = self.preflight(max_elapsed_seconds=floor - 1)
+        self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED))
+        self.assertIn("max_elapsed_seconds", result["blockers"][0]["required_input"])
+        self.assertEqual(self.fake.calls(), 0)
+        result, code = self.preflight(max_elapsed_seconds=floor)
+        self.assertEqual(code, eval_embeddings.EXIT_PASS)  # the floor is necessary, and preflight checks only that
+
+    def test_live_phase_has_no_expiry_wait_so_a_short_elapsed_cap_is_not_a_preflight_problem(self):
+        self.seed()
+        receipts = self.seeded_receipts()
+        result, code = self.preflight("live", receipts, max_calls=10_000, max_elapsed_seconds=5)
+        self.assertEqual(code, eval_embeddings.EXIT_PASS, result.get("blockers"))
+
     def test_live_phase_preflight_verifies_receipts_offline(self):
         self.seed()
         receipts = self.seeded_receipts()
@@ -807,6 +1179,65 @@ class TestPreflight(LiveFixture):
         result, code = self.preflight("live", receipts, max_calls=10_000)
         self.assertEqual(code, eval_embeddings.EXIT_PASS, result.get("blockers"))
         self.assertEqual(self.fake.calls(), before)
+
+
+class TestSupplementalPlanAndFrozenScope(unittest.TestCase):
+    """The supplemental plan (targets, removal modes, expiry timing) is what
+    task41's reviewer is asked to confirm by hash. It must not be able to move
+    silently, and it must leave everything already frozen untouched."""
+
+    ft = seeding.ft
+    FROZEN_CORPUS_SHA256 = "f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6"
+
+    def test_frozen_corpus_and_thresholds_are_unchanged(self):
+        self.assertEqual(_corpus_hash(), self.FROZEN_CORPUS_SHA256)
+        corpus = json.loads(CORPUS_PATH.read_text())
+        self.assertEqual(eval_embeddings.canonical_sha256(corpus["cases"]), self.FROZEN_CORPUS_SHA256)
+        self.assertEqual(len(corpus["cases"]), 100)
+        self.assertEqual(sum(1 for c in corpus["cases"] if c["category"] != "empty"), 95)
+        self.assertEqual(sum(1 for c in corpus["cases"] if c["category"] == "empty"), 5)
+        self.assertEqual(
+            scoring.CATEGORY_FLOORS,
+            {"paraphrase": (36, 40), "name_entity": (19, 20), "preference": (19, 20), "multilingual": (9, 10), "temporal": (5, 5)},
+        )
+        self.assertEqual(scoring.OVERALL_HIT_AT_5_MIN, 0.90)
+        self.assertEqual((scoring.LEXICAL_NEGATIVE_MIN_HITS, scoring.LEXICAL_NEGATIVE_MIN_DENOM), (18, 20))
+
+    def test_every_empty_case_has_exactly_one_removal_mode_and_both_modes_are_used(self):
+        empties = seeding.empty_case_ids(json.loads(CORPUS_PATH.read_text()))
+        self.assertEqual(sorted(self.ft.TARGET_MODE), empties)
+        self.assertEqual(sorted(self.ft.FORGOTTEN_TARGET_TEXT), empties)
+        expire, forget = self.ft.cases_with_mode("expire"), self.ft.cases_with_mode("forget")
+        self.assertTrue(expire and forget)
+        self.assertEqual(sorted(expire + forget), empties)
+        self.assertEqual(set(self.ft.TARGET_MODE.values()), {"expire", "forget"})
+
+    def test_the_supplemental_hash_covers_texts_modes_timing_and_sentinel(self):
+        base = self.ft.targets_sha256()
+        self.assertRegex(base, r"^[0-9a-f]{64}$")
+        self.assertEqual(base, self.ft.targets_sha256())  # deterministic
+        for label, patch in (
+            ("ttl", mock.patch.object(self.ft, "EXPIRY_TTL_SECONDS", self.ft.EXPIRY_TTL_SECONDS + 1)),
+            ("margin", mock.patch.object(self.ft, "EXPIRY_MARGIN_SECONDS", self.ft.EXPIRY_MARGIN_SECONDS + 1)),
+            ("tail", mock.patch.object(self.ft, "EXPIRY_TAIL_SECONDS", self.ft.EXPIRY_TAIL_SECONDS + 1)),
+            ("a mode", mock.patch.dict(self.ft.TARGET_MODE, {"empty-01": "expire"})),
+            ("a text", mock.patch.dict(self.ft.FORGOTTEN_TARGET_TEXT, {"empty-01": "changed"})),
+            ("the sentinel", mock.patch.object(self.ft, "SENTINEL_FACT_TEXT", "changed")),
+        ):
+            with self.subTest(changed=label), patch:
+                self.assertNotEqual(self.ft.targets_sha256(), base)
+
+    def test_the_reviewed_docs_pin_the_current_supplemental_hash(self):
+        doc = (REPO_ROOT / "docs" / "launch" / "hosted-completion" / "embedding-eval.md").read_text()
+        self.assertTrue(self.ft.targets_sha256() in doc, "embedding-eval.md must name the supplemental hash the freeze review confirms")
+        self.assertTrue(self.FROZEN_CORPUS_SHA256 in doc, "embedding-eval.md must name the frozen corpus hash")
+        self.assertFalse("7f5e08628f903686403eb8a48c7841a4ff9bfa3cb3cd2d36d54de0f196251714" in doc, "the superseded supplemental hash must not linger")
+
+    def test_targets_are_synthetic_and_unrelated_to_any_frozen_query_text(self):
+        corpus = json.loads(CORPUS_PATH.read_text())
+        queries = {c["query"] for c in corpus["cases"]}
+        for text in self.ft.FORGOTTEN_TARGET_TEXT.values():
+            self.assertNotIn(text, queries)
 
 
 class TestGitAndCorpusIntegrity(unittest.TestCase):

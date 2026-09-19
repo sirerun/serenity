@@ -27,7 +27,9 @@ watchdog thread shuts the socket down when the deadline passes, which
 interrupts a blocked recv wherever it is (headers or body), and the elapsed
 time is re-checked after each phase. Not covered: DNS resolution
 (getaddrinfo is not interruptible), so manifests should name literal IPs or
-already-resolvable hosts.
+already-resolvable hosts. A stall after the first body byte is covered the same
+way (the deadline is absolute, not restarted by arriving bytes), and every
+socket and response is closed explicitly on every path, success or failure.
 """
 
 from __future__ import annotations
@@ -230,6 +232,7 @@ class MCPClient:
         watchdog = threading.Timer(deadline_s, abort)
         watchdog.daemon = True
         watchdog.start()
+        resp = None
         try:
             conn.connect()  # bounded by timeout=deadline_s; DNS is the documented exception
             socks.append(conn.sock)
@@ -247,7 +250,20 @@ class MCPClient:
             raise MCPError(f"transport error calling the hosted endpoint: {type(e).__name__}") from e
         finally:
             watchdog.cancel()
+            # Close every handle on every path, explicitly. conn.close() does not
+            # reach a response on a `Connection: close` exchange (http.client hands
+            # the socket to the response and forgets it), and read(n) on a body
+            # with no length returns short data at EOF without closing the
+            # response. Leaving that to the garbage collector holds the socket
+            # open for as long as a reference survives.
+            if resp is not None:
+                resp.close()
             conn.close()
+            for sock in socks:
+                try:
+                    sock.close()
+                except OSError:
+                    pass
         if fired.is_set() or time.monotonic() >= deadline:
             raise MCPError(f"deadline exceeded: the request took longer than {deadline_s:.3f}s")
         if len(raw) > MAX_RESPONSE_BYTES:

@@ -301,9 +301,9 @@ def run_fixtures(args: argparse.Namespace) -> tuple[dict, int]:
     result["limitations"].append(
         "The local lexical control's empty cases run against isolated brains holding one unrelated filler "
         "fact (seedbrain refuses an empty brain) and are scored strictly: returning the filler fails. That "
-        "arm is a control, not the forgotten-fact qualification. The real forgotten-fact protocol (remember "
-        "a target, show it retrievable, forget it, show it absent) runs only under --seed/--live and has "
-        "been exercised only against a loopback fake, never a hosted account."
+        "arm is a control, not the forgotten/expired qualification. The real protocol (remember a target, show "
+        "it retrievable, then remove it by forget or by a fixed absolute TTL and show it absent) runs only "
+        "under --seed/--live and has been exercised only against a loopback fake, never a hosted account."
     )
     result["limitations"].append(
         "--live mode's actual semantic quality has never been measured (no EMBEDDINGS key, no seeded "
@@ -453,6 +453,25 @@ def provider_record(m: dict) -> dict:
     }
 
 
+def record_cost(result: dict, guard: BudgetGuard, authorization_refs: list[str]) -> None:
+    """`cost.actual_usd` stays null: nothing here measures a provider or
+    hosting invoice, and reporting a projection as actual spend would be a
+    fabricated measurement. The worst-case reservation the budget guard
+    enforces (calls made times the operator's per-call ceiling) is reported
+    under its own name."""
+    result["cost"]["actual_usd"] = None
+    result["cost"]["operator_ceiling_projection_usd"] = guard.projected_cost_usd()
+    result["cost"]["approved_max_usd"] = guard.approved_max_usd
+    result["cost"]["authorization_refs"] = authorization_refs
+
+
+COST_LIMITATION = (
+    "cost.actual_usd is null: no billing measurement exists for this run. "
+    "cost.operator_ceiling_projection_usd is calls x budget.max_cost_per_call_usd, a worst-case reservation the "
+    "budget guard enforces, not a spend figure or an invoice."
+)
+
+
 def guard_check_for(guard: BudgetGuard):
     def check() -> None:
         reason = guard.exhausted_reason()
@@ -513,7 +532,7 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
         client = guard.client(target["endpoint_url"], tokens[role], target["allowed_origins"])
         id_map = receipt["id_map"]
         # The positive account must still hold exactly what was seeded. The
-        # empty-case account must hold NOTHING: every target was forgotten.
+        # empty-case account must hold NOTHING: every target was forgotten or expired.
         expected_current = set(id_map) if role == seeding.ROLE_POSITIVE else set()
         results: list = []
         try:
@@ -641,17 +660,16 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
     result["limitations"] += [
         "Expected-empty scoring is strict: any returned search result or fact fails the case. The empty-case "
         "account holds zero current facts because each synthetic target was remembered, shown retrievable, and "
-        "forgotten through the ordinary forget API by the seed run (see the seed receipt). Only `forget` was "
-        "exercised; TTL expiry was not.",
-        "The forgotten-target and sentinel texts (lib/forgotten_targets.py) are outside corpus.json and are a "
+        "then removed by the seed run: three by the ordinary forget API and two by lapsing past a fixed absolute "
+        "TTL, shown absent only after the service's clock passed it (see the seed receipt).",
+        "The supplemental plan (lib/forgotten_targets.py: target texts, removal modes, expiry timing and the "
+        "sentinel; hash in the seed receipts as forgotten_targets_sha256) is outside corpus.json and is a "
         "proposed addition pending task41 reviewer confirmation; the frozen queries, positive cases and "
         "thresholds are unchanged.",
-        "cost.actual_usd is calls * budget.max_cost_per_call_usd (an operator ceiling), not a provider invoice.",
+        COST_LIMITATION,
         "provider fields are the manifest's declared pin; the hosted recall response does not report a model or dimensions.",
     ]
-    result["cost"]["actual_usd"] = guard.projected_cost_usd()
-    result["cost"]["approved_max_usd"] = guard.approved_max_usd
-    result["cost"]["authorization_refs"] = [m["budget"]["authorization_ref"]]
+    record_cost(result, guard, [m["budget"]["authorization_ref"]])
 
     if blocked_reason:
         result["status"], exit_code = "BLOCKED", EXIT_BLOCKED
@@ -663,6 +681,21 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
     return result, exit_code
 
 
+def elapsed_floor_problems(m: dict) -> list[str]:
+    """The expiry protocol waits out a real TTL, so a total elapsed cap below
+    TTL + margin + tail cannot complete it. Reported before any call."""
+    budget = m.get("budget")
+    cap = budget.get("max_elapsed_seconds") if isinstance(budget, dict) else None
+    floor = forgotten_targets.expiry_wait_floor_seconds()
+    if isinstance(cap, (int, float)) and not isinstance(cap, bool) and cap < floor:
+        return [
+            f"budget.max_elapsed_seconds={cap} is below {floor}s: the TTL-expiry protocol waits "
+            f"{forgotten_targets.EXPIRY_TTL_SECONDS}s + {forgotten_targets.EXPIRY_MARGIN_SECONDS}s margin and needs "
+            f"{forgotten_targets.EXPIRY_TAIL_SECONDS}s after it for the probes"
+        ]
+    return []
+
+
 def dirty_message(dirty: list[str]) -> str:
     return (
         f"uncommitted changes under the harness code ({', '.join(dirty[:5])}); commit them so source_sha "
@@ -670,12 +703,14 @@ def dirty_message(dirty: list[str]) -> str:
     )
 
 
-def run_seed(args: argparse.Namespace) -> tuple[dict, int]:
+def run_seed(args: argparse.Namespace, *, clock=time.time, sleep=time.sleep) -> tuple[dict, int]:
     """Seeds both qualification accounts under the same budget caps the live
     run uses, after proving each was empty. Never runs without
     seeding.authorized, never overwrites a receipt, stops at the first
     blocked step, and prints each receipt's confirmation string for the live
-    manifest."""
+    manifest. The empty-case account's TTL expiry is waited out for real: the
+    wait counts against max_elapsed_seconds, and a cap too short for it blocks
+    the run before its first call. `clock` and `sleep` exist for tests."""
     started = time.time()
     corpus, facts, fact_by_id = load_corpus(args.corpus, args.facts)
     source_sha = git_source_sha(REPO_ROOT)
@@ -688,6 +723,7 @@ def run_seed(args: argparse.Namespace) -> tuple[dict, int]:
         problems.append(f"manifest corpus_sha256={m.get('corpus_sha256')!r} does not match on-disk corpus={corpus_sha256!r}")
     if not args.receipt_dir:
         problems.append("--receipt-dir is required for --seed; receipts are the only attribution record")
+    problems += elapsed_floor_problems(m)
     if not problems:
         dirty = dirty_paths(REPO_ROOT)
         if dirty:
@@ -715,6 +751,7 @@ def run_seed(args: argparse.Namespace) -> tuple[dict, int]:
             facts_sha256=facts_sha256, source_sha=source_sha, recorded_at=now_iso(),
             credential_secret_ref=target["credential_secret_ref"],
             preceded_by_seeded_facts=sum(len(o.receipt["seeded"]) for o in outcomes.values()),
+            clock=clock, sleep=sleep, remaining_seconds=guard.remaining_seconds,
         )
         outcomes[role] = outcome
         confirmations[role] = seeding.write_receipt(paths[role], outcome.receipt)
@@ -753,11 +790,14 @@ def run_seed(args: argparse.Namespace) -> tuple[dict, int]:
             status="PASS" if both_complete else "BLOCKED",
         ),
         acceptance_row(
-            criterion="Forgotten-fact protocol: each expected-empty target shown present, forgotten via forget, then absent from inventory and search; cross-account sentinel unreachable",
-            expected="presence rank<=5 for 5/5, forget expired=true for 5/5, post-forget inventory 0 and zero results/facts for 5/5, sentinel probe empty",
+            criterion="Forgotten/expired protocol: each expected-empty target shown present, then removed by forget (3) or by a fixed absolute TTL shown absent only after the service clock passed it (2), with the still-present forget targets as a control; final inventory empty; cross-account sentinel unreachable",
+            expected="presence rank<=5 for 5/5; forget expired=true for the 3 forget-mode targets; the 2 expire-mode targets absent from inventory, results and facts a full margin after valid_until; final inventory 0 and zero results/facts for 5/5; sentinel probe empty",
             observed=blocked_reason or (
-                f"presence={len(empty_receipt.get('presence') or [])}/5, forgotten={len(empty_receipt.get('forget') or [])}/5, "
-                f"post_forget_inventory={(empty_receipt.get('post_forget') or {}).get('inventory_total')}, "
+                f"presence={len(empty_receipt.get('presence') or [])}/5, forgotten={len(empty_receipt.get('forget') or [])}/"
+                f"{len(forgotten_targets.cases_with_mode(forgotten_targets.MODE_FORGET))}, "
+                f"expired_absent={(empty_receipt.get('expiry_check') or {}).get('expired_absent_from_inventory')} "
+                f"({(empty_receipt.get('expiry') or {}).get('probed_after_valid_until_seconds')}s past valid_until), "
+                f"post_removal_inventory={(empty_receipt.get('post_forget') or {}).get('inventory_total')}, "
                 f"sentinel_probe_passed={(empty_receipt.get('cross_account_probe') or {}).get('passed')}"
             ),
             status="PASS" if both_complete else "BLOCKED",
@@ -774,9 +814,8 @@ def run_seed(args: argparse.Namespace) -> tuple[dict, int]:
         role: {"path": str(paths[role]), "confirmation": confirmations[role], "complete": outcomes[role].receipt["complete"]}
         for role in outcomes
     }
-    result["cost"]["actual_usd"] = guard.projected_cost_usd()
-    result["cost"]["approved_max_usd"] = guard.approved_max_usd
-    result["cost"]["authorization_refs"] = [m["budget"]["authorization_ref"], m["seeding"]["authorization_ref"]]
+    record_cost(result, guard, [m["budget"]["authorization_ref"], m["seeding"]["authorization_ref"]])
+    result["limitations"].append(COST_LIMITATION)
     result["limitations"].append(
         "Seeding proves the accounts held the corpus; it measures no retrieval quality. Status stays PARTIAL until a "
         "separate --live run scores recall against the receipts."
@@ -812,21 +851,31 @@ def plan_requests(corpus: dict, fact_by_id: dict, corpus_sha256: str) -> dict:
     empty_queries = [recall({"query": c["query"], "limit": K}) for c in empty]
 
     def remembers(role: str) -> list:
-        return [
-            tool("remember", {
+        out = []
+        for fid, text in seeding.plan_facts(corpus, fact_by_id, role):
+            args = {
                 "fact": text,
                 "provenance": seeding.provenance(corpus_sha256, fid),
                 "operation_key": seeding.operation_key(corpus_sha256, fid),
-            })
-            for fid, text in seeding.plan_facts(corpus, fact_by_id, role)
-        ]
+            }
+            if seeding.target_mode(fid) == forgotten_targets.MODE_EXPIRE:
+                args["ttl"] = seeding.iso_utc(0)  # every instant this century serializes to the same 20 bytes
+            out.append(tool("remember", args))
+        return out
 
-    forgets = [tool("forget", {"id": "0" * 64, "reason": "T23.43 expected-empty qualification: forgotten target"}) for _ in empty]
+    by_id = {c["id"]: c for c in empty}
+    expire_queries = [recall({"query": by_id[cid]["query"], "limit": K}) for cid in forgotten_targets.cases_with_mode(forgotten_targets.MODE_EXPIRE)]
+    forgets = [
+        tool("forget", {"id": "0" * 64, "reason": "T23.43 expected-empty qualification: forgotten target"})
+        for _ in forgotten_targets.cases_with_mode(forgotten_targets.MODE_FORGET)
+    ]
     requests = {
         (seeding.ROLE_POSITIVE, "seed"): [init, *probes, *remembers(seeding.ROLE_POSITIVE), inventory],
         (seeding.ROLE_EMPTY_CASE, "seed"): [
             init, *probes, *remembers(seeding.ROLE_EMPTY_CASE), inventory,
-            *empty_queries, *forgets, inventory, *empty_queries, sentinel,
+            *empty_queries,  # presence, all five
+            inventory, *expire_queries,  # after the wait: expire-mode targets gone, forget-mode targets still there
+            *forgets, inventory, *empty_queries, sentinel,  # then the strict zero-current-facts proof
         ],
         (seeding.ROLE_POSITIVE, "live"): [
             init, inventory, *[recall({"query": c["query"], "limit": K}) for c in positive_cases(corpus)]
@@ -842,6 +891,15 @@ def plan_requests(corpus: dict, fact_by_id: dict, corpus_sha256: str) -> dict:
             "live_calls": len(requests[(role, "live")]),
             "request_bytes": size(requests[(role, "seed")]) + size(requests[(role, "live")]),
         }
+    plan["expiry"] = {
+        "expire_cases": forgotten_targets.cases_with_mode(forgotten_targets.MODE_EXPIRE),
+        "forget_cases": forgotten_targets.cases_with_mode(forgotten_targets.MODE_FORGET),
+        "ttl_seconds": forgotten_targets.EXPIRY_TTL_SECONDS,
+        "margin_seconds": forgotten_targets.EXPIRY_MARGIN_SECONDS,
+        "tail_seconds": forgotten_targets.EXPIRY_TAIL_SECONDS,
+        "min_elapsed_seconds": forgotten_targets.expiry_wait_floor_seconds(),
+        "supplemental_sha256": forgotten_targets.targets_sha256(),
+    }
     plan["total_calls"] = sum(r["seed_calls"] + r["live_calls"] for r in plan["per_role"].values())
     plan["total_request_bytes"] = sum(r["request_bytes"] for r in plan["per_role"].values())
     # Charged at one token per request byte (lib/budget.py), an upper bound.
@@ -869,6 +927,8 @@ def run_preflight(args: argparse.Namespace) -> tuple[dict, int]:
     plan = plan_requests(corpus, fact_by_id, corpus_sha256)
     budget = m.get("budget") or {}
     if not [p for p in problems if p.startswith("budget.")]:
+        if phase == manifest_lib.PHASE_SEED:
+            problems += elapsed_floor_problems(m)
         if plan["total_calls"] > budget["max_calls"]:
             problems.append(f"budget.max_calls={budget['max_calls']} is below the {plan['total_calls']} calls the full seed+live plan needs")
         if plan["input_token_upper_bound"] > budget["max_input_tokens"]:

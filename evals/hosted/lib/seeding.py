@@ -16,13 +16,25 @@ Two roles, two accounts (see manifest.py):
   cross-account sentinel fact that exists nowhere else.
 - `empty_case` tests the 5 expected-empty cases, which T23.43.md defines as
   forgotten/expired: each must return NO current fact. For each frozen empty
-  query the seed run remembers a synthetic target fact (lib/forgotten_targets),
-  proves it present (inventory and search retrieval), forgets it through the
-  ordinary `forget` API, then proves it absent from both recall arms. The
+  query the seed run remembers a synthetic target fact (lib/forgotten_targets)
+  and proves it present (inventory and search retrieval). Each target is then
+  removed one of two ways, fixed by the reviewed plan: "expire" targets are
+  remembered with one absolute `ttl` timestamp and are shown absent only after
+  the service's own clock has passed it, with nothing called to remove them;
+  "forget" targets are forgotten through the ordinary `forget` API. While the
+  forget targets are still present they serve as a control (an expiry that
+  emptied the index for the wrong reason would not leave them behind). The
   account ends holding zero current facts, so a live run scores every
   expected-empty query strictly: any returned result or fact is a violation.
   The sentinel is then queried against this account to show another
   account's content is unreachable.
+
+The expiry wait counts against the manifest's total elapsed cap. A run whose
+cap cannot cover TTL + margin + tail is blocked before its first call, and a
+wait that no longer fits blocks before it starts. A service that ignores the
+TTL, does not report the expiry, keeps an expired fact searchable, or runs a
+clock so far behind that the fact is still visible after the margin blocks
+the seed; none of these is ever read as a pass.
 
 Seeding never overwrites, never resumes, and never reuses a non-empty
 account: a partial seed leaves a receipt marked incomplete and the account
@@ -38,9 +50,12 @@ the exact endpoint URL and the credential's environment-variable NAME only.
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
+import math
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -51,7 +66,8 @@ from .scoring import K as RECALL_LIMIT
 ROLE_POSITIVE = "positive"
 ROLE_EMPTY_CASE = "empty_case"
 ROLES = (ROLE_POSITIVE, ROLE_EMPTY_CASE)
-RECEIPT_SCHEMA_VERSION = 1
+RECEIPT_SCHEMA_VERSION = 2  # 2: expire-mode targets, expiry and expiry_check proofs
+WAIT_CHUNK_SECONDS = 5.0  # the expiry wait sleeps in chunks so the elapsed cap is observed during it
 SOURCE_SLUG_PREFIX = "source-"
 INVENTORY_LIMIT = 1000
 EMPTY_PROBE_QUERY = "qualification emptiness probe"
@@ -82,6 +98,52 @@ def _nonneg_int(v: object) -> bool:
 
 def _safe_int(v: object) -> int | None:
     return v if _is_int(v) and -10**9 < v < 10**9 else None
+
+
+def iso_utc(epoch: float) -> str:
+    """RFC 3339 UTC to whole seconds: the shape the hosted `ttl` parameter and
+    its `valid_until` echo both use."""
+    return datetime.datetime.fromtimestamp(epoch, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_iso_utc(value: object) -> float | None:
+    """Epoch seconds for a timezone-aware ISO 8601 string, else None. The
+    input is server-controlled text: it is parsed, never echoed."""
+    if not isinstance(value, str) or len(value) > 64:
+        return None
+    try:
+        t = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if t.tzinfo is None:
+        return None
+    try:
+        return t.timestamp()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def target_mode(fact_id: str) -> str | None:
+    """How a supplemental target is removed ("forget" or "expire"), or None
+    for any other fact."""
+    if fact_id.startswith("forgotten-"):
+        return ft.TARGET_MODE.get(fact_id[len("forgotten-"):])
+    return None
+
+
+@dataclass(frozen=True)
+class Expiry:
+    epoch: int  # the one absolute instant every expire-mode target is remembered with
+    iso: str
+
+
+def plan_expiry(clock) -> Expiry:
+    """The fixed absolute expiry for this seed run: the local wall clock
+    rounded up to a whole second, plus the plan's TTL. Computed once, so all
+    expire-mode targets share one instant and a retried keyed remember carries
+    the identical payload."""
+    epoch = math.ceil(clock()) + ft.EXPIRY_TTL_SECONDS
+    return Expiry(epoch=epoch, iso=iso_utc(epoch))
 
 
 class SeedBlocked(RuntimeError):
@@ -257,7 +319,7 @@ def _verify_receipt(receipt, role, corpus, corpus_sha256, facts_sha256, endpoint
             problems.append(msg)
         return cond
 
-    need(_is_int(receipt.get("schema_version")) and receipt.get("schema_version") == RECEIPT_SCHEMA_VERSION, "seed receipt schema_version is not the integer 1")
+    need(_is_int(receipt.get("schema_version")) and receipt.get("schema_version") == RECEIPT_SCHEMA_VERSION, f"seed receipt schema_version is not the integer {RECEIPT_SCHEMA_VERSION}")
     need(receipt.get("role") == role, f"seed receipt role is not {role!r}")
     need(receipt.get("corpus_sha256") == corpus_sha256, "seed receipt corpus_sha256 does not match the frozen corpus")
     need(receipt.get("facts_sha256") == facts_sha256, "seed receipt facts_sha256 does not match the frozen facts")
@@ -324,33 +386,92 @@ def _verify_receipt(receipt, role, corpus, corpus_sha256, facts_sha256, endpoint
             "empty-case receipt was not taken after the positive account was fully seeded",
         )
         cases = empty_case_ids(corpus)
+        expire_cases, forget_cases = ft.cases_with_mode(ft.MODE_EXPIRE), ft.cases_with_mode(ft.MODE_FORGET)
         presence, forgot = receipt.get("presence"), receipt.get("forget")
         post, cross = receipt.get("post_forget"), receipt.get("cross_account_probe")
-        if need(
+        expiry, echeck = receipt.get("expiry"), receipt.get("expiry_check")
+        if not need(
             isinstance(presence, list) and isinstance(forgot, list) and isinstance(post, dict) and isinstance(cross, dict)
-            and isinstance(post.get("cases"), list),
-            "empty-case receipt lacks its presence/forget/post_forget/cross_account_probe proofs",
+            and isinstance(post.get("cases"), list) and isinstance(expiry, dict) and isinstance(echeck, dict)
+            and isinstance(echeck.get("cases"), list),
+            "empty-case receipt lacks its presence/forget/expiry/expiry_check/post_forget/cross_account_probe proofs",
         ):
-            need(
-                [p.get("case_id") for p in presence if isinstance(p, dict)] == cases
-                and all(isinstance(p, dict) and _is_int(p.get("rank")) and 1 <= p["rank"] <= RECALL_LIMIT for p in presence),
-                "every expected-empty target must be retrievable (top-5) before it is forgotten",
-            )
-            need(
-                [f.get("case_id") for f in forgot if isinstance(f, dict)] == cases
-                and all(isinstance(f, dict) and f.get("expired") is True and f.get("remember_id") in id_map for f in forgot),
-                "every expected-empty target must have been forgotten (forget expired=true)",
-            )
-            need(
-                post.get("inventory_total") == 0
-                and [c.get("case_id") for c in post["cases"] if isinstance(c, dict)] == cases
-                and all(isinstance(c, dict) and c.get("results_returned") == 0 and c.get("facts_returned") == 0 for c in post["cases"]),
-                "post-forget proof must show an empty inventory and zero results and facts for every expected-empty query",
-            )
-            need(
-                cross.get("passed") is True and cross.get("results_returned") == 0 and cross.get("facts_returned") == 0,
-                "the cross-account sentinel must be unreachable from the empty-case account",
-            )
+            return
+        need(
+            [p.get("case_id") for p in presence if isinstance(p, dict)] == cases
+            and all(isinstance(p, dict) and _is_int(p.get("rank")) and 1 <= p["rank"] <= RECALL_LIMIT for p in presence),
+            "every expected-empty target must be retrievable (top-5) before it is removed",
+        )
+        need(
+            [f.get("case_id") for f in forgot if isinstance(f, dict)] == forget_cases
+            and all(isinstance(f, dict) and f.get("expired") is True and f.get("remember_id") in id_map for f in forgot),
+            "every forget-mode target must have been forgotten (forget expired=true)",
+        )
+        _verify_expiry(receipt, expiry, echeck, expire_cases, forget_cases, need)
+        need(
+            post.get("inventory_total") == 0
+            and [c.get("case_id") for c in post["cases"] if isinstance(c, dict)] == cases
+            and all(isinstance(c, dict) and c.get("results_returned") == 0 and c.get("facts_returned") == 0 for c in post["cases"]),
+            "post-removal proof must show an empty inventory and zero results and facts for every expected-empty query",
+        )
+        need(
+            cross.get("passed") is True and cross.get("results_returned") == 0 and cross.get("facts_returned") == 0,
+            "the cross-account sentinel must be unreachable from the empty-case account",
+        )
+
+
+def _is_number(v: object) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _verify_expiry(receipt: dict, expiry: dict, echeck: dict, expire_cases: list, forget_cases: list, need) -> None:
+    """The TTL half of the forgotten/expired proof. Every field is checked
+    for type as well as value: the wait's evidence is the local clock reading
+    taken after it, so a receipt cannot claim an expiry it did not wait for."""
+    valid_until, epoch = expiry.get("valid_until"), expiry.get("valid_until_epoch")
+    need(
+        expiry.get("cases") == expire_cases
+        and expiry.get("ttl_seconds") == ft.EXPIRY_TTL_SECONDS and _is_int(expiry.get("ttl_seconds"))
+        and expiry.get("margin_seconds") == ft.EXPIRY_MARGIN_SECONDS and _is_int(expiry.get("margin_seconds")),
+        "receipt expiry plan does not match the reviewed expiry cases, TTL and margin",
+    )
+    need(
+        isinstance(valid_until, str) and _is_int(epoch) and parse_iso_utc(valid_until) == epoch and iso_utc(epoch) == valid_until,
+        "receipt valid_until is not one consistent absolute RFC 3339 instant",
+    )
+    seeded = {x.get("corpus_fact_id"): x for x in receipt["seeded"]}
+    need(
+        all(
+            seeded.get(ft.target_id(c), {}).get("valid_until") == valid_until
+            and seeded.get(ft.target_id(c), {}).get("valid_until_returned") == valid_until
+            for c in expire_cases
+        ),
+        "every expire-mode target must have been remembered with the fixed expiry and the service must have reported it back",
+    )
+    need(
+        all("valid_until" not in seeded.get(ft.target_id(c), {"valid_until": 1}) for c in forget_cases),
+        "a forget-mode target must not carry an expiry",
+    )
+    waited = expiry.get("probed_after_valid_until_seconds")
+    need(
+        _is_number(waited) and waited >= ft.EXPIRY_MARGIN_SECONDS,
+        "the post-expiry probes were not taken a full margin after the expiry instant",
+    )
+    need(
+        echeck.get("expired_absent_from_inventory") is True
+        and echeck.get("forget_targets_still_present") is True
+        and echeck.get("unexpected_facts") == 0 and _is_int(echeck.get("unexpected_facts"))
+        and echeck.get("inventory_total") == len(forget_cases) and _is_int(echeck.get("inventory_total")),
+        "the expiry check must show every expire-mode target gone while every forget-mode target was still present",
+    )
+    need(
+        [c.get("case_id") for c in echeck["cases"] if isinstance(c, dict)] == expire_cases
+        and all(
+            isinstance(c, dict) and c.get("target_in_results") is False and c.get("target_in_facts") is False
+            for c in echeck["cases"]
+        ),
+        "every expire-mode target must be absent from search results and facts after its expiry",
+    )
 
 
 def _args_ok(resp: object, what: str) -> dict:
@@ -432,12 +553,20 @@ def seed_target(
     recorded_at: str,
     credential_secret_ref: str,
     preceded_by_seeded_facts: int,
+    clock=time.time,
+    sleep=time.sleep,
+    remaining_seconds=None,
 ) -> SeedOutcome:
     """Seeds one account. `guard_check` raises SeedBlocked when a cap is
     reached between steps; the client itself precharges every request. Always
     returns a receipt, marked complete only when every proof held.
     `preceded_by_seeded_facts` is how many facts were already seeded into the
-    other account before this account's emptiness proof (0 for the first)."""
+    other account before this account's emptiness proof (0 for the first).
+
+    `clock` is the wall clock the expiry instant is computed from and waited
+    on, `sleep` how the wait passes, and `remaining_seconds` (a callable) how
+    much of the total elapsed cap is left; tests inject a shared fake clock,
+    production uses the real ones and the budget guard's."""
     plan = plan_facts(corpus, fact_by_id, role)
     receipt: dict = {
         "schema_version": RECEIPT_SCHEMA_VERSION,
@@ -459,23 +588,31 @@ def seed_target(
         "usage": None,
     }
     reason: str | None = None
+    expiry: Expiry | None = None
     try:
         guard_check()
         client.initialize()
         receipt["empty_account_proof"] = prove_empty(client, guard_check)
+        if role == ROLE_EMPTY_CASE:
+            expiry = plan_expiry(clock)
+            receipt["expiry"] = {
+                "cases": ft.cases_with_mode(ft.MODE_EXPIRE),
+                "ttl_seconds": ft.EXPIRY_TTL_SECONDS,
+                "margin_seconds": ft.EXPIRY_MARGIN_SECONDS,
+                "valid_until": expiry.iso,
+                "valid_until_epoch": expiry.epoch,
+            }
         for fid, text in plan:
             guard_check()
-            resp = _args_ok(
-                client.call_tool(
-                    "remember",
-                    {
-                        "fact": text,
-                        "provenance": provenance(corpus_sha256, fid),
-                        "operation_key": operation_key(corpus_sha256, fid),
-                    },
-                ),
-                f"remember {fid}",
-            )
+            args = {
+                "fact": text,
+                "provenance": provenance(corpus_sha256, fid),
+                "operation_key": operation_key(corpus_sha256, fid),
+            }
+            mode = target_mode(fid)
+            if mode == ft.MODE_EXPIRE:
+                args["ttl"] = expiry.iso
+            resp = _args_ok(client.call_tool("remember", args), f"remember {fid}")
             rid = resp.get("id")
             status = fixed(resp.get("status"), _REMEMBER_STATUSES)
             state = fixed(resp.get("search_state"), _SEARCH_STATES)
@@ -486,15 +623,23 @@ def seed_target(
                     f"remember {fid}: search_state={state}; no vector was stored, "
                     "so qualification would measure keyword search, not embeddings"
                 )
-            receipt["seeded"].append(
-                {
-                    "corpus_fact_id": fid,
-                    "remember_id": rid,
-                    "status": status,
-                    "search_state": state,
-                    "operation_key": operation_key(corpus_sha256, fid),
-                }
-            )
+            entry = {
+                "corpus_fact_id": fid,
+                "remember_id": rid,
+                "status": status,
+                "search_state": state,
+                "operation_key": operation_key(corpus_sha256, fid),
+            }
+            if mode == ft.MODE_EXPIRE:
+                returned = parse_iso_utc(resp.get("valid_until"))
+                if returned is None or abs(returned - expiry.epoch) > 0.5:
+                    raise SeedBlocked(
+                        f"remember {fid}: the service did not report the requested expiry; "
+                        "a fact that may never expire cannot be shown expired"
+                    )
+                entry["valid_until"] = expiry.iso
+                entry["valid_until_returned"] = iso_utc(returned)
+            receipt["seeded"].append(entry)
             receipt["id_map"][rid] = fid
         found = fetch_inventory(client, guard_check)
         expected = {x["remember_id"]: dict(plan)[x["corpus_fact_id"]] for x in receipt["seeded"]}
@@ -503,9 +648,16 @@ def seed_target(
             "matches_seeded": found == expected,
         }
         if found != expected:
+            if expiry is not None and clock() >= expiry.epoch:
+                raise SeedBlocked(
+                    "post-seed inventory differs from what was seeded, and the expiry instant has already passed: "
+                    "the TTL is too short for this endpoint's latency"
+                )
             raise SeedBlocked("post-seed inventory differs from what was seeded (extra, missing, or altered facts)")
         if role == ROLE_EMPTY_CASE:
-            _forget_and_prove_absent(client, guard_check, corpus, receipt)
+            _remove_and_prove_absent(
+                client, guard_check, corpus, receipt, expiry, clock=clock, sleep=sleep, remaining_seconds=remaining_seconds
+            )
         receipt["complete"] = True
     except SeedBlocked as e:
         reason = str(e)
@@ -521,26 +673,92 @@ def seed_target(
     return SeedOutcome(receipt, reason)
 
 
-def _forget_and_prove_absent(client: MCPClient, guard_check, corpus: dict, receipt: dict) -> None:
-    """The forgotten-fact protocol for the empty-case account. Presence is
+def _await_expiry(guard_check, expiry: Expiry, clock, sleep, remaining_seconds) -> None:
+    """Waits until the local wall clock is EXPIRY_MARGIN_SECONDS past the
+    expiry instant. The wait is refused up front when the elapsed cap cannot
+    hold it plus the probe tail, and it sleeps in short chunks so a cap that
+    is reached mid-wait stops it. Nothing here shortens or skips the wait."""
+    target = expiry.epoch + ft.EXPIRY_MARGIN_SECONDS
+    needed = target - clock()
+    if remaining_seconds is not None and needed + ft.EXPIRY_TAIL_SECONDS > remaining_seconds():
+        raise SeedBlocked(
+            f"max_elapsed_seconds leaves too little time: the expiry wait needs {math.ceil(max(needed, 0))}s "
+            f"plus a {ft.EXPIRY_TAIL_SECONDS}s tail for the post-expiry probes"
+        )
+    for _ in range(1000):
+        now = clock()
+        if now >= target:
+            return
+        guard_check()
+        sleep(min(target - now, WAIT_CHUNK_SECONDS))
+    raise SeedBlocked("the wall clock did not advance during the expiry wait")
+
+
+def _remove_and_prove_absent(
+    client: MCPClient, guard_check, corpus: dict, receipt: dict, expiry: Expiry, *, clock, sleep, remaining_seconds
+) -> None:
+    """The forgotten/expired protocol for the empty-case account. Presence is
     shown first, by search, because absence afterwards proves nothing about a
-    fact the index could never have returned."""
+    fact the index could never have returned. Then, in order: the expire-mode
+    targets are left to lapse and shown absent while the forget-mode targets
+    are still present (a control); the forget-mode targets are forgotten; and
+    only then is the account held to the strict zero-current-facts standard."""
     id_map = receipt["id_map"]
-    by_case = {cid: next(k for k, v in id_map.items() if v == ft.target_id(cid)) for cid in empty_case_ids(corpus)}
+    cases = empty_case_ids(corpus)
+    expire_cases = ft.cases_with_mode(ft.MODE_EXPIRE)
+    forget_cases = ft.cases_with_mode(ft.MODE_FORGET)
+    if sorted(expire_cases + forget_cases) != sorted(cases) or not expire_cases or not forget_cases:
+        raise SeedBlocked("the supplemental target plan does not cover the corpus's expected-empty cases with both removal modes")
+    by_case = {cid: next(k for k, v in id_map.items() if v == ft.target_id(cid)) for cid in cases}
     queries = {c["id"]: c["query"] for c in corpus["cases"] if c["category"] == "empty"}
 
     receipt["presence"] = []
-    for cid in empty_case_ids(corpus):
+    for cid in cases:
         ids, _facts = recall_query(client, guard_check, queries[cid], id_map)
         if ft.target_id(cid) not in ids:
+            late = ft.TARGET_MODE[cid] == ft.MODE_EXPIRE and clock() >= expiry.epoch
             raise SeedBlocked(
-                f"presence not demonstrated for {cid}: the seeded target was not retrieved before forgetting, "
+                f"presence not demonstrated for {cid}: the seeded target was not retrieved before it was removed, "
                 "so its absence afterwards would prove nothing"
+                + ("; its expiry passed first, so the TTL is too short for this endpoint's latency" if late else "")
             )
         receipt["presence"].append({"case_id": cid, "target_id": ft.target_id(cid), "rank": ids.index(ft.target_id(cid)) + 1})
 
+    _await_expiry(guard_check, expiry, clock, sleep, remaining_seconds)
+    probed_at = clock()
+    receipt["expiry"]["probed_after"] = iso_utc(probed_at)
+    receipt["expiry"]["probed_after_valid_until_seconds"] = round(probed_at - expiry.epoch, 3)
+
+    expire_ids = {by_case[c] for c in expire_cases}
+    forget_ids = {by_case[c] for c in forget_cases}
+    found = fetch_inventory(client, guard_check)
+    expiry_cases = []
+    for cid in expire_cases:
+        ids, facts = recall_query(client, guard_check, queries[cid], id_map)
+        expiry_cases.append(
+            {"case_id": cid, "target_in_results": ft.target_id(cid) in ids, "target_in_facts": ft.target_id(cid) in facts}
+        )
+    receipt["expiry_check"] = {
+        "inventory_total": len(found),
+        "expired_absent_from_inventory": not (expire_ids & set(found)),
+        "forget_targets_still_present": forget_ids <= set(found),
+        "unexpected_facts": len(set(found) - expire_ids - forget_ids),
+        "cases": expiry_cases,
+    }
+    check = receipt["expiry_check"]
+    if not check["expired_absent_from_inventory"] or any(c["target_in_results"] or c["target_in_facts"] for c in expiry_cases):
+        raise SeedBlocked(
+            "an expire-mode target is still visible after its expiry plus margin; the service did not expire it "
+            "(or its clock is more than the margin behind), and no expiry can be claimed"
+        )
+    if not check["forget_targets_still_present"] or check["unexpected_facts"]:
+        raise SeedBlocked(
+            "the account changed while the expiry was pending (a forget-mode target vanished or an unknown fact "
+            "appeared), so the expiry proves nothing"
+        )
+
     receipt["forget"] = []
-    for cid in empty_case_ids(corpus):
+    for cid in forget_cases:
         guard_check()
         resp = _args_ok(
             client.call_tool("forget", {"id": by_case[cid], "reason": "T23.43 expected-empty qualification: forgotten target"}),
@@ -552,14 +770,15 @@ def _forget_and_prove_absent(client: MCPClient, guard_check, corpus: dict, recei
 
     remaining = fetch_inventory(client, guard_check)
     post_cases = []
-    for cid in empty_case_ids(corpus):
+    for cid in cases:
         ids, facts = recall_query(client, guard_check, queries[cid], id_map)
         post_cases.append({"case_id": cid, "results_returned": len(ids), "facts_returned": len(facts)})
     receipt["post_forget"] = {"inventory_total": len(remaining), "cases": post_cases}
     if remaining or any(c["results_returned"] or c["facts_returned"] for c in post_cases):
         raise SeedBlocked(
-            f"a forgotten fact is still visible (inventory={len(remaining)}, "
-            f"query hits={sum(c['results_returned'] + c['facts_returned'] for c in post_cases)}); forget did not remove it"
+            f"a removed fact is still visible (inventory={len(remaining)}, "
+            f"query hits={sum(c['results_returned'] + c['facts_returned'] for c in post_cases)}); "
+            "forget or expiry did not remove it"
         )
 
     ids, facts = recall_query(client, guard_check, ft.SENTINEL_FACT_TEXT, id_map)
