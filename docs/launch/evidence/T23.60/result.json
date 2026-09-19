@@ -2,20 +2,20 @@
   "task_id": "T23.60",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "4da769acf5d7799b8edea64a5cb0a3c607cb0ea1",
-  "recorded_at": "2026-09-19T04:23:11.322262+00:00",
+  "source_sha": "99323b6611b0e1c24eeb7f9f4f7dea2ad7740a99",
+  "recorded_at": "2026-09-19T04:45:22.091314+00:00",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
     "python3 -m unittest discover -s evals/hosted-load -p \"test_*.py\"",
     "python3 scripts/hosted/load.py --fixtures --manifest docs/launch/evidence/T23.60/manifest.json --output docs/launch/evidence/T23.60/load-fixture.json",
-    "python3 scripts/hosted/cost_model.py --manifest docs/launch/evidence/T23.60/manifest.json --output docs/launch/evidence/T23.60/cost.json",
+    "python3 scripts/hosted/cost_model.py --manifest docs/launch/evidence/T23.60/manifest.json --output docs/launch/evidence/T23.60/cost.json (prints CALCULATED and NOT_QUALIFIED, never PASS)",
     "python3 scripts/hosted/load.py --live --manifest docs/launch/evidence/T23.60/manifest.json --output /tmp/t2360-live-blocked.json (expected exit 2, BLOCKED, zero-call receipt)"
   ],
   "cases": {
-    "planned": 253,
-    "executed": 253,
-    "passed": 253,
+    "planned": 329,
+    "executed": 329,
+    "passed": 329,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
@@ -24,7 +24,7 @@
     {
       "criterion": "Cost math fixtures and complete recurring categories",
       "expected": "Units and full-snapshot multiplication tested; primary rates or explicit unknowns",
-      "observed": "253 local tests pass (one final full run, none skipped), including cost units/retention and client tests. Regional S3 rate independently verified from the AWS offer catalog; assumptions/unknown costs remain explicit. Candidate full-limit known subtotal is $321.93/month, not an authorized quote.",
+      "observed": "329 local tests pass (one full run, none skipped), including cost units, retention, receipt and measurement-validation tests. Rates for EC2, EBS, T4g credits, KMS, Secrets Manager, IPv4, CloudWatch and S3 storage are read from AWS's own US West (Oregon) price lists, each with a receipt file, rate code, source hash and publication date checked against the rate table by the tests; no numeric rate changed. S3 request prices, data transfer and the Resend prices stay labeled unverified. Measurements use an owned schema and are validated (no booleans, negatives, NaN, oversized or wrongly typed values, wrong containers or unattributed records); a bad record returns BLOCKED, and a record changes only its own scenario. The full mix counts all 29 allowed brains (32 backup objects). Each scenario reports a peak exposure: T4g surplus credits 46.72 USD at sustained 100% CPU and 29.20 USD at 70% mean, KMS key storage 3 USD after two rotations, no global free allowance. Full-limit known subtotal is $322.00/month and its peak is $369.87/month; neither is a full maximum or an authorized quote. The CPU credit mode is unverified, and control database lifetime growth, embeddings, log and metric volumes, restore activity, multipart requests and peak email volume are unknown, so launch cost qualification is NOT_QUALIFIED.",
       "status": "PASS"
     },
     {
@@ -55,15 +55,15 @@
     },
     {
       "path": "docs/launch/evidence/T23.60/cost.json",
-      "sha256": "c0361140553c76b9cc862fe3a26769cf95700ced49d2511ed6ddd8978e4f8f9d"
+      "sha256": "de3d27c2af1e1502d7ea9abd2d715b25bb1bf4d9c5ca7cabeb53e05b839ed4f0"
     },
     {
       "path": "docs/launch/hosted-economics.md",
-      "sha256": "fcfdd1f33282cd33f247ccdc1abd3f25344d08735f4b08a1887cd6af157d2e7e"
+      "sha256": "d748434b01c11b39d8b02e39edeb74a630a6f9abf11da95f548d24fb94911f32"
     },
     {
       "path": "scripts/hosted/cost_model.py",
-      "sha256": "ec906dcdb4162edc1bd085dc44dda5329336d98006744ed7e898d6d56a0a8f59"
+      "sha256": "f374c90b79c6c0bb1db42981386810d2b1c3a187744ae896c042412862c79051"
     },
     {
       "path": "scripts/hosted/load.py",
@@ -86,12 +86,28 @@
       "sha256": "d266bbb0bb6bde3f92833f123531535f783f039df1f8121444592bfd7bb09691"
     },
     {
+      "path": "docs/launch/evidence/T23.60/aws-rates/ec2-oregon-rate-receipt.json",
+      "sha256": "d37a8d3dc613187bdbc105ab1cc105abaa86cea3e45a7491ffe4ed043526e370"
+    },
+    {
+      "path": "docs/launch/evidence/T23.60/aws-rates/ec2-ebs-oregon-rate-extract.json",
+      "sha256": "946d3ed7b200b5a9b278602e92f54a00c24ff85b98e519d2d6e941d8f5056eb4"
+    },
+    {
+      "path": "docs/launch/evidence/T23.60/aws-rates/aws-regional-rates-selected.json",
+      "sha256": "e823dca1ab9c8367b8bb5bfb473d0ef951b2e99042d95ffc66f199e4ef399c78"
+    },
+    {
+      "path": "docs/launch/evidence/T23.60/integration-request-cost-measurements.md",
+      "sha256": "630b2cb229e2f01767e1ff2f33dac9fd0ce0dd6a174760eeaa3547854186fb68"
+    },
+    {
       "path": "evals/hosted-load/test_load_cli.py",
       "sha256": "90b3098ca264fab90442bbff7c195ab54a5ac8b1e6e76da70a6ae0c3b6fc9828"
     },
     {
       "path": "evals/hosted-load/test_cost_model.py",
-      "sha256": "6c60b4ef88dd4e5f0e25b5bd188886160dc140d9af1f1a25fb9f2ac5714b402b"
+      "sha256": "726316993a4de760ff8c3016645ef8880cb76c89d1a0369df6406b0b7c7313f7"
     },
     {
       "path": "evals/hosted-load/test_harness.py",
@@ -108,11 +124,13 @@
     "The per-exchange deadline covers hostname resolution (a disposable child, killed and reaped at the deadline), connect, TLS, headers and body under one monotonic deadline, within a 0.25s scheduling tolerance plus child start and post-deadline SIGTERM/SIGKILL/reap time (up to 1.2s if a child survives SIGTERM and SIGKILL). It runs the host's operating-system resolver unmodified, tries addresses sequentially, and adds one child (20-37ms measured locally) to each hostname exchange's recorded latency. It is checked against local sockets and a scripted resolver only; it says nothing about a live target or DNS provider.",
     "Token precharge is encoded argument bytes (an upper bound, no tokenizer verified), plus an operator-declared provider_work_bound for server-side work the client cannot observe. The committed manifest leaves that bound null, so a live run stays blocked.",
     "No provider calls or deployment occurred. No complete cost or capacity qualification is claimed. Deadline and resolver tests are timing-based against real sockets and child processes and could flake on a heavily loaded host.",
-    "EC2 regional pricing parity, backup byte sizes, mixes, query/rebuild/readiness usage and shared-account free allowances remain assumptions; provider price, log volumes, custom metrics and restore activity remain unknown.",
     "Backup lifecycle model assumes about 60 days of full timestamped snapshots and needs measured/architecture validation; its full-limit exposure exceeds the historical $60 ceiling.",
     "Workload word counts are nominal sizes of synthetic text, not gateway-metered or provider-billed tokens; no tokenizer is assumed. The gateway meters with its own tokenizer, so real token use per request can differ from the nominal figure.",
     "The frozen hot tenant offers the gateway's 120 requests-per-minute account limit. The simulator's limiter reproduces the gateway's fixed window that starts at an account's first request and the 600 per minute address limit, but counts offered arrivals only, so live counts can differ by a few requests per window from setup and cleanup requests. Rejections are counted as failures, not excluded.",
-    "Every request sends Connection: close and pays a fresh TCP and TLS handshake, and latency runs from dispatch, not from the scheduled arrival, so client-side queueing behind the eight workers is not in the recorded p95. Read latency and handshake-load figures with both in mind."
+    "Every request sends Connection: close and pays a fresh TCP and TLS handshake, and latency runs from dispatch, not from the scheduled arrival, so client-side queueing behind the eight workers is not in the recorded p95. Read latency and handshake-load figures with both in mind.",
+    "The rate table is primary-verified for the AWS rates listed in the receipts. S3 request prices and data transfer out (with its 100 GB allowance) are unverified against a regional catalog, and the Resend prices are a vendor page. Backup byte sizes, mixes, query/rebuild/readiness usage and shared-account free allowances (the 20,000 KMS requests and the transfer allowance) remain assumptions; provider price, log volumes, custom metrics and restore activity remain unknown.",
+    "The peak exposure is a sensitivity, not measured usage and not a full maximum. The T4g credit mode is unverified (the template sets no CreditSpecification; unlimited mode bills surplus credits, standard mode throttles). The control database is copied whole into every snapshot and the runtime never prunes it; its lifetime growth (about 164 USD a month of added backup storage after a year at full usage and sampled row sizes) is a sensitivity outside every subtotal. The retention baseline is the deployed template's; a thinning proposal is unapproved and not modeled.",
+    "No load-client output carries cost measurements, and T23.68's command passes load.json to --measurements, which returns BLOCKED; see integration-request-cost-measurements.md."
   ],
   "blockers": [
     {
@@ -130,6 +148,18 @@
     {
       "owner": "T23.42 / T23.64 / T23.68",
       "required_input": "Provider pin, exact cost authority and authorized isolated candidate for later live qualification."
+    },
+    {
+      "owner": "infrastructure owner / T23.64",
+      "required_input": "Confirm the T4g CPU credit mode (unlimited or standard; the template sets none), so the surplus-credit exposure of up to 46.72 USD a month applies or the node's baseline throttle is accepted."
+    },
+    {
+      "owner": "backup/durability and architecture owners",
+      "required_input": "Own control database lifetime growth (no pruning exists in the runtime) and review any retention or backup-thinning change; T23.60 proposes none."
+    },
+    {
+      "owner": "coordinator (task registry)",
+      "required_input": "Answer integration-request-cost-measurements.md: drop --measurements from T23.68's command or assign a producer for the cost-measurements schema."
     }
   ],
   "binary_sha256": null,
