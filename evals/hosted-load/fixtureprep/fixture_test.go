@@ -178,6 +178,9 @@ func TestPreparedSmokeFixturePassesAndNeverSatisfiesFull(t *testing.T) {
 	if !r.Pass {
 		t.Fatalf("a freshly prepared smoke fixture must verify; failing: %v", failing(r))
 	}
+	if r.EmbedderDim != 16 || r.EmbedderPin != "fixture-hash-embedder-d16@infrastructure-only-v1" || r.CommitEvery != 1 {
+		t.Fatalf("the report must carry the marker's pin, width and commit density: %q %d %d", r.EmbedderPin, r.EmbedderDim, r.CommitEvery)
+	}
 	if r.SatisfiesFullCardinality || !r.Reduced {
 		t.Fatalf("a smoke fixture is reduced and must never satisfy the full cardinalities: %+v", r)
 	}

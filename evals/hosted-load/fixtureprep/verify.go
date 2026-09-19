@@ -114,6 +114,9 @@ type Report struct {
 	Reduced                  bool             `json:"reduced"`
 	Pass                     bool             `json:"pass"`
 	SatisfiesFullCardinality bool             `json:"satisfies_full_cardinality"`
+	EmbedderPin              string           `json:"embedder_pin"`
+	EmbedderDim              int              `json:"embedder_dim"`
+	CommitEvery              int              `json:"commit_every"`
 	FixtureContentSHA256     string           `json:"fixture_content_sha256"`
 	ControlDBSHA256          string           `json:"control_db_sha256"`
 	MarkerSHA256             string           `json:"marker_sha256"`
@@ -167,6 +170,7 @@ func Verify(ctx context.Context, o VerifyOptions) (*Report, error) {
 		return nil, err
 	}
 	r := &Report{Schema: "serenity-hosted-load-fixture-verification", Version: 1, FixtureDirName: filepath.Base(o.Dir), Expect: o.Expect, MarkerProfile: marker.Profile, Reduced: plan.Reduced, Notices: Notices, NotClaimed: notClaimed(plan)}
+	r.EmbedderPin, r.EmbedderDim, r.CommitEvery = marker.EmbedderPin, marker.EmbedderDim, marker.CommitEvery
 	markerSum := sha256.Sum256(raw)
 	r.MarkerSHA256, r.WorkloadSHA256 = hex.EncodeToString(markerSum[:]), wl.SHA256
 	if db, e := os.ReadFile(filepath.Join(o.Dir, "data", "control.db")); e == nil {
