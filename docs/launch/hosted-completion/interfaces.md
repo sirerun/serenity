@@ -46,8 +46,28 @@ and a single `testhooks.At(phase)` call site. A binary built without
 `-tags hostedtest` links a true no-op (`hook_prod.go`); only a
 `hostedtest`-tagged binary started with a harness-inherited control pipe
 (never an HTTP endpoint, never a bare env-var switch) can pause or crash at
-a named checkpoint (`hook_hostedtest.go`). Proven by five real subprocess
-tests in `testhooks_test.go`, including one spot-checked red→green.
+a named checkpoint (`hook_hostedtest.go`). Proven by seven real subprocess
+tests in `testhooks_test.go`.
+
+**Concurrency defect found and fixed (this pass):** an independent review
+found the first draft of `hook_hostedtest.go` had every paused `At()` call
+read a single shared `*bufio.Reader` directly, with no lock — a genuine
+data race (`bufio.Reader` is not safe for concurrent use) that also caused
+a real lost-wakeup hang: a `release <phaseB>` line could be consumed and
+discarded by the goroutine paused at `<phaseA>`, permanently hanging the
+goroutine actually waiting on `<phaseB>`. Fixed: exactly one goroutine ever
+reads the arm pipe (the dispatch loop started inside `ensureOpen`); every
+`At()` call only waits on its own phase-keyed channel, closed by the
+dispatch loop when the matching `release` line arrives. EOF/error on the
+arm pipe now unblocks every current and future paused checkpoint rather
+than hanging. Proven by a new subprocess regression
+(`TestConcurrentPhasesReverseOrderReleaseAndUnrelatedCheckpoint`, built
+with `-race`) that releases two concurrently paused phases in reverse
+program-text order and confirms a third, unarmed phase is never blocked
+behind them — spot-checked red: reverting to the prior shared-reader design
+makes this new test hang and fail deterministically; restored
+byte-identical and reconfirmed green. A second new test
+(`TestTaggedBinaryPauseUnblocksOnArmPipeEOF`) proves the EOF behavior.
 
 `OperationLedger`/`OperationRecord`, `AdmissionChecker`/`GrowthEnvelope` and
 `DeletionJournal`/`DeletionEntry` are also drafted in `contracts/` so
@@ -66,85 +86,204 @@ receipt below records an actual reviewer and revision. See
 `docs/launch/evidence/T23.41/architecture-review-request.md` for the
 standalone review request.
 
+**Revision note (this pass):** an independent code review
+(`docs/launch/runs.../T23.41-review.md`, read and addressed by this task)
+found concrete defects in the first draft of decisions 2, 3 and 4 below —
+not just missing approval, but the proposed mechanisms themselves not
+actually satisfying the invariant each was supposed to close. Each section
+below states what was wrong in the prior draft and what changed. None of
+this makes any decision approved; it only makes the proposal actually worth
+reviewing.
+
 ### 1. Physical storage reservation/headroom (storage admission, task44)
 
-Least settled of the four. Proposal: `AdmissionChecker.ReserveGrowth`
-(`internal/hosted/contracts/storage.go`) reserves a conservative
-`ReservedBytes = ceil(LogicalBytes * growth_factor) + fixed_overhead` before
-acknowledging a mutation, covering Git object overhead, derived index/vector
-writes and WAL growth — not just the logical payload. `growth_factor` and
-`fixed_overhead` must come from an empirical fixture: task44 runs a corpus of
-synthetic writes across realistic size buckets, measures actual on-disk
-growth via the same `filepath.WalkDir` technique `gateway.Inventory` already
-uses, and derives a constant with an explicit safety margin (e.g. observed
-p95 growth ratio times 1.5), checked into a fixture test that fails if any
-corpus write's real growth ever exceeds its reserved envelope. Per-account
+Least settled of the four, and now the only one left explicitly **BLOCKED**
+with no adopted mechanism, not merely unapproved. The first draft proposed
+`ReservedBytes = ceil(LogicalBytes * growth_factor) + fixed_overhead`, with
+`growth_factor` derived from an observed p95 physical-growth ratio times a
+1.5 safety margin. **That is not a hard ceiling** — it is a statistical
+estimate, and interfaces.md's own required invariant is a *proven*
+conservative bound; a single outlier mutation exceeding p95*1.5 would
+silently breach the advertised quota, which is exactly the "never erase
+acknowledged data or silently relabel bytes as tokens" failure this seam
+exists to prevent. Withdrawn.
+
+Proposal instead (interfaces.md's own named alternative, "a separately
+approved staged-write design"): (1) apply the mutation in an isolated stage
+that never touches canonical account data; (2) measure its real physical
+growth directly — the same `filepath.WalkDir` technique `gateway.Inventory`
+already uses, not a prediction; (3) admit it via `AdmissionChecker
+.ReserveGrowth` using that *measured* value against the account's remaining
+quota and a separate, fixed, global `OperatorHeadroomBytes` pool (the
+"transient/operational bytes... outside customer quota and still bounded
+globally" interfaces.md's seam table requires); only on success (4)
+atomically publish the stage into canonical storage — itself crash-
+recoverable if the process dies between (3) and (4), by tracking the staged
+mutation's own phase through decision 2's operation ledger. Per-account
 admission stays serialized through the existing `accountLocks` sharding
-(`gateway.go`); a new global `HeadroomBytes` config field reserves a fixed
-operator floor that blocks *all* accounts' admission once crossed, regardless
-of individual quota headroom — the exact number is an operator input (ties to
-the AWS instance's actual disk size, SPEND gate) and is explicitly not set
-here. **Not approved**: no mathematical bound or fixture evidence exists yet;
-per interfaces.md's own words, task44 stays blocked until one does.
+(`gateway.go`), so two concurrent staged mutations for one account can never
+both measure against the same remaining headroom. **Explicitly BLOCKED**:
+task44 may not implement any interim estimate-based approximation of this —
+per interfaces.md's own words, "task44 stays blocked" until either this
+staged-write mechanism or a proven mathematical bound is chief-architect
+approved.
 
 ### 2. Crash-safe canonical-operation accounting (task44)
 
-Proposal: a durable `operations` table (new schema migration, not yet
-applied — see below) matching `contracts.OperationRecord`: `id`,
-`account_id`, `brain_id`, `client_key` (nullable, scoped by a partial unique
-index over `(account_id, brain_id, client_key) WHERE phase != 'released'`,
-mirroring the existing `reservation_operation` index pattern in
-`store/migrations.go`), `metric`, `units`, `quota_period`, `phase`
-(`reserved`|`committed`|`released`, forward-only), `source`, `created_at`,
-`finalized_at`. `OperationLedger.Finalize` commits both this row and the
-`usage_windows` counter in one transaction, generalizing `meter.Meter.Finish`
-(`internal/hosted/meter/meter.go`) from an in-memory-lease-scoped reservation
-to a row that survives a crash. `ReconcilePending` is the required recovery
-query: it scans `phase='reserved' AND lease_expires_at <= now()` and resolves
-each by consulting the operation's own canonical evidence seam — task44
-defines the exact per-operation-kind check (e.g. for `remember`, whether the
-fact is present in the brain's canonical Git HEAD) in its own freeze
-evidence; this task only fixes the table shape and the phase state machine.
-**Not approved**: no chief-architect sign-off on the table shape or the
-"one transaction" mechanism yet.
+**Defect found and fixed:** the first draft's `OperationRecord` carried a
+single `Metric`/`Units` pair. The pre-existing invariant this seam must
+satisfy is plural — "Both counters finalize in one transaction" — because
+the current implementation issues **two independent** `meter.Reserve`/
+`Finish` cycles per `remember` call: one for `"writes"`
+(`gateway.go:296-311`) and one for `"input_tokens"` (`gateway.go:333-345`),
+each its own transaction. A single-metric `OperationRecord` would not close
+that split; it would just reproduce it one layer down as two sibling
+records with no field tying them together and no defined rule for
+reconciling them to a consistent joint outcome if a crash lands between the
+two. Fixed: `OperationRecord`/`ReserveRequest` now carry `Deltas
+[]OperationDelta` — every counter one logical mutation touches, reserved
+and finalized together as a single row in a single transaction. Task44's
+future implementation calls `Reserve`/`Finalize` exactly **once per logical
+mutation** (e.g. one call carrying both a `"writes"` delta and an
+`"input_tokens"` delta for one `remember`), never once per metric.
+
+**Also fixed:** `OperationRecord` had no field carrying the "durable
+canonical operation identity/evidence" the seam table requires in prose —
+added `CanonicalRef string`, populated by `Finalize`'s new `canonicalRef`
+parameter (e.g. the brain's Git commit SHA a `remember` landed in).
+`ReconcilePending`'s description queried `lease_expires_at`, a column with
+no matching Go field — added `LeaseExpiresAt time.Time` to
+`OperationRecord` so the field and the query it backs live in the same
+place. `OperationPhase` gained a fourth state, `OperationPendingReview`:
+`ReconcilePending` must never resolve a row it cannot prove either way to
+`Committed` (risks crediting a mutation that never happened) or to
+`Released` (risks silently discarding one that did, and letting a retried
+`ClientKey` double it) — "never release unknown canonical outcomes" is now
+a named, non-optional rule, and `ReconcileReport` reports
+`PendingReview` as its own counted field so an operator can see it without
+reading individual rows.
+
+Proposed table (new schema migration, not yet applied): `operations(id,
+account_id, brain_id, client_key, deltas_json, quota_period, canonical_ref,
+lease_expires_at, phase CHECK(phase IN
+('reserved','committed','released','pending_review')), source, created_at,
+finalized_at)`, `deltas_json` a JSON-encoded array of `{metric,units}` pairs
+so every delta commits atomically with the row's own `phase` transition —
+one `UPDATE` statement, one transaction, all counters — with a partial
+unique index over `(account_id, brain_id, client_key) WHERE phase NOT IN
+('released')`, mirroring the existing `reservation_operation` index pattern
+in `store/migrations.go`. `ReconcilePending` scans `phase='reserved' AND
+lease_expires_at <= now()`; task44 defines the exact per-operation-kind
+canonical check (e.g. for `remember`, whether the fact is present in the
+brain's canonical Git HEAD) and the operator path for resolving a
+`pending_review` row by hand, in its own freeze evidence. **Not approved**:
+no chief-architect sign-off on the table shape, the multi-delta grouping or
+the pending-review rule yet.
 
 ### 3. Independently durable deletion journal (task48, infra54)
 
-Proposal: versioned S3 objects (existing AWS substrate per ADR014, no new
-service), one object per entry at key
-`deletion-journal/<subject_type>/<subject_id>/<recorded_at-rfc3339nano>-<outcome>.json`,
-bucket versioning plus Object Lock in compliance mode for a bounded retention
-(task48 picks the exact window against the promised deletion SLA) so the
-journal is durable against deletion even by the hosted service's own
-credentials — the literal meaning of "independently durable." A dedicated
-IAM policy scopes the service role to `PutObject`/`ListBucket` under the
-`deletion-journal/` prefix only, with `DeleteObject` withheld entirely.
-`ReadThrough`'s watermark is an S3 `ListObjectsV2` continuation token;
-completeness is proven by requiring a non-truncated listing (S3's strong
-list-after-write consistency) before advancing the watermark, returning
-`ErrDeletionJournalIncomplete` otherwise — never a bare highest-sequence
-check. Cost model and exact retention window are owned by task61/task48's own
-evidence. **Not approved**: object-lock retention window and IAM prefix
-design are proposals, not a reviewed decision.
+**Defect found and fixed:** the first draft keyed journal objects
+`deletion-journal/<subject_type>/<subject_id>/<recorded_at>-<outcome>.json`
+and described the `ReadThrough` watermark as an S3 `ListObjectsV2`
+continuation token, with completeness "proven" by a non-truncated listing.
+This does not compose: `ListObjectsV2` returns keys in **lexicographic
+order**, which that key format groups by `subject_type` then `subject_id` —
+an opaque, effectively random ID — not by append time. A
+`StartAfter`/continuation-token watermark only ever returns keys
+lexicographically *greater* than the marker, so a later-appended entry whose
+`subject_id` happens to sort before an already-consumed key becomes
+permanently invisible to every future `ReadThrough` call — not a
+truncation, so `ErrDeletionJournalIncomplete`'s only check (a truncated
+listing) never catches it. "Strong list-after-write consistency" guarantees
+a single from-scratch listing is complete; it says nothing about an
+incrementally advanced marker across writes made after the marker moved.
+Withdrawn.
+
+Proposal instead: entries are addressed by a durable, monotonic
+`SequenceID`, assigned once by the single currently-fenced writer — via a
+counter row in the existing hosted control DB (the same single-writer
+SQLite instance every other durable sequence in this service already
+trusts; no new service), paired with the writer `Generation` from decision 4
+— never by the object store. Keys become
+`deletion-journal/<generation>/<sequence, fixed-width zero-padded>.json`, so
+lexicographic key order and append order are the same thing by
+construction. `ReadThrough(from)` proves completeness by reading the
+control DB's own current high-water `SequenceID` for `from.Generation` as
+the target (never an S3 listing), then confirming an object exists for
+*every* `SequenceID` in `(from.SequenceID, target]` — rejecting with
+`ErrDeletionJournalIncomplete` on the first missing one, whether the gap is
+at the tail or in the middle, rather than trusting listing order at all. A
+watermark naming a non-current generation is refused
+(`ErrDeletionJournalStaleGeneration`) until decision 4's activation barrier
+certifies that generation closed.
+
+A dedicated IAM policy still scopes the service role to
+`PutObject`/`GetObject`/`ListBucket` under the `deletion-journal/` prefix
+only, with `DeleteObject` withheld entirely. **Object Lock / compliance-mode
+retention is withdrawn as a proposed mechanism, not merely unapproved**: it
+carries real operational and cost consequences (objects become undeletable,
+including by the account owner, for the lock's duration) that are SPEND-gate
+territory, not a detail this task can wave through. Retention is instead an
+open question for whoever owns the SPEND gate alongside task48/task61; this
+proposal only commits to bucket versioning (reversible, no cost commitment)
+as the durability floor. **Not approved**: sequence/generation design, IAM
+scoping and retention are all proposals, not a reviewed decision.
 
 ### 4. Restore eligibility / activation barrier (task50)
 
-Proposal: a durable generation fence extending the existing
-`writer.AcquireBrain` exclusive-lock pattern (`internal/cli/hosted.go`'s
-`serve` command already acquires one). Before any account is unfrozen,
-`RecoveryApplyRequest` handling must, in order: (a) prove the old service's
-writer lock has been released and no live holder exists — either the
-existing lock file shows no live PID, or an explicit
-`serenity hosted recovery fence` operator step (task50) revokes the old
-instance's credentials under the approved runbook; (b) call
-`DeletionJournal.ReadThrough` from the manifest's own `JournalWatermark`
-through "now" and require a nil `ErrDeletionJournalIncomplete`; (c) call
-`BillingReconciler.ReconcileCustomer` per account so no stale entitlement
-resurrects. Only after all three succeed does `RecoveryApplyResult.Unfrozen`
-become true, applied atomically per account — never a manual `status='active'`
-SQL statement (evidence.md already forbids this explicitly). **Not
-approved**: the fence mechanism (lock-file liveness vs. explicit fence
-command) is a proposal; chief-architect must pick one before task50 starts.
+**Defect found and fixed:** the first draft offered two "equally valid"
+fencing options, (a) checking whether `writer.AcquireBrain`'s lock file
+"shows no live PID," or (b) an explicit fence command. Reading
+`internal/writer/ownership_unix.go` in full: `AcquireBrain` is an advisory
+POSIX `flock()` on a local file: **no PID is ever written to it** — kernel
+`flock` ownership is tracked against the holding process's open file
+descriptor, never persisted into the file's bytes, and the file's own doc
+comment already states "this fences cooperating CLI processes on one
+filesystem, not arbitrary local writers." Worse: restore's own runbook
+scenario is downloading a snapshot onto an **isolated, different host**
+(`docs/launch/hosted-runbook.md:47`) — a `flock()` is kernel-local, so a
+restored copy of `.serenity/writer.lock` on a new host carries no memory of
+any lock held on the original host's copy. `AcquireBrain` against the
+restored copy trivially succeeds every time, regardless of whether the
+original instance is still alive and serving writes elsewhere (e.g. a
+network partition, restore's actual worst case). Option (a) was a
+false-safe no-op for the scenario that matters most. **Dropped entirely for
+the cross-host restore path.**
+
+Proposal now requires, before any account is unfrozen: (a) **independently
+verified old-instance stop** — confirmed via the infrastructure provider
+(AWS `DescribeInstances` showing the old EC2 instance `stopped`/
+`terminated`), never a local file/PID check, which cannot observe a
+different host at all — **and** (b) **explicit revocation of every
+credential/session the old instance could still use**, spelled out rather
+than left as an undefined "credentials": rotate `STRIPE_SECRET_KEY`,
+`EMBEDDINGS_API_KEY` and any DB-adjacent secret the old instance held, *and*
+explicitly deny or rotate the old instance's already-established AWS IAM
+role/session so it cannot still write to S3 (the deletion journal's own
+substrate) even if the instance itself is merely unreachable rather than
+verifiably dead — stopping the instance alone does not invalidate a still-
+live temporary credential session. A same-host process-restart recovery (no
+host change) may still use `AcquireBrain` as a narrower, legitimate
+same-filesystem check — that scenario is what the lock's own doc comment
+actually describes. (a)+(b) is a fully specified alternative to a
+distributed generation-barrier mechanism (e.g. a conditional-write fencing
+token); either remains open for chief-architect to choose, but a bare local
+lock check is no longer offered as one of the options.
+
+After fencing: (c) call `DeletionJournal.ReadThrough` from the manifest's
+own `JournalWatermark` through the current head and require a nil
+`ErrDeletionJournalIncomplete`; (d) call `BillingReconciler
+.ReconcileCustomer` per account so no stale entitlement resurrects. Only
+after (a)+(b), (c) and (d) all succeed does `RecoveryApplyResult.Unfrozen`
+become true, applied atomically per account — never a manual
+`status='active'` SQL statement (evidence.md already forbids this
+explicitly). **Not approved**: the AWS-verified-stop-plus-revocation
+mechanism (vs. a fully specified distributed generation barrier) is a
+proposal; chief-architect must pick one, and task50 must not start against
+either without that ruling. A regression proving `AcquireBrain` against a
+copied lock file falsely succeeds across two directories (simulating two
+hosts) is required before task50 begins, per the review that found this
+defect.
 
 ## Lock ordering and cancellation (task41, drafted)
 
@@ -196,23 +335,36 @@ Task41’s reviewer freezes the task43 Hit@5 corpus/scoring and task60 workload/
 
 ## Freeze receipt (to be filled by task41)
 
-- Source/PR/reviewer: drafted in worktree `hosted/T23.41` on base
-  `810349ba7c1ed2c05fe34e3892de764a26a4633c`; **not yet reviewed by
+- Source/PR/reviewer: drafted in worktree branch `hosted/t23.41-20260918` on
+  base `810349ba7c1ed2c05fe34e3892de764a26a4633c`; **not yet reviewed by
   chief-architect, not yet merged**. Headless Sonnet worker session had no
   synchronous reviewer available — see
-  `docs/launch/evidence/T23.41/architecture-review-request.md`.
+  `docs/launch/evidence/T23.41/architecture-review-request.md`. An
+  independent code review found and this task fixed four concrete defects
+  in the first draft (a concurrency bug in the fault-barrier package, and
+  design gaps in decisions 2/3/4 below) — see that request's revision note
+  for the full list; none of the four decisions moved from "not approved"
+  to "approved" as a result.
 - Exact Go interface and SQL revision: `internal/hosted/contracts/**` (9
   non-gated seams frozen with compile-time conformance tests) and
-  `internal/hosted/testhooks/**` (fault barrier, frozen and tested) are
-  real, compiled, `go vet`-clean code in this worktree. No SQL migration
-  applied: the `operations` table proposed for decision 2 is design-only
-  pending review; `store/migrations.go` is unchanged this pass.
-- Storage envelope design approved: **not approved**. Proposal in "Proposed
-  decisions" §1 above; blocked on empirical growth-bound fixture evidence
-  task44 has not yet produced.
-- Journal completeness/old-writer fence approved: **not approved**.
-  Proposals in §3/§4 above (S3 versioned+object-locked substrate; generation
-  fence via `writer.AcquireBrain` or an explicit fence command).
+  `internal/hosted/testhooks/**` (fault barrier, frozen, tested, and its
+  concurrency defect fixed this pass) are real, compiled, `go vet`-clean
+  code in this worktree. No SQL migration applied: the `operations` table
+  proposed for decision 2 is design-only pending review; `store/
+  migrations.go` is unchanged this pass.
+- Storage envelope design approved: **not approved, and no interim
+  mechanism is offered**. The original growth-factor-multiplier proposal
+  was withdrawn (not a hard ceiling — see §1's revision note); the
+  staged-write alternative in §1 above requires chief-architect approval
+  before task44 may implement anything for this seam.
+- Journal completeness/old-writer fence approved: **not approved**. Both
+  underlying mechanisms were revised this pass after review found the first
+  drafts unsound (§3: S3-continuation-token watermark could permanently
+  miss entries — replaced with a control-DB-assigned sequence/generation
+  design; §4: local-lock-file fencing cannot observe a different host and
+  writes no PID — replaced with AWS-verified-stop-plus-credential-
+  revocation, offered alongside a distributed generation barrier as the
+  still-open alternative).
 - Provider/model/accounting-unit contract approved: `AccountingUnit`,
   `RegistrationMode` and the `ProviderPin` *shape* are frozen (not gated by
   the four decisions); the actual provider/model/version value remains

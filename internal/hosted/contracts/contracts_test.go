@@ -28,7 +28,7 @@ type fakeOperationLedger struct{}
 func (fakeOperationLedger) Reserve(context.Context, contracts.ReserveRequest) (contracts.OperationRecord, error) {
 	return contracts.OperationRecord{}, nil
 }
-func (fakeOperationLedger) Finalize(context.Context, string, contracts.OperationPhase) (contracts.OperationRecord, error) {
+func (fakeOperationLedger) Finalize(context.Context, string, contracts.OperationPhase, string) (contracts.OperationRecord, error) {
 	return contracts.OperationRecord{}, nil
 }
 func (fakeOperationLedger) ReconcilePending(context.Context) (contracts.ReconcileReport, error) {
@@ -37,9 +37,11 @@ func (fakeOperationLedger) ReconcilePending(context.Context) (contracts.Reconcil
 
 type fakeDeletionJournal struct{}
 
-func (fakeDeletionJournal) Append(context.Context, contracts.DeletionEntry) error { return nil }
-func (fakeDeletionJournal) ReadThrough(context.Context, string) ([]contracts.DeletionEntry, string, error) {
-	return nil, "", nil
+func (fakeDeletionJournal) Append(context.Context, contracts.DeletionEntry) (contracts.DeletionEntry, error) {
+	return contracts.DeletionEntry{}, nil
+}
+func (fakeDeletionJournal) ReadThrough(context.Context, contracts.DeletionWatermark) ([]contracts.DeletionEntry, contracts.DeletionWatermark, error) {
+	return nil, contracts.DeletionWatermark{}, nil
 }
 
 type fakeAdmissionChecker struct{}

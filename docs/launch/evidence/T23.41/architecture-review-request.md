@@ -4,9 +4,8 @@
 task41 required steps: "With chief-architect, resolve and publish the four
 bounded design decisions").
 
-**Requester:** headless Claude Code Sonnet worker, worktree
-`/Volumes/BuildOffload/wt/serenity-launch-T23.41-20260918`, branch
-`hosted/T23.41`, base `810349ba7c1ed2c05fe34e3892de764a26a4633c`.
+**Requester:** headless Claude Code Sonnet worker, branch
+`hosted/t23.41-20260918`, base `810349ba7c1ed2c05fe34e3892de764a26a4633c`.
 
 **Why this is a request, not a receipt:** this session is non-interactive
 with no synchronous reviewer available. Per the worker protocol
@@ -18,38 +17,74 @@ invent approval"), the four decisions below are drafted to the point a
 reviewer can approve, amend or reject them in one pass, but none is marked
 approved anywhere in this task's output.
 
+## Revision note
+
+An independent code review found concrete defects in the first draft of
+decisions 2, 3 and 4 (not just missing approval — the proposed mechanisms
+did not actually satisfy the invariant each is supposed to close) and a
+real concurrency bug (data race plus a lost-wakeup hang) in the
+`internal/hosted/testhooks` fault-barrier package. All four are fixed in
+this revision; `docs/launch/hosted-completion/interfaces.md`'s
+"Proposed decisions" section states what was wrong in each prior draft and
+what changed. None of this moves any decision from "not approved" to
+"approved" — it only makes the proposal worth reviewing.
+
 ## What needs a decision
 
 `docs/launch/hosted-completion/interfaces.md` "Proposed decisions — pending
-chief-architect review" (added this pass) contains the full technical detail
-for each. Summary of what a reviewer must rule on:
+chief-architect review" contains the full technical detail for each.
+Summary of what a reviewer must rule on:
 
-1. **Storage admission (physical headroom).** Is the proposed conservative
-   growth-envelope-plus-empirical-fixture approach (§1) the right shape, or
-   does it require the "separately approved staged-write design" interfaces.md
-   names as the alternative? No default value is asked for; the mechanism
-   itself needs approval before task44 can even design its fixture.
-2. **Crash-safe operation accounting.** Approve or amend the proposed
-   `operations` table shape and phase state machine (§2) — this determines
-   the schema migration task41/57 will need to apply before task44/47/48/50
-   can build against it.
-3. **Independently durable deletion journal.** Approve or amend the proposed
-   S3 versioned + Object Lock substrate, key format and IAM prefix scoping
-   (§3).
-4. **Restore eligibility / activation barrier.** Approve or amend the
-   proposed generation-fence mechanism (§4) — specifically whether fencing
-   via the existing `writer.AcquireBrain` lock-file liveness check is
-   sufficient, or whether an explicit `serenity hosted recovery fence`
-   operator command is required before any account can unfreeze.
+1. **Storage admission (physical headroom).** Explicitly **BLOCKED with no
+   adopted mechanism** — the original growth-factor-multiplier proposal
+   (p95 growth ratio × 1.5) was withdrawn as unsound (a statistical
+   estimate, not a hard ceiling). §1 now proposes a staged-write mechanism
+   instead: stage a mutation in isolation, measure its real physical growth,
+   admit against that measured value, then atomically publish. The reviewer
+   rules on whether this staged-write shape is the right mechanism (or
+   requires a proven mathematical bound instead) before task44 can start
+   any implementation at all.
+2. **Crash-safe operation accounting.** §2's `OperationRecord` now carries a
+   `Deltas []OperationDelta` slice (not a single metric/unit pair), so one
+   logical mutation's multiple counters — e.g. a `remember` call's
+   `"writes"` and `"input_tokens"` deltas, currently two independent
+   `meter.Reserve`/`Finish` cycles — finalize together in one transaction,
+   plus a `CanonicalRef` field, a `LeaseExpiresAt` field aligned with the
+   proposed SQL column, and a fourth `pending_review` phase so
+   `ReconcilePending` never silently resolves an unprovable row to
+   committed or released. Approve, amend or reject the table shape and
+   phase state machine.
+3. **Independently durable deletion journal.** The watermark mechanism was
+   replaced: entries are now addressed by a monotonic `SequenceID` assigned
+   by the control DB's single fenced writer (paired with a `Generation`
+   from decision 4), not an S3 `ListObjectsV2` continuation token — the
+   prior design could permanently miss entries whose opaque subject ID
+   sorted lexicographically before an already-consumed key. Object Lock /
+   compliance-mode retention is withdrawn as a proposed mechanism (real
+   SPEND-gate cost/operational consequences); this proposal commits only to
+   bucket versioning as the durability floor pending a SPEND-gate decision
+   on retention. Approve, amend or reject the sequence/generation design,
+   IAM prefix scoping and the open retention question.
+4. **Restore eligibility / activation barrier.** The local-lock-file
+   fencing option is dropped entirely for cross-host restore: reading
+   `internal/writer/ownership_unix.go` in full confirmed `AcquireBrain`
+   never writes a PID and is a kernel-local `flock()` that cannot observe a
+   different host at all — restore's own primary scenario. §4 now requires
+   both an AWS-API-verified old-instance stop and explicit revocation of
+   every credential/session (including the old instance's live IAM
+   role/session, not just its database access) the old instance could still
+   use, offered alongside a fully specified distributed generation barrier
+   as the still-open alternative. Approve, amend or reject which mechanism
+   task50 builds against.
 
 ## What is already concrete and does not need this review
 
 `internal/hosted/contracts/**` (billing truth/closure, backup manifest v2,
 recovery CLI shape, telemetry, provider pin, accounting units, registration
-mode) and `internal/hosted/testhooks/**` (fault barrier) are frozen,
-compiled, `go vet`/lint-clean, and covered by real tests in this worktree —
-these seams do not depend on the four decisions above and can be reviewed
-as ordinary code, not an architecture question.
+mode) and `internal/hosted/testhooks/**` (fault barrier, including this
+pass's concurrency fix) are frozen, compiled, `go vet`/lint-clean, and
+covered by real tests — these seams do not depend on the four decisions
+above and can be reviewed as ordinary code, not an architecture question.
 
 ## Requested outcome
 
