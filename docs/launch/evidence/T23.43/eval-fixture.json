@@ -173,10 +173,10 @@
     "authorization_refs": []
   },
   "dependencies": {},
-  "elapsed_seconds": 4.073,
+  "elapsed_seconds": 3.669,
   "evidence_level": "fixture",
   "limitations": [
-    "The local lexical control's empty cases run against isolated brains holding one unrelated filler fact (seedbrain refuses an empty brain) and are scored strictly: returning the filler fails. That arm is a control, not the forgotten-fact qualification. The real forgotten-fact protocol (remember a target, show it retrievable, forget it, show it absent) runs only under --seed/--live and has been exercised only against a loopback fake, never a hosted account.",
+    "The local lexical control's empty cases run against isolated brains holding one unrelated filler fact (seedbrain refuses an empty brain) and are scored strictly: returning the filler fails. That arm is a control, not the forgotten/expired qualification. The real protocol (remember a target, show it retrievable, then remove it by forget or by a fixed absolute TTL and show it absent) runs only under --seed/--live and has been exercised only against a loopback fake, never a hosted account.",
     "--live mode's actual semantic quality has never been measured (no EMBEDDINGS key, no seeded hosted account); this run is fixtures-only mechanical rehearsal."
   ],
   "per_query": {
@@ -3939,8 +3939,8 @@
   },
   "profile": "paid",
   "provider": null,
-  "recorded_at": "2026-09-19T03:22:35Z",
-  "source_sha": "06b098fa62f19051be0d7a1adaa321a1a3ba7308",
+  "recorded_at": "2026-09-19T04:02:08Z",
+  "source_sha": "36c59b6113bc49e2bbb1e65385930d0ddcd48909",
   "status": "PARTIAL",
   "task_id": "T23.43",
   "usage": {
