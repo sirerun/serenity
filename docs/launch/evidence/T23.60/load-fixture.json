@@ -1,0 +1,207 @@
+{
+  "mode": "fixtures",
+  "profile": "paid",
+  "accounts": 14,
+  "repetitions": [
+    {
+      "saturation": false,
+      "total_offered": 12187,
+      "outcomes": {
+        "ok": 11328,
+        "rejected_rate_limit": 768,
+        "rejected_capacity": 91
+      },
+      "completion_pct": 92.95150570279806,
+      "unexpected_5xx_pct": 0.0,
+      "admission_rejection_pct": 7.048494297201937,
+      "latency_by_verb_s": {
+        "recall": {
+          "p50": 0.4840298031722145,
+          "p95": 3.42592807067488,
+          "p99": 3.8655534656044663,
+          "max": 4.33415475061763
+        },
+        "remember": {
+          "p50": 0.6377907442901423,
+          "p95": 3.65042329633578,
+          "p99": 4.08468596973148,
+          "max": 4.4993913317524905
+        },
+        "forget": {
+          "p50": 0.431816310567426,
+          "p95": 3.3402705611778343,
+          "p99": 3.8496921039363,
+          "max": 4.050204427075223
+        }
+      },
+      "cold_open_p95_s": 3.8679315138658588,
+      "cold_open_count": 2846
+    },
+    {
+      "saturation": false,
+      "total_offered": 12187,
+      "outcomes": {
+        "ok": 11328,
+        "rejected_rate_limit": 768,
+        "rejected_capacity": 91
+      },
+      "completion_pct": 92.95150570279806,
+      "unexpected_5xx_pct": 0.0,
+      "admission_rejection_pct": 7.048494297201937,
+      "latency_by_verb_s": {
+        "recall": {
+          "p50": 0.4840298031722145,
+          "p95": 3.42592807067488,
+          "p99": 3.8655534656044663,
+          "max": 4.33415475061763
+        },
+        "remember": {
+          "p50": 0.6377907442901423,
+          "p95": 3.65042329633578,
+          "p99": 4.08468596973148,
+          "max": 4.4993913317524905
+        },
+        "forget": {
+          "p50": 0.431816310567426,
+          "p95": 3.3402705611778343,
+          "p99": 3.8496921039363,
+          "max": 4.050204427075223
+        }
+      },
+      "cold_open_p95_s": 3.8679315138658588,
+      "cold_open_count": 2846
+    },
+    {
+      "saturation": false,
+      "total_offered": 12187,
+      "outcomes": {
+        "ok": 11328,
+        "rejected_rate_limit": 768,
+        "rejected_capacity": 91
+      },
+      "completion_pct": 92.95150570279806,
+      "unexpected_5xx_pct": 0.0,
+      "admission_rejection_pct": 7.048494297201937,
+      "latency_by_verb_s": {
+        "recall": {
+          "p50": 0.4840298031722145,
+          "p95": 3.42592807067488,
+          "p99": 3.8655534656044663,
+          "max": 4.33415475061763
+        },
+        "remember": {
+          "p50": 0.6377907442901423,
+          "p95": 3.65042329633578,
+          "p99": 4.08468596973148,
+          "max": 4.4993913317524905
+        },
+        "forget": {
+          "p50": 0.431816310567426,
+          "p95": 3.3402705611778343,
+          "p99": 3.8496921039363,
+          "max": 4.050204427075223
+        }
+      },
+      "cold_open_p95_s": 3.8679315138658588,
+      "cold_open_count": 2846
+    }
+  ],
+  "replay_determinism_verified": true,
+  "saturation_run": {
+    "saturation": true,
+    "total_offered": 11989,
+    "outcomes": {
+      "ok": 2391,
+      "rejected_capacity": 8788,
+      "rejected_rate_limit": 810
+    },
+    "completion_pct": 19.94328134122946,
+    "unexpected_5xx_pct": 0.0,
+    "admission_rejection_pct": 80.05671865877055,
+    "latency_by_verb_s": {
+      "recall": {
+        "p50": 0.5231214347040372,
+        "p95": 3.6228797446762986,
+        "p99": 3.902072747506571,
+        "max": 4.351488703380795
+      },
+      "remember": {
+        "p50": 0.6961536253211784,
+        "p95": 3.778203635804843,
+        "p99": 4.170927504711458,
+        "max": 4.51781195340486
+      },
+      "forget": {
+        "p50": 0.5188510085218934,
+        "p95": 3.7173680078499416,
+        "p99": 3.8768567200007293,
+        "max": 3.911480778603336
+      }
+    },
+    "cold_open_p95_s": 3.8518257971392598,
+    "cold_open_count": 837
+  },
+  "threshold_evaluation": {
+    "cold_ready_max_s": {
+      "limit": 60,
+      "observed": 3.8679315138658588,
+      "pass": true
+    },
+    "recall_p95_max_s": {
+      "limit": 2,
+      "observed": 3.42592807067488,
+      "pass": false
+    },
+    "remember_p95_max_s": {
+      "limit": 3,
+      "observed": 3.65042329633578,
+      "pass": false
+    },
+    "min_offered_completion_pct": {
+      "limit": 99,
+      "observed": 92.95150570279806,
+      "pass": false
+    },
+    "unexpected_5xx_max_pct": {
+      "limit": 0.1,
+      "observed": 0.0,
+      "pass": true
+    },
+    "unexpected_admission_rejection_max_pct": {
+      "limit": 1,
+      "observed": 7.048494297201937,
+      "pass": false
+    },
+    "cpu_max_pct": {
+      "limit": 70,
+      "observed": null,
+      "pass": null,
+      "reason": "not measured in fixtures mode"
+    },
+    "rss_max_pct_of_ram": {
+      "limit": 80,
+      "observed": null,
+      "pass": null,
+      "reason": "not measured in fixtures mode"
+    },
+    "disk_max_pct": {
+      "limit": 80,
+      "observed": null,
+      "pass": null,
+      "reason": "not measured in fixtures mode"
+    },
+    "isolation_durability_errors_max": {
+      "limit": 0,
+      "observed": 0,
+      "pass": true,
+      "reason": "fixtures mode has no real storage; zero by construction, not proof"
+    }
+  },
+  "thresholds_frozen": false,
+  "resource_usage": {
+    "available": false,
+    "reason": "fixtures mode does not exercise a real host or provider"
+  },
+  "source_workload_sha256": "2aa7c9b8e266036c9e28df583e99877fd6936416c3b88723b9c7d367a324d990",
+  "source_manifest_sha256": "8c404c2981dc2d2ffe2693f69ecd350498df468e0a3a3788b998c95b56a957ed"
+}

@@ -1,0 +1,640 @@
+{
+  "task_id": "T23.60",
+  "profile": "paid",
+  "rate_table": {
+    "ec2_t4g_small_usd_per_hour": {
+      "value": 0.0168,
+      "kind": "published",
+      "region_caveat": "us-east-1 confirmed",
+      "source": "https://www.economize.cloud/resources/aws/pricing/ec2/t4g.small/ (fetched 2026-09-19), which states the figure applies to us-east-1",
+      "note": "This session could not extract a us-west-2-specific on-demand rate from the AWS or third-party pricing pages fetched (JS-rendered tables). T-family/general-purpose On-Demand pricing has historically matched between us-east-1 and us-west-2 (unlike S3, which this session confirmed differs), but that parity is not independently reverified here. Treat as a probable, not confirmed, us-west-2 figure."
+    },
+    "ec2_t4g_burst_credit_usd_per_vcpu_hour": {
+      "value": 0.04,
+      "kind": "published",
+      "source": "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-unlimited-mode-concepts.html (via WebSearch, fetched 2026-09-19)",
+      "note": "T4g Unlimited-mode surplus CPU credit price, Linux/RHEL/SLES, uniform across instance size, purchase option and region per AWS's own docs. Corrects this task's earlier PARTIAL receipt, which used an unverified $0.05 recollection."
+    },
+    "ebs_gp3_usd_per_gb_month": {
+      "value": 0.08,
+      "kind": "published",
+      "source": "AWS EBS pricing summary via WebSearch (fetched 2026-09-19), stated for US West (Oregon)",
+      "note": "Baseline 3,000 IOPS / 125 MB/s included free; this deployment's 8 GB root + 30 GB data volumes stay within baseline (unused overage rates recorded below for completeness)."
+    },
+    "ebs_gp3_extra_iops_usd_per_iops_month": {
+      "value": 0.005,
+      "kind": "published",
+      "source": "same as ebs_gp3_usd_per_gb_month",
+      "note": "Beyond the 3,000 free baseline IOPS. Not applied: this deployment has no evidence of exceeding baseline."
+    },
+    "ebs_gp3_extra_throughput_usd_per_mbps_month": {
+      "value": 0.04,
+      "kind": "published",
+      "source": "same as ebs_gp3_usd_per_gb_month",
+      "note": "Beyond the 125 MB/s free baseline throughput. Not applied, same reason."
+    },
+    "s3_standard_usd_per_gb_month": {
+      "value": 0.023,
+      "kind": "published",
+      "region_caveat": "us-west-2 confirmed",
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-west-2/index.json (regional catalog; see s3-rate.json)",
+      "note": "Confirmed directly against the AWS regional offer catalog; see s3-rate.json. The earlier claim of $0.0265 for Oregon was incorrect."
+    },
+    "s3_put_usd_per_1000_requests": {
+      "value": 0.005,
+      "kind": "published",
+      "source": "https://aws.amazon.com/s3/pricing/ (fetched 2026-09-19)"
+    },
+    "s3_get_usd_per_1000_requests": {
+      "value": 0.0004,
+      "kind": "published",
+      "source": "https://aws.amazon.com/s3/pricing/ (fetched 2026-09-19)"
+    },
+    "kms_key_usd_per_month": {
+      "value": 1.0,
+      "kind": "published",
+      "source": "AWS KMS pricing summary via WebSearch (fetched 2026-09-19); AWS states this is region-uniform"
+    },
+    "kms_usd_per_10000_requests": {
+      "value": 0.03,
+      "kind": "published",
+      "source": "same as kms_key_usd_per_month",
+      "note": "First 20,000 requests/month free across all regions -- modeled explicitly, not omitted."
+    },
+    "kms_free_requests_per_month": {
+      "value": 20000,
+      "kind": "published",
+      "source": "same as kms_key_usd_per_month"
+    },
+    "secrets_manager_usd_per_secret_month": {
+      "value": 0.4,
+      "kind": "published",
+      "source": "AWS Secrets Manager pricing summary via WebSearch (fetched 2026-09-19); AWS states this is uniform across regions"
+    },
+    "secrets_manager_usd_per_10000_calls": {
+      "value": 0.05,
+      "kind": "published",
+      "source": "same as secrets_manager_usd_per_secret_month",
+      "note": "No published free tier for API calls, unlike KMS."
+    },
+    "cloudwatch_alarm_usd_per_month": {
+      "value": 0.1,
+      "kind": "published",
+      "source": "AWS CloudWatch pricing summary via WebSearch (fetched 2026-09-19), US East (N. Virginia); AWS states standard-alarm pricing is not region-differentiated in the fetched summary",
+      "region_caveat": "us-east-1 source, applied as region-uniform per the summary"
+    },
+    "cloudwatch_custom_metric_usd_per_month": {
+      "value": 0.3,
+      "kind": "published",
+      "source": "same as cloudwatch_alarm_usd_per_month",
+      "note": "First 10,000 metrics/month tier."
+    },
+    "cloudwatch_logs_ingest_usd_per_gb": {
+      "value": 0.5,
+      "kind": "published",
+      "source": "same as cloudwatch_alarm_usd_per_month"
+    },
+    "cloudwatch_logs_storage_usd_per_gb_month": {
+      "value": 0.03,
+      "kind": "published",
+      "source": "same as cloudwatch_alarm_usd_per_month"
+    },
+    "eip_usd_per_hour": {
+      "value": 0.005,
+      "kind": "published",
+      "source": "https://aws.amazon.com/blogs/aws/new-aws-public-ipv4-address-charge-public-ip-insights (via WebSearch, fetched 2026-09-19)",
+      "note": "Every public IPv4 address, attached or not, since Feb 1 2024 -- matches ADR 014's own ~USD 4/month estimate."
+    },
+    "data_transfer_out_usd_per_gb": {
+      "value": 0.09,
+      "kind": "published",
+      "source": "AWS data transfer pricing summary via WebSearch (fetched 2026-09-19), first 10 TB tier, US regions including us-west-2"
+    },
+    "data_transfer_out_free_gb_per_month": {
+      "value": 100,
+      "kind": "published",
+      "source": "same as data_transfer_out_usd_per_gb"
+    },
+    "resend_free_emails_per_month": {
+      "value": 3000,
+      "kind": "published",
+      "source": "https://resend.com/pricing (via WebSearch, fetched 2026-09-19)"
+    },
+    "resend_free_emails_per_day_cap": {
+      "value": 100,
+      "kind": "published",
+      "source": "same as resend_free_emails_per_month"
+    },
+    "resend_pro_usd_per_month_low": {
+      "value": 20,
+      "kind": "published",
+      "source": "same as resend_free_emails_per_month",
+      "note": "Pro tier range (20-35 USD/mo) if free-tier volume/day-cap is exceeded; not applied in these scenarios (see email category)."
+    },
+    "hours_per_month": {
+      "value": 730,
+      "kind": "constant",
+      "note": "365*24/12."
+    }
+  },
+  "unknown_rates": {
+    "embeddings_usd_per_1k_tokens": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md)",
+    "cloudwatch_logs_volume_gb_per_month": "rate is priced (cloudwatch_logs_ingest_usd_per_gb) but no log shipping is wired yet (ops go through SSM Run Command per ADR 014); volume unknown pending T23.53 telemetry",
+    "cloudwatch_custom_metrics_count": "rate is priced (cloudwatch_custom_metric_usd_per_month) but T23.53's metric cardinality is not yet implemented",
+    "s3_get_list_restore": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+  },
+  "measurements_applied": false,
+  "scenarios": {
+    "idle_0_accounts": {
+      "scenario": "idle_0_accounts",
+      "assumption": "no signups yet; fixed infrastructure cost floor",
+      "account_totals": {
+        "accounts": 0,
+        "recalls": 0,
+        "writes": 0,
+        "input_tokens": 0,
+        "storage_bytes": 0
+      },
+      "storage_risk": {
+        "exceeds_usable_data_volume": false,
+        "usable_data_volume_bytes": 24000000000
+      },
+      "known_categories_usd": {
+        "ec2_baseline": 12.264,
+        "ec2_burst_credits": {
+          "value": 0.0,
+          "kind": "assumption"
+        },
+        "ebs_fixed": 3.04,
+        "eip": 3.65,
+        "kms_key": 1.0,
+        "secrets_manager_storage": 1.6,
+        "secrets_manager_api_calls": {
+          "value": 0.0001,
+          "kind": "assumption",
+          "note": "assumes 5 restarts/month reading all 4 secrets at boot (ADR 014); no other Secrets Manager traffic modeled"
+        },
+        "cloudwatch_alarms": 0.2,
+        "s3_storage_backups": {
+          "value": 0.6629,
+          "kind": "assumption",
+          "snapshot_size_gb": 0.02,
+          "retained_backup_sets": 1441,
+          "objects_per_backup": 3,
+          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state -- see docs/launch/hosted-economics.md."
+        },
+        "s3_requests": {
+          "value": 0.0108,
+          "kind": "assumption",
+          "monthly_put_count": 2160
+        },
+        "kms_requests": {
+          "value": 0.0,
+          "kind": "assumption",
+          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT; 20000/month free across all regions applied before this line."
+        },
+        "data_transfer_out": {
+          "value": 0.0,
+          "kind": "assumption",
+          "note": "4096B/recall response, 1024B/write request assumed; first 100 GB/month free applied before this line."
+        },
+        "email": {
+          "value": 0.0,
+          "kind": "assumption",
+          "emails_per_month": 0,
+          "within_free_tier": true,
+          "note": "assumes 10 magic-link emails/account/month; Resend free tier is 3000/month capped 100/day"
+        }
+      },
+      "known_subtotal_usd": 22.43,
+      "per_plan_contribution": {
+        "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
+        "variable_total_usd": 0.6738,
+        "by_plan": {}
+      },
+      "unknown_categories": {
+        "embeddings": {
+          "write_tokens": {
+            "value": 0,
+            "formula": "writes * AVG_FACT_TOKENS",
+            "kind": "assumption"
+          },
+          "query_tokens": {
+            "value": 0,
+            "formula": "recalls * AVG_QUERY_TOKENS",
+            "kind": "assumption"
+          },
+          "rebuild_reembed_tokens": {
+            "value": 0,
+            "formula": "accounts * cold_reopens/mo * (stored_facts_per_account * 1%)",
+            "kind": "assumption",
+            "note": "assumes 30 cold reopens/account/month and 1% of stored facts missing a vector per reopen; index.RecoverMemorySearch (ADR 014) only re-embeds facts actually missing a vector, so this is a conservative upper-bound guess, not a measurement"
+          },
+          "readiness_tokens": {
+            "value": 86400,
+            "formula": "probes/mo * probe_tokens",
+            "kind": "assumption",
+            "note": "assumes a /readyz probe every 5 minutes (matches the CloudWatch alarm 300s evaluation period) with a fixed ~10-token bounded embedding call per ADR 014"
+          },
+          "total_tokens": 86400,
+          "usd_per_1k_tokens": null,
+          "monthly_usd": null,
+          "reason": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md)"
+        },
+        "cloudwatch_logs": {
+          "priced_usd_per_gb": 0.5,
+          "reason": "rate is priced (cloudwatch_logs_ingest_usd_per_gb) but no log shipping is wired yet (ops go through SSM Run Command per ADR 014); volume unknown pending T23.53 telemetry"
+        },
+        "cloudwatch_custom_metrics": {
+          "priced_usd_per_metric": 0.3,
+          "reason": "rate is priced (cloudwatch_custom_metric_usd_per_month) but T23.53's metric cardinality is not yet implemented"
+        },
+        "s3_get_list_restore": {
+          "reason": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+        }
+      },
+      "within_60usd_ceiling_known_subtotal": true
+    },
+    "10_accounts_light": {
+      "scenario": "10_accounts_light",
+      "assumption": "early-adoption mix at 10% of each plan's allowance; product/growth input not yet recorded",
+      "account_totals": {
+        "accounts": 10,
+        "recalls": 28000,
+        "writes": 1400,
+        "input_tokens": 280000,
+        "storage_bytes": 280000000
+      },
+      "storage_risk": {
+        "exceeds_usable_data_volume": false,
+        "usable_data_volume_bytes": 24000000000
+      },
+      "known_categories_usd": {
+        "ec2_baseline": 12.264,
+        "ec2_burst_credits": {
+          "value": 0.0,
+          "kind": "assumption"
+        },
+        "ebs_fixed": 3.04,
+        "eip": 3.65,
+        "kms_key": 1.0,
+        "secrets_manager_storage": 1.6,
+        "secrets_manager_api_calls": {
+          "value": 0.0001,
+          "kind": "assumption",
+          "note": "assumes 5 restarts/month reading all 4 secrets at boot (ADR 014); no other Secrets Manager traffic modeled"
+        },
+        "cloudwatch_alarms": 0.2,
+        "s3_storage_backups": {
+          "value": 9.9429,
+          "kind": "assumption",
+          "snapshot_size_gb": 0.3,
+          "retained_backup_sets": 1441,
+          "objects_per_backup": 13,
+          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state -- see docs/launch/hosted-economics.md."
+        },
+        "s3_requests": {
+          "value": 0.0468,
+          "kind": "assumption",
+          "monthly_put_count": 9360
+        },
+        "kms_requests": {
+          "value": 0.0,
+          "kind": "assumption",
+          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT; 20000/month free across all regions applied before this line."
+        },
+        "data_transfer_out": {
+          "value": 0.0,
+          "kind": "assumption",
+          "note": "4096B/recall response, 1024B/write request assumed; first 100 GB/month free applied before this line."
+        },
+        "email": {
+          "value": 0.0,
+          "kind": "assumption",
+          "emails_per_month": 100,
+          "within_free_tier": true,
+          "note": "assumes 10 magic-link emails/account/month; Resend free tier is 3000/month capped 100/day"
+        }
+      },
+      "known_subtotal_usd": 31.74,
+      "per_plan_contribution": {
+        "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
+        "variable_total_usd": 9.9898,
+        "by_plan": {
+          "free": {
+            "accounts": 8,
+            "storage_share": 0.2857,
+            "variable_cost_usd": 2.8542
+          },
+          "builder": {
+            "accounts": 2,
+            "storage_share": 0.7143,
+            "variable_cost_usd": 7.1356
+          },
+          "scale": {
+            "accounts": 0,
+            "storage_share": 0.0,
+            "variable_cost_usd": 0.0
+          }
+        }
+      },
+      "unknown_categories": {
+        "embeddings": {
+          "write_tokens": {
+            "value": 380800,
+            "formula": "writes * AVG_FACT_TOKENS",
+            "kind": "assumption"
+          },
+          "query_tokens": {
+            "value": 2072000,
+            "formula": "recalls * AVG_QUERY_TOKENS",
+            "kind": "assumption"
+          },
+          "rebuild_reembed_tokens": {
+            "value": 308824,
+            "formula": "accounts * cold_reopens/mo * (stored_facts_per_account * 1%)",
+            "kind": "assumption",
+            "note": "assumes 30 cold reopens/account/month and 1% of stored facts missing a vector per reopen; index.RecoverMemorySearch (ADR 014) only re-embeds facts actually missing a vector, so this is a conservative upper-bound guess, not a measurement"
+          },
+          "readiness_tokens": {
+            "value": 86400,
+            "formula": "probes/mo * probe_tokens",
+            "kind": "assumption",
+            "note": "assumes a /readyz probe every 5 minutes (matches the CloudWatch alarm 300s evaluation period) with a fixed ~10-token bounded embedding call per ADR 014"
+          },
+          "total_tokens": 2848024,
+          "usd_per_1k_tokens": null,
+          "monthly_usd": null,
+          "reason": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md)"
+        },
+        "cloudwatch_logs": {
+          "priced_usd_per_gb": 0.5,
+          "reason": "rate is priced (cloudwatch_logs_ingest_usd_per_gb) but no log shipping is wired yet (ops go through SSM Run Command per ADR 014); volume unknown pending T23.53 telemetry"
+        },
+        "cloudwatch_custom_metrics": {
+          "priced_usd_per_metric": 0.3,
+          "reason": "rate is priced (cloudwatch_custom_metric_usd_per_month) but T23.53's metric cardinality is not yet implemented"
+        },
+        "s3_get_list_restore": {
+          "reason": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+        }
+      },
+      "within_60usd_ceiling_known_subtotal": true
+    },
+    "100_accounts_light": {
+      "scenario": "100_accounts_light",
+      "assumption": "at ADR 014's 100 free-account cap, light usage; product/growth input not yet recorded",
+      "account_totals": {
+        "accounts": 100,
+        "recalls": 230000,
+        "writes": 12500,
+        "input_tokens": 2500000,
+        "storage_bytes": 2700000000
+      },
+      "storage_risk": {
+        "exceeds_usable_data_volume": false,
+        "usable_data_volume_bytes": 24000000000
+      },
+      "known_categories_usd": {
+        "ec2_baseline": 12.264,
+        "ec2_burst_credits": {
+          "value": 0.0,
+          "kind": "assumption"
+        },
+        "ebs_fixed": 3.04,
+        "eip": 3.65,
+        "kms_key": 1.0,
+        "secrets_manager_storage": 1.6,
+        "secrets_manager_api_calls": {
+          "value": 0.0001,
+          "kind": "assumption",
+          "note": "assumes 5 restarts/month reading all 4 secrets at boot (ADR 014); no other Secrets Manager traffic modeled"
+        },
+        "cloudwatch_alarms": 0.2,
+        "s3_storage_backups": {
+          "value": 90.149,
+          "kind": "assumption",
+          "snapshot_size_gb": 2.72,
+          "retained_backup_sets": 1441,
+          "objects_per_backup": 103,
+          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state -- see docs/launch/hosted-economics.md."
+        },
+        "s3_requests": {
+          "value": 0.3708,
+          "kind": "assumption",
+          "monthly_put_count": 74160
+        },
+        "kms_requests": {
+          "value": 0.1625,
+          "kind": "assumption",
+          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT; 20000/month free across all regions applied before this line."
+        },
+        "data_transfer_out": {
+          "value": 0.0,
+          "kind": "assumption",
+          "note": "4096B/recall response, 1024B/write request assumed; first 100 GB/month free applied before this line."
+        },
+        "email": {
+          "value": 0.0,
+          "kind": "assumption",
+          "emails_per_month": 1000,
+          "within_free_tier": true,
+          "note": "assumes 10 magic-link emails/account/month; Resend free tier is 3000/month capped 100/day"
+        }
+      },
+      "known_subtotal_usd": 112.44,
+      "per_plan_contribution": {
+        "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
+        "variable_total_usd": 90.6824,
+        "by_plan": {
+          "free": {
+            "accounts": 90,
+            "storage_share": 0.3333,
+            "variable_cost_usd": 30.2275
+          },
+          "builder": {
+            "accounts": 8,
+            "storage_share": 0.2963,
+            "variable_cost_usd": 26.8689
+          },
+          "scale": {
+            "accounts": 2,
+            "storage_share": 0.3704,
+            "variable_cost_usd": 33.5861
+          }
+        }
+      },
+      "unknown_categories": {
+        "embeddings": {
+          "write_tokens": {
+            "value": 3400000,
+            "formula": "writes * AVG_FACT_TOKENS",
+            "kind": "assumption"
+          },
+          "query_tokens": {
+            "value": 17020000,
+            "formula": "recalls * AVG_QUERY_TOKENS",
+            "kind": "assumption"
+          },
+          "rebuild_reembed_tokens": {
+            "value": 2977941,
+            "formula": "accounts * cold_reopens/mo * (stored_facts_per_account * 1%)",
+            "kind": "assumption",
+            "note": "assumes 30 cold reopens/account/month and 1% of stored facts missing a vector per reopen; index.RecoverMemorySearch (ADR 014) only re-embeds facts actually missing a vector, so this is a conservative upper-bound guess, not a measurement"
+          },
+          "readiness_tokens": {
+            "value": 86400,
+            "formula": "probes/mo * probe_tokens",
+            "kind": "assumption",
+            "note": "assumes a /readyz probe every 5 minutes (matches the CloudWatch alarm 300s evaluation period) with a fixed ~10-token bounded embedding call per ADR 014"
+          },
+          "total_tokens": 23484341,
+          "usd_per_1k_tokens": null,
+          "monthly_usd": null,
+          "reason": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md)"
+        },
+        "cloudwatch_logs": {
+          "priced_usd_per_gb": 0.5,
+          "reason": "rate is priced (cloudwatch_logs_ingest_usd_per_gb) but no log shipping is wired yet (ops go through SSM Run Command per ADR 014); volume unknown pending T23.53 telemetry"
+        },
+        "cloudwatch_custom_metrics": {
+          "priced_usd_per_metric": 0.3,
+          "reason": "rate is priced (cloudwatch_custom_metric_usd_per_month) but T23.53's metric cardinality is not yet implemented"
+        },
+        "s3_get_list_restore": {
+          "reason": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+        }
+      },
+      "within_60usd_ceiling_known_subtotal": false
+    },
+    "full_limit_mix": {
+      "scenario": "full_limit_mix",
+      "assumption": "the ratified 1 Scale + 3 Builder + 10 Free mix at full advertised allowance (90,000 total facts) per docs/launch/hosted-completion/evidence.md",
+      "account_totals": {
+        "accounts": 14,
+        "recalls": 700000,
+        "writes": 40000,
+        "input_tokens": 8000000,
+        "storage_bytes": 9000000000
+      },
+      "storage_risk": {
+        "exceeds_usable_data_volume": false,
+        "usable_data_volume_bytes": 24000000000
+      },
+      "known_categories_usd": {
+        "ec2_baseline": 12.264,
+        "ec2_burst_credits": {
+          "value": 1.168,
+          "kind": "assumption"
+        },
+        "ebs_fixed": 3.04,
+        "eip": 3.65,
+        "kms_key": 1.0,
+        "secrets_manager_storage": 1.6,
+        "secrets_manager_api_calls": {
+          "value": 0.0001,
+          "kind": "assumption",
+          "note": "assumes 5 restarts/month reading all 4 secrets at boot (ADR 014); no other Secrets Manager traffic modeled"
+        },
+        "cloudwatch_alarms": 0.2,
+        "s3_storage_backups": {
+          "value": 298.9499,
+          "kind": "assumption",
+          "snapshot_size_gb": 9.02,
+          "retained_backup_sets": 1441,
+          "objects_per_backup": 17,
+          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state -- see docs/launch/hosted-economics.md."
+        },
+        "s3_requests": {
+          "value": 0.0612,
+          "kind": "assumption",
+          "monthly_put_count": 12240
+        },
+        "kms_requests": {
+          "value": 0.0,
+          "kind": "assumption",
+          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT; 20000/month free across all regions applied before this line."
+        },
+        "data_transfer_out": {
+          "value": 0.0,
+          "kind": "assumption",
+          "note": "4096B/recall response, 1024B/write request assumed; first 100 GB/month free applied before this line."
+        },
+        "email": {
+          "value": 0.0,
+          "kind": "assumption",
+          "emails_per_month": 140,
+          "within_free_tier": true,
+          "note": "assumes 10 magic-link emails/account/month; Resend free tier is 3000/month capped 100/day"
+        }
+      },
+      "known_subtotal_usd": 321.93,
+      "per_plan_contribution": {
+        "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
+        "variable_total_usd": 299.0112,
+        "by_plan": {
+          "free": {
+            "accounts": 10,
+            "storage_share": 0.1111,
+            "variable_cost_usd": 33.2235
+          },
+          "builder": {
+            "accounts": 3,
+            "storage_share": 0.3333,
+            "variable_cost_usd": 99.6704
+          },
+          "scale": {
+            "accounts": 1,
+            "storage_share": 0.5556,
+            "variable_cost_usd": 166.1173
+          }
+        }
+      },
+      "unknown_categories": {
+        "embeddings": {
+          "write_tokens": {
+            "value": 10880000,
+            "formula": "writes * AVG_FACT_TOKENS",
+            "kind": "assumption"
+          },
+          "query_tokens": {
+            "value": 51800000,
+            "formula": "recalls * AVG_QUERY_TOKENS",
+            "kind": "assumption"
+          },
+          "rebuild_reembed_tokens": {
+            "value": 9926471,
+            "formula": "accounts * cold_reopens/mo * (stored_facts_per_account * 1%)",
+            "kind": "assumption",
+            "note": "assumes 30 cold reopens/account/month and 1% of stored facts missing a vector per reopen; index.RecoverMemorySearch (ADR 014) only re-embeds facts actually missing a vector, so this is a conservative upper-bound guess, not a measurement"
+          },
+          "readiness_tokens": {
+            "value": 86400,
+            "formula": "probes/mo * probe_tokens",
+            "kind": "assumption",
+            "note": "assumes a /readyz probe every 5 minutes (matches the CloudWatch alarm 300s evaluation period) with a fixed ~10-token bounded embedding call per ADR 014"
+          },
+          "total_tokens": 72692871,
+          "usd_per_1k_tokens": null,
+          "monthly_usd": null,
+          "reason": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md)"
+        },
+        "cloudwatch_logs": {
+          "priced_usd_per_gb": 0.5,
+          "reason": "rate is priced (cloudwatch_logs_ingest_usd_per_gb) but no log shipping is wired yet (ops go through SSM Run Command per ADR 014); volume unknown pending T23.53 telemetry"
+        },
+        "cloudwatch_custom_metrics": {
+          "priced_usd_per_metric": 0.3,
+          "reason": "rate is priced (cloudwatch_custom_metric_usd_per_month) but T23.53's metric cardinality is not yet implemented"
+        },
+        "s3_get_list_restore": {
+          "reason": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+        }
+      },
+      "within_60usd_ceiling_known_subtotal": false
+    }
+  },
+  "historical_ceiling_usd": 60.0,
+  "ceiling_note": "The historical USD 60/month figure is a ceiling, not a budget target or new spend authorization (docs/launch/hosted-plan.md).",
+  "citation_note": "Candidate rates retain worker-provided citations and explicit assumptions. Coordinator verified S3 Standard directly against the AWS us-west-2 regional catalog (s3-rate.json). Other region/account-specific rates and free-tier availability require verification before spend approval; the EC2 hourly value remains an unverified regional-parity assumption."
+}
