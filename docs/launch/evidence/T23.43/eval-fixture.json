@@ -162,8 +162,8 @@
     "skipped": 0
   },
   "commands": [
-    "python3 scripts/hosted/eval_embeddings.py --fixtures --manifest /tmp/t2343-fixtures-manifest.json --output /Volumes/BuildOffload/wt/serenity-launch-T23.43-20260918/docs/launch/evidence/T23.43/eval-fixture.json",
-    "/tmp/t2343-bin/serenity --root <disposable> search <query> --limit 5"
+    "python3 scripts/hosted/eval_embeddings.py --fixtures --manifest /tmp/t2343-fixtures-manifest.json --output docs/launch/evidence/T23.43/eval-fixture.json",
+    "/tmp/t2343-bins/serenity --root <disposable> search <query> --limit 5"
   ],
   "configuration_sha256": null,
   "corpus_sha256": "f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6",
@@ -180,8 +180,8 @@
   ],
   "profile": "paid",
   "provider": null,
-  "recorded_at": "2026-09-19T01:03:45Z",
-  "source_sha": "275e906e1a6f33b4335ed934fe2512d81e326d82",
+  "recorded_at": "2026-09-19T01:20:11Z",
+  "source_sha": "a8c12dfce0433a5a26afc182eef49e3beedba10d",
   "status": "PARTIAL",
   "task_id": "T23.43"
 }

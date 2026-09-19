@@ -15,7 +15,7 @@
     {
       "criterion": "Budget exhausted/provider unavailable yields BLOCKED with partial results and no further calls",
       "expected": "N/A in --fixtures mode (no external budget/provider involved)",
-      "observed": "fixtures mode never calls a live provider; see --live for the budget-enforcement path",
+      "observed": "fixtures mode never calls a live provider; see --live for the budget-enforcement path. The --live path itself is exercised by evals/hosted/test_eval_embeddings.py::TestLiveModeBudgetEnforcement against a real local HTTP server (max_calls=1, near-token-cap, and pre-network dollar-cap cases), not by this fixtures run.",
       "status": "NOT_RUN"
     }
   ],
@@ -30,14 +30,14 @@
     },
     {
       "path": "docs/launch/evidence/T23.43/eval-fixture.json",
-      "sha256": "32bf9a35d09ed930e551edc522f52992d3e3e603b079174cf428abb7a16a542b"
+      "sha256": "6ee9d5071206a275fd7740eab714d8d006a2313f42208d9086433c9e23a1667b"
     },
     {
       "path": "docs/launch/hosted-completion/embedding-eval.md",
-      "sha256": "21ab269a3e8efd8651e4bf8383522542dce6a0a34bd4338c4671b2c93ca9a47d"
+      "sha256": "f781f4fa59f760ed17fd2a8cc227ba1401ab48c1c21aed74e721b03403304359"
     }
   ],
-  "binary_sha256": "83c0ec7ae38e8d3ca9f5f8ea2671749ff04bc991a6818f76212f3b8f6f627439",
+  "binary_sha256": "d62e03bb4e71d4b1ef0c1419bd179303855a30ecf5c1ef79653eb9d464e14bbd",
   "blockers": [
     {
       "owner": "task41 reviewer",
@@ -49,14 +49,14 @@
     },
     {
       "owner": "coordinator (identity/provisioning owner, T23.44/46)",
-      "required_input": "Seed the frozen corpus into a real hosted test account/brain out-of-band and record hosted_mcp.corpus_seeded_confirmation in a --live manifest -- T23.43 does not own that write path and never seeds a live account itself."
+      "required_input": "Seed the frozen corpus into a real hosted test account/brain out-of-band (twice: once for hosted_mcp, once for a genuinely separate empty_case_hosted_mcp account) and record both corpus_seeded_confirmation receipts in a --live manifest -- T23.43 does not own that write path and never seeds a live account itself."
     }
   ],
   "cases": {
-    "executed": 50,
+    "executed": 77,
     "failed": 0,
-    "passed": 50,
-    "planned": 50,
+    "passed": 77,
+    "planned": 77,
     "skip_reasons": [],
     "skipped": 0
   },
@@ -79,8 +79,9 @@
   },
   "evidence_level": "fixture",
   "limitations": [
-    "python3 -m unittest discover -s evals/hosted -p \"test_*.py\" ran 50/50 tests passing, including the lexical-control-arm tests (SERENITY_BIN/SEEDBRAIN_BIN were set to a local build of the unmodified cmd/serenity, built under the R-build-lease protocol at a temporary, uncommitted path -- binary_sha256 above is the new evals/hosted/fixtures/seedbrain helper's binary hash; the unmodified serenity binary built alongside it is not this task's artifact); 'cases' above reflects this Python suite, not the 100-case corpus itself -- see docs/launch/evidence/T23.43/eval-fixture.json's own 'cases' (100 planned/executed) and '_debug' fields for the corpus-level Hit@5 mechanics run.",
-    "No live semantic measurement has ever been taken: EMBEDDINGS_API_KEY is not provisioned, T23.42's real provider adapter is not merged, and no hosted test account is seeded. Every Hit@5 number produced by this task is a fixtures-only mechanical rehearsal (hash-bag / fixed-vector / real-lexical-control arms), never a quality PASS -- see embedding-eval.md.",
+    "python3 -m unittest discover -s evals/hosted -p \"test_*.py\" ran 77/77 tests passing with zero skips (SERENITY_BIN/SEEDBRAIN_BIN were set to a local build of the unmodified cmd/serenity plus this task's evals/hosted/fixtures/seedbrain helper, built under the R-build-lease protocol at a temporary, uncommitted path -- binary_sha256 above is the seedbrain helper's binary hash; the unmodified serenity binary built alongside it is not this task's artifact); 'cases' above reflects this Python suite, not the 100-case corpus itself -- see docs/launch/evidence/T23.43/eval-fixture.json's own 'cases' (100 planned/executed) and '_debug' fields for the corpus-level Hit@5 mechanics run.",
+    "This run follows a repair pass that closed 4 defects an independent review found in the first implementation (source_sha 275e906): (1) MCPClient could leak the bearer credential to a cross-origin HTTP redirect target -- fixed with a redirect-refusing opener and empirically reproduced/confirmed fixed against two real loopback servers in evals/hosted/test_mcp_client.py; (2) approved_max_usd was validated but never enforced live -- fixed via a required budget.max_cost_per_call_usd manifest field and a pre-call projected-cost check; (3) call_tool silently auto-initialized a session, undercounting the first budgeted call by one -- fixed by requiring an explicit initialize() the caller can budget for; (4) the positive and empty-case phases shared one credential/account, making cross-account leakage untestable -- fixed by requiring a second, independently validated empty_case_hosted_mcp manifest target. No corpus or acceptance-threshold values were changed to make anything pass.",
+    "No live semantic measurement has ever been taken: EMBEDDINGS_API_KEY is not provisioned, T23.42's real provider adapter is not merged, and no hosted test account (or its required second, isolated empty-case account) is seeded. --live is fully implemented and covered by real-wire tests (redirect/isError/allowlist tests against real loopback servers, and budget-exhaustion/max_calls=1/near-token-cap/pre-network-dollar-cap/separate-credential tests against a real local HTTP server) but has never been run against an actual hosted endpoint; every Hit@5 number this task has ever produced is a fixtures-only mechanical rehearsal (hash-bag / fixed-vector / real-lexical-control arms), never a quality PASS -- see embedding-eval.md.",
     "The production lexical fallback (internal/index.LiteralFTSQuery) implicit-ANDs every query term including stopwords, so natural-language questions almost never lexically match a short fact statement regardless of this corpus's designed word-overlap category -- verified directly against the real built serenity binary; see embedding-eval.md 'Known limits'.",
     "Empty-case fixture arm approximates 'forgotten/expired' as 'never authored' since T23.43 does not own the remember/forget/expiry pipeline (T23.42/44/48).",
     "task41's threshold-review freeze receipt (docs/launch/hosted-completion/embedding-eval.md) is not yet signed off; this task proposes the frozen corpus/thresholds but cannot self-approve them.",
@@ -88,8 +89,8 @@
   ],
   "profile": "paid",
   "provider": null,
-  "recorded_at": "2026-09-19T01:05:02Z",
-  "source_sha": "275e906e1a6f33b4335ed934fe2512d81e326d82",
+  "recorded_at": "2026-09-19T01:20:53Z",
+  "source_sha": "a8c12dfce0433a5a26afc182eef49e3beedba10d",
   "status": "PARTIAL",
   "task_id": "T23.43"
 }
