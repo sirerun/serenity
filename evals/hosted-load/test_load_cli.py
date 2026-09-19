@@ -3,7 +3,10 @@ import importlib.util
 import json
 import os
 import random
+import shutil
 import socket
+import ssl
+import subprocess
 import sys
 import tempfile
 import threading
@@ -430,15 +433,18 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
 
 
 class FakeMcpServer:
-    def __init__(self):
+    def __init__(self, tls_context: ssl.SSLContext | None = None):
         self.state = FakeMcpState()
+        self.scheme = "https" if tls_context else "http"
         self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FakeMcpHandler)
+        if tls_context:
+            self.httpd.socket = tls_context.wrap_socket(self.httpd.socket, server_side=True)
         self.httpd.state = self.state  # type: ignore[attr-defined]
         self.thread = threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)  # shutdown() waits one poll
 
     @property
     def origin(self) -> str:
-        return f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        return f"{self.scheme}://127.0.0.1:{self.httpd.server_address[1]}"
 
     @property
     def parsed_origin(self):
@@ -1033,6 +1039,66 @@ class ExchangeWallDeadlineTests(FakeServerTestCase):
         classes = {r.get("error_class") for r in result["results"] if r["outcome"] == "network_error"}
         self.assertEqual(classes, {"ExchangeDeadlineExceeded"})
         self.assertNotEqual(result["status"], "PARTIAL")
+
+
+@unittest.skipUnless(shutil.which("openssl"), "openssl is needed to mint a throwaway self-signed certificate")
+class TlsExchangeTests(unittest.TestCase):
+    """A completed TLS exchange against a real TLS listener, with a throwaway
+    self-signed certificate minted into a temp dir for 127.0.0.1 only."""
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        tmp = Path(self.tmpdir.name)
+        self.cert, key = tmp / "cert.pem", tmp / "key.pem"
+        subprocess.run(
+            ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key), "-out", str(self.cert),
+             "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"],
+            check=True, capture_output=True,
+        )
+        server_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        server_ctx.load_cert_chain(str(self.cert), str(key))
+        self.server = FakeMcpServer(tls_context=server_ctx)
+        self.server.start()
+        self.addCleanup(self.server.stop)
+        self.trusting_context = ssl.create_default_context(cafile=str(self.cert))
+
+    def exchange(self, path, timeout_s):
+        with mock.patch.object(load_cli.ssl, "create_default_context", lambda: self.trusting_context):
+            start = time.monotonic()
+            try:
+                return load_cli._http_exchange("GET", self.server.parsed_origin, path, {}, None, timeout_s), time.monotonic() - start
+            except load_cli.ExchangeDeadlineExceeded:
+                return None, time.monotonic() - start
+
+    def test_a_completed_tls_exchange_returns_the_response_and_closes_every_socket(self):
+        opened: list[socket.socket] = []
+        real_connect = load_cli._connect
+
+        def recording_connect(scheme, host, port, deadline, hold):
+            return real_connect(scheme, host, port, deadline, lambda sock: (opened.append(sock), hold(sock)))
+
+        with mock.patch.object(load_cli, "_connect", recording_connect):
+            result, _elapsed = self.exchange("/readyz", 5.0)
+        self.assertEqual(result[0], 200)
+        self.assertEqual(json.loads(result[2]), {"ready": True})
+        self.assertGreaterEqual(len(opened), 2)  # the plain socket and its TLS wrapper
+        self.assertEqual([s for s in opened if s.fileno() != -1], [])
+
+    def test_certificate_verification_is_on_by_default(self):
+        with self.assertRaises(ssl.SSLCertVerificationError):
+            load_cli._http_exchange("GET", self.server.parsed_origin, "/readyz", {}, None, 5.0)
+
+    def test_a_tls_response_that_stalls_after_its_first_byte_is_cut_off_at_the_deadline(self):
+        result, elapsed = self.exchange("/stall-after-first-byte", 0.6)
+        self.assertIsNone(result)
+        self.assertGreaterEqual(elapsed, 0.59)
+        self.assertLessEqual(elapsed, 0.6 + load_cli.DEADLINE_JITTER_S)
+
+    def test_a_tls_header_drip_is_cut_off_at_the_deadline(self):
+        result, elapsed = self.exchange("/drip-headers", 0.4)
+        self.assertIsNone(result)
+        self.assertLessEqual(elapsed, 0.4 + load_cli.DEADLINE_JITTER_S)
 
 
 # ---------------------------------------------------------------------------
