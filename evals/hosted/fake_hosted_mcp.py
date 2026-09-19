@@ -141,6 +141,16 @@ class FakeHostedMCP:
         # channel: "jsonrpc_error" | "status" | "search_degraded" | "slug" | "http_error".
         self.reflect: str | None = None
         self.huge_response = False
+        # Session lifecycle, as internal/server/mcp enforces it: `initialize` (no
+        # session header) opens a session and returns MCP-Protocol-Version; every
+        # later request must carry that session and version (else HTTP 400); and
+        # `tools/call` is refused ("Initialization required") until the client
+        # has sent notifications/initialized. `enforce_protocol=False` restores
+        # the older lenient behaviour for a test that needs it.
+        self.enforce_protocol = True
+        self.protocol_version = "2025-11-25"
+        self.sessions: dict[str, int] = {}  # session id -> 1 initialize answered, 2 initialized
+        self._session_seq = 0
         self.bytes_received = 0
         self._auth = ""
         self.embedder = HashBagEmbedder()
@@ -159,7 +169,8 @@ class FakeHostedMCP:
                 outer._handle(self)
 
         self._server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+        # A short poll interval keeps stop() from waiting out the 0.5 s default on every test teardown.
+        threading.Thread(target=lambda: self._server.serve_forever(poll_interval=0.02), daemon=True).start()
         return f"http://127.0.0.1:{self._server.server_address[1]}"
 
     def stop(self) -> None:
@@ -209,6 +220,22 @@ class FakeHostedMCP:
             return
         method = body.get("method")
         headers = {"Content-Type": "application/json"}
+        session_id = h.headers.get("Mcp-Session-Id") or ""
+        if self.enforce_protocol and (method != "initialize" or session_id):
+            if not session_id or h.headers.get("MCP-Protocol-Version") != self.protocol_version:
+                h.send_response(400)
+                h.end_headers()
+                return
+            if session_id not in self.sessions:
+                h.send_response(404)
+                h.end_headers()
+                return
+        if self.enforce_protocol and "id" not in body:
+            if method == "notifications/initialized" and self.sessions.get(session_id) == 1:
+                self.sessions[session_id] = 2
+            h.send_response(202)
+            h.end_headers()
+            return
         if self.huge_response:
             h.send_response(200)
             h.end_headers()
@@ -227,8 +254,20 @@ class FakeHostedMCP:
             h.wfile.write(payload)
             return
         if method == "initialize":
-            headers["Mcp-Session-Id"] = "sess-" + account
-            result: dict = {"protocolVersion": "2025-06-18", "capabilities": {}}
+            with self._lock:
+                self._session_seq += 1
+                sid = f"sess-{account}-{self._session_seq}"
+                self.sessions[sid] = 1
+            headers["Mcp-Session-Id"] = sid
+            headers["MCP-Protocol-Version"] = self.protocol_version
+            result: dict = {"protocolVersion": self.protocol_version, "capabilities": {}}
+        elif method == "tools/call" and self.enforce_protocol and self.sessions.get(session_id) != 2:
+            payload = json.dumps({"jsonrpc": "2.0", "id": body.get("id"), "error": {"code": -32600, "message": "Initialization required"}}).encode()
+            h.send_response(200)
+            h.send_header("Content-Type", "application/json")
+            h.end_headers()
+            h.wfile.write(payload)
+            return
         elif method == "tools/call":
             p = body["params"]
             with self._lock:

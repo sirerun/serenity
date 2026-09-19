@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import re
 import socket
 import threading
 import time
@@ -43,6 +44,15 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 SESSION_ID_HEADER = "Mcp-Session-Id"
+# The real transport (internal/server/mcp/http.go) answers every request after
+# `initialize` with HTTP 400 unless it carries the negotiated protocol version
+# in this header, and answers `tools/call` with "Initialization required" until
+# the client has sent the `notifications/initialized` notification. Neither was
+# enforced by the loopback fake this client was first written against; the
+# fake enforces both now.
+PROTOCOL_VERSION_HEADER = "MCP-Protocol-Version"
+INITIALIZED_METHOD = "notifications/initialized"
+_PROTOCOL_VERSION_SHAPE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 
@@ -94,6 +104,20 @@ def request_body(req_id: int, method: str, params: dict) -> bytes:
     return json.dumps({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params}).encode("utf-8")
 
 
+def notification_body(method: str) -> bytes:
+    """A JSON-RPC notification: no id, no reply body (the real transport
+    answers 202 Accepted)."""
+    return json.dumps({"jsonrpc": "2.0", "method": method}).encode("utf-8")
+
+
+def frame_body(req_id: int, method: str, params: dict | None) -> bytes:
+    """The exact bytes one planned request serializes to. A notification
+    (params None) carries no id."""
+    if params is None:
+        return notification_body(method)
+    return request_body(req_id, method, params)
+
+
 def tool_call_params(name: str, arguments: dict) -> dict:
     return {"name": name, "arguments": arguments}
 
@@ -126,6 +150,20 @@ def decode_tool_payload(result: dict) -> dict:
     raise MCPError("tool result carries neither structuredContent nor a JSON object in text content")
 
 
+def _negotiated_version(header: str | None, result: object) -> str | None:
+    """The protocol version to echo on later requests: the transport header the
+    server returned, else the initialize result's own `protocolVersion`. Only a
+    date-shaped value is ever sent back; anything else is dropped rather than
+    reflected."""
+    candidates = [header]
+    if isinstance(result, dict):
+        candidates.append(result.get("protocolVersion"))
+    for value in candidates:
+        if isinstance(value, str) and _PROTOCOL_VERSION_SHAPE.match(value):
+            return value
+    return None
+
+
 @dataclass
 class CallUsage:
     request_bytes: int
@@ -151,16 +189,16 @@ class MCPClient:
         self._bearer_token = bearer_token
         self.timeout_s = timeout_s
         self._session_id: str | None = None
+        self._protocol_version: str | None = None
+        self._initialized = False
         self._next_id = 1
         self.calls_made = 0
         self.total_request_bytes = 0
         self.total_response_bytes = 0
 
-    def _post(self, method: str, params: dict) -> dict:
-        req_id = self._next_id
-        self._next_id += 1
-        body = request_body(req_id, method, params)
-
+    def _send(self, body: bytes) -> tuple[int, dict, bytes]:
+        """One charged POST. Every request the client ever sends, including the
+        `initialized` notification, goes through here, so precharge sees it."""
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
@@ -168,6 +206,8 @@ class MCPClient:
         }
         if self._session_id is not None:
             headers[SESSION_ID_HEADER] = self._session_id
+        if self._protocol_version is not None:
+            headers[PROTOCOL_VERSION_HEADER] = self._protocol_version
 
         deadline_s = self.timeout_s
         if self._budget is not None:
@@ -175,14 +215,20 @@ class MCPClient:
             deadline_s = min(deadline_s, self._budget.remaining_seconds())
         self.calls_made += 1
         self.total_request_bytes += len(body)
-        status, session_header, raw = self._exchange(body, headers, deadline_s)
+        status, seen, raw = self._exchange(body, headers, deadline_s)
 
         if 300 <= status < 400:
             raise MCPError(f"refused: HTTP {status} redirect -- redirects are never followed (credential-leak protection)")
         if status >= 400 or status < 200:
             raise MCPError(f"HTTP {status} from the hosted endpoint (body not logged)")
-        if session_header:
-            self._session_id = session_header
+        return status, seen, raw
+
+    def _post(self, method: str, params: dict) -> dict:
+        req_id = self._next_id
+        self._next_id += 1
+        _status, seen, raw = self._send(request_body(req_id, method, params))
+        if seen["session"]:
+            self._session_id = seen["session"]
 
         try:
             envelope = json.loads(raw)
@@ -197,13 +243,22 @@ class MCPClient:
             shown = code if isinstance(code, int) and not isinstance(code, bool) and -10**9 < code < 10**9 else "invalid"
             raise MCPError(f"JSON-RPC error code={shown} (message not logged)")
         result = envelope.get("result", {})
+        if method == "initialize":
+            self._protocol_version = _negotiated_version(seen["protocol"], result)
         if isinstance(result, dict) and result.get("isError"):
             raise MCPError(f"tool call reported isError=true (method={method})")
         return result
 
-    def _exchange(self, body: bytes, headers: dict, deadline_s: float) -> tuple[int, str | None, bytes]:
-        """One POST under a hard wall-clock deadline. Returns (status,
-        session header, bounded body). Every failure is a fixed-text MCPError."""
+    def _notify(self, method: str) -> None:
+        """Sends a notification and expects any 2xx with a body it ignores."""
+        if self._session_id is None:
+            raise MCPError("notification: no active session -- call initialize() first")
+        self._send(notification_body(method))
+
+    def _exchange(self, body: bytes, headers: dict, deadline_s: float) -> tuple[int, dict, bytes]:
+        """One POST under a hard wall-clock deadline. Returns (status, the two
+        transport headers this client reads, bounded body). Every failure is a
+        fixed-text MCPError."""
         parts = urlsplit(self.endpoint_url)
         https = parts.scheme == "https"
         port = parts.port or (443 if https else 80)
@@ -242,7 +297,7 @@ class MCPClient:
             resp = conn.getresponse()
             raw = resp.read(MAX_RESPONSE_BYTES + 1)
             status = resp.status
-            session_header = resp.getheader(SESSION_ID_HEADER)
+            seen = {"session": resp.getheader(SESSION_ID_HEADER), "protocol": resp.getheader(PROTOCOL_VERSION_HEADER)}
         except (OSError, http.client.HTTPException) as e:
             if fired.is_set() or time.monotonic() >= deadline:
                 raise MCPError(f"deadline exceeded: the request took longer than {deadline_s:.3f}s") from e
@@ -270,10 +325,18 @@ class MCPClient:
             self.total_response_bytes += MAX_RESPONSE_BYTES
             raise MCPError(f"response exceeds {MAX_RESPONSE_BYTES} bytes; refused")
         self.total_response_bytes += len(raw)
-        return status, session_header, raw
+        return status, seen, raw
 
     def initialize(self) -> dict:
-        return self._post("initialize", INITIALIZE_PARAMS)
+        """The two-step handshake the real transport requires: `initialize`,
+        then the `notifications/initialized` notification. Both are charged
+        requests, so a budget that covers one but not the other stops here,
+        before any tool call."""
+        result = self._post("initialize", INITIALIZE_PARAMS)
+        if self._session_id is not None:  # a server that issued no session leaves nothing to notify; call_tool then refuses
+            self._notify(INITIALIZED_METHOD)
+            self._initialized = True
+        return result
 
     def call_tool(self, name: str, arguments: dict) -> dict:
         """Requires an active session (call initialize() first). This is
@@ -283,7 +346,7 @@ class MCPClient:
         silently initializes on first use would let the very first budgeted
         call cost two real requests with only one accounted for.
         """
-        if self._session_id is None:
+        if self._session_id is None or not self._initialized:
             raise MCPError("call_tool: no active session -- call initialize() first (and budget for it)")
         return decode_tool_payload(self._post("tools/call", tool_call_params(name, arguments)))
 

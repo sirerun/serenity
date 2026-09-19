@@ -138,11 +138,11 @@ class _IsErrorTool(http.server.BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length))
         if body.get("method") == "initialize":
-            payload = {"jsonrpc": "2.0", "id": body["id"], "result": {}}
+            payload = {"jsonrpc": "2.0", "id": body.get("id"), "result": {}}
         else:
             payload = {
                 "jsonrpc": "2.0",
-                "id": body["id"],
+                "id": body.get("id"),
                 "result": {"isError": True, "content": [{"type": "text", "text": "invalid_argument"}]},
             }
         self.send_response(200)
