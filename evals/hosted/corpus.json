@@ -1,0 +1,1863 @@
+{
+  "cases": [
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "office"
+      ],
+      "distractor_fact_ids": [
+        "para-01b-fact",
+        "para-01c-fact"
+      ],
+      "expected_fact_id": "para-01a-fact",
+      "id": "para-01a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=commute hard=False",
+      "query": "How does Amara get to the office?",
+      "subject_tokens": [
+        "amara"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "office"
+      ],
+      "distractor_fact_ids": [
+        "para-01a-fact",
+        "para-01c-fact"
+      ],
+      "expected_fact_id": "para-01b-fact",
+      "id": "para-01b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=commute hard=False",
+      "query": "How does Baptiste get to the office?",
+      "subject_tokens": [
+        "baptiste"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "office"
+      ],
+      "distractor_fact_ids": [
+        "para-01a-fact",
+        "para-01b-fact"
+      ],
+      "expected_fact_id": "para-01c-fact",
+      "id": "para-01c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=commute hard=False",
+      "query": "How does Chidi get to the office?",
+      "subject_tokens": [
+        "chidi"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-02b-fact",
+        "para-02c-fact"
+      ],
+      "expected_fact_id": "para-02a-fact",
+      "id": "para-02a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=pet hard=True",
+      "query": "Which creature shares Delphine's home?",
+      "subject_tokens": [
+        "delphine"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-02a-fact",
+        "para-02c-fact"
+      ],
+      "expected_fact_id": "para-02b-fact",
+      "id": "para-02b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=pet hard=True",
+      "query": "Which creature shares Esteban's home?",
+      "subject_tokens": [
+        "esteban"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-02a-fact",
+        "para-02b-fact"
+      ],
+      "expected_fact_id": "para-02c-fact",
+      "id": "para-02c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=pet hard=True",
+      "query": "Which creature shares Fenna's home?",
+      "subject_tokens": [
+        "fenna"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "weekends"
+      ],
+      "distractor_fact_ids": [
+        "para-03b-fact",
+        "para-03c-fact"
+      ],
+      "expected_fact_id": "para-03a-fact",
+      "id": "para-03a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=hobby hard=False",
+      "query": "What does Grzegorz do on weekends?",
+      "subject_tokens": [
+        "grzegorz"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "weekends"
+      ],
+      "distractor_fact_ids": [
+        "para-03a-fact",
+        "para-03c-fact"
+      ],
+      "expected_fact_id": "para-03b-fact",
+      "id": "para-03b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=hobby hard=False",
+      "query": "What does Haruto do on weekends?",
+      "subject_tokens": [
+        "haruto"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "weekends"
+      ],
+      "distractor_fact_ids": [
+        "para-03a-fact",
+        "para-03b-fact"
+      ],
+      "expected_fact_id": "para-03c-fact",
+      "id": "para-03c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=hobby hard=False",
+      "query": "What does Ingrid do on weekends?",
+      "subject_tokens": [
+        "ingrid"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-04b-fact",
+        "para-04c-fact"
+      ],
+      "expected_fact_id": "para-04a-fact",
+      "id": "para-04a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=morning-drink hard=True",
+      "query": "What is Jokull's first beverage of the day?",
+      "subject_tokens": [
+        "jokull"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-04a-fact",
+        "para-04c-fact"
+      ],
+      "expected_fact_id": "para-04b-fact",
+      "id": "para-04b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=morning-drink hard=True",
+      "query": "What is Kwame's first beverage of the day?",
+      "subject_tokens": [
+        "kwame"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-04a-fact",
+        "para-04b-fact"
+      ],
+      "expected_fact_id": "para-04c-fact",
+      "id": "para-04c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=morning-drink hard=True",
+      "query": "What is Liora's first beverage of the day?",
+      "subject_tokens": [
+        "liora"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-05b-fact",
+        "para-05c-fact"
+      ],
+      "expected_fact_id": "para-05a-fact",
+      "id": "para-05a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=instrument hard=True",
+      "query": "How does Mateus unwind musically at night?",
+      "subject_tokens": [
+        "mateus"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-05a-fact",
+        "para-05c-fact"
+      ],
+      "expected_fact_id": "para-05b-fact",
+      "id": "para-05b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=instrument hard=True",
+      "query": "How does Noor unwind musically at night?",
+      "subject_tokens": [
+        "noor"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-05a-fact",
+        "para-05b-fact"
+      ],
+      "expected_fact_id": "para-05c-fact",
+      "id": "para-05c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=instrument hard=True",
+      "query": "How does Oksana unwind musically at night?",
+      "subject_tokens": [
+        "oksana"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-06b-fact",
+        "para-06c-fact"
+      ],
+      "expected_fact_id": "para-06a-fact",
+      "id": "para-06a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=reading hard=True",
+      "query": "What has Priya been absorbed in lately, story-wise?",
+      "subject_tokens": [
+        "priya"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-06a-fact",
+        "para-06c-fact"
+      ],
+      "expected_fact_id": "para-06b-fact",
+      "id": "para-06b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=reading hard=True",
+      "query": "What has Quentin been absorbed in lately, story-wise?",
+      "subject_tokens": [
+        "quentin"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-06a-fact",
+        "para-06b-fact"
+      ],
+      "expected_fact_id": "para-06c-fact",
+      "id": "para-06c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=reading hard=True",
+      "query": "What has Rosalind been absorbed in lately, story-wise?",
+      "subject_tokens": [
+        "rosalind"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-07b-fact",
+        "para-07c-fact"
+      ],
+      "expected_fact_id": "para-07a-fact",
+      "id": "para-07a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=garden hard=True",
+      "query": "What is thriving outside Sten's window this season?",
+      "subject_tokens": [
+        "sten"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-07a-fact",
+        "para-07c-fact"
+      ],
+      "expected_fact_id": "para-07b-fact",
+      "id": "para-07b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=garden hard=True",
+      "query": "What is thriving outside Tanvir's window this season?",
+      "subject_tokens": [
+        "tanvir"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-07a-fact",
+        "para-07b-fact"
+      ],
+      "expected_fact_id": "para-07c-fact",
+      "id": "para-07c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=garden hard=True",
+      "query": "What is thriving outside Urszula's window this season?",
+      "subject_tokens": [
+        "urszula"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "city"
+      ],
+      "distractor_fact_ids": [
+        "para-08b-fact",
+        "para-08c-fact"
+      ],
+      "expected_fact_id": "para-08a-fact",
+      "id": "para-08a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=relocation hard=False",
+      "query": "What city does Viraj live in now?",
+      "subject_tokens": [
+        "viraj"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "city"
+      ],
+      "distractor_fact_ids": [
+        "para-08a-fact",
+        "para-08c-fact"
+      ],
+      "expected_fact_id": "para-08b-fact",
+      "id": "para-08b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=relocation hard=False",
+      "query": "What city does Wren live in now?",
+      "subject_tokens": [
+        "wren"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "city"
+      ],
+      "distractor_fact_ids": [
+        "para-08a-fact",
+        "para-08b-fact"
+      ],
+      "expected_fact_id": "para-08c-fact",
+      "id": "para-08c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=relocation hard=False",
+      "query": "What city does Xochitl live in now?",
+      "subject_tokens": [
+        "xochitl"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "every",
+        "sunday"
+      ],
+      "distractor_fact_ids": [
+        "para-09b-fact",
+        "para-09c-fact"
+      ],
+      "expected_fact_id": "para-09a-fact",
+      "id": "para-09a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=cooking hard=False",
+      "query": "What does Yusuf cook every Sunday?",
+      "subject_tokens": [
+        "yusuf"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "every",
+        "sunday"
+      ],
+      "distractor_fact_ids": [
+        "para-09a-fact",
+        "para-09c-fact"
+      ],
+      "expected_fact_id": "para-09b-fact",
+      "id": "para-09b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=cooking hard=False",
+      "query": "What does Zanele cook every Sunday?",
+      "subject_tokens": [
+        "zanele"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "every",
+        "sunday"
+      ],
+      "distractor_fact_ids": [
+        "para-09a-fact",
+        "para-09b-fact"
+      ],
+      "expected_fact_id": "para-09c-fact",
+      "id": "para-09c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=cooking hard=False",
+      "query": "What does Aoife cook every Sunday?",
+      "subject_tokens": [
+        "aoife"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-10b-fact",
+        "para-10c-fact"
+      ],
+      "expected_fact_id": "para-10a-fact",
+      "id": "para-10a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=language-learning hard=True",
+      "query": "What new skill is Bilal quietly building on their own?",
+      "subject_tokens": [
+        "bilal"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-10a-fact",
+        "para-10c-fact"
+      ],
+      "expected_fact_id": "para-10b-fact",
+      "id": "para-10b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=language-learning hard=True",
+      "query": "What new skill is Cosima quietly building on their own?",
+      "subject_tokens": [
+        "cosima"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-10a-fact",
+        "para-10b-fact"
+      ],
+      "expected_fact_id": "para-10c-fact",
+      "id": "para-10c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=language-learning hard=True",
+      "query": "What new skill is Dov quietly building on their own?",
+      "subject_tokens": [
+        "dov"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "shelter"
+      ],
+      "distractor_fact_ids": [
+        "para-11b-fact",
+        "para-11c-fact"
+      ],
+      "expected_fact_id": "para-11a-fact",
+      "id": "para-11a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=volunteer hard=False",
+      "query": "What kind of shelter does Fatoumata help out at?",
+      "subject_tokens": [
+        "fatoumata"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "shelter"
+      ],
+      "distractor_fact_ids": [
+        "para-11a-fact",
+        "para-11c-fact"
+      ],
+      "expected_fact_id": "para-11b-fact",
+      "id": "para-11b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=volunteer hard=False",
+      "query": "What kind of shelter does Giedre help out at?",
+      "subject_tokens": [
+        "giedre"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "shelter"
+      ],
+      "distractor_fact_ids": [
+        "para-11a-fact",
+        "para-11b-fact"
+      ],
+      "expected_fact_id": "para-11c-fact",
+      "id": "para-11c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=volunteer hard=False",
+      "query": "What kind of shelter does Hamid help out at?",
+      "subject_tokens": [
+        "hamid"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-12b-fact",
+        "para-12c-fact"
+      ],
+      "expected_fact_id": "para-12a-fact",
+      "id": "para-12a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=exercise hard=True",
+      "query": "What does Rustam do for exercise before starting the workday?",
+      "subject_tokens": [
+        "rustam"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-12a-fact",
+        "para-12c-fact"
+      ],
+      "expected_fact_id": "para-12b-fact",
+      "id": "para-12b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=exercise hard=True",
+      "query": "What does Sunniva do for exercise before starting the workday?",
+      "subject_tokens": [
+        "sunniva"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [],
+      "distractor_fact_ids": [
+        "para-12a-fact",
+        "para-12b-fact"
+      ],
+      "expected_fact_id": "para-12c-fact",
+      "id": "para-12c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": true,
+      "language": "en",
+      "notes": "topic=exercise hard=True",
+      "query": "What does Tobias do for exercise before starting the workday?",
+      "subject_tokens": [
+        "tobias"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "radio"
+      ],
+      "distractor_fact_ids": [
+        "para-13b-fact",
+        "para-13c-fact"
+      ],
+      "expected_fact_id": "para-13a-fact",
+      "id": "para-13a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=radio hard=False",
+      "query": "What kind of radio programs does Vasilis enjoy?",
+      "subject_tokens": [
+        "vasilis"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "radio"
+      ],
+      "distractor_fact_ids": [
+        "para-13a-fact",
+        "para-13c-fact"
+      ],
+      "expected_fact_id": "para-13b-fact",
+      "id": "para-13b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=radio hard=False",
+      "query": "What kind of radio programs does Winnie enjoy?",
+      "subject_tokens": [
+        "winnie"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "radio"
+      ],
+      "distractor_fact_ids": [
+        "para-13a-fact",
+        "para-13b-fact"
+      ],
+      "expected_fact_id": "para-13c-fact",
+      "id": "para-13c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "topic=radio hard=False",
+      "query": "What kind of radio programs does Xander enjoy?",
+      "subject_tokens": [
+        "xander"
+      ]
+    },
+    {
+      "category": "paraphrase",
+      "computed_content_overlap": [
+        "newspaper"
+      ],
+      "distractor_fact_ids": [
+        "filler-01",
+        "filler-02"
+      ],
+      "expected_fact_id": "para-40-fact",
+      "id": "para-40",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": false,
+      "language": "en",
+      "notes": "",
+      "query": "Which section of the newspaper does Yolanda start with?",
+      "subject_tokens": [
+        "yolanda"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-01b-fact",
+        "name-01c-fact"
+      ],
+      "expected_fact_id": "name-01a-fact",
+      "id": "name-01a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who leads operations in Warsaw?",
+      "subject_tokens": [
+        "katarzyna",
+        "wroblewski"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-01a-fact",
+        "name-01c-fact"
+      ],
+      "expected_fact_id": "name-01b-fact",
+      "id": "name-01b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who leads operations in Krakow?",
+      "subject_tokens": [
+        "katarzyna",
+        "wozniak"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-01a-fact",
+        "name-01b-fact"
+      ],
+      "expected_fact_id": "name-01c-fact",
+      "id": "name-01c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who leads operations in Gdansk?",
+      "subject_tokens": [
+        "katarzyna",
+        "wysocka"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-02b-fact",
+        "name-02c-fact"
+      ],
+      "expected_fact_id": "name-02a-fact",
+      "id": "name-02a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Which Meridian Freight branch manages Arctic shipping routes?",
+      "subject_tokens": [
+        "meridian",
+        "freight",
+        "norway"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-02a-fact",
+        "name-02c-fact"
+      ],
+      "expected_fact_id": "name-02b-fact",
+      "id": "name-02b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Which Meridian Freight branch manages Pacific coastal shipping routes?",
+      "subject_tokens": [
+        "meridian",
+        "freight",
+        "chile"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-02a-fact",
+        "name-02b-fact"
+      ],
+      "expected_fact_id": "name-02c-fact",
+      "id": "name-02c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Which Meridian Freight branch manages East African shipping routes?",
+      "subject_tokens": [
+        "meridian",
+        "freight",
+        "kenya"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-03b-fact",
+        "name-03c-fact"
+      ],
+      "expected_fact_id": "name-03a-fact",
+      "id": "name-03a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who handles tax law matters in Lagos?",
+      "subject_tokens": [
+        "consultant",
+        "femi",
+        "adeyemi"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-03a-fact",
+        "name-03c-fact"
+      ],
+      "expected_fact_id": "name-03b-fact",
+      "id": "name-03b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who handles labor law matters in Lagos?",
+      "subject_tokens": [
+        "consultant",
+        "ronke",
+        "adeyemi"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-03a-fact",
+        "name-03b-fact"
+      ],
+      "expected_fact_id": "name-03c-fact",
+      "id": "name-03c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who handles contract law matters in Lagos?",
+      "subject_tokens": [
+        "consultant",
+        "tunde",
+        "adeyemi"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-04b-fact",
+        "name-04c-fact"
+      ],
+      "expected_fact_id": "name-04a-fact",
+      "id": "name-04a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Which drone model offers a 40-minute flight time?",
+      "subject_tokens": [
+        "the",
+        "aerolite",
+        "200",
+        "drone"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-04a-fact",
+        "name-04c-fact"
+      ],
+      "expected_fact_id": "name-04b-fact",
+      "id": "name-04b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Which drone model offers a 25-minute flight time?",
+      "subject_tokens": [
+        "the",
+        "aerolite",
+        "400",
+        "drone"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-04a-fact",
+        "name-04b-fact"
+      ],
+      "expected_fact_id": "name-04c-fact",
+      "id": "name-04c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Which drone model offers a 15-minute flight time?",
+      "subject_tokens": [
+        "the",
+        "aerolite",
+        "mini",
+        "drone"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-05b-fact",
+        "name-05c-fact"
+      ],
+      "expected_fact_id": "name-05a-fact",
+      "id": "name-05a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who is keynoting about coral reef restoration?",
+      "subject_tokens": [
+        "dr.",
+        "beatriz",
+        "souza"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-05a-fact",
+        "name-05c-fact"
+      ],
+      "expected_fact_id": "name-05b-fact",
+      "id": "name-05b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who is keynoting about mangrove restoration?",
+      "subject_tokens": [
+        "dr.",
+        "camila",
+        "souza"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-05a-fact",
+        "name-05b-fact"
+      ],
+      "expected_fact_id": "name-05c-fact",
+      "id": "name-05c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who is keynoting about seagrass restoration?",
+      "subject_tokens": [
+        "dr.",
+        "diana",
+        "souza"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-06b-fact",
+        "name-06c-fact"
+      ],
+      "expected_fact_id": "name-06a-fact",
+      "id": "name-06a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who owns the bakery on Cedar Street?",
+      "subject_tokens": [
+        "youssef",
+        "haddad"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-06a-fact",
+        "name-06c-fact"
+      ],
+      "expected_fact_id": "name-06b-fact",
+      "id": "name-06b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who owns the bookstore on Cedar Street?",
+      "subject_tokens": [
+        "marwan",
+        "haddad"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-06a-fact",
+        "name-06b-fact"
+      ],
+      "expected_fact_id": "name-06c-fact",
+      "id": "name-06c",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who owns the pharmacy on Cedar Street?",
+      "subject_tokens": [
+        "samira",
+        "haddad"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-07b-fact",
+        "filler-03"
+      ],
+      "expected_fact_id": "name-07a-fact",
+      "id": "name-07a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who backed the solar-panel recycling startup's seed round?",
+      "subject_tokens": [
+        "lin",
+        "wei-chen"
+      ]
+    },
+    {
+      "category": "name_entity",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "name-07a-fact",
+        "filler-04"
+      ],
+      "expected_fact_id": "name-07b-fact",
+      "id": "name-07b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who backed the rival solar-panel recycling startup's seed round?",
+      "subject_tokens": [
+        "lin",
+        "mei-hua"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-01b-fact",
+        "pref-01c-fact"
+      ],
+      "expected_fact_id": "pref-01a-fact",
+      "id": "pref-01a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who prefers coffee to tea?",
+      "subject_tokens": [
+        "bram"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-02b-fact",
+        "pref-02c-fact"
+      ],
+      "expected_fact_id": "pref-02a-fact",
+      "id": "pref-02a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who prefers meetings in the morning?",
+      "subject_tokens": [
+        "elin"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-03b-fact",
+        "pref-03c-fact"
+      ],
+      "expected_fact_id": "pref-03a-fact",
+      "id": "pref-03a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who avoids shellfish specifically?",
+      "subject_tokens": [
+        "halima"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-04b-fact",
+        "pref-04c-fact"
+      ],
+      "expected_fact_id": "pref-04a-fact",
+      "id": "pref-04a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who always chooses a window seat?",
+      "subject_tokens": [
+        "kaveh"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-05b-fact",
+        "pref-05c-fact"
+      ],
+      "expected_fact_id": "pref-05a-fact",
+      "id": "pref-05a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who prefers email to phone calls?",
+      "subject_tokens": [
+        "nour"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-06b-fact",
+        "pref-06c-fact"
+      ],
+      "expected_fact_id": "pref-06a-fact",
+      "id": "pref-06a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who currently trains at dawn?",
+      "subject_tokens": [
+        "reza"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-01a-fact",
+        "pref-01c-fact"
+      ],
+      "expected_fact_id": "pref-01b-fact",
+      "id": "pref-01b-q",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What is Corin's stated preference in this area?",
+      "subject_tokens": [
+        "corin"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-01a-fact",
+        "pref-01b-fact"
+      ],
+      "expected_fact_id": "pref-01c-fact",
+      "id": "pref-01c-q",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What is Dara's stated preference in this area?",
+      "subject_tokens": [
+        "dara"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-02a-fact",
+        "pref-02c-fact"
+      ],
+      "expected_fact_id": "pref-02b-fact",
+      "id": "pref-02b-q",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What is Farrukh's stated preference in this area?",
+      "subject_tokens": [
+        "farrukh"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-02a-fact",
+        "pref-02b-fact"
+      ],
+      "expected_fact_id": "pref-02c-fact",
+      "id": "pref-02c-q",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What is Gunnar's stated preference in this area?",
+      "subject_tokens": [
+        "gunnar"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-03a-fact",
+        "pref-03c-fact"
+      ],
+      "expected_fact_id": "pref-03b-fact",
+      "id": "pref-03b-q",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What is Imre's stated preference in this area?",
+      "subject_tokens": [
+        "imre"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-03a-fact",
+        "pref-03b-fact"
+      ],
+      "expected_fact_id": "pref-03c-fact",
+      "id": "pref-03c-q",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What is Jovan's stated preference in this area?",
+      "subject_tokens": [
+        "jovan"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-04a-fact",
+        "pref-04c-fact"
+      ],
+      "expected_fact_id": "pref-04b-fact",
+      "id": "pref-04b-q",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What is Leilani's stated preference in this area?",
+      "subject_tokens": [
+        "leilani"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-04a-fact",
+        "pref-04b-fact"
+      ],
+      "expected_fact_id": "pref-04c-fact",
+      "id": "pref-04c-q",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What is Milos's stated preference in this area?",
+      "subject_tokens": [
+        "milos"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-05a-fact",
+        "pref-05c-fact"
+      ],
+      "expected_fact_id": "pref-05b-fact",
+      "id": "pref-05b-q",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What is Omar's stated preference in this area?",
+      "subject_tokens": [
+        "omar"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-05a-fact",
+        "pref-05b-fact"
+      ],
+      "expected_fact_id": "pref-05c-fact",
+      "id": "pref-05c-q",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What is Paloma's stated preference in this area?",
+      "subject_tokens": [
+        "paloma"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-06a-fact",
+        "pref-06c-fact"
+      ],
+      "expected_fact_id": "pref-06b-fact",
+      "id": "pref-06b-q",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What is Soraya's stated preference in this area?",
+      "subject_tokens": [
+        "soraya"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-06a-fact",
+        "pref-06b-fact"
+      ],
+      "expected_fact_id": "pref-06c-fact",
+      "id": "pref-06c-q",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What is Tamar's stated preference in this area?",
+      "subject_tokens": [
+        "tamar"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-07b-fact",
+        "filler-05"
+      ],
+      "expected_fact_id": "pref-07a-fact",
+      "id": "pref-07a",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who adds chili to almost every meal?",
+      "subject_tokens": [
+        "ugne"
+      ]
+    },
+    {
+      "category": "preference",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "pref-07a-fact",
+        "filler-06"
+      ],
+      "expected_fact_id": "pref-07b-fact",
+      "id": "pref-07b",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Who avoids chili entirely?",
+      "subject_tokens": [
+        "vikram"
+      ]
+    },
+    {
+      "category": "multilingual",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "ml-10-fact",
+        "ml-02-fact"
+      ],
+      "expected_fact_id": "ml-01-fact",
+      "id": "ml-01",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "es",
+      "notes": "",
+      "query": "¿Cuál es el destino de vacaciones favorito de Amina?",
+      "subject_tokens": [
+        "amina"
+      ]
+    },
+    {
+      "category": "multilingual",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "ml-01-fact",
+        "ml-03-fact"
+      ],
+      "expected_fact_id": "ml-02-fact",
+      "id": "ml-02",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "fr",
+      "notes": "",
+      "query": "Quel genre de chien Bjorn a-t-il adopté ?",
+      "subject_tokens": [
+        "bjorn"
+      ]
+    },
+    {
+      "category": "multilingual",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "ml-02-fact",
+        "ml-04-fact"
+      ],
+      "expected_fact_id": "ml-03-fact",
+      "id": "ml-03",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "de",
+      "notes": "",
+      "query": "Was unterrichtet Chiara donnerstagabends?",
+      "subject_tokens": [
+        "chiara"
+      ]
+    },
+    {
+      "category": "multilingual",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "ml-03-fact",
+        "ml-05-fact"
+      ],
+      "expected_fact_id": "ml-04-fact",
+      "id": "ml-04",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "pt",
+      "notes": "",
+      "query": "O que Dawit conserta como negócio paralelo?",
+      "subject_tokens": [
+        "dawit"
+      ]
+    },
+    {
+      "category": "multilingual",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "ml-04-fact",
+        "ml-06-fact"
+      ],
+      "expected_fact_id": "ml-05-fact",
+      "id": "ml-05",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "sw",
+      "notes": "",
+      "query": "Elif hujitolea kufanya nini kwa familia za wakimbizi?",
+      "subject_tokens": [
+        "elif"
+      ]
+    },
+    {
+      "category": "multilingual",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "ml-05-fact",
+        "ml-07-fact"
+      ],
+      "expected_fact_id": "ml-06-fact",
+      "id": "ml-06",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "it",
+      "notes": "",
+      "query": "Cosa alleva Faisal sul tetto del suo appartamento?",
+      "subject_tokens": [
+        "faisal"
+      ]
+    },
+    {
+      "category": "multilingual",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "ml-06-fact",
+        "ml-08-fact"
+      ],
+      "expected_fact_id": "ml-07-fact",
+      "id": "ml-07",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "nl",
+      "notes": "",
+      "query": "Wat voor studio runt Greta?",
+      "subject_tokens": [
+        "greta"
+      ]
+    },
+    {
+      "category": "multilingual",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "ml-07-fact",
+        "ml-09-fact"
+      ],
+      "expected_fact_id": "ml-08-fact",
+      "id": "ml-08",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "pl",
+      "notes": "",
+      "query": "Czym zajmuje się Hiroshi w weekendy?",
+      "subject_tokens": [
+        "hiroshi"
+      ]
+    },
+    {
+      "category": "multilingual",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "ml-08-fact",
+        "ml-10-fact"
+      ],
+      "expected_fact_id": "ml-09-fact",
+      "id": "ml-09",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "tr",
+      "notes": "",
+      "query": "Ines müze için neyi restore ediyor?",
+      "subject_tokens": [
+        "ines"
+      ]
+    },
+    {
+      "category": "multilingual",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "ml-09-fact",
+        "ml-01-fact"
+      ],
+      "expected_fact_id": "ml-10-fact",
+      "id": "ml-10",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "id",
+      "notes": "",
+      "query": "Jamal membuat musik apa dengan nama panggung?",
+      "subject_tokens": [
+        "jamal"
+      ]
+    },
+    {
+      "category": "temporal",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "temp-05-fact",
+        "temp-02-fact"
+      ],
+      "expected_fact_id": "temp-01-fact",
+      "id": "temp-01",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "When is the Q3 product review happening?",
+      "subject_tokens": []
+    },
+    {
+      "category": "temporal",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "temp-01-fact",
+        "temp-03-fact"
+      ],
+      "expected_fact_id": "temp-02-fact",
+      "id": "temp-02",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "By when must the office lease be renewed?",
+      "subject_tokens": []
+    },
+    {
+      "category": "temporal",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "temp-02-fact",
+        "temp-04-fact"
+      ],
+      "expected_fact_id": "temp-03-fact",
+      "id": "temp-03",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "When does the annual security audit start?",
+      "subject_tokens": []
+    },
+    {
+      "category": "temporal",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "temp-03-fact",
+        "temp-05-fact"
+      ],
+      "expected_fact_id": "temp-04-fact",
+      "id": "temp-04",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "When does the next onboarding cohort begin?",
+      "subject_tokens": []
+    },
+    {
+      "category": "temporal",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [
+        "temp-04-fact",
+        "temp-01-fact"
+      ],
+      "expected_fact_id": "temp-05-fact",
+      "id": "temp-05",
+      "isolated_filler_fact_id": null,
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "When do the new data-retention rules take effect?",
+      "subject_tokens": []
+    },
+    {
+      "category": "empty",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [],
+      "expected_fact_id": null,
+      "id": "empty-01",
+      "isolated_filler_fact_id": "filler-07",
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What was the name of the pet David gave up for adoption last year?",
+      "subject_tokens": []
+    },
+    {
+      "category": "empty",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [],
+      "expected_fact_id": null,
+      "id": "empty-02",
+      "isolated_filler_fact_id": "filler-08",
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "Which apartment did Maya live in before her 2023 move?",
+      "subject_tokens": []
+    },
+    {
+      "category": "empty",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [],
+      "expected_fact_id": null,
+      "id": "empty-03",
+      "isolated_filler_fact_id": "filler-09",
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What was the old vendor contract number before it was superseded?",
+      "subject_tokens": []
+    },
+    {
+      "category": "empty",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [],
+      "expected_fact_id": null,
+      "id": "empty-04",
+      "isolated_filler_fact_id": "filler-10",
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What temporary badge code was issued during the office renovation?",
+      "subject_tokens": []
+    },
+    {
+      "category": "empty",
+      "computed_content_overlap": null,
+      "distractor_fact_ids": [],
+      "expected_fact_id": null,
+      "id": "empty-05",
+      "isolated_filler_fact_id": "filler-01",
+      "lacks_content_word_overlap": null,
+      "language": "en",
+      "notes": "",
+      "query": "What was the original launch date before it was rescheduled?",
+      "subject_tokens": []
+    }
+  ],
+  "meta": {
+    "by_category": {
+      "empty": 5,
+      "multilingual": 10,
+      "name_entity": 20,
+      "paraphrase": 40,
+      "preference": 20,
+      "temporal": 5
+    },
+    "corpus_hash_sha256": "f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6",
+    "empty_cases": 5,
+    "facts_hash_sha256": "35f54860e48070db927b5ad072fee65386829695998022eb0274c80fc1cdb1bc",
+    "min_zero_overlap_paraphrases_required": 20,
+    "positive_cases": 95,
+    "total_cases": 100,
+    "total_facts": 105,
+    "zero_overlap_paraphrases": 21
+  }
+}

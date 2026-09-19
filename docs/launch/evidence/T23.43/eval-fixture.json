@@ -1,0 +1,187 @@
+{
+  "_debug": {
+    "fixed_vector_summary": {
+      "by_category": {
+        "multilingual": [
+          0,
+          10
+        ],
+        "name_entity": [
+          0,
+          20
+        ],
+        "paraphrase": [
+          0,
+          40
+        ],
+        "preference": [
+          0,
+          20
+        ],
+        "temporal": [
+          0,
+          5
+        ]
+      },
+      "category_floor_pass": {
+        "multilingual": false,
+        "name_entity": false,
+        "paraphrase": false,
+        "preference": false,
+        "temporal": false
+      },
+      "empty_all_pass": false,
+      "empty_leakage_total": 0,
+      "lexical_negative_hits": 0,
+      "lexical_negative_pass": false,
+      "lexical_negative_total": 0,
+      "overall_floor_pass": false,
+      "overall_hit_rate": 0.0,
+      "overall_hits": 0,
+      "overall_total": 95
+    },
+    "hashbag_summary": {
+      "by_category": {
+        "multilingual": [
+          6,
+          10
+        ],
+        "name_entity": [
+          20,
+          20
+        ],
+        "paraphrase": [
+          18,
+          40
+        ],
+        "preference": [
+          7,
+          20
+        ],
+        "temporal": [
+          4,
+          5
+        ]
+      },
+      "category_floor_pass": {
+        "multilingual": false,
+        "name_entity": true,
+        "paraphrase": false,
+        "preference": false,
+        "temporal": false
+      },
+      "empty_all_pass": false,
+      "empty_leakage_total": 0,
+      "lexical_negative_hits": 0,
+      "lexical_negative_pass": false,
+      "lexical_negative_total": 0,
+      "overall_floor_pass": false,
+      "overall_hit_rate": 0.5789473684210527,
+      "overall_hits": 55,
+      "overall_total": 95
+    },
+    "lexical_negative_check": {
+      "hits": 6,
+      "total": 21
+    },
+    "lexical_summary": {
+      "by_category": {
+        "multilingual": [
+          0,
+          10
+        ],
+        "name_entity": [
+          0,
+          20
+        ],
+        "paraphrase": [
+          0,
+          40
+        ],
+        "preference": [
+          0,
+          20
+        ],
+        "temporal": [
+          0,
+          5
+        ]
+      },
+      "category_floor_pass": {
+        "multilingual": false,
+        "name_entity": false,
+        "paraphrase": false,
+        "preference": false,
+        "temporal": false
+      },
+      "empty_all_pass": true,
+      "empty_leakage_total": 0,
+      "lexical_negative_hits": 0,
+      "lexical_negative_pass": false,
+      "lexical_negative_total": 0,
+      "overall_floor_pass": false,
+      "overall_hit_rate": 0.0,
+      "overall_hits": 0,
+      "overall_total": 95
+    }
+  },
+  "acceptance": [
+    {
+      "criterion": "Hit@5 thresholds (overall>=0.90, category floors, empty leakage=0, lexical-negative>=18/20) frozen before live results",
+      "expected": "Measured only against a live hosted MCP recall endpoint (see --live)",
+      "observed": "hashbag(mechanics-only) overall_hit_rate=0.579; fixed-vector(must-fail) overall_hit_rate=0.000; lexical-control overall_hit_rate=0.000 (none of these three arms is a live semantic-quality measurement)",
+      "status": "BLOCKED"
+    },
+    {
+      "criterion": "Fixed-vector/lexical-only stub fails the quality predicate; fixture mode passes harness mechanics but never marks quality PASS",
+      "expected": "fixed-vector overall_hit_rate < 0.90 AND all 95 positive cases mechanically scored",
+      "observed": "fixed-vector overall_hit_rate=0.000 (<0.90: True); mechanics completed for 95/95 positive cases",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Budget exhausted/provider unavailable yields BLOCKED with partial results and no further calls",
+      "expected": "N/A in --fixtures mode (no external budget/provider involved)",
+      "observed": "fixtures mode never calls a live provider; see --live for the budget-enforcement path",
+      "status": "NOT_RUN"
+    }
+  ],
+  "artifacts": [],
+  "binary_sha256": null,
+  "blockers": [
+    {
+      "owner": "David / EMBEDDINGS gate owner",
+      "required_input": "EMBEDDINGS_API_KEY provisioned and T23.42's provider adapter merged, plus a seeded hosted test account confirmed via a live manifest's hosted_mcp.corpus_seeded_confirmation field, before --live can run"
+    }
+  ],
+  "cases": {
+    "executed": 100,
+    "failed": 0,
+    "passed": 100,
+    "planned": 100,
+    "skip_reasons": [],
+    "skipped": 0
+  },
+  "commands": [
+    "python3 scripts/hosted/eval_embeddings.py --fixtures --manifest /tmp/t2343-fixtures-manifest.json --output /Volumes/BuildOffload/wt/serenity-launch-T23.43-20260918/docs/launch/evidence/T23.43/eval-fixture.json",
+    "/tmp/t2343-bin/serenity --root <disposable> search <query> --limit 5"
+  ],
+  "configuration_sha256": null,
+  "corpus_sha256": "f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6",
+  "cost": {
+    "actual_usd": null,
+    "approved_max_usd": null,
+    "authorization_refs": []
+  },
+  "dependencies": {},
+  "evidence_level": "fixture",
+  "limitations": [
+    "Empty-case fixture arm approximates 'forgotten/expired' as 'never authored': T23.43 does not own the remember/forget/expiry pipeline (T23.42/44/48), so isolated brains contain only an unrelated filler fact rather than a genuinely retracted one.",
+    "--live mode's actual semantic quality has never been measured (no EMBEDDINGS key, no seeded hosted account); this run is fixtures-only mechanical rehearsal."
+  ],
+  "profile": "paid",
+  "provider": null,
+  "recorded_at": "2026-09-19T01:02:09Z",
+  "source_sha": "810349ba7c1ed2c05fe34e3892de764a26a4633c",
+  "status": "PARTIAL",
+  "task_id": "T23.43"
+}
