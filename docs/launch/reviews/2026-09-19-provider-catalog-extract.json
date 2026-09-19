@@ -1,0 +1,83 @@
+{
+  "scope": "public unauthenticated catalog only; not account configuration or live qualification",
+  "captures": [
+    {
+      "url": "https://openrouter.ai/api/v1/endpoints/zdr",
+      "captured_at": "2026-09-19T04:33:28.487400+00:00",
+      "full_response_bytes": 765509,
+      "full_response_sha256": "b191376e38d27ae1b893532d131154d584870aad7fb2ad1b7d6130b018cd0219",
+      "selected_rows": [
+        {
+          "name": "Perplexity | perplexity/pplx-embed-v1-0.6B",
+          "model_id": "perplexity/pplx-embed-v1-0.6b",
+          "model_name": "Perplexity: Embed V1 0.6B",
+          "context_length": 32000,
+          "pricing": {
+            "prompt": "0.000000004",
+            "completion": "0",
+            "discount": 0
+          },
+          "provider_name": "Perplexity",
+          "tag": "perplexity/int8",
+          "quantization": "int8",
+          "max_completion_tokens": 28800,
+          "max_prompt_tokens": null,
+          "supported_parameters": [],
+          "supports_tool_choice": {
+            "none": true,
+            "auto": true,
+            "required": true,
+            "function": true
+          },
+          "status": 0,
+          "uptime_last_30m": 100,
+          "uptime_last_5m": 100,
+          "uptime_last_1d": 100,
+          "supports_implicit_caching": false,
+          "supports_voice_cloning": false,
+          "latency_last_30m": null,
+          "throughput_last_30m": null
+        }
+      ]
+    },
+    {
+      "url": "https://openrouter.ai/api/v1/models/perplexity/pplx-embed-v1-0.6b/endpoints",
+      "captured_at": "2026-09-19T04:27:16.698818+00:00",
+      "full_response_bytes": 1191,
+      "full_response_sha256": "f5c05a1b3e213f8487a6e56ddbc296047f9f0f1a9a27c5e6f0a098b72b24695b",
+      "selected_rows": [
+        {
+          "name": "Perplexity | perplexity/pplx-embed-v1-0.6B",
+          "model_id": "perplexity/pplx-embed-v1-0.6b",
+          "model_name": "Perplexity: Embed V1 0.6B",
+          "context_length": 32000,
+          "pricing": {
+            "prompt": "0.000000004",
+            "completion": "0",
+            "discount": 0
+          },
+          "provider_name": "Perplexity",
+          "tag": "perplexity/int8",
+          "quantization": "int8",
+          "max_completion_tokens": 28800,
+          "max_prompt_tokens": null,
+          "supported_parameters": [],
+          "supports_tool_choice": {
+            "none": true,
+            "auto": true,
+            "required": true,
+            "function": true
+          },
+          "status": 0,
+          "uptime_last_30m": 100,
+          "uptime_last_5m": 100,
+          "uptime_last_1d": 100,
+          "supports_implicit_caching": false,
+          "supports_voice_cloning": false,
+          "latency_last_30m": null,
+          "throughput_last_30m": null
+        }
+      ]
+    }
+  ]
+}
