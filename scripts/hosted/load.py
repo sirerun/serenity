@@ -6,20 +6,10 @@
 replay determinism, cap enforcement and threshold evaluation shape. It is
 never semantic-quality or real-capacity evidence.
 
---live speaks the real MCP Streamable HTTP protocol (internal/server/mcp)
-against manifest.environment.origin: a JSON-RPC "initialize" handshake,
-"notifications/initialized", then "tools/call" for recall/remember/forget,
-under an explicit host allowlist, an HTTPS-or-loopback transport policy that
-refuses redirects outright, private per-account credential files, and hard
-budget caps (calls, input tokens, worst-case dollar cost, elapsed time) that
-are checked BEFORE each request is sent, not after. Every guard (origin,
-budget shape, credential files, workload validity) is evaluated before this
-process opens a single socket; the first live network call is a read-only
-GET /readyz probe, and only after every offline guard has passed. No
-deployed hosted target exists yet as of T23.60, so this path has been
-exercised only against a local http.server fixture in
-evals/hosted-load/test_load_cli.py -- see docs/launch/evidence/T23.60/
-result.json limitations for exactly what "tested" means here.
+--live is deliberately disabled at the CLI before reading credentials or
+opening any socket. The candidate client below is exercised by local tests,
+but outcome, queued-deadline, complete budget and cold-workload proofs remain
+unfinished. See docs/launch/evidence/T23.60/live-enable-requirements.md.
 """
 from __future__ import annotations
 
@@ -496,6 +486,17 @@ def main() -> int:
     parser.add_argument("--manifest", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
+
+    if args.live:
+        result = {
+            "mode": "live", "status": "BLOCKED", "calls_used": 0,
+            "tokens_used": 0, "usd_used_worst_case": 0,
+            "reason": "Live load execution is disabled pending outcome, deadline, budget and workload qualification; see live-enable-requirements.md",
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(result, indent=2) + "\n")
+        print(json.dumps(result))
+        return 2
 
     if not args.manifest.exists():
         die({"status": "BLOCKED", "reason": f"manifest not found: {args.manifest}"}, 2)

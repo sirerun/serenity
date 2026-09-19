@@ -41,11 +41,11 @@ RATE_TABLE = {
         "note": "Baseline 3,000 IOPS / 125 MB/s included free; this deployment's 8 GB root + 30 GB data volumes stay within baseline (unused overage rates recorded below for completeness).",
     },
     "ebs_gp3_extra_iops_usd_per_iops_month": {"value": 0.005, "kind": "published", "source": "same as ebs_gp3_usd_per_gb_month", "note": "Beyond the 3,000 free baseline IOPS. Not applied: this deployment has no evidence of exceeding baseline."},
-    "ebs_gp3_extra_throughput_usd_per_mbps_month": {"value": 40.96, "kind": "published", "source": "same as ebs_gp3_usd_per_gb_month", "note": "Beyond the 125 MB/s free baseline throughput. Not applied, same reason."},
+    "ebs_gp3_extra_throughput_usd_per_mbps_month": {"value": 0.04, "kind": "published", "source": "same as ebs_gp3_usd_per_gb_month", "note": "Beyond the 125 MB/s free baseline throughput. Not applied, same reason."},
     "s3_standard_usd_per_gb_month": {
-        "value": 0.0265, "kind": "published", "region_caveat": "us-west-2 confirmed",
-        "source": "https://aws.amazon.com/s3/pricing/ (fetched 2026-09-19), explicitly for US West (Oregon)",
-        "note": "Corrects this task's earlier PARTIAL receipt, which used the us-east-1 rate ($0.023) unlabeled.",
+        "value": 0.023, "kind": "published", "region_caveat": "us-west-2 confirmed",
+        "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-west-2/index.json (regional catalog; see s3-rate.json)",
+        "note": "Confirmed directly against the AWS regional offer catalog; see s3-rate.json. The earlier claim of $0.0265 for Oregon was incorrect.",
     },
     "s3_put_usd_per_1000_requests": {"value": 0.005, "kind": "published", "source": "https://aws.amazon.com/s3/pricing/ (fetched 2026-09-19)"},
     "s3_get_usd_per_1000_requests": {"value": 0.0004, "kind": "published", "source": "https://aws.amazon.com/s3/pricing/ (fetched 2026-09-19)"},
@@ -307,7 +307,7 @@ def main() -> int:
         "scenarios": scenarios,
         "historical_ceiling_usd": 60.0,
         "ceiling_note": "The historical USD 60/month figure is a ceiling, not a budget target or new spend authorization (docs/launch/hosted-plan.md).",
-        "citation_note": "Every rate above was fetched live via WebSearch/WebFetch on 2026-09-19 and is cited per-entry in rate_table; this replaces this task's earlier PARTIAL receipt, which used unverified training-data recollections. A reviewer should still spot-check the cited URLs, especially ec2_t4g_small_usd_per_hour's us-west-2 caveat.",
+        "citation_note": "Candidate rates retain worker-provided citations and explicit assumptions. Coordinator verified S3 Standard directly against the AWS us-west-2 regional catalog (s3-rate.json). Other region/account-specific rates and free-tier availability require verification before spend approval; the EC2 hourly value remains an unverified regional-parity assumption.",
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2) + "\n")

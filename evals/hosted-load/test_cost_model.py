@@ -31,7 +31,7 @@ class RateTableTests(unittest.TestCase):
         self.assertEqual(cost_model.rate("ec2_t4g_burst_credit_usd_per_vcpu_hour"), 0.04)
 
     def test_s3_rate_is_the_us_west_2_figure_not_us_east_1(self):
-        self.assertEqual(cost_model.rate("s3_standard_usd_per_gb_month"), 0.0265)
+        self.assertEqual(cost_model.rate("s3_standard_usd_per_gb_month"), 0.023)
 
 
 class AccountTotalsTests(unittest.TestCase):

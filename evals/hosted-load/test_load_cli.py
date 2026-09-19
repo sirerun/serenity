@@ -5,6 +5,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -475,12 +476,12 @@ class CredentialGuardTests(unittest.TestCase):
             argv = sys.argv
             sys.argv = ["load.py", "--live", "--manifest", str(manifest_path), "--output", str(out)]
             try:
-                with self.assertRaises(SystemExit) as ctx:
-                    load_cli.main()
+                code = load_cli.main()
             finally:
                 sys.argv = argv
-            self.assertEqual(ctx.exception.code, 2)
-            self.assertFalse(out.exists())
+            self.assertEqual(code, 2)
+            self.assertEqual(json.loads(out.read_text())["calls_used"], 0)
+
 
 
 class RunFixturesTests(unittest.TestCase):
@@ -604,15 +605,10 @@ class RunLiveTests(FakeServerTestCase):
             code = load_cli.main()
         finally:
             sys.argv = argv
-        # A 3s elapsed cap against the real 45-minute frozen workload is
-        # expected to BLOCKED (exit 2), not COMPLETE -- the point of this
-        # test is that main() wires guards -> readiness -> run_live ->
-        # output correctly end to end, not that the whole workload fits.
-        self.assertIn(code, (0, 2))
+        self.assertEqual(code, 2)
         data = json.loads(out.read_text())
-        self.assertEqual(data["mode"], "live")
-        self.assertGreater(data["calls_used"], 0)
-        self.assertIn(data["status"], ("COMPLETE", "BLOCKED"))
+        self.assertEqual(data["status"], "BLOCKED")
+        self.assertEqual(data["calls_used"], 0)
 
     def test_output_never_contains_the_raw_credential_value(self):
         workload = small_workload()
@@ -650,12 +646,22 @@ class CLIEndToEndTests(unittest.TestCase):
             argv = sys.argv
             sys.argv = ["load.py", "--live", "--manifest", str(manifest_path), "--output", str(out)]
             try:
-                with self.assertRaises(SystemExit) as ctx:
-                    load_cli.main()
+                code = load_cli.main()
             finally:
                 sys.argv = argv
-            self.assertEqual(ctx.exception.code, 2)
-            self.assertFalse(out.exists())
+            self.assertEqual(code, 2)
+            self.assertEqual(json.loads(out.read_text())["calls_used"], 0)
+
+    def test_live_gate_precedes_manifest_credentials_and_network(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "blocked.json"
+            with mock.patch.object(sys, "argv", ["load.py", "--live", "--manifest", str(Path(tmp) / "does-not-exist"), "--output", str(out)]), \
+                 mock.patch.object(load_cli, "load_manifest", side_effect=AssertionError("manifest read")), \
+                 mock.patch.object(load_cli, "check_credentials", side_effect=AssertionError("secret read")), \
+                 mock.patch.object(load_cli, "check_readiness", side_effect=AssertionError("network")), \
+                 mock.patch.object(load_cli, "run_live", side_effect=AssertionError("network")):
+                self.assertEqual(load_cli.main(), 2)
+            self.assertEqual(json.loads(out.read_text())["status"], "BLOCKED")
 
     def test_manifest_not_found_blocked_json_not_bare_exception(self):
         argv = sys.argv

@@ -28,17 +28,17 @@
       "note": "Beyond the 3,000 free baseline IOPS. Not applied: this deployment has no evidence of exceeding baseline."
     },
     "ebs_gp3_extra_throughput_usd_per_mbps_month": {
-      "value": 40.96,
+      "value": 0.04,
       "kind": "published",
       "source": "same as ebs_gp3_usd_per_gb_month",
       "note": "Beyond the 125 MB/s free baseline throughput. Not applied, same reason."
     },
     "s3_standard_usd_per_gb_month": {
-      "value": 0.0265,
+      "value": 0.023,
       "kind": "published",
       "region_caveat": "us-west-2 confirmed",
-      "source": "https://aws.amazon.com/s3/pricing/ (fetched 2026-09-19), explicitly for US West (Oregon)",
-      "note": "Corrects this task's earlier PARTIAL receipt, which used the us-east-1 rate ($0.023) unlabeled."
+      "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-west-2/index.json (regional catalog; see s3-rate.json)",
+      "note": "Confirmed directly against the AWS regional offer catalog; see s3-rate.json. The earlier claim of $0.0265 for Oregon was incorrect."
     },
     "s3_put_usd_per_1000_requests": {
       "value": 0.005,
@@ -176,7 +176,7 @@
         },
         "cloudwatch_alarms": 0.2,
         "s3_storage_backups": {
-          "value": 0.7637,
+          "value": 0.6629,
           "kind": "assumption",
           "snapshot_size_gb": 0.02,
           "retained_backup_sets": 1441,
@@ -206,10 +206,10 @@
           "note": "assumes 10 magic-link emails/account/month; Resend free tier is 3000/month capped 100/day"
         }
       },
-      "known_subtotal_usd": 22.53,
+      "known_subtotal_usd": 22.43,
       "per_plan_contribution": {
         "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
-        "variable_total_usd": 0.7746,
+        "variable_total_usd": 0.6738,
         "by_plan": {}
       },
       "unknown_categories": {
@@ -286,7 +286,7 @@
         },
         "cloudwatch_alarms": 0.2,
         "s3_storage_backups": {
-          "value": 11.4559,
+          "value": 9.9429,
           "kind": "assumption",
           "snapshot_size_gb": 0.3,
           "retained_backup_sets": 1441,
@@ -316,20 +316,20 @@
           "note": "assumes 10 magic-link emails/account/month; Resend free tier is 3000/month capped 100/day"
         }
       },
-      "known_subtotal_usd": 33.26,
+      "known_subtotal_usd": 31.74,
       "per_plan_contribution": {
         "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
-        "variable_total_usd": 11.5028,
+        "variable_total_usd": 9.9898,
         "by_plan": {
           "free": {
             "accounts": 8,
             "storage_share": 0.2857,
-            "variable_cost_usd": 3.2865
+            "variable_cost_usd": 2.8542
           },
           "builder": {
             "accounts": 2,
             "storage_share": 0.7143,
-            "variable_cost_usd": 8.2163
+            "variable_cost_usd": 7.1356
           },
           "scale": {
             "accounts": 0,
@@ -412,7 +412,7 @@
         },
         "cloudwatch_alarms": 0.2,
         "s3_storage_backups": {
-          "value": 103.8673,
+          "value": 90.149,
           "kind": "assumption",
           "snapshot_size_gb": 2.72,
           "retained_backup_sets": 1441,
@@ -442,25 +442,25 @@
           "note": "assumes 10 magic-link emails/account/month; Resend free tier is 3000/month capped 100/day"
         }
       },
-      "known_subtotal_usd": 126.15,
+      "known_subtotal_usd": 112.44,
       "per_plan_contribution": {
         "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
-        "variable_total_usd": 104.4007,
+        "variable_total_usd": 90.6824,
         "by_plan": {
           "free": {
             "accounts": 90,
             "storage_share": 0.3333,
-            "variable_cost_usd": 34.8002
+            "variable_cost_usd": 30.2275
           },
           "builder": {
             "accounts": 8,
             "storage_share": 0.2963,
-            "variable_cost_usd": 30.9335
+            "variable_cost_usd": 26.8689
           },
           "scale": {
             "accounts": 2,
             "storage_share": 0.3704,
-            "variable_cost_usd": 38.6669
+            "variable_cost_usd": 33.5861
           }
         }
       },
@@ -538,7 +538,7 @@
         },
         "cloudwatch_alarms": 0.2,
         "s3_storage_backups": {
-          "value": 344.4422,
+          "value": 298.9499,
           "kind": "assumption",
           "snapshot_size_gb": 9.02,
           "retained_backup_sets": 1441,
@@ -568,25 +568,25 @@
           "note": "assumes 10 magic-link emails/account/month; Resend free tier is 3000/month capped 100/day"
         }
       },
-      "known_subtotal_usd": 367.43,
+      "known_subtotal_usd": 321.93,
       "per_plan_contribution": {
         "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
-        "variable_total_usd": 344.5035,
+        "variable_total_usd": 299.0112,
         "by_plan": {
           "free": {
             "accounts": 10,
             "storage_share": 0.1111,
-            "variable_cost_usd": 38.2782
+            "variable_cost_usd": 33.2235
           },
           "builder": {
             "accounts": 3,
             "storage_share": 0.3333,
-            "variable_cost_usd": 114.8345
+            "variable_cost_usd": 99.6704
           },
           "scale": {
             "accounts": 1,
             "storage_share": 0.5556,
-            "variable_cost_usd": 191.3908
+            "variable_cost_usd": 166.1173
           }
         }
       },
@@ -636,5 +636,5 @@
   },
   "historical_ceiling_usd": 60.0,
   "ceiling_note": "The historical USD 60/month figure is a ceiling, not a budget target or new spend authorization (docs/launch/hosted-plan.md).",
-  "citation_note": "Every rate above was fetched live via WebSearch/WebFetch on 2026-09-19 and is cited per-entry in rate_table; this replaces this task's earlier PARTIAL receipt, which used unverified training-data recollections. A reviewer should still spot-check the cited URLs, especially ec2_t4g_small_usd_per_hour's us-west-2 caveat."
+  "citation_note": "Candidate rates retain worker-provided citations and explicit assumptions. Coordinator verified S3 Standard directly against the AWS us-west-2 regional catalog (s3-rate.json). Other region/account-specific rates and free-tier availability require verification before spend approval; the EC2 hourly value remains an unverified regional-parity assumption."
 }
