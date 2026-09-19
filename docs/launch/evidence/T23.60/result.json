@@ -2,18 +2,20 @@
   "task_id": "T23.60",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "bbcd286f842df431ccdb4558ae4370dd4e8c5462",
-  "recorded_at": "2026-09-19T01:28:14.680881+00:00",
+  "source_sha": "dcf32a929a56696754dd5dc2b94ce2b42d6dfdd9",
+  "recorded_at": "2026-09-19T03:26:15.517992+00:00",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
     "python3 -m unittest discover -s evals/hosted-load -p \"test_*.py\"",
-    "python3 scripts/hosted/cost_model.py --manifest docs/launch/evidence/T23.60/manifest.json --output docs/launch/evidence/T23.60/cost.json"
+    "python3 scripts/hosted/load.py --fixtures --manifest docs/launch/evidence/T23.60/manifest.json --output docs/launch/evidence/T23.60/load-fixture.json",
+    "python3 scripts/hosted/cost_model.py --manifest docs/launch/evidence/T23.60/manifest.json --output docs/launch/evidence/T23.60/cost.json",
+    "python3 scripts/hosted/load.py --live --manifest docs/launch/evidence/T23.60/manifest.json --output /tmp/t2360-live-blocked.json (expected exit 2, BLOCKED, zero-call receipt)"
   ],
   "cases": {
-    "planned": 91,
-    "executed": 91,
-    "passed": 91,
+    "planned": 166,
+    "executed": 166,
+    "passed": 166,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
@@ -22,13 +24,13 @@
     {
       "criterion": "Cost math fixtures and complete recurring categories",
       "expected": "Units and full-snapshot multiplication tested; primary rates or explicit unknowns",
-      "observed": "91 local tests pass, including cost units/retention and client tests. Regional S3 rate independently verified from the AWS offer catalog; assumptions/unknown costs remain explicit. Candidate full-limit known subtotal is $321.93/month, not an authorized quote.",
+      "observed": "166 local tests pass (three consecutive runs), including cost units/retention and client tests. Regional S3 rate independently verified from the AWS offer catalog; assumptions/unknown costs remain explicit. Candidate full-limit known subtotal is $321.93/month, not an authorized quote.",
       "status": "PASS"
     },
     {
       "criterion": "Bounded live load execution",
       "expected": "Finite caps, production guards, real outcomes and full workload evidence",
-      "observed": "CLI --live is deliberately disabled before manifest/credential reads/network, returning BLOCKED/exit2 with zero-call receipt. Candidate helpers have local HTTP tests but remaining outcome/deadline/budget/workload requirements are recorded in live-enable-requirements.md.",
+      "observed": "CLI --live is deliberately disabled before manifest/credential reads/network, returning BLOCKED/exit 2 with a zero-call receipt; a test proves a fully valid manifest, credential directory and running loopback server see zero requests. The candidate client is tested against a real loopback HTTP server for: per-request outcomes over all offered requests (status BLOCKED/FAIL/PARTIAL, never COMPLETE); a wall-clock deadline per exchange (0.6s budget, first byte at 0.5s then a stall: 0.604s measured, 1.105s before the fix); a cap check before every socket operation with queued-work cancellation; strict finite budget; byte-based token precharge with an operator-declared provider-work bound; canonical origins; fixed error classes with no credential prefix leak; confirmed-only session cleanup. Still open: seeded state, a real cold-open workload, host telemetry, a bounded resolver for hostname origins, reviewer freeze and a separately authorized real run (live-enable-requirements.md).",
       "status": "BLOCKED"
     },
     {
@@ -45,11 +47,11 @@
     },
     {
       "path": "docs/launch/evidence/T23.60/manifest.json",
-      "sha256": "f7c8973be48ad996c3184704a92031ad827d1d731241ad3a6b10c85db9e30a99"
+      "sha256": "8c404c2981dc2d2ffe2693f69ecd350498df468e0a3a3788b998c95b56a957ed"
     },
     {
       "path": "docs/launch/evidence/T23.60/load-fixture.json",
-      "sha256": "d117d0538adb2990182b5e7f8a7381cd396cdcb8e569da25258da24f75f3b83f"
+      "sha256": "e9afe00989c402823bc655d0924b797db4a4c088aed044fa03e887d8db69d14f"
     },
     {
       "path": "docs/launch/evidence/T23.60/cost.json",
@@ -57,7 +59,7 @@
     },
     {
       "path": "docs/launch/hosted-economics.md",
-      "sha256": "1a6f540f152a2a27565333a83021ecee172b284bb2883ac3abffa04b172ecfb5"
+      "sha256": "1b3c455b3fda61509e0bc5613e8da0488c6ad6c71848161899880771fa36e0b6"
     },
     {
       "path": "scripts/hosted/cost_model.py",
@@ -65,15 +67,15 @@
     },
     {
       "path": "scripts/hosted/load.py",
-      "sha256": "951e39aced9e692fb48bbf93a16e338834fd72095ab37fbd99abd4042d893c62"
+      "sha256": "0fbc317f9bc36904781dbed58427f59e9528f2b718d23613f47e6f6f22071202"
     },
     {
       "path": "evals/hosted-load/harness.py",
-      "sha256": "2190325b670632e6b6203bc6618a1c8091495b40087f9b7004adeb5191202996"
+      "sha256": "864d985bf5e914a8635afeb62b2585891db425b55ef6422aa4975d0d6e8231e0"
     },
     {
       "path": "docs/launch/evidence/T23.60/live-enable-requirements.md",
-      "sha256": "10ef8fe4b41590bd5e15b6cf359483c894895712d8e72cf4f1166d3cb57f3267"
+      "sha256": "7c8d651a75763c46d21e94874375541e6ce8e2bc5dd84bb451ecc23c926f8bbc"
     },
     {
       "path": "docs/launch/evidence/T23.60/s3-rate.json",
@@ -81,11 +83,15 @@
     },
     {
       "path": "evals/hosted-load/test_load_cli.py",
-      "sha256": "f51861c57d7295db4e4bc85573fe823d87cad985e88e05f0d16f4724dc1048f3"
+      "sha256": "4c762389e75642981dfb362906693c15a41c34141fb69a5adb3d4f8a1c7f884a"
     },
     {
       "path": "evals/hosted-load/test_cost_model.py",
       "sha256": "6c60b4ef88dd4e5f0e25b5bd188886160dc140d9af1f1a25fb9f2ac5714b402b"
+    },
+    {
+      "path": "evals/hosted-load/test_harness.py",
+      "sha256": "689f434b232e211f133879bfbd2afd2f34cc521eb84ee9a145768ed33ed8638d"
     }
   ],
   "cost": {
@@ -94,15 +100,17 @@
     "authorization_refs": []
   },
   "limitations": [
-    "No supported live-load execution: CLI is fail-closed until live-enable-requirements.md is satisfied. Direct helper tests are candidate-client evidence only.",
-    "No provider calls or deployment occurred. No complete cost or capacity qualification is claimed.",
+    "No supported live-load execution: CLI is fail-closed until live-enable-requirements.md is satisfied. The candidate client has loopback-server tests only and never reports better than PARTIAL.",
+    "The per-exchange wall deadline is end to end only for IP-literal origins. getaddrinfo() cannot be interrupted and no bounded resolver is implemented, so hostname origins are unqualified; each live result states this in exchange_deadline_scope.",
+    "Token precharge is encoded argument bytes (an upper bound, no tokenizer verified), plus an operator-declared provider_work_bound for server-side work the client cannot observe. The committed manifest leaves that bound null, so a live run stays blocked.",
+    "No provider calls or deployment occurred. No complete cost or capacity qualification is claimed. Deadline tests are timing-based against real sockets and could flake on a heavily loaded host.",
     "EC2 regional pricing parity, backup byte sizes, mixes, query/rebuild/readiness usage and shared-account free allowances remain assumptions; provider price, log volumes, custom metrics and restore activity remain unknown.",
     "Backup lifecycle model assumes about 60 days of full timestamped snapshots and needs measured/architecture validation; its full-limit exposure exceeds the historical $60 ceiling."
   ],
   "blockers": [
     {
       "owner": "T23.60 follow-up",
-      "required_input": "Implement and verify every item in live-enable-requirements.md before removing the unconditional CLI gate."
+      "required_input": "Close the still-open items in live-enable-requirements.md (seeded state, real cold-open workload, host telemetry, hostname resolver bound, separately authorized run) before removing the unconditional CLI gate."
     },
     {
       "owner": "chief-architect / T23.41 reviewer",
