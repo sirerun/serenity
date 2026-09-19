@@ -1,0 +1,329 @@
+{
+  "checks": [
+    {
+      "expected": [
+        "builder-0",
+        "builder-1",
+        "builder-2",
+        "free-0",
+        "free-1",
+        "free-2",
+        "free-3",
+        "free-4",
+        "free-5",
+        "free-6",
+        "free-7",
+        "free-8",
+        "free-9",
+        "scale-0"
+      ],
+      "id": "accounts.labels",
+      "observed": [
+        "builder-0",
+        "builder-1",
+        "builder-2",
+        "free-0",
+        "free-1",
+        "free-2",
+        "free-3",
+        "free-4",
+        "free-5",
+        "free-6",
+        "free-7",
+        "free-8",
+        "free-9",
+        "scale-0"
+      ],
+      "pass": true
+    },
+    {
+      "expected": {
+        "builder-0": "builder",
+        "builder-1": "builder",
+        "builder-2": "builder",
+        "free-0": "free",
+        "free-1": "free",
+        "free-2": "free",
+        "free-3": "free",
+        "free-4": "free",
+        "free-5": "free",
+        "free-6": "free",
+        "free-7": "free",
+        "free-8": "free",
+        "free-9": "free",
+        "scale-0": "scale"
+      },
+      "id": "accounts.plans",
+      "observed": {
+        "builder-0": "builder",
+        "builder-1": "builder",
+        "builder-2": "builder",
+        "free-0": "free",
+        "free-1": "free",
+        "free-2": "free",
+        "free-3": "free",
+        "free-4": "free",
+        "free-5": "free",
+        "free-6": "free",
+        "free-7": "free",
+        "free-8": "free",
+        "free-9": "free",
+        "scale-0": "scale"
+      },
+      "pass": true
+    },
+    {
+      "expected": 29,
+      "id": "brains.total",
+      "observed": 29,
+      "pass": true
+    },
+    {
+      "expected": [
+        10,
+        1
+      ],
+      "id": "brains.scale-0.count_and_one_default",
+      "observed": [
+        10,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        3,
+        1
+      ],
+      "id": "brains.builder-0.count_and_one_default",
+      "observed": [
+        3,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        3,
+        1
+      ],
+      "id": "brains.builder-1.count_and_one_default",
+      "observed": [
+        3,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        3,
+        1
+      ],
+      "id": "brains.builder-2.count_and_one_default",
+      "observed": [
+        3,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        1,
+        1
+      ],
+      "id": "brains.free-0.count_and_one_default",
+      "observed": [
+        1,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        1,
+        1
+      ],
+      "id": "brains.free-1.count_and_one_default",
+      "observed": [
+        1,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        1,
+        1
+      ],
+      "id": "brains.free-2.count_and_one_default",
+      "observed": [
+        1,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        1,
+        1
+      ],
+      "id": "brains.free-3.count_and_one_default",
+      "observed": [
+        1,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        1,
+        1
+      ],
+      "id": "brains.free-4.count_and_one_default",
+      "observed": [
+        1,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        1,
+        1
+      ],
+      "id": "brains.free-5.count_and_one_default",
+      "observed": [
+        1,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        1,
+        1
+      ],
+      "id": "brains.free-6.count_and_one_default",
+      "observed": [
+        1,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        1,
+        1
+      ],
+      "id": "brains.free-7.count_and_one_default",
+      "observed": [
+        1,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        1,
+        1
+      ],
+      "id": "brains.free-8.count_and_one_default",
+      "observed": [
+        1,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [
+        1,
+        1
+      ],
+      "id": "brains.free-9.count_and_one_default",
+      "observed": [
+        1,
+        1
+      ],
+      "pass": true
+    },
+    {
+      "expected": [],
+      "id": "facts.every_brain_holds_its_planned_count",
+      "observed": [],
+      "pass": true
+    },
+    {
+      "expected": [],
+      "id": "facts.every_file_is_content_addressed_well_formed_and_unique_in_its_brain",
+      "observed": [],
+      "pass": true
+    },
+    {
+      "expected": 0,
+      "id": "facts.no_fact_repeats_across_the_fixture",
+      "observed": 0,
+      "pass": true
+    },
+    {
+      "expected": 90000,
+      "id": "facts.total",
+      "observed": 90000,
+      "pass": true
+    },
+    {
+      "expected": 90000,
+      "id": "facts.total_equals_frozen_workload",
+      "observed": 90000,
+      "pass": true
+    },
+    {
+      "expected": {
+        "builder-0": 10000,
+        "builder-1": 10000,
+        "builder-2": 10000,
+        "free-0": 1000,
+        "free-1": 1000,
+        "free-2": 1000,
+        "free-3": 1000,
+        "free-4": 1000,
+        "free-5": 1000,
+        "free-6": 1000,
+        "free-7": 1000,
+        "free-8": 1000,
+        "free-9": 1000,
+        "scale-0": 50000
+      },
+      "id": "facts.every_account_at_its_plan_memory_cap",
+      "observed": {
+        "builder-0": 10000,
+        "builder-1": 10000,
+        "builder-2": 10000,
+        "free-0": 1000,
+        "free-1": 1000,
+        "free-2": 1000,
+        "free-3": 1000,
+        "free-4": 1000,
+        "free-5": 1000,
+        "free-6": 1000,
+        "free-7": 1000,
+        "free-8": 1000,
+        "free-9": 1000,
+        "scale-0": 50000
+      },
+      "pass": true
+    }
+  ],
+  "expect": "full",
+  "fixture_content_sha256": "6470c220e508a760a706d513ce3c95a8e6a69c587edeaac75c052f89e805acd5",
+  "marker_profile": "full",
+  "not_claimed": "Index, vectors, Git history, storage, credentials and entitlements are not read here. Provider quality is unqualified.",
+  "pass": true,
+  "schema": "serenity-hosted-load-fixture-recount",
+  "totals": {
+    "accounts": 14,
+    "brains": 29,
+    "canonical_memory_facts": 90000,
+    "distinct_fact_sha256": 90000
+  },
+  "version": 1
+}

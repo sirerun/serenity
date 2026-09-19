@@ -1,0 +1,4 @@
+PREDICTION written before the per-write full fixture finished (linear extrapolation from the 100-per-brain samples)
+sample: +2871 commits -> +4814393 B .git = 1676.9 B per extra commit
+full batched .git = 143166214 B; per-write full has 89817 extra commits
+predicted per-write full .git = 293,780,751 B (280 MiB); expected to be a lower bound because a commit at scale writes larger tree objects

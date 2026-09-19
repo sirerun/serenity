@@ -1,0 +1,39 @@
+# Per-write full preparation: failure record (T23.60)
+# The full fixture prepared with one commit per fact stopped after 15 brains. This file records what was observed.
+# The cause is not established; see fixture-preparation.md.
+
+preparer error: fixtureprep: brain builder-1/1: write canonical facts: git commit: exit status 128: fatal: could not parse HEAD
+git version: git version 2.54.0 (Apple Git-157)
+progress lines before the error:
+  brain 13/29 builder-2/0 facts=3334 write=294.6s index=3.5s
+  brain 14/29 builder-0/1 facts=3333 write=294.5s index=3.5s
+  brain 15/29 builder-1/1 facts=3333 write=0.0s index=0.0s
+  brain 16/29 builder-0/2 facts=3333 write=249.4s index=3.3s
+
+failed brain: builder-1/1 (facts written before the failure: 134 )
+HEAD: ref: refs/heads/main | refs/heads/main: 217bfc34c62ef75134692ab55b692fd6a712ac35
+reflog entries: 134
+last three reflog entries (hash pairs and message):
+   17a308b88fc2 -> a15f212c0041 commit: serenity: sync 2 file(s)
+   a15f212c0041 -> 7ea7e9738181 commit: serenity: sync 2 file(s)
+   7ea7e9738181 -> 217bfc34c62e commit: serenity: sync 2 file(s)
+git cat-file -t of the last five reflog targets:
+   5c9b488758f3 commit
+   17a308b88fc2 commit
+   a15f212c0041 commit
+   7ea7e9738181 commit
+   217bfc34c62e fatal: git cat-file: could not get object info
+git fsck --no-dangling (first lines):
+  error: refs/heads/main: invalid sha1 pointer 217bfc34c62ef75134692ab55b692fd6a712ac35
+  error: HEAD: invalid sha1 pointer 217bfc34c62ef75134692ab55b692fd6a712ac35
+  error: HEAD: invalid reflog entry 217bfc34c62ef75134692ab55b692fd6a712ac35
+  error: refs/heads/main: invalid reflog entry 217bfc34c62ef75134692ab55b692fd6a712ac35
+  notice: No default references
+packs: 5 | loose object files: 2
+
+the two loose objects left in the repository are blobs (828 B and 78 B): the fact and its meta file of the last commit. That commit's tree objects and the commit object are in no pack and no loose file.
+every pack, the multi-pack-index, the ref and the index were last written in the same second (02:45:02 host local time); HEAD itself was last written at 02:44:52.
+
+other brains in the same preparation: 15 finished with exactly facts+1 commits and a readable HEAD (see partial-per-write-history.json).
+scratch check: 6 parallel plain-git repositories, 3,000 per-write commits each (18,000 commits, two files per commit, HEAD checked after every commit) on the same host and Git: 0 failures.
+scratch check: this Git repacked automatically after a few hundred per-write commits with no configuration (count-objects showed 2 to 3 packs by 200 commits).
