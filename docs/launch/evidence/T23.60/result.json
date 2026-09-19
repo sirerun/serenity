@@ -2,8 +2,8 @@
   "task_id": "T23.60",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "c287a9f9d78df17b93ea8f18f50dfec2d1ed99b5",
-  "recorded_at": "2026-09-19T03:53:07.043169+00:00",
+  "source_sha": "4da769acf5d7799b8edea64a5cb0a3c607cb0ea1",
+  "recorded_at": "2026-09-19T04:23:11.322262+00:00",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
@@ -13,9 +13,9 @@
     "python3 scripts/hosted/load.py --live --manifest docs/launch/evidence/T23.60/manifest.json --output /tmp/t2360-live-blocked.json (expected exit 2, BLOCKED, zero-call receipt)"
   ],
   "cases": {
-    "planned": 194,
-    "executed": 194,
-    "passed": 194,
+    "planned": 253,
+    "executed": 253,
+    "passed": 253,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
@@ -24,19 +24,19 @@
     {
       "criterion": "Cost math fixtures and complete recurring categories",
       "expected": "Units and full-snapshot multiplication tested; primary rates or explicit unknowns",
-      "observed": "194 local tests pass (repeated runs, none skipped), including cost units/retention and client tests. Regional S3 rate independently verified from the AWS offer catalog; assumptions/unknown costs remain explicit. Candidate full-limit known subtotal is $321.93/month, not an authorized quote.",
+      "observed": "253 local tests pass (one final full run, none skipped), including cost units/retention and client tests. Regional S3 rate independently verified from the AWS offer catalog; assumptions/unknown costs remain explicit. Candidate full-limit known subtotal is $321.93/month, not an authorized quote.",
       "status": "PASS"
     },
     {
       "criterion": "Bounded live load execution",
       "expected": "Finite caps, production guards, real outcomes and full workload evidence",
-      "observed": "CLI --live is deliberately disabled before manifest/credential reads/network, returning BLOCKED/exit 2 with a zero-call receipt; a test proves a fully valid manifest, credential directory and running loopback server see zero requests. The candidate client is tested against a real loopback HTTP server for: per-request outcomes over all offered requests (status BLOCKED/FAIL/PARTIAL, never COMPLETE); one wall-clock deadline per exchange (0.6s budget, first byte at 0.5s then a stall: 0.604s measured, 1.105s before the fix) that also covers hostname resolution in a disposable child killed and reaped at the deadline (0.4s budget with a stalled lookup: 0.401s measured, 2.008s before; an IP-literal origin starts no child); a cap check before every socket operation with queued-work cancellation; strict finite budget; byte-based token precharge with an operator-declared provider-work bound; canonical origins; fixed error classes with no credential prefix leak; confirmed-only session cleanup; a completed TLS exchange, default certificate verification, a TLS stall, and hostname-not-IP certificate matching and SNI through the resolver are covered with throwaway certificates. The deadline keeps a 0.25s scheduling tolerance and is a client-side guarantee checked against local sockets, not observed behavior of a live target. Still open: seeded state, a real cold-open workload, host telemetry, isolation probes, reviewer freeze and a separately authorized real run (live-enable-requirements.md).",
+      "observed": "CLI --live is deliberately disabled before manifest/credential reads/network, returning BLOCKED/exit 2 with a zero-call receipt; a test proves a fully valid manifest, credential directory and running loopback server see zero requests. The candidate client is tested against a real loopback HTTP server for: per-request outcomes over all offered requests (status BLOCKED/FAIL/PARTIAL, never COMPLETE); one wall-clock deadline per exchange (0.6s budget, first byte at 0.5s then a stall: 0.604s measured, 1.105s before the fix) that also covers hostname resolution in a disposable child killed and reaped at the deadline (0.4s budget with a stalled lookup: 0.401s measured, 2.008s before; an IP-literal origin starts no child); a cap check before every socket operation with queued-work cancellation; strict finite budget; byte-based token precharge with an operator-declared provider-work bound; canonical origins; fixed error classes with no credential prefix leak; confirmed-only session cleanup; a completed TLS exchange, default certificate verification, a TLS stall, and hostname-not-IP certificate matching and SNI through the resolver are covered with throwaway certificates. The deadline keeps a 0.25s scheduling tolerance and is a client-side guarantee checked against local sockets, not observed behavior of a live target. The independent review's findings are repaired and each is covered by a test that failed first: a gateway tool error is decoded from the parsed result into a fixed enum (capacity and operation_in_progress count as admission rejections, quota and client faults are kept apart, only a not_found answer to a forget of an id this run remembered is a durability error, an unknown code is never reflected); the elapsed preflight counts readiness, per-account setup, the final drain and cleanup (8,535 s for the frozen workload against an 8,100 s schedule); a malformed or deeply nested initialize reply still yields a sanitized receipt and closes the issued session, a close failure cannot discard results, and an integer past 2^63-1 is an invalid budget; a failure measured on dispatched requests is FAIL even when another cap stopped the run, and a run whose shortfall comes only from never-dispatched arrivals stays BLOCKED; the fact vocabulary keeps the frozen 32 to 512 word range under the gateway's 4,096-byte limit (at most 4,095 bytes, no truncation). Word counts are nominal, not provider-billed tokens. Still open: the hot-tenant rate-limit decision (decision-request-hot-tenant-rate-limit.md), seeded state, a real cold-open workload, host telemetry, isolation probes, reviewer freeze and a separately authorized real run (live-enable-requirements.md).",
       "status": "BLOCKED"
     },
     {
       "criterion": "Reviewer-frozen workload and thresholds",
       "expected": "Named T23.41 review before execution; measured capacity supports published limits",
-      "observed": "Reviewer/date remain unset. Simulator is mechanics-only and no real provider or deployed-capacity run occurred.",
+      "observed": "Reviewer/date remain unset. Simulator is mechanics-only and no real provider or deployed-capacity run occurred. With the gateway's real fixed window the frozen hot tenant (120 requests a minute) is refused 180 of 7,379 steady requests (2.44%), above the 1% admission limit, on a healthy server; no number was changed and the decision is open with the task41 reviewer and the T23.45 admission owner.",
       "status": "BLOCKED"
     }
   ],
@@ -51,7 +51,7 @@
     },
     {
       "path": "docs/launch/evidence/T23.60/load-fixture.json",
-      "sha256": "e9afe00989c402823bc655d0924b797db4a4c088aed044fa03e887d8db69d14f"
+      "sha256": "71419096fc38ca8b572311fb1fe1bc6e33397f55241e549e970068a19451b05d"
     },
     {
       "path": "docs/launch/evidence/T23.60/cost.json",
@@ -59,7 +59,7 @@
     },
     {
       "path": "docs/launch/hosted-economics.md",
-      "sha256": "8c36f06f066ed7fdabb7489d4d3bc2a649128a37656253f81c76e1f5e3d21e94"
+      "sha256": "fcfdd1f33282cd33f247ccdc1abd3f25344d08735f4b08a1887cd6af157d2e7e"
     },
     {
       "path": "scripts/hosted/cost_model.py",
@@ -67,15 +67,19 @@
     },
     {
       "path": "scripts/hosted/load.py",
-      "sha256": "d57f69dbe7423184a5d4e83ff0c3ea2d0e998dbad60f883f2d2ef8c4e6c1d3fb"
+      "sha256": "d6da1991dfb35f7d8b794ee813c79cafd3227934717583e1f15e5e67de4c39eb"
     },
     {
       "path": "evals/hosted-load/harness.py",
-      "sha256": "864d985bf5e914a8635afeb62b2585891db425b55ef6422aa4975d0d6e8231e0"
+      "sha256": "e175ae6e5d7c369dbcb9743d0c91eb6abb66d6b7b0e7fce1cc8ab90b1299f4a9"
     },
     {
       "path": "docs/launch/evidence/T23.60/live-enable-requirements.md",
-      "sha256": "4aa9d334dbc90aeedfd29e407c6d6e1c56860a3d0673a294339b4895541c37c8"
+      "sha256": "4ce9f3fbd7e52bc0995aa156b75085f304e4cea2874b1eed2862e060281afbd3"
+    },
+    {
+      "path": "docs/launch/evidence/T23.60/decision-request-hot-tenant-rate-limit.md",
+      "sha256": "32406b430bf90d298c2b9836c1b2c0c6318b300d2e3c507fd995c2a238904c2e"
     },
     {
       "path": "docs/launch/evidence/T23.60/s3-rate.json",
@@ -83,7 +87,7 @@
     },
     {
       "path": "evals/hosted-load/test_load_cli.py",
-      "sha256": "aae2e578b742aec99addac1ad96df78ed84e6295e9dc5b945f0ddb4378922c74"
+      "sha256": "90b3098ca264fab90442bbff7c195ab54a5ac8b1e6e76da70a6ae0c3b6fc9828"
     },
     {
       "path": "evals/hosted-load/test_cost_model.py",
@@ -91,7 +95,7 @@
     },
     {
       "path": "evals/hosted-load/test_harness.py",
-      "sha256": "689f434b232e211f133879bfbd2afd2f34cc521eb84ee9a145768ed33ed8638d"
+      "sha256": "51bb1ac46920b3f578ae9e8cef5b9341915b31424b2d7c97f60715871647446e"
     }
   ],
   "cost": {
@@ -105,12 +109,19 @@
     "Token precharge is encoded argument bytes (an upper bound, no tokenizer verified), plus an operator-declared provider_work_bound for server-side work the client cannot observe. The committed manifest leaves that bound null, so a live run stays blocked.",
     "No provider calls or deployment occurred. No complete cost or capacity qualification is claimed. Deadline and resolver tests are timing-based against real sockets and child processes and could flake on a heavily loaded host.",
     "EC2 regional pricing parity, backup byte sizes, mixes, query/rebuild/readiness usage and shared-account free allowances remain assumptions; provider price, log volumes, custom metrics and restore activity remain unknown.",
-    "Backup lifecycle model assumes about 60 days of full timestamped snapshots and needs measured/architecture validation; its full-limit exposure exceeds the historical $60 ceiling."
+    "Backup lifecycle model assumes about 60 days of full timestamped snapshots and needs measured/architecture validation; its full-limit exposure exceeds the historical $60 ceiling.",
+    "Workload word counts are nominal sizes of synthetic text, not gateway-metered or provider-billed tokens; no tokenizer is assumed. The gateway meters with its own tokenizer, so real token use per request can differ from the nominal figure.",
+    "The frozen hot tenant offers the gateway's 120 requests-per-minute account limit. The simulator's limiter reproduces the gateway's fixed window that starts at an account's first request and the 600 per minute address limit, but counts offered arrivals only, so live counts can differ by a few requests per window from setup and cleanup requests. Rejections are counted as failures, not excluded.",
+    "Every request sends Connection: close and pays a fresh TCP and TLS handshake, and latency runs from dispatch, not from the scheduled arrival, so client-side queueing behind the eight workers is not in the recorded p95. Read latency and handshake-load figures with both in mind."
   ],
   "blockers": [
     {
       "owner": "T23.60 follow-up",
       "required_input": "Close the still-open items in live-enable-requirements.md (seeded state, real cold-open workload, host telemetry and isolation probes, separately authorized run) before removing the unconditional CLI gate."
+    },
+    {
+      "owner": "T23.41 reviewer / T23.45 admission owner",
+      "required_input": "Answer decision-request-hot-tenant-rate-limit.md: whether the hot tenant is a tenant at its ceiling, a heavy tenant under it, or a failing workload, and whether a plan-independent 120 requests-per-minute account limit is intended. T23.60 changed no number."
     },
     {
       "owner": "chief-architect / T23.41 reviewer",
