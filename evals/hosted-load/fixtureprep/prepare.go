@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sirerun/serenity/internal/embed"
@@ -38,6 +39,33 @@ const (
 
 // fixtureScopes are the scopes of the one credential each account gets (its default brain).
 var fixtureScopes = []string{"memory:read", "memory:write"}
+
+// ownerRetryWindow bounds how long an open waits for a brain's writer lock (flock on .serenity/writer.lock). A forked
+// git child holds a copy of every inherited descriptor until it execs, so a lock released by Close in one worker can
+// stay held for a moment while another worker spawns git. It happened in a full run: a brain's third open found its
+// own lock still held, seconds after its second open closed it. The runtime is unchanged; the preparer waits.
+const ownerRetryWindow = 15 * time.Second
+
+// ownerRetryPause is the wait between attempts.
+const ownerRetryPause = 50 * time.Millisecond
+
+// retryOwned runs op and, while it fails with writer.ErrBrainOwned, retries every ownerRetryPause until window
+// passes. Each retry is counted so the manifest reports how often the hazard occurred.
+func retryOwned(ctx context.Context, window time.Duration, retries *atomic.Int64, op func() error) error {
+	deadline := time.Now().Add(window)
+	for {
+		err := op()
+		if !errors.Is(err, writer.ErrBrainOwned) || time.Now().After(deadline) {
+			return err
+		}
+		retries.Add(1)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(ownerRetryPause):
+		}
+	}
+}
 
 // Notices are copied into the marker and the manifest so no reader can mistake the fixture for anything else.
 var Notices = []string{
@@ -252,6 +280,7 @@ func Prepare(ctx context.Context, o Options) (*Manifest, error) {
 		firstErr error
 		done     int
 		slots    = make(chan struct{}, o.Workers)
+		retries  atomic.Int64
 	)
 	buildStart := time.Now()
 	for _, j := range jobs {
@@ -265,7 +294,7 @@ func Prepare(ctx context.Context, o Options) (*Manifest, error) {
 			if failed {
 				return
 			}
-			err := buildBrain(ctx, o, wl, emb, brainsRoot, j.spec.Label, j.brain, j.rec)
+			err := buildBrain(ctx, o, wl, emb, brainsRoot, j.spec.Label, j.brain, j.rec, &retries)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil && firstErr == nil {
@@ -284,7 +313,7 @@ func Prepare(ctx context.Context, o Options) (*Manifest, error) {
 	}
 	manifest.Timing = map[string]any{
 		"setup_seconds": round(setupSeconds), "build_seconds": round(time.Since(buildStart).Seconds()), "total_seconds": round(time.Since(start).Seconds()),
-		"workers": o.Workers, "commit_every": o.CommitEvery,
+		"workers": o.Workers, "commit_every": o.CommitEvery, "writer_lock_retries": retries.Load(),
 		"per_fact_ms_wall": round(1000 * time.Since(buildStart).Seconds() / float64(max(plan.TotalFacts, 1))),
 	}
 	if err = writeJSON(filepath.Join(out, "manifest.json"), manifest); err != nil {
@@ -386,20 +415,23 @@ func openCloseBrain(ctx context.Context, brainsRoot string, emb embed.Embedder, 
 	return p.Close()
 }
 
-func buildBrain(ctx context.Context, o Options, wl *Workload, emb embed.Embedder, brainsRoot, label string, b BrainSpec, rec *BrainRecord) error {
+func buildBrain(ctx context.Context, o Options, wl *Workload, emb embed.Embedder, brainsRoot, label string, b BrainSpec, rec *BrainRecord, retries *atomic.Int64) error {
 	root := filepath.Join(brainsRoot, rec.ID)
-	if err := openCloseBrain(ctx, brainsRoot, emb, rec.ID); err != nil {
+	open := func() error {
+		return retryOwned(ctx, ownerRetryWindow, retries, func() error { return openCloseBrain(ctx, brainsRoot, emb, rec.ID) })
+	}
+	if err := open(); err != nil {
 		return fmt.Errorf("initialize brain: %w", err)
 	}
 	t0 := time.Now()
-	commits, err := writeFacts(ctx, root, label, b, wl, o.CommitEvery)
+	commits, err := writeFacts(ctx, root, label, b, wl, o.CommitEvery, retries)
 	if err != nil {
 		return fmt.Errorf("write canonical facts: %w", err)
 	}
 	rec.Commits = commits
 	rec.WriteSeconds = round(time.Since(t0).Seconds())
 	t1 := time.Now()
-	if err = openCloseBrain(ctx, brainsRoot, emb, rec.ID); err != nil {
+	if err = open(); err != nil {
 		return fmt.Errorf("index brain: %w", err)
 	}
 	rec.IndexSeconds = round(time.Since(t1).Seconds())
@@ -411,9 +443,9 @@ func buildBrain(ctx context.Context, o Options, wl *Workload, emb embed.Embedder
 // Production allocates each legacy id and resolves duplicates per write inside writer.MemoryFact.Remember, which
 // reloads the whole projection on every call; this path assigns sequential ids and rejects a repeated fact SHA by
 // construction. The verifier re-checks both independently.
-func writeFacts(ctx context.Context, root, label string, b BrainSpec, wl *Workload, commitEvery int) (commits int, err error) {
-	owner, err := writer.AcquireBrain(root)
-	if err != nil {
+func writeFacts(ctx context.Context, root, label string, b BrainSpec, wl *Workload, commitEvery int, retries *atomic.Int64) (commits int, err error) {
+	var owner *os.File
+	if err = retryOwned(ctx, ownerRetryWindow, retries, func() (e error) { owner, e = writer.AcquireBrain(root); return e }); err != nil {
 		return 0, err
 	}
 	defer func() { err = errors.Join(err, owner.Close()) }()
