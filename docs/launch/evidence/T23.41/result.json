@@ -1,0 +1,236 @@
+{
+  "task_id": "T23.41",
+  "profile": "paid",
+  "status": "PARTIAL",
+  "source_sha": "1bf4a5ff5548f32d505fc5826f0ec07fb1952a86",
+  "recorded_at": "2026-09-19T03:35:37Z",
+  "evidence_level": "local-process",
+  "dependencies": {},
+  "commands": [
+    "gofmt -l internal/hosted",
+    "go vet ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "go vet -tags hostedtest ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "golangci-lint run ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "golangci-lint run --build-tags hostedtest ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "GOFLAGS=-p=2 GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp go test -race -count=1 -json -timeout 20m ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate"
+  ],
+  "cases": {
+    "planned": 46,
+    "executed": 46,
+    "passed": 46,
+    "failed": 0,
+    "skipped": 0,
+    "skip_reasons": []
+  },
+  "acceptance": [
+    {
+      "criterion": "Architectural review names the exact revision and approves each of the four decisions; unresolved decision means dependent task is blocked, not an agent guess.",
+      "expected": "chief-architect reviews and rules (approve/amend/reject) on storage headroom, operation accounting, deletion journal and restore eligibility, recorded in interfaces.md's freeze receipt.",
+      "observed": "No reviewer was available to this headless worker and none has ruled. All four decisions are PROPOSED in interfaces.md 'Proposed decisions'; decision 1 (storage admission) is BLOCKED. architecture-review-request.md asks chief-architect for a per-line approve, amend or reject ruling and marks nothing approved. This pass resolved the coordinator's findings on quiescence, retry-key binding, the file-first gate collision (journal method renamed AppendDeletion, gate untouched), ManifestV2 completeness, the stage-byte versus physical-allocation prerequisite, and the S3 conditional-write semantics. No approval is claimed.",
+      "status": "BLOCKED"
+    },
+    {
+      "criterion": "Migrate schema1/2/3 fixture DBs twice; facts, subscriptions, tokens and usage retained; future schema refused without writes; fresh DB and upgraded DB equivalent.",
+      "expected": "A new forward-only migration exists (needed by tasks44/47/48/50) and this round-trip test passes against it.",
+      "observed": "No migration was added. The operations-table design that would need version 4 is not approved and store/migrations.go is unchanged. Existing TestMigrationAndRollback still passes in the scoped run, so there is no regression, but no new migration exists for this criterion to exercise.",
+      "status": "BLOCKED"
+    },
+    {
+      "criterion": "Existing hosted tests and file-first gate pass.",
+      "expected": "go test -race -count=1 over ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate exits 0 with no skips.",
+      "observed": "Ran that command (GOFLAGS=-p=2) under R-build-lease b993061099c8c7c5c54addda4dd7f30b62c910f2, released with that exact SHA immediately after. Exit 0. 46 test functions executed, 46 passed, 0 failed, 0 skipped (gate 10, contracts 15, contractstest 9, service 2, store 2, testhooks 8). Counting subtests too: 177 executed, 177 passed, 0 failed, 0 skipped. The raw -json output was saved as T23.41-pass2-final-test.json (sha256 78c6b006610473ac1f10a1e1d0d4fda4695c200a8c377f2a4ca757f824daaf1e) in the coordinator runs directory, outside the repo. internal/gate passes with no edit to the gate. gofmt, go vet and golangci-lint (plain and hostedtest tags) are clean on internal/hosted/contracts/... and internal/hosted/testhooks/... . Loaded 1-minute load average was 3.3 at preflight. Internal disk had 15Gi free, below the 20GB hold, so the run sent GOCACHE, GOTMPDIR and TMPDIR to the offload volume.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Interface document lists owning task, exact signature, semantic contract, schema version and integration file for every shared seam.",
+      "expected": "Every row in interfaces.md's seam table has a frozen Go signature, contract and integration file.",
+      "observed": "Signatures are compiled and conformance-tested for billing, telemetry, provider pin, accounting units, registration mode, the recovery plan/apply shape and the fault barriers. ManifestV2 is revised this pass (control database artifact, per-brain bundle heads, Validate; 55 defect cases plus a JSON round trip). The four seams tied to open decisions have PROPOSED signatures and reference-model suites in contracts and contracts/contractstest: operation accounting, storage admission, deletion journal, restore fence. None has a schema version because no migration is applied, and none is approved.",
+      "status": "BLOCKED"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/launch/evidence/T23.41/architecture-review-request.md",
+      "sha256": "74ee6f2a5c992ca9b656adc449cb3d761d75d91034f839b625d4ed313875e0d3"
+    },
+    {
+      "path": "docs/launch/hosted-completion/interfaces.md",
+      "sha256": "994ea0d4ca6153bec54f5b2353cc2b221329a11d063aeb2ea676faefb2316cb1"
+    },
+    {
+      "path": "internal/hosted/contracts/backup.go",
+      "sha256": "a0b5896b20b8f63ecae34a90ebe0f48f9bd47b36d36848e628a92e4ac01e693d"
+    },
+    {
+      "path": "internal/hosted/contracts/billing.go",
+      "sha256": "1a9eff3e53a44dcd80ef8fa0f0c78304e12df8c879c77b12b1e29095e8fbb915"
+    },
+    {
+      "path": "internal/hosted/contracts/commitfence.go",
+      "sha256": "07b538d8713190ce2f99820a76a3ee2bbdd591423887594fec86b7104412443c"
+    },
+    {
+      "path": "internal/hosted/contracts/contracts_test.go",
+      "sha256": "d815822fd46268c979b55abf79db1c6cdc03e5bdfe4694215bbef65692873f95"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/canonical.go",
+      "sha256": "ebacf4d985a0c2927bf9c4f4e32b297b01b1f841c72d55219b07c7fccd2e0b5e"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/clock.go",
+      "sha256": "ec06f5393360076d2a930c4348f226614b30a6d5480f862120e84015691629dc"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/cross_host_lock_test.go",
+      "sha256": "24158bd31be453c7afaa6d35569250f65227167a503fa6972b2177e4ff669825"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/doc.go",
+      "sha256": "ea73ae99ae80b6fc89566a61a91b9914963f3b00609af9229e326f1df4f89140"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/fence.go",
+      "sha256": "424308d6d7f86c2f40caf8321e5194cf30923072df50898870077d9c17b11ca4"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/journal.go",
+      "sha256": "2c233c2aacef6a2ed19c59b7244b28ad1680572b4e757f95934d743ed12df3d9"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/journal_suite.go",
+      "sha256": "acd56590bb00073b7b14908b7c660f9fb63203eedd08c55fce169b5469e37be3"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/journal_test.go",
+      "sha256": "9658c40eb9026304b898e2c7a8acccd826f666eb7cfbe75bce531f54651b03e8"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/ledger.go",
+      "sha256": "02bde85b7ebb11e910c058b5986617f0a8b4094cd07499e8da5131d7f3de093d"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/ledger_suite.go",
+      "sha256": "a7ce1ef8fe56c0910f9a3c439f5acecf4134bdcd37c32949c34a81bfdc65ad45"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/ledger_test.go",
+      "sha256": "b6c5f611eb7e209219d483bc317deddfe723f48ea6cc3dca86838344be6eb3a2"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/staging.go",
+      "sha256": "af6e4c06106ab300495ef24e2854a3da247388d3f39d53dbba57153f5c920e13"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/staging_suite.go",
+      "sha256": "72958d24e154928873d33ed4465bc4d4eda3abc4477612086c36eeecbf8ae34d"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/staging_test.go",
+      "sha256": "31dd5a667a56b07d3b20e56c58a3a999f0d43f3029e2afdf09c59a4864dad155"
+    },
+    {
+      "path": "internal/hosted/contracts/deletion.go",
+      "sha256": "ddba53c1cdb7ddc86014232ba538ff9984d1d660c94df0b5698823e9dd0aaba8"
+    },
+    {
+      "path": "internal/hosted/contracts/fence.go",
+      "sha256": "af1d3305bddf3893a36e82fdae788762def5f109e60b150c28cc2829284d0b87"
+    },
+    {
+      "path": "internal/hosted/contracts/manifest_test.go",
+      "sha256": "d97cd664a550bca9fc58f588fb523abcca517a96daeafd1025382fe9e460f0e2"
+    },
+    {
+      "path": "internal/hosted/contracts/operations.go",
+      "sha256": "ef9b522e948ac600e8a9e8ad82b8af974aff053f710565ba8fc5804820fb07a2"
+    },
+    {
+      "path": "internal/hosted/contracts/provider.go",
+      "sha256": "805de75c789f092ce5b58b93ccd17d5a0f602197de76d996d0e5d14501ce375b"
+    },
+    {
+      "path": "internal/hosted/contracts/semantics_test.go",
+      "sha256": "8c4d9a3e435a38c05855f53cb9f8605d987320ca89953840a07c67c726aff07e"
+    },
+    {
+      "path": "internal/hosted/contracts/storage.go",
+      "sha256": "45f9893c5d81ebf596626967823828d7a25e4eb582b597b9a50a48e0e1a63562"
+    },
+    {
+      "path": "internal/hosted/contracts/telemetry.go",
+      "sha256": "8a4ef483c89646893cffadfb6e099f43479a714897831bac17414d7451ef2d0c"
+    },
+    {
+      "path": "internal/hosted/testhooks/hook_hostedtest.go",
+      "sha256": "3500acd6534d3895fe5ade7bd7a77621b412e2b3fefa98c3149f5fe5916f3af5"
+    },
+    {
+      "path": "internal/hosted/testhooks/hook_prod.go",
+      "sha256": "c424cf03e2b50cb02ae266a6a51491d82f3cbf6e348f5cbb2cd805e672203dfb"
+    },
+    {
+      "path": "internal/hosted/testhooks/phases_test.go",
+      "sha256": "e2b52a8655c921190b5de859d72fd0bb682f39768238e5b3d55665ef2321a455"
+    },
+    {
+      "path": "internal/hosted/testhooks/testdata/concurrent/main.go",
+      "sha256": "3d82455fc74ea89ab6071eeef494167be0f6121e11815cd14574b8db63e218f5"
+    },
+    {
+      "path": "internal/hosted/testhooks/testdata/probe/main.go",
+      "sha256": "6141ff98f7bbce8ffd55173acab3cc09fadf536255bfabd220eb372fb0778383"
+    },
+    {
+      "path": "internal/hosted/testhooks/testhooks.go",
+      "sha256": "f6903d2f4ac8b8b569feda3b3d4992e21fb2eab3de41b87e746dca3f98359e2a"
+    },
+    {
+      "path": "internal/hosted/testhooks/testhooks_test.go",
+      "sha256": "ebc682c2b15211364cded2adfcf2a6268f42d979b4e75336957aa2ca65680a2c"
+    }
+  ],
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": null,
+    "authorization_refs": []
+  },
+  "limitations": [
+    "No chief-architect review was obtained. All four decisions are PROPOSED, not approved. The reference models in contracts/contractstest show the proposed rules are self-consistent and testable; they are not evidence about production code, which does not exist.",
+    "S3 conditional create is documented (the coordinator's source check, s3-conditional-write-source-check.md) but was not qualified against our bucket, bucket policy or CLI/SDK build. Live qualification needs an authorized disposable resource and was not attempted.",
+    "No MaxMutationStageBytes measurement exists, and no OS-enforced size limit under the staging area is designed or tested. StageMeter counts only the bytes its caller reports, so the storage proposal claims an accounting ceiling, not a hard physical bound. Decision 1 stays BLOCKED.",
+    "No schema migration was added; store/migrations.go is unchanged. Nothing under internal/hosted/service or internal/cli imports the contracts.",
+    "Mutation checks on the reference models and on ManifestV2.Validate were run by hand with throwaway scripts that are not committed. Only the resulting conformance cases are in the repo.",
+    "Disclosure: an earlier lease-held verification in this pass started with 15Gi free on the internal disk, below the 20GB hold, without redirecting caches to the offload volume; the final run above did redirect them. An earlier stray test process was stopped with a broad pkill pattern; later work killed only exact PIDs.",
+    "Ajent MCP tools were not used in this session; the coordinator handles Ajent centrally.",
+    "gateway.go holds Gateway.mu across Pool.Acquire; documented in interfaces.md, not fixed (task45's scope).",
+    "Numeric values (headroom bytes, retention window) stay unset in the proposals: they need a task44 measurement or an operator decision, not a worker guess.",
+    "Coordinator independently reran contracts/... and internal/gate on the final code with race detection: 165 tests including subtests passed, zero failures/skips. Raw coordinator-T23.41-final-test.json sha256 3a665f633daaeb892e9f9b7adf9bd5949714a2441cdf80f9ab10ae570ce5a5a0 is retained outside the repo. Subsequent coordinator changes reconcile task wording and make the proposed storage guarantee explicitly conditional; source_sha identifies the unchanged tested Go code."
+  ],
+  "blockers": [
+    {
+      "owner": "chief-architect",
+      "required_input": "Rule approve, amend or reject on each line of docs/launch/evidence/T23.41/architecture-review-request.md for the four proposed decisions, naming the reviewed revision."
+    },
+    {
+      "owner": "task48 with infrastructure54",
+      "required_input": "Live qualification of S3 conditional create, versioning/delete-marker protection and the bucket policy on an authorized disposable resource."
+    },
+    {
+      "owner": "task44 with the writer owner",
+      "required_input": "Core-writer staging seam, an allocation-based MaxMutationStageBytes measurement, and an OS-enforced size limit under the staging area, before any storage bound is called hard."
+    },
+    {
+      "owner": "task41 follow-up (integrator), after chief-architect rules on decision 2",
+      "required_input": "Apply the approved operations-table migration (schema version 4)."
+    },
+    {
+      "owner": "coordinator",
+      "required_input": "Task41 step 3 and task48 step 2 now use AppendDeletion; task49 must rebase on the revised ManifestV2 after the architecture gate."
+    }
+  ],
+  "binary_sha256": null,
+  "configuration_sha256": null,
+  "corpus_sha256": null,
+  "provider": null
+}
