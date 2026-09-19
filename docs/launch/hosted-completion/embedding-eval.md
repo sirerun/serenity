@@ -105,12 +105,28 @@ amendment can.
   zero-LLM disposable brain) + `serenity sync`, then queries it with the
   real, unmodified `serenity search` command. No public debug bypass; no
   modification to any shared/production path.
-- `manifest.py` — validates a `--live` manifest; a missing/null budget,
-  credential, endpoint, corpus hash, or seeding confirmation blocks the
-  run rather than defaulting to unlimited access.
+- `manifest.py` — validates a `--live` manifest; a missing/null/non-finite/
+  boolean/non-positive budget field, credential, endpoint, `allowed_origins`
+  entry, corpus hash, or seeding confirmation blocks the run rather than
+  defaulting to unlimited access. `test_manifest.py` covers the
+  bool-is-an-int-subclass and NaN/Infinity footguns explicitly (Python
+  silently accepts `True` as a valid positive number and `nan <= 0` is
+  `False`, both of which would otherwise slip an unbounded cap past
+  validation).
 - `mcp_client.py` — a stdlib-only MCP-over-HTTP JSON-RPC client
   implementing exactly the wire protocol `internal/server/mcp` serves
-  (`initialize` bootstrap, `Mcp-Session-Id` header, `tools/call`).
+  (`initialize` bootstrap, `Mcp-Session-Id` header, `tools/call`). Refuses
+  every HTTP redirect outright (`urllib`'s default opener follows 3xx
+  responses and forwards the `Authorization` header to whatever origin the
+  redirect names, even cross-origin — confirmed empirically against two
+  real loopback servers in `test_mcp_client.py`, including that the
+  redirect target's handler is never invoked at all); refuses any
+  `endpoint_url` whose scheme/host/port is not exactly one of the
+  manifest's `allowed_origins`, plus any URL carrying userinfo or a query
+  string; treats an MCP tool result's `isError: true` as a hard failure
+  rather than an empty/successful result; and never auto-initializes a
+  session inside `call_tool`, so a caller enforcing a per-request budget
+  can always charge `initialize()` against that budget before it happens.
 - `scoring.py` — Hit@5, category floors, empty-case leakage, and the
   lexical-negative check, as pure functions over already-ranked id lists.
 
@@ -126,7 +142,17 @@ here instead of added there. A T23.43 live manifest additionally needs:
 "hosted_mcp": {
   "endpoint_url": "https://<hosted-host>/mcp",
   "credential_secret_ref": "NAME_OF_ENV_VAR_HOLDING_A_CLIENT_CREDENTIAL",
-  "corpus_seeded_confirmation": "<receipt id or timestamp>"
+  "corpus_seeded_confirmation": "<receipt id or timestamp>",
+  "allowed_origins": ["https://<hosted-host>"]
+},
+"empty_case_hosted_mcp": {
+  "endpoint_url": "https://<a-genuinely-separate-hosted-host-or-account>/mcp",
+  "credential_secret_ref": "NAME_OF_ENV_VAR_HOLDING_A_SEPARATE_CLIENT_CREDENTIAL",
+  "corpus_seeded_confirmation": "<receipt id or timestamp, seeded with only the isolated filler facts>",
+  "allowed_origins": ["https://<a-genuinely-separate-hosted-host-or-account>"]
+},
+"budget": {
+  "max_cost_per_call_usd": 0.0
 }
 ```
 
@@ -138,6 +164,43 @@ into the target account/brain out-of-band (mechanism to be decided by
 whoever owns that write path once T23.42's real embedder is merged) and
 records an explicit confirmation before invoking `--live`; its absence
 blocks the run.
+
+`allowed_origins` pins the exact scheme+host(+port) `mcp_client.py` will
+ever send a credential to; `endpoint_url` must resolve to one of its
+entries or the manifest is rejected before any network call.
+
+`empty_case_hosted_mcp` is a second, independently required target with
+its own credential and `allowed_origins`, distinct from `hosted_mcp`.
+T23.43.md's own acceptance criterion requires cross-account/forgotten
+leakage to be checked, which one shared credential cannot test honestly —
+a near-miss embedding hit against one of the 95 positive facts sitting in
+the *same* account as the 5 empty-case queries would be indistinguishable
+from genuine leakage. Its absence blocks the manifest closed
+(`manifest.py::test_missing_empty_case_target_blocks`).
+
+`budget.max_cost_per_call_usd` is a conservative operator-supplied ceiling
+on the hosted MCP call's real per-call cost. This harness has no verified
+pricing source for the hosted recall/embedding pipeline (that is T23.42's
+concern, not this task's), so rather than assume the spend is unbounded
+when a $/call figure is unknown, the manifest requires an explicit,
+finite, positive figure and the harness enforces
+`approved_max_usd >= (calls_made + 1) * max_cost_per_call_usd` before
+every real HTTP call, including `initialize()` — if that projection would
+exceed `approved_max_usd`, the run blocks before the network call happens,
+never after.
+
+**Posture on `--live` today: fail closed, PARTIAL, pending implementable
+integration input.** No hosted MCP endpoint, host, or account currently
+exists to put in either `hosted_mcp` or `empty_case_hosted_mcp` — this is
+not a gap in `manifest.py`'s validation, it is that T23.46 (hosted
+identity/provisioning) and a seeded qualification account have not been
+built yet. `--live` is fully implemented and covered by real-wire tests
+(`test_mcp_client.py`'s loopback-server redirect/isError tests,
+`test_eval_embeddings.py::TestLiveModeBudgetEnforcement`'s budget-exhaustion/
+max_calls=1/token-cap/dollar-cap/separate-credential tests), but has never
+been run against a real hosted target and this document does not claim
+otherwise. A worker or reviewer must not fabricate a manifest against a
+placeholder/test endpoint and report a live PASS from it.
 
 ### `--fixtures` output shape
 
@@ -192,11 +255,15 @@ row is `PASS` once the assertion above holds.
   and no hosted test account has been seeded. Every number in this
   document's "Harness" section is a fixtures-only mechanical rehearsal,
   never mistaken in `result.json` for a quality PASS.
-- **`--live` mode's per-call cost is not computed.** `cost.actual_usd` in
-  `result.json` stays `null` until a provider pricing source is wired in;
-  the harness enforces `max_calls`/`max_input_tokens` (char/4 estimate)/
-  `max_elapsed_seconds` directly, which is what stops runaway spend
-  regardless of whether the exact dollar figure is known in advance.
+- **`--live` mode's per-call cost is an operator-supplied ceiling, not a
+  provider-reported figure.** No verified real pricing source exists for
+  the hosted recall/embedding pipeline (T23.42's concern), so
+  `cost.actual_usd` is computed as `calls_made * budget.max_cost_per_call_usd`
+  — a conservative bound the manifest's authorizer commits to in advance,
+  not a true invoice reconciliation. The harness enforces
+  `max_calls`/`max_input_tokens` (char/4 estimate)/`max_elapsed_seconds`/
+  the projected-cost-vs-`approved_max_usd` check directly, all of which
+  stop the run before the next call rather than after.
 
 ## Running it
 

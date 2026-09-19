@@ -345,26 +345,74 @@ def run_live(args: argparse.Namespace) -> tuple[dict, int]:
             EXIT_BLOCKED,
         )
 
-    cred_ref = m["hosted_mcp"]["credential_secret_ref"]
-    cred_token = os.environ.get(cred_ref)
-    if not cred_token:
-        return (
-            build_blocked_result(args, corpus, source_sha, [f"${cred_ref} is not set in the environment"]),
-            EXIT_BLOCKED,
-        )
-
     budget = m["budget"]
     max_calls = int(budget["max_calls"])
     max_elapsed = float(budget["max_elapsed_seconds"])
     max_input_tokens = float(budget["max_input_tokens"])
+    max_cost_per_call_usd = float(budget["max_cost_per_call_usd"])
+    approved_max_usd = float(budget["approved_max_usd"])
 
-    def estimated_tokens_used(client: "mcp_client.MCPClient") -> float:
+    started = time.time()
+    clients: list[mcp_client.MCPClient] = []
+
+    def combined_calls_made() -> int:
+        return sum(c.calls_made for c in clients)
+
+    def combined_tokens_used() -> float:
         # char/4 estimate, the same convention internal/server/memory's
         # own charEstimate uses for budget packing -- an approximation,
         # disclosed as such, not a provider-reported token count.
-        return client.usage().request_bytes / 4.0
+        return sum(c.usage().request_bytes for c in clients) / 4.0
 
-    client = mcp_client.MCPClient(m["hosted_mcp"]["endpoint_url"], cred_token)
+    def budget_exhausted_reason() -> str | None:
+        """Checked before every single real HTTP request this run makes,
+        including each client's own initialize() -- never only before a
+        tools/call. A missing/unenforceable dollar cap blocks before any
+        network call at all (see manifest.py's max_cost_per_call_usd)."""
+        calls_made = combined_calls_made()
+        if calls_made >= max_calls:
+            return f"max_calls={max_calls} reached"
+        if time.time() - started >= max_elapsed:
+            return f"max_elapsed_seconds={max_elapsed} reached"
+        if combined_tokens_used() >= max_input_tokens:
+            return f"max_input_tokens={max_input_tokens} reached"
+        projected_cost = (calls_made + 1) * max_cost_per_call_usd
+        if projected_cost > approved_max_usd:
+            return f"approved_max_usd={approved_max_usd} would be exceeded by the next call (max_cost_per_call_usd={max_cost_per_call_usd})"
+        return None
+
+    def make_client(prefix: str, target: dict) -> tuple[mcp_client.MCPClient | None, str | None]:
+        cred_ref = target["credential_secret_ref"]
+        cred_token = os.environ.get(cred_ref)
+        if not cred_token:
+            return None, f"${cred_ref} is not set in the environment ({prefix})"
+        c = mcp_client.MCPClient(target["endpoint_url"], cred_token, allowed_origins=target["allowed_origins"])
+        clients.append(c)
+        return c, None
+
+    def initialize_within_budget(client: mcp_client.MCPClient) -> str | None:
+        reason = budget_exhausted_reason()
+        if reason:
+            return reason
+        try:
+            client.initialize()
+        except mcp_client.MCPError as e:
+            return f"initialize failed: {e}"
+        return None
+
+    def run_phase(client: mcp_client.MCPClient, cases: list[dict], scorer) -> tuple[list, str | None]:
+        results = []
+        for case in cases:
+            reason = budget_exhausted_reason()
+            if reason:
+                return results, reason
+            try:
+                resp = client.call_tool("recall", {"query": case["query"], "limit": scoring.K})
+            except mcp_client.MCPError as e:
+                return results, f"live call failed for case {case['id']}: {e}"
+            ranked_ids = [r.get("slug") for r in resp.get("results", []) if r.get("slug")]
+            results.append(scorer(case, ranked_ids))
+        return results, None
 
     result = base_result(args.task_id, args.profile, source_sha, "live-provider")
     result["corpus_sha256"] = actual_hash
@@ -374,48 +422,39 @@ def run_live(args: argparse.Namespace) -> tuple[dict, int]:
         "hosted_endpoint": m["hosted_mcp"].get("endpoint_url"),
     }
 
-    positive_results = []
-    started = time.time()
-    blocked_reason = None
-    for case in positive_cases(corpus):
-        if client.calls_made >= max_calls:
-            blocked_reason = f"budget exhausted: max_calls={max_calls} reached after {len(positive_results)} cases"
-            break
-        if time.time() - started >= max_elapsed:
-            blocked_reason = f"budget exhausted: max_elapsed_seconds={max_elapsed} reached after {len(positive_results)} cases"
-            break
-        if estimated_tokens_used(client) >= max_input_tokens:
-            blocked_reason = f"budget exhausted: max_input_tokens={max_input_tokens} reached after {len(positive_results)} cases"
-            break
-        try:
-            resp = client.call_tool("recall", {"query": case["query"], "limit": scoring.K})
-        except mcp_client.MCPError as e:
-            blocked_reason = f"live call failed for case {case['id']}: {e}"
-            break
-        ranked_ids = [r.get("slug") for r in resp.get("results", []) if r.get("slug")]
-        positive_results.append(
-            scoring.score_positive_case(case["id"], case["category"], case["expected_fact_id"], ranked_ids)
+    pos_client, err = make_client("hosted_mcp", m["hosted_mcp"])
+    blocked_reason = err
+    positive_results: list = []
+    if blocked_reason is None:
+        blocked_reason = initialize_within_budget(pos_client)
+    if blocked_reason is None:
+        positive_results, blocked_reason = run_phase(
+            pos_client,
+            positive_cases(corpus),
+            lambda case, ranked: scoring.score_positive_case(case["id"], case["category"], case["expected_fact_id"], ranked),
         )
 
-    empty_results = []
+    # The empty-case phase requires its own separately seeded, isolated
+    # account/credential (manifest.py's empty_case_hosted_mcp) -- reusing
+    # the positive-case account cannot honestly test "cross-account/
+    # forgotten leakage=0" (T23.43.md's own acceptance wording), since a
+    # near-miss hit against one of the 95 positive facts sitting in the
+    # SAME account would be indistinguishable from genuine leakage.
+    empty_results: list = []
     if blocked_reason is None:
-        for case in empty_cases(corpus):
-            if (
-                client.calls_made >= max_calls
-                or time.time() - started >= max_elapsed
-                or estimated_tokens_used(client) >= max_input_tokens
-            ):
-                blocked_reason = "budget exhausted before the empty-case phase completed"
-                break
-            try:
-                resp = client.call_tool("recall", {"query": case["query"], "limit": scoring.K})
-            except mcp_client.MCPError as e:
-                blocked_reason = f"live call failed for case {case['id']}: {e}"
-                break
-            ranked_ids = [r.get("slug") for r in resp.get("results", []) if r.get("slug")]
-            empty_results.append(scoring.score_empty_case(case["id"], ranked_ids, allowed_ids=set()))
+        empty_client, err2 = make_client("empty_case_hosted_mcp", m["empty_case_hosted_mcp"])
+        blocked_reason = err2
+        if blocked_reason is None:
+            blocked_reason = initialize_within_budget(empty_client)
+        if blocked_reason is None:
+            empty_results, blocked_reason = run_phase(
+                empty_client,
+                empty_cases(corpus),
+                lambda case, ranked: scoring.score_empty_case(case["id"], ranked, allowed_ids=set()),
+            )
 
     summary = scoring.summarize(positive_results, empty_results)
+    client_calls_made = combined_calls_made()
 
     result["cases"]["planned"] = len(corpus["cases"])
     result["cases"]["executed"] = len(positive_results) + len(empty_results)
@@ -445,12 +484,13 @@ def run_live(args: argparse.Namespace) -> tuple[dict, int]:
         acceptance_row(
             criterion="Budget exhausted/provider unavailable yields BLOCKED with partial results and no further calls",
             expected="On exhaustion, stop immediately and report partial results, never continue calling",
-            observed=blocked_reason or f"budget not exhausted: {client.calls_made}/{max_calls} calls used",
-            status="PASS" if blocked_reason or client.calls_made <= max_calls else "FAIL",
+            observed=blocked_reason or f"budget not exhausted: {client_calls_made}/{max_calls} calls used",
+            status="PASS" if blocked_reason or client_calls_made <= max_calls else "FAIL",
         ),
     ]
 
-    result["cost"]["approved_max_usd"] = budget.get("approved_max_usd")
+    result["cost"]["actual_usd"] = round(client_calls_made * max_cost_per_call_usd, 6)
+    result["cost"]["approved_max_usd"] = approved_max_usd
     result["cost"]["authorization_refs"] = [budget.get("authorization_ref")] if budget.get("authorization_ref") else []
 
     if blocked_reason:

@@ -109,6 +109,7 @@ class TestLexicalControlArm(unittest.TestCase):
 class _RecallStub(http.server.BaseHTTPRequestHandler):
     calls = 0
     lock = threading.Lock()
+    seen_auth_headers: list[str] = []
 
     def log_message(self, *a):  # silence
         pass
@@ -116,6 +117,7 @@ class _RecallStub(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         with _RecallStub.lock:
             _RecallStub.calls += 1
+            _RecallStub.seen_auth_headers.append(self.headers.get("Authorization"))
         length = int(self.headers.get("Content-Length", 0))
         body = json.loads(self.rfile.read(length) or b"{}")
         req_id = body.get("id")
@@ -142,8 +144,21 @@ class _RecallStub(http.server.BaseHTTPRequestHandler):
 
 
 class TestLiveModeBudgetEnforcement(unittest.TestCase):
+    """The manifest requires two separately credentialed targets --
+    hosted_mcp for the 95 positive cases and empty_case_hosted_mcp for the 5
+    empty cases (manifest.py's rationale: one shared account can't test
+    cross-account leakage honestly). Both targets point at the same local
+    stub server here since this suite only exercises the budget/credential
+    mechanics, not real account isolation (that property is enforced by
+    provisioning, not by this harness) -- but each target still carries its
+    own credential_secret_ref, and _RecallStub records which Authorization
+    header arrived with every request so a test can prove the two clients
+    really did authenticate separately.
+    """
+
     def setUp(self):
         _RecallStub.calls = 0
+        _RecallStub.seen_auth_headers = []
         self.server = http.server.HTTPServer(("127.0.0.1", 0), _RecallStub)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -156,15 +171,26 @@ class TestLiveModeBudgetEnforcement(unittest.TestCase):
         self.cred_env = "T2343_TEST_CREDENTIAL"
         os.environ[self.cred_env] = "test-token"
         self.addCleanup(os.environ.pop, self.cred_env, None)
+        self.empty_cred_env = "T2343_TEST_EMPTY_CREDENTIAL"
+        os.environ[self.empty_cred_env] = "test-empty-token"
+        self.addCleanup(os.environ.pop, self.empty_cred_env, None)
 
-    def _manifest(self, max_calls: int) -> Path:
+    def _manifest(
+        self,
+        max_calls: int = 100,
+        *,
+        approved_max_usd: float = 1.0,
+        max_cost_per_call_usd: float = 0.001,
+        max_input_tokens: float = 5000,
+    ) -> Path:
         m = json.loads(TEMPLATE_PATH.read_text())
         m["task_id"] = "T23.43"
         m["budget"] = {
-            "approved_max_usd": 1.0,
+            "approved_max_usd": approved_max_usd,
             "max_calls": max_calls,
-            "max_input_tokens": 5000,
+            "max_input_tokens": max_input_tokens,
             "max_elapsed_seconds": 600,
+            "max_cost_per_call_usd": max_cost_per_call_usd,
             "authorization_ref": "test-authorization",
             "automatic_reset": False,
             "auto_top_up": False,
@@ -172,10 +198,18 @@ class TestLiveModeBudgetEnforcement(unittest.TestCase):
         m["provider"]["secret_ref"] = "EMBEDDINGS_API_KEY"
         m["provider"]["allow_fallback"] = False
         port = self.server.server_address[1]
+        origin = f"http://127.0.0.1:{port}"
         m["hosted_mcp"] = {
-            "endpoint_url": f"http://127.0.0.1:{port}/mcp",
+            "endpoint_url": f"{origin}/mcp",
             "credential_secret_ref": self.cred_env,
             "corpus_seeded_confirmation": "test-receipt",
+            "allowed_origins": [origin],
+        }
+        m["empty_case_hosted_mcp"] = {
+            "endpoint_url": f"{origin}/mcp",
+            "credential_secret_ref": self.empty_cred_env,
+            "corpus_seeded_confirmation": "test-receipt-empty",
+            "allowed_origins": [origin],
         }
         m["corpus_sha256"] = _corpus_hash()
         path = Path(self.tmpdir.name) / "manifest.json"
@@ -192,6 +226,20 @@ class TestLiveModeBudgetEnforcement(unittest.TestCase):
         self.assertEqual(_RecallStub.calls, 0)
         os.environ[self.cred_env] = "test-token"  # restore for addCleanup symmetry
 
+    def test_missing_empty_case_credential_env_blocks_after_positive_phase(self):
+        # A generous max_calls lets all 95 positive cases finish, so the
+        # empty-case phase is reached and its own missing credential is
+        # what blocks -- proving the two credentials are checked
+        # independently, not just the first one.
+        manifest_path = self._manifest(max_calls=200)
+        del os.environ[self.empty_cred_env]
+        args = _args(Path(self.tmpdir.name) / "out.json", manifest_path, fixtures=False, live=True)
+        result, exit_code = eval_embeddings.run_live(args)
+        self.assertEqual(exit_code, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(result["cases"]["executed"], 95)
+        self.assertIn(self.empty_cred_env, result["blockers"][0]["required_input"])
+        os.environ[self.empty_cred_env] = "test-empty-token"  # restore for addCleanup symmetry
+
     def test_budget_exhaustion_stops_at_exact_cap_with_partial_results(self):
         max_calls = 4
         manifest_path = self._manifest(max_calls=max_calls)
@@ -204,6 +252,46 @@ class TestLiveModeBudgetEnforcement(unittest.TestCase):
         self.assertGreater(result["cases"]["skipped"], 0)
         budget_row = next(r for r in result["acceptance"] if "Budget exhausted" in r["criterion"])
         self.assertEqual(budget_row["status"], "PASS")
+
+    def test_max_calls_of_one_blocks_after_initialize_before_any_tool_call(self):
+        manifest_path = self._manifest(max_calls=1)
+        args = _args(Path(self.tmpdir.name) / "out.json", manifest_path, fixtures=False, live=True)
+        result, exit_code = eval_embeddings.run_live(args)
+        self.assertEqual(exit_code, eval_embeddings.EXIT_BLOCKED)
+        # The single budgeted call is spent on initialize() itself -- proof
+        # that initialize is charged against max_calls like any other
+        # request, not given a free pass.
+        self.assertEqual(_RecallStub.calls, 1)
+        self.assertEqual(result["cases"]["executed"], 0)
+
+    def test_near_token_cap_blocks_after_initialize_before_tool_calls(self):
+        manifest_path = self._manifest(max_input_tokens=1)
+        args = _args(Path(self.tmpdir.name) / "out.json", manifest_path, fixtures=False, live=True)
+        result, exit_code = eval_embeddings.run_live(args)
+        self.assertEqual(exit_code, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(_RecallStub.calls, 1)  # only initialize; the token cap trips before any tool call
+        self.assertIn("max_input_tokens", result["blockers"][0]["required_input"])
+
+    def test_dollar_cap_blocks_before_any_network_call(self):
+        # approved_max_usd smaller than a single call's cost means even the
+        # handshake is unaffordable -- must block closed before initialize
+        # ever reaches the wire, per "if cost cannot be bounded, BLOCKED
+        # before network."
+        manifest_path = self._manifest(max_calls=100, approved_max_usd=0.0005, max_cost_per_call_usd=0.01)
+        args = _args(Path(self.tmpdir.name) / "out.json", manifest_path, fixtures=False, live=True)
+        result, exit_code = eval_embeddings.run_live(args)
+        self.assertEqual(exit_code, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(_RecallStub.calls, 0)
+        self.assertIn("approved_max_usd", result["blockers"][0]["required_input"])
+
+    def test_full_run_authenticates_positive_and_empty_phases_separately(self):
+        manifest_path = self._manifest(max_calls=200)
+        args = _args(Path(self.tmpdir.name) / "out.json", manifest_path, fixtures=False, live=True)
+        result, exit_code = eval_embeddings.run_live(args)
+        self.assertEqual(result["cases"]["executed"], 100)
+        auths = set(_RecallStub.seen_auth_headers)
+        self.assertIn("Bearer test-token", auths)
+        self.assertIn("Bearer test-empty-token", auths)
 
 
 if __name__ == "__main__":
