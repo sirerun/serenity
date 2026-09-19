@@ -15,6 +15,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -172,7 +173,9 @@ class LiveFixture(unittest.TestCase):
         self.fake._handle = counting
         self.environment_kind = "disposable"
         self.tmp = Path(tempfile.mkdtemp(prefix="t2343-live-"))
-        self.addCleanup(lambda: __import__("shutil").rmtree(self.tmp, ignore_errors=True))
+        # Bound now, not read at cleanup: a test that calls setUp again for a fresh
+        # fixture must not leak the directory of the one it replaced.
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         for name, val in ((POS_ENV, POS_TOKEN), (EMPTY_ENV, EMPTY_TOKEN)):
             os.environ[name] = val
             self.addCleanup(os.environ.pop, name, None)
