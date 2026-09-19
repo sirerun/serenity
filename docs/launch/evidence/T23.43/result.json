@@ -30,14 +30,14 @@
     },
     {
       "path": "docs/launch/evidence/T23.43/eval-fixture.json",
-      "sha256": "6ee9d5071206a275fd7740eab714d8d006a2313f42208d9086433c9e23a1667b"
+      "sha256": "cc32db846d376e53af2b7dcc19ab3d55a517ac7950ab1c6472e514969851d690"
     },
     {
       "path": "docs/launch/hosted-completion/embedding-eval.md",
       "sha256": "f781f4fa59f760ed17fd2a8cc227ba1401ab48c1c21aed74e721b03403304359"
     }
   ],
-  "binary_sha256": "d62e03bb4e71d4b1ef0c1419bd179303855a30ecf5c1ef79653eb9d464e14bbd",
+  "binary_sha256": "508161c586d6ea140756af5a448b580463435bbdc652a00a189a8a39d7e65877",
   "blockers": [
     {
       "owner": "task41 reviewer",
@@ -61,11 +61,11 @@
     "skipped": 0
   },
   "commands": [
-    "python3 -m unittest discover -s evals/hosted -p \"test_*.py\"",
+    "GOFLAGS=-p=2 go build -o ../serenity-launch-runs-20260918/bin/serenity ./cmd/serenity",
+    "GOFLAGS=-p=2 go build -o ../serenity-launch-runs-20260918/bin/seedbrain ./evals/hosted/fixtures/seedbrain",
+    "SERENITY_BIN=/Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/serenity SEEDBRAIN_BIN=/Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/seedbrain python3 -m unittest discover -s evals/hosted -p \"test_*.py\"",
     "python3 evals/hosted/corpus_gen.py --check",
-    "SERENITY_BIN=<local build> SEEDBRAIN_BIN=<local build> python3 scripts/hosted/eval_embeddings.py --fixtures --manifest $QUALIFICATION_MANIFEST --output $EVIDENCE_DIR/eval-fixture.json",
-    "go build -o <tmp>/serenity ./cmd/serenity",
-    "go build -o <tmp>/seedbrain ./evals/hosted/fixtures/seedbrain"
+    "SERENITY_BIN=/Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/serenity SEEDBRAIN_BIN=/Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/seedbrain python3 scripts/hosted/eval_embeddings.py --fixtures --manifest docs/launch/hosted-completion/qualification.example.json --output docs/launch/evidence/T23.43/eval-fixture.json"
   ],
   "configuration_sha256": null,
   "corpus_sha256": "f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6",
@@ -85,12 +85,13 @@
     "The production lexical fallback (internal/index.LiteralFTSQuery) implicit-ANDs every query term including stopwords, so natural-language questions almost never lexically match a short fact statement regardless of this corpus's designed word-overlap category -- verified directly against the real built serenity binary; see embedding-eval.md 'Known limits'.",
     "Empty-case fixture arm approximates 'forgotten/expired' as 'never authored' since T23.43 does not own the remember/forget/expiry pipeline (T23.42/44/48).",
     "task41's threshold-review freeze receipt (docs/launch/hosted-completion/embedding-eval.md) is not yet signed off; this task proposes the frozen corpus/thresholds but cannot self-approve them.",
-    "Ajent MCP tools (ajent_inbox/ajent_search) were unauthorized in this session (permission denied); coordination was cross-checked against ajent.social only, per AGENTS.md's documented fallback."
+    "Ajent MCP tools (ajent_inbox/ajent_search) were unauthorized in this session (permission denied); coordination was cross-checked against ajent.social only, per AGENTS.md's documented fallback.",
+    "Coordinator independently rebuilt both binaries from source_sha, reran all 77 tests with zero skips, regenerated the 100-case fixture receipt, and verified corpus generation; commands above record actual resolved binary paths. Architecture thresholds and live provider qualification remain open."
   ],
   "profile": "paid",
   "provider": null,
-  "recorded_at": "2026-09-19T01:20:53Z",
-  "source_sha": "a8c12dfce0433a5a26afc182eef49e3beedba10d",
+  "recorded_at": "2026-09-19T01:30:39.516825+00:00",
+  "source_sha": "7b8854945f94a5ffab28169f6cc6cf3df972d8c2",
   "status": "PARTIAL",
   "task_id": "T23.43"
 }
