@@ -299,9 +299,11 @@ def run_fixtures(args: argparse.Namespace) -> tuple[dict, int]:
     ]
 
     result["limitations"].append(
-        "Empty-case fixture arm approximates 'forgotten/expired' as 'never authored': T23.43 does not "
-        "own the remember/forget/expiry pipeline (T23.42/44/48), so isolated brains contain only an "
-        "unrelated filler fact rather than a genuinely retracted one."
+        "The local lexical control's empty cases run against isolated brains holding one unrelated filler "
+        "fact (seedbrain refuses an empty brain) and are scored strictly: returning the filler fails. That "
+        "arm is a control, not the forgotten-fact qualification. The real forgotten-fact protocol (remember "
+        "a target, show it retrievable, forget it, show it absent) runs only under --seed/--live and has "
+        "been exercised only against a loopback fake, never a hosted account."
     )
     result["limitations"].append(
         "--live mode's actual semantic quality has never been measured (no EMBEDDINGS key, no seeded "
