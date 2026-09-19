@@ -1,0 +1,84 @@
+{
+  "task_id": "T23.60",
+  "profile": "paid",
+  "status": "PARTIAL",
+  "source_sha": "810349ba7c1ed2c05fe34e3892de764a26a4633c",
+  "recorded_at": "2026-09-19T00:50:14Z",
+  "evidence_level": "local-process",
+  "dependencies": {},
+  "commands": [
+    "python3 -m unittest discover -s evals/hosted-load -p \"test_*.py\"",
+    "python3 scripts/hosted/load.py --fixtures --manifest /Volumes/BuildOffload/wt/serenity-launch-T23.60-20260918/docs/launch/evidence/T23.60/manifest.json --output /Volumes/BuildOffload/wt/serenity-launch-T23.60-20260918/docs/launch/evidence/T23.60/load-fixture.json",
+    "python3 scripts/hosted/cost_model.py --manifest /Volumes/BuildOffload/wt/serenity-launch-T23.60-20260918/docs/launch/evidence/T23.60/manifest.json --output /Volumes/BuildOffload/wt/serenity-launch-T23.60-20260918/docs/launch/evidence/T23.60/cost.json"
+  ],
+  "cases": {
+    "planned": 49,
+    "executed": 49,
+    "passed": 49,
+    "failed": 0,
+    "skipped": 0,
+    "skip_reasons": []
+  },
+  "acceptance": [
+    {
+      "criterion": "Cost math fixtures cover units and full-snapshot multiplication; all recurring categories have rates or explicit unknowns.",
+      "expected": "Unit tests cover per-unit pricing math and the hourly-full-snapshot storage multiplier; every RATE_TABLE entry carries a kind, every unpriced category is an explicit unknown with a reason, never a silent zero.",
+      "observed": "test_full_snapshot_amplification_multiplies_storage_not_flat, test_every_named_rate_has_a_kind_and_is_never_silently_measured and test_unknown_rates_have_explicit_reasons_not_omitted pass; cost.json's full_limit_mix scenario shows known_subtotal_usd=173.14 dominated by a 149.58 USD hourly-full-snapshot S3 line, with embeddings/CloudWatch Logs/custom-metrics reported under unknown_categories rather than omitted.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Harness stops at caps and cannot target a production origin without an explicit environment guard; finite run, no new worker scheduler.",
+      "expected": "load.py --live refuses a missing/disallowed/production origin and halts with a BLOCKED partial receipt at the first exhausted budget cap (calls/tokens/elapsed); no daemon or scheduler is introduced.",
+      "observed": "EnvironmentGuardTests (5 cases) and test_stops_at_max_calls_and_reports_blocked pass against a fake transport; test_live_mode_blocked_without_environment_origin confirms the CLI exits 2 rather than running. load.py is a single finite CLI invocation with no background process.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Freeze with task41 reviewer before execution: CPU<70%, RSS<80% RAM, disk<80%, cold-ready<=60s, admitted recall p95<=2s/remember p95<=3s, >=99% offered non-injected eligible steady-state requests complete, unexpected 5xx<0.1%, unexpected steady admission rejection<1%, zero isolation/durability errors; never claim a full live-provider load test ran.",
+      "expected": "docs/launch/hosted-completion/interfaces.md's task41 reviewer signs evals/hosted-load/workload.json (reviewer/review_date filled) before any live or --measurements run is treated as an accepted capacity claim.",
+      "observed": "workload.json.reviewer and .review_date remain null; thresholds are transcribed verbatim as PROPOSED targets only. No live-provider load test was run or claimed to have run; the committed --fixtures run explicitly labels itself mechanics-only (resource_usage.available=false) and load-fixture.json shows 3 of 6 measurable thresholds failing against the synthetic model, which this task does not present as a real capacity result.",
+      "status": "BLOCKED"
+    }
+  ],
+  "artifacts": [
+    {"path": "evals/hosted-load/workload.json", "sha256": "2aa7c9b8e266036c9e28df583e99877fd6936416c3b88723b9c7d367a324d990"},
+    {"path": "docs/launch/evidence/T23.60/manifest.json", "sha256": "c851a10300e550658daf187433672b8af67f2e7155d01f7ed34f455a9d30bbd8"},
+    {"path": "docs/launch/evidence/T23.60/load-fixture.json", "sha256": "febbd9febb80ba998dfeddefe3c3ae3f921b2655a1a3f853cf7a20118e05ce14"},
+    {"path": "docs/launch/evidence/T23.60/cost.json", "sha256": "c9705ca525011785fb0575b8ecb6c9c51bd31bc5bc0257a6e96b1659919c5cfa"},
+    {"path": "docs/launch/hosted-economics.md", "sha256": "f1e957b8b7119cfce94263562b5c3585d4c61e802bd1b8842344de32b692e690"},
+    {"path": "scripts/hosted/cost_model.py", "sha256": "06a4a7ef0dc43fbec79a687eb144fe62081ca28d01e828e2d2ff319beb6516dd"},
+    {"path": "scripts/hosted/load.py", "sha256": "45d9e5e06f4e4d53d90d5da7ecaab7d929c826a0b253fc826257cd7910c36b78"},
+    {"path": "evals/hosted-load/harness.py", "sha256": "a6f01db60308fc6ad82c76f9b007449403d684827efb7654fbdc15dc770acd89"}
+  ],
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": 0,
+    "authorization_refs": []
+  },
+  "limitations": [
+    "Rate citations are unverified this session: WebSearch/WebFetch tool permission was not granted in this headless run, so RATE_TABLE reflects training-data recollection of long-stable AWS list prices, not a live dated citation. A reviewer must re-verify before treating cost.json as authoritative.",
+    "Ajent MCP tools (ajent_inbox, ajent_diagnose) were requested but permission was not granted in this headless session, so the fleet's Ajent feed could not be polled directly; coordination was cross-checked against the repository's own ajent.social file instead, which showed no hold on T23.60 as of the last entry (PR #235 merged, first batch T23.41/43/60).",
+    "10_accounts_light and 100_accounts_light scenario account mixes and usage fractions are this worker's documented assumption (SCENARIOS in cost_model.py), not a recorded product/growth decision.",
+    "The --live path in load.py is implemented and unit-tested against an injected fake transport, but has never run against a real deployed host; no hosted candidate is deployed yet at T23.60 (that is T23.64).",
+    "SSE-streamed MCP tool responses are not parsed by load.py's --live transport; only a single JSON response body is supported today.",
+    "The --fixtures load run's synthetic latency/admission numbers are a hand-calibrated cost function proving harness mechanics and load-sensitivity (evidenced by the saturation-vs-main rejection-rate gap), not a measurement of real service behavior; 3 of 6 measurable proposed thresholds fail against it, which is expected and uninformative for capacity, not a regression.",
+    "cost_model.py's --measurements override path is unit-tested (test_measurements_override_assumption_and_are_tagged_measured) but has never been exercised with a real T23.68 live-load output, since none exists yet."
+  ],
+  "blockers": [
+    {
+      "owner": "task41 reviewer",
+      "required_input": "Fill reviewer/review_date in evals/hosted-load/workload.json (freeze or amend the proposed thresholds with rationale) before any --live or --measurements run is treated as an accepted capacity claim, per docs/launch/hosted-completion/interfaces.md §Threshold review."
+    },
+    {
+      "owner": "task41 reviewer / coordinator",
+      "required_input": "Re-verify scripts/hosted/cost_model.py's RATE_TABLE against current AWS EC2/EBS/S3/KMS/Secrets Manager/CloudWatch/data-transfer pricing pages and Resend's pricing page (this session had no WebSearch/WebFetch permission); update each entry's \"kind\" once confirmed."
+    },
+    {
+      "owner": "T23.49 owner (R-hosted-backup) and task41 reviewer",
+      "required_input": "Review the hourly-full-snapshot S3 versioning amplification finding in docs/launch/hosted-economics.md (~150 USD/month known-cost line at the ratified full-limit mix, ~721x the working-set size) and decide a mitigation (frequency, retention window, or incremental format) before T23.68's live cost qualification; this is an architecture decision this task is not authorized to make."
+    }
+  ],
+  "binary_sha256": null,
+  "configuration_sha256": null,
+  "corpus_sha256": null,
+  "provider": null
+}

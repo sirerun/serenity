@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "task_id": "T23.60",
+  "profile": "paid",
+  "mode": "fixtures",
+  "source_sha": "810349ba7c1ed2c05fe34e3892de764a26a4633c",
+  "binary_path": null,
+  "binary_sha256": null,
+  "environment": {
+    "kind": "disposable",
+    "origin": null,
+    "allowed_hosts": ["127.0.0.1"],
+    "production_target_allowed": false
+  },
+  "provider": {
+    "base_url": "https://openrouter.ai/api/v1",
+    "model": "perplexity/pplx-embed-v1-0.6b",
+    "version_pin": null,
+    "dimensions": null,
+    "serving_provider": null,
+    "privacy_review_ref": null,
+    "allow_fallback": false,
+    "secret_ref": "EMBEDDINGS_API_KEY"
+  },
+  "mail": {
+    "secret_ref": "RESEND_API_KEY",
+    "controlled_recipient_ref": null
+  },
+  "stripe": {
+    "secret_ref": "STRIPE_SECRET_KEY",
+    "webhook_secret_ref": "STRIPE_WEBHOOK_SECRET",
+    "expected_account_ref": null,
+    "require_test_mode": true
+  },
+  "budget": {
+    "approved_max_usd": 0,
+    "max_calls": 20000,
+    "max_input_tokens": 2000000,
+    "max_elapsed_seconds": 2700,
+    "authorization_ref": "fixtures-only-no-live-spend-T23.60",
+    "automatic_reset": false,
+    "auto_top_up": false
+  },
+  "corpus_path": null,
+  "corpus_sha256": null,
+  "workload_path": "evals/hosted-load/workload.json",
+  "workload_sha256": null,
+  "gate_evidence": {},
+  "artifact_destination": "docs/launch/evidence/T23.60",
+  "note": "Fixtures-mode manifest for T23.60 local evidence. budget/environment are filled with concrete, safe values to demonstrate the contract shape; --live is never executed from this manifest (production_target_allowed stays false and environment.origin stays null, which check_environment_guard refuses). workload_sha256 is filled by the run and recorded in result.json, not hand-maintained here."
+}

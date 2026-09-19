@@ -1,0 +1,344 @@
+{
+  "task_id": "T23.60",
+  "profile": "paid",
+  "rate_table": {
+    "ec2_t4g_small_usd_per_hour": {
+      "value": 0.0168,
+      "kind": "assumption_recollection",
+      "note": "AWS EC2 On-Demand Linux us-west-2 t4g.small (2 vCPU burstable, 2 GiB)."
+    },
+    "ec2_t4g_burst_credit_usd_per_vcpu_hour": {
+      "value": 0.05,
+      "kind": "assumption_recollection",
+      "note": "T4g Unlimited-mode surplus CPU credit surcharge, us-west-2."
+    },
+    "ebs_gp3_usd_per_gb_month": {
+      "value": 0.08,
+      "kind": "assumption_recollection",
+      "note": "EBS gp3 storage, us-west-2 (baseline 3,000 IOPS / 125 MB/s included)."
+    },
+    "s3_standard_usd_per_gb_month": {
+      "value": 0.023,
+      "kind": "assumption_recollection",
+      "note": "S3 Standard storage, us-west-2, first 50 TB tier."
+    },
+    "s3_put_usd_per_1000_requests": {
+      "value": 0.005,
+      "kind": "assumption_recollection",
+      "note": "S3 PUT/COPY/POST/LIST requests, us-west-2."
+    },
+    "s3_get_usd_per_1000_requests": {
+      "value": 0.0004,
+      "kind": "assumption_recollection",
+      "note": "S3 GET/SELECT requests, us-west-2."
+    },
+    "kms_key_usd_per_month": {
+      "value": 1.0,
+      "kind": "assumption_recollection",
+      "note": "One customer-managed KMS key."
+    },
+    "kms_usd_per_10000_requests": {
+      "value": 0.03,
+      "kind": "assumption_recollection",
+      "note": "KMS API requests; SSE-KMS S3 puts/gets each incur roughly one KMS request."
+    },
+    "secrets_manager_usd_per_secret_month": {
+      "value": 0.4,
+      "kind": "assumption_recollection",
+      "note": "Per-secret monthly charge."
+    },
+    "secrets_manager_usd_per_10000_calls": {
+      "value": 0.05,
+      "kind": "assumption_recollection",
+      "note": "Secrets Manager API calls."
+    },
+    "cloudwatch_alarm_usd_per_month": {
+      "value": 0.1,
+      "kind": "assumption_recollection",
+      "note": "Standard-resolution alarm, first 10 alarms tier."
+    },
+    "eip_usd_per_hour": {
+      "value": 0.005,
+      "kind": "assumption_recollection",
+      "note": "AWS charges hourly for every public IPv4 address, attached or not, since the Feb 2024 pricing change; matches ADR 014's own ~USD 4/month estimate."
+    },
+    "data_transfer_out_usd_per_gb": {
+      "value": 0.09,
+      "kind": "assumption_recollection",
+      "note": "Internet egress, first tier."
+    },
+    "hours_per_month": {
+      "value": 730,
+      "kind": "constant",
+      "note": "365*24/12."
+    }
+  },
+  "unknown_rates": {
+    "embeddings_usd_per_1k_tokens": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md)",
+    "cloudwatch_logs_ingest_usd_per_gb": "no CloudWatch Logs shipping is wired yet (ops go through SSM Run Command per ADR 014); revisit with T23.53 telemetry",
+    "cloudwatch_custom_metric_usd_per_month": "T23.53 telemetry metric cardinality not yet implemented",
+    "resend_usd_beyond_free_tier": "email volume assumed within Resend's free tier at these account counts; pin a rate if MAIL gate volume ever exceeds it"
+  },
+  "measurements_applied": false,
+  "scenarios": {
+    "idle_0_accounts": {
+      "scenario": "idle_0_accounts",
+      "assumption": "no signups yet; fixed infrastructure cost floor",
+      "account_totals": {
+        "accounts": 0,
+        "recalls": 0,
+        "writes": 0,
+        "input_tokens": 0,
+        "storage_bytes": 0
+      },
+      "storage_risk": {
+        "exceeds_usable_data_volume": false,
+        "usable_data_volume_bytes": 24000000000
+      },
+      "known_categories_usd": {
+        "ec2_baseline": 12.264,
+        "ec2_burst_credits": {
+          "value": 0.0,
+          "kind": "assumption_recollection"
+        },
+        "ebs_fixed": 3.04,
+        "eip": 3.65,
+        "kms_key": 1.0,
+        "secrets_manager": 1.6,
+        "cloudwatch_alarms": 0.2,
+        "s3_storage_hourly_full_snapshot": {
+          "value": 0.3317,
+          "kind": "assumption_recollection",
+          "snapshot_size_gb": 0.02,
+          "stored_version_count": 721,
+          "note": "S3 NoncurrentVersionExpiration(30d) keeps ~30 days of hourly full snapshots live simultaneously (720 noncurrent + 1 current); this is not a 1x-of-working-set cost. See docs/launch/hosted-economics.md risk section."
+        },
+        "s3_requests": {
+          "value": 0.0036,
+          "kind": "assumption_recollection"
+        },
+        "kms_requests": {
+          "value": 0.0022,
+          "kind": "assumption_recollection",
+          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT."
+        },
+        "data_transfer_out": {
+          "value": 0.0,
+          "kind": "assumption_recollection",
+          "note": "4096B/recall response, 1024B/write request assumed."
+        }
+      },
+      "known_subtotal_usd": 22.09,
+      "unknown_categories": {
+        "embeddings": {
+          "tokens_estimate": 0,
+          "usd_per_1k_tokens": null,
+          "monthly_usd": null,
+          "reason": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md)"
+        },
+        "cloudwatch_logs": {
+          "reason": "no CloudWatch Logs shipping is wired yet (ops go through SSM Run Command per ADR 014); revisit with T23.53 telemetry"
+        },
+        "cloudwatch_custom_metrics": {
+          "reason": "T23.53 telemetry metric cardinality not yet implemented"
+        }
+      },
+      "within_60usd_ceiling_known_subtotal": true
+    },
+    "10_accounts_light": {
+      "scenario": "10_accounts_light",
+      "assumption": "early-adoption mix at 10% of each plan's allowance; product/growth input not yet recorded",
+      "account_totals": {
+        "accounts": 10,
+        "recalls": 28000,
+        "writes": 1400,
+        "input_tokens": 280000,
+        "storage_bytes": 280000000
+      },
+      "storage_risk": {
+        "exceeds_usable_data_volume": false,
+        "usable_data_volume_bytes": 24000000000
+      },
+      "known_categories_usd": {
+        "ec2_baseline": 12.264,
+        "ec2_burst_credits": {
+          "value": 0.0,
+          "kind": "assumption_recollection"
+        },
+        "ebs_fixed": 3.04,
+        "eip": 3.65,
+        "kms_key": 1.0,
+        "secrets_manager": 1.6,
+        "cloudwatch_alarms": 0.2,
+        "s3_storage_hourly_full_snapshot": {
+          "value": 4.9749,
+          "kind": "assumption_recollection",
+          "snapshot_size_gb": 0.3,
+          "stored_version_count": 721,
+          "note": "S3 NoncurrentVersionExpiration(30d) keeps ~30 days of hourly full snapshots live simultaneously (720 noncurrent + 1 current); this is not a 1x-of-working-set cost. See docs/launch/hosted-economics.md risk section."
+        },
+        "s3_requests": {
+          "value": 0.0396,
+          "kind": "assumption_recollection"
+        },
+        "kms_requests": {
+          "value": 0.0238,
+          "kind": "assumption_recollection",
+          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT."
+        },
+        "data_transfer_out": {
+          "value": 0.0105,
+          "kind": "assumption_recollection",
+          "note": "4096B/recall response, 1024B/write request assumed."
+        }
+      },
+      "known_subtotal_usd": 26.8,
+      "unknown_categories": {
+        "embeddings": {
+          "tokens_estimate": 280000,
+          "usd_per_1k_tokens": null,
+          "monthly_usd": null,
+          "reason": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md)"
+        },
+        "cloudwatch_logs": {
+          "reason": "no CloudWatch Logs shipping is wired yet (ops go through SSM Run Command per ADR 014); revisit with T23.53 telemetry"
+        },
+        "cloudwatch_custom_metrics": {
+          "reason": "T23.53 telemetry metric cardinality not yet implemented"
+        }
+      },
+      "within_60usd_ceiling_known_subtotal": true
+    },
+    "100_accounts_light": {
+      "scenario": "100_accounts_light",
+      "assumption": "at ADR 014's 100 free-account cap, light usage; product/growth input not yet recorded",
+      "account_totals": {
+        "accounts": 100,
+        "recalls": 230000,
+        "writes": 12500,
+        "input_tokens": 2500000,
+        "storage_bytes": 2700000000
+      },
+      "storage_risk": {
+        "exceeds_usable_data_volume": false,
+        "usable_data_volume_bytes": 24000000000
+      },
+      "known_categories_usd": {
+        "ec2_baseline": 12.264,
+        "ec2_burst_credits": {
+          "value": 0.0,
+          "kind": "assumption_recollection"
+        },
+        "ebs_fixed": 3.04,
+        "eip": 3.65,
+        "kms_key": 1.0,
+        "secrets_manager": 1.6,
+        "cloudwatch_alarms": 0.2,
+        "s3_storage_hourly_full_snapshot": {
+          "value": 45.1058,
+          "kind": "assumption_recollection",
+          "snapshot_size_gb": 2.72,
+          "stored_version_count": 721,
+          "note": "S3 NoncurrentVersionExpiration(30d) keeps ~30 days of hourly full snapshots live simultaneously (720 noncurrent + 1 current); this is not a 1x-of-working-set cost. See docs/launch/hosted-economics.md risk section."
+        },
+        "s3_requests": {
+          "value": 0.3636,
+          "kind": "assumption_recollection"
+        },
+        "kms_requests": {
+          "value": 0.2182,
+          "kind": "assumption_recollection",
+          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT."
+        },
+        "data_transfer_out": {
+          "value": 0.0859,
+          "kind": "assumption_recollection",
+          "note": "4096B/recall response, 1024B/write request assumed."
+        }
+      },
+      "known_subtotal_usd": 67.53,
+      "unknown_categories": {
+        "embeddings": {
+          "tokens_estimate": 2500000,
+          "usd_per_1k_tokens": null,
+          "monthly_usd": null,
+          "reason": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md)"
+        },
+        "cloudwatch_logs": {
+          "reason": "no CloudWatch Logs shipping is wired yet (ops go through SSM Run Command per ADR 014); revisit with T23.53 telemetry"
+        },
+        "cloudwatch_custom_metrics": {
+          "reason": "T23.53 telemetry metric cardinality not yet implemented"
+        }
+      },
+      "within_60usd_ceiling_known_subtotal": false
+    },
+    "full_limit_mix": {
+      "scenario": "full_limit_mix",
+      "assumption": "the ratified 1 Scale + 3 Builder + 10 Free mix at full advertised allowance (90,000 total facts) per docs/launch/hosted-completion/evidence.md",
+      "account_totals": {
+        "accounts": 14,
+        "recalls": 700000,
+        "writes": 40000,
+        "input_tokens": 8000000,
+        "storage_bytes": 9000000000
+      },
+      "storage_risk": {
+        "exceeds_usable_data_volume": false,
+        "usable_data_volume_bytes": 24000000000
+      },
+      "known_categories_usd": {
+        "ec2_baseline": 12.264,
+        "ec2_burst_credits": {
+          "value": 1.46,
+          "kind": "assumption_recollection"
+        },
+        "ebs_fixed": 3.04,
+        "eip": 3.65,
+        "kms_key": 1.0,
+        "secrets_manager": 1.6,
+        "cloudwatch_alarms": 0.2,
+        "s3_storage_hourly_full_snapshot": {
+          "value": 149.5787,
+          "kind": "assumption_recollection",
+          "snapshot_size_gb": 9.02,
+          "stored_version_count": 721,
+          "note": "S3 NoncurrentVersionExpiration(30d) keeps ~30 days of hourly full snapshots live simultaneously (720 noncurrent + 1 current); this is not a 1x-of-working-set cost. See docs/launch/hosted-economics.md risk section."
+        },
+        "s3_requests": {
+          "value": 0.054,
+          "kind": "assumption_recollection"
+        },
+        "kms_requests": {
+          "value": 0.0324,
+          "kind": "assumption_recollection",
+          "note": "SSE-KMS attaches ~1 KMS request per S3 backup PUT."
+        },
+        "data_transfer_out": {
+          "value": 0.2617,
+          "kind": "assumption_recollection",
+          "note": "4096B/recall response, 1024B/write request assumed."
+        }
+      },
+      "known_subtotal_usd": 173.14,
+      "unknown_categories": {
+        "embeddings": {
+          "tokens_estimate": 8000000,
+          "usd_per_1k_tokens": null,
+          "monthly_usd": null,
+          "reason": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md)"
+        },
+        "cloudwatch_logs": {
+          "reason": "no CloudWatch Logs shipping is wired yet (ops go through SSM Run Command per ADR 014); revisit with T23.53 telemetry"
+        },
+        "cloudwatch_custom_metrics": {
+          "reason": "T23.53 telemetry metric cardinality not yet implemented"
+        }
+      },
+      "within_60usd_ceiling_known_subtotal": false
+    }
+  },
+  "historical_ceiling_usd": 60.0,
+  "ceiling_note": "The historical USD 60/month figure is a ceiling, not a budget target or new spend authorization (docs/launch/hosted-plan.md).",
+  "citation_limitation": "Rates are this worker's training-data recollection, not a live-fetched dated citation: WebSearch/WebFetch tool permission was not granted in this headless session. A reviewer must re-verify RATE_TABLE against current AWS/Resend pricing pages before this cost model is treated as authoritative."
+}
