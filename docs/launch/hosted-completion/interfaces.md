@@ -205,6 +205,19 @@ All are PROPOSED and unapplied. Config stays JSON per the crosswalk.
 | `storage.staging_budget_bytes`, `storage.max_mutation_stage_bytes`, `storage.operator_headroom_bytes` | task44 | Global staging budget, per-stage ceiling, free-space floor. |
 | `deletion_journal.bucket`, `deletion_journal.generation` | task48, task50 | Journal location; generation is set only by recovery apply. |
 
+## Integration requests (for the coordinator; not applied)
+
+Feature workers and this task may not edit shared files. These follow from the proposals above and need a ruling or an owner.
+
+| # | Request | Owner | Why |
+|---|---|---|---|
+| 1 | **File-first gate versus `DeletionJournal.Append`.** `internal/gate/filefirst_test.go` fails any non-test call whose selector is named `Append` outside its allowlist. The frozen contract names the journal method `Append` (task41 step 3, task48 step 2), so task48's production adapter will fail the gate. This pass's non-test suite helper avoids a false positive by calling through a method value. Rule between an allowlist entry for the journal adapter package with a written justification (recommended: the gate guards canonical brain-file writes, and the journal writes none) or renaming the contract method. | Coordinator, before task48 starts | The gate allowlist stays unchanged for task44 per its contract, and the file is outside task41's write scope. |
+| 2 | Core-writer seam for staged writes (Git quarantine objects, or equivalent). | Runtime44 with the writer owner | Decision 1 cannot be implemented without it. |
+| 3 | Stop using `meter.Meter.Reserve`'s expired-row release for mutating operations; keep it for read metrics. | Runtime44 (`R-hosted-meter`) | Releasing an expired row discards an unknown canonical outcome. |
+| 4 | `DeleteBrain` and `DeleteAccount` fence the brain and resolve its reserved ledger rows as part of purge, in journal order. | Durability48 with runtime44 | Otherwise the reconciler defers those rows forever. |
+| 5 | A failed `writer.Flush` rolls back the working tree instead of re-marking paths as touched. | Writer owner | Removes the pending-working-tree case that sends rows to pending review. |
+| 6 | Operator command for pending-review rows, registered in `internal/cli/hosted.go`. | Runtime44 with integrator | Decision 2 needs a human exit path. |
+
 ## Lock ordering and cancellation
 
 Documented from the current implementation plus the proposed additions. Not a chief-architect-signed invariant.
