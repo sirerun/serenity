@@ -98,7 +98,9 @@ class RateTableTests(unittest.TestCase):
         self.assertEqual(cost_model.rate("ec2_t4g_burst_credit_usd_per_vcpu_hour"), 0.04)
 
     def test_s3_rate_is_the_us_west_2_figure_not_us_east_1(self):
-        self.assertEqual(cost_model.rate("s3_standard_usd_per_gb_month"), 0.023)
+        self.assertEqual(cost_model.rate("s3_standard_usd_per_gib_month"), 0.023)
+        self.assertNotIn("s3_standard_usd_per_gb_month", cost_model.RATE_TABLE)
+        self.assertEqual(cost_model.RATE_TABLE["s3_standard_usd_per_gib_month"]["receipt"]["catalog_unit"], "GB-Mo")
 
     def test_ec2_hourly_rate_is_a_primary_regional_receipt_not_a_third_party_parity_assumption(self):
         entry = cost_model.RATE_TABLE["ec2_t4g_small_usd_per_hour"]
@@ -275,7 +277,9 @@ class BackupRetentionMathTests(unittest.TestCase):
         backups = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)["known_categories_usd"]
         self.assertEqual(backups["s3_storage_backups"]["brains_in_backup"], 29)
         self.assertEqual(backups["s3_storage_backups"]["objects_per_backup"], 3 + 29)
-        self.assertEqual(backups["s3_requests"]["monthly_put_count"], cost_model.BACKUPS_PER_MONTH * 32)
+        # 32 objects a backup, and 30 of them (control.db plus 29 bundles) go up in parts: 1,145 requests a backup, not 32.
+        self.assertEqual(backups["s3_requests"]["per_backup"]["objects"], 32)
+        self.assertEqual(backups["s3_requests"]["monthly_put_count"], cost_model.BACKUPS_PER_MONTH * 1145)
 
     def test_a_scale_only_mix_with_all_allowed_brains_counts_ten_bundles(self):
         spec = {"mix": {"scale": 1}, "usage_fraction": 1.0, "brains": cost_model.ALL_ALLOWED_BRAINS, "assumption": "t"}
@@ -311,18 +315,50 @@ class PriceScenarioTests(unittest.TestCase):
         full = cost_model.price_scenario("full", cost_model.SCENARIOS[FULL], None)
         self.assertLess(idle["known_subtotal_usd"], full["known_subtotal_usd"])
 
-    def test_embeddings_reported_as_unknown_not_zero_and_includes_query_and_readiness_components(self):
+    def test_embeddings_report_counts_units_and_no_provider_tokens_or_dollars(self):
         full = cost_model.price_scenario("full", cost_model.SCENARIOS[FULL], None)
         embed = full["unknown_categories"]["embeddings"]
         self.assertIsNone(embed["monthly_usd"])
-        self.assertGreater(embed["write_tokens"]["value"], 0)
-        self.assertGreater(embed["query_tokens"]["value"], 0)
-        self.assertGreater(embed["readiness_tokens"]["value"], 0)
-        self.assertEqual(embed["total_tokens"], embed["write_tokens"]["value"] + embed["query_tokens"]["value"] + embed["rebuild_reembed_tokens"]["value"] + embed["readiness_tokens"]["value"])
+        self.assertIsNone(embed["usd_per_1k_tokens"])
+        self.assertIsNone(embed["provider_tokens"]["value"])
+        self.assertEqual(embed["provider_calls"]["write_embeds"]["value"], 40_000)
+        self.assertEqual(embed["provider_calls"]["query_embeds"]["value"], 700_000)
+        for old in ("total_tokens", "write_tokens", "query_tokens", "rebuild_reembed_tokens", "readiness_tokens"):
+            self.assertNotIn(old, embed)
 
-    def test_readiness_probing_is_nonzero_even_at_zero_accounts(self):
+    def test_the_service_counter_and_the_average_proxies_are_separate_and_neither_is_a_provider_bound(self):
+        embed = cost_model.price_scenario("full", cost_model.SCENARIOS[FULL], None)["unknown_categories"]["embeddings"]
+        counter = embed["service_counter"]["write_input_tokens_at_entitlement_x_usage"]
+        self.assertEqual((counter["value"], counter["unit"]), (8_000_000, "cl100k_base_tokens_per_month"))
+        proxy = embed["average_proxy_tokens"]
+        self.assertEqual((proxy["write_proxy_tokens"], proxy["query_proxy_tokens"]), (40_000 * 272, 700_000 * 74))
+        self.assertNotEqual(proxy["write_proxy_tokens"], counter["value"])  # the two are never capped against each other.
+        self.assertIn("not an upper bound", proxy["kind"])
+        self.assertIn("not a service cap", proxy["query_mean_note"])
+        self.assertIn("not a bound", embed["provider_tokens"]["reason"])
+        self.assertNotIn("min(", json.dumps(embed))
+
+    def test_the_byte_bounds_are_stated_only_where_the_source_proves_them(self):
+        embed = cost_model.price_scenario("full", cost_model.SCENARIOS[FULL], None)["unknown_categories"]["embeddings"]["text_bytes_handed_to_the_embedder"]
+        self.assertEqual(embed["readiness_probe_bytes_per_call"], len("Serenity readiness probe"))
+        self.assertEqual(embed["query_bytes_per_call_max"], 1 << 20)
+        self.assertIn("not proven", embed["write_and_reembed_bytes"])
+
+    def test_the_probe_text_frame_cap_and_retry_count_match_the_source(self):
+        service = (REPO / "internal" / "hosted" / "service" / "service.go").read_text()
+        self.assertIn(f'Embed(ctx, "{cost_model.READINESS_PROBE_TEXT}")', service)
+        self.assertIn("time.Since(s.readyAt) > time.Minute", service)
+        self.assertEqual(cost_model.READINESS_CACHE_SECONDS, 60)
+        self.assertIn(f"health_interval {cost_model.CADDY_HEALTH_INTERVAL_SECONDS}s", (REPO / "deploy" / "hosted" / "Caddyfile").read_text())
+        self.assertEqual(cost_model.MAX_FRAME_BYTES, 1 << 20)
+        self.assertIn("MaxFrameBytes = 1 << 20", (REPO / "internal" / "server" / "mcp" / "server.go").read_text())
+        self.assertIn(f"defaultRetryAttempts = {cost_model.ROUTER_RETRY_ATTEMPTS}", (REPO / "internal" / "router" / "retry.go").read_text())
+
+    def test_readiness_is_nonzero_even_at_zero_accounts_and_is_a_count_range(self):
         idle = cost_model.price_scenario("idle", cost_model.SCENARIOS["idle_0_accounts"], None)
-        self.assertGreater(idle["unknown_categories"]["embeddings"]["readiness_tokens"]["value"], 0)
+        ready = idle["unknown_categories"]["embeddings"]["provider_calls"]["readiness_embeds"]
+        self.assertEqual(ready["event_month_range"], {"low": 28_800, "high": 43_200})
+        self.assertEqual(idle["unknown_categories"]["embeddings"]["provider_calls"]["write_embeds"]["value"], 0)
 
     def test_kms_requests_free_tier_absorbs_light_scenarios(self):
         ten = cost_model.price_scenario("t", cost_model.SCENARIOS["10_accounts_light"], None)
@@ -353,7 +389,7 @@ class PriceScenarioTests(unittest.TestCase):
         full = cost_model.price_scenario("f", cost_model.SCENARIOS[FULL], None)
         total = sum((v["value"] if isinstance(v, dict) else v) or 0.0 for v in full["known_categories_usd"].values())
         self.assertAlmostEqual(full["known_subtotal_usd"], total, places=2)
-        self.assertGreater(full["unknown_categories"]["control_db_lifetime_growth"]["sensitivity_by_horizon"][-1]["added_s3_backup_storage_usd_per_month"], 0)
+        self.assertGreater(full["unknown_categories"]["control_db_lifetime_growth"]["sensitivity_by_horizon"][-1]["added_s3_backup_storage_usd_per_month"]["low"], 0)
         self.assertNotIn("control_db_lifetime_growth", full["known_categories_usd"])
 
 
@@ -510,11 +546,15 @@ class MeasuredPricingTests(unittest.TestCase):
         by_scenario = cost_model.parse_measurements(document(*records), NOW) if records else {}
         return cost_model.price_scenario(name, cost_model.SCENARIOS[name], by_scenario.get(name))
 
-    def test_a_measured_snapshot_prices_exactly_size_times_retained_sets_times_rate(self):
-        s = self.priced(FULL, record(value=1_000_000_000))
-        s3 = s["known_categories_usd"]["s3_storage_backups"]
-        self.assertEqual(s3["value"], round(1.0 * cost_model.RETAINED_BACKUP_SETS * 0.023, 4))
-        self.assertEqual(s3["snapshot_size_gb"], 1.0)
+    def test_a_measured_snapshot_prices_exactly_gibibytes_times_retained_sets_times_rate(self):
+        # One GiB (2^30 bytes) is one billed S3 GB; a decimal gigabyte is only 0.9313 of one.
+        one_gib = self.priced(FULL, record(value=2**30))["known_categories_usd"]["s3_storage_backups"]
+        self.assertEqual(one_gib["value"], round(1.0 * cost_model.RETAINED_BACKUP_SETS * 0.023, 4))
+        self.assertEqual((one_gib["snapshot_size_bytes"], one_gib["snapshot_size_gib"]), (2**30, 1.0))
+        decimal_gb = self.priced(FULL, record(value=1_000_000_000))["known_categories_usd"]["s3_storage_backups"]
+        self.assertEqual(decimal_gb["snapshot_size_gib"], round(1e9 / 2**30, 6))
+        self.assertEqual(decimal_gb["value"], round(1e9 / 2**30 * cost_model.RETAINED_BACKUP_SETS * 0.023, 4))
+        self.assertLess(decimal_gb["value"], one_gib["value"])
 
     def test_a_measured_snapshot_is_partly_measured_and_names_its_source_and_the_modeled_inputs(self):
         s3 = self.priced(FULL, record())["known_categories_usd"]["s3_storage_backups"]
@@ -531,14 +571,17 @@ class MeasuredPricingTests(unittest.TestCase):
             self.assertEqual(s["measurements_applied"], [], other)
         self.assertEqual([m["quantity"] for m in measured["measurements_applied"]], ["snapshot_size_bytes"])
 
-    def test_measured_puts_are_measured_and_the_kms_line_derived_from_them_stays_an_assumption(self):
+    def test_measured_puts_are_measured_and_never_become_the_kms_request_count(self):
+        base = self.priced(FULL)["known_categories_usd"]
         s = self.priced(FULL, record(quantity="s3_put_requests_per_month", value=50_000))
         put = s["known_categories_usd"]["s3_requests"]
         self.assertEqual((put["kind"], put["monthly_put_count"], put["value"]), ("measured", 50_000, round(50_000 / 1000 * 0.005, 4)))
+        self.assertEqual(put["modeled_requests_per_month"], base["s3_requests"]["modeled_requests_per_month"])
         kms = s["known_categories_usd"]["kms_requests"]
         self.assertEqual(kms["kind"], "assumption")
-        self.assertIn("measured s3_put_requests_per_month", kms["derived_from"])
-        self.assertEqual(kms["value"], round((50_000 - 20_000) / 10_000 * 0.03, 4))
+        self.assertIn("does not measure KMS calls", kms["derived_from"])
+        self.assertEqual(kms["monthly_kms_requests"], base["kms_requests"]["monthly_kms_requests"])
+        self.assertEqual(kms["value"], base["kms_requests"]["value"])
 
     def test_measured_surplus_hours_replace_the_mean_case_assumption(self):
         s = self.priced(FULL, record(quantity="ec2_surplus_credit_vcpu_hours", value=0))
@@ -552,6 +595,12 @@ class MeasuredPricingTests(unittest.TestCase):
         measured = self.priced(FULL, record(quantity="ec2_surplus_credit_vcpu_hours", value=0))
         self.assertEqual(base["peak_exposure"]["components_usd"]["ec2_surplus_credits_sustained_100_percent_cpu"], measured["peak_exposure"]["components_usd"]["ec2_surplus_credits_sustained_100_percent_cpu"])
         self.assertEqual(base["unknown_categories"]["control_db_lifetime_growth"]["sensitivity_by_horizon"], measured["unknown_categories"]["control_db_lifetime_growth"]["sensitivity_by_horizon"])
+
+    def test_a_measured_snapshot_replaces_the_data_bytes_and_is_split_over_the_modeled_bundles(self):
+        measured = self.priced(FULL, record(value=2_000_000_000))["known_categories_usd"]["s3_requests"]
+        bundle = [d for d in measured["per_object_size_assumption"] if "brain bundle" in d["object"]]
+        self.assertEqual([d["count"] for d in bundle], [29])
+        self.assertEqual(bundle[0]["bytes_each"], round((2_000_000_000 - cost_model.CONTROL_DB_ASSUMED_BYTES) / 29))
 
     def test_price_scenario_rejects_the_old_bare_number_shape(self):
         """Reproduction: measurements={'snapshot_size_bytes': -9e9} priced a negative bill."""
@@ -615,14 +664,15 @@ class PeakExposureTests(unittest.TestCase):
         self.assertIn("3 USD", self.full["known_categories_usd"]["kms_key"]["note"])
 
     def test_kms_requests_and_transfer_peak_without_any_global_free_allowance(self):
-        puts = self.full["known_categories_usd"]["s3_requests"]["monthly_put_count"]
-        self.assertEqual(puts, 23_040)
-        self.assertAlmostEqual(self.peak["components_usd"]["kms_requests_no_free_allowance"], round(puts / 10_000 * 0.03, 4))
-        self.assertAlmostEqual(self.full["known_categories_usd"]["kms_requests"]["value"], round((puts - 20_000) / 10_000 * 0.03, 4))
+        kms = self.full["known_categories_usd"]["kms_requests"]["monthly_kms_requests"]
+        self.assertEqual(kms, 23_040)  # 32 objects a backup, one assumed KMS request each, 720 backups: not the 824,400 S3 requests.
+        self.assertAlmostEqual(self.peak["components_usd"]["kms_requests_no_free_allowance"], round(kms / 10_000 * 0.03, 4))
+        self.assertAlmostEqual(self.full["known_categories_usd"]["kms_requests"]["value"], round((kms - 20_000) / 10_000 * 0.03, 4))
         self.assertGreater(self.peak["components_usd"]["kms_requests_no_free_allowance"], self.full["known_categories_usd"]["kms_requests"]["value"])
-        transfer_gb = (700_000 * 4096 + 40_000 * 1024) / 1_000_000_000
+        transfer_gb = 700_000 * 4096 / 1_000_000_000  # recall responses only; inbound write bytes are not egress.
         self.assertAlmostEqual(self.peak["components_usd"]["data_transfer_out_no_free_allowance"], round(transfer_gb * 0.09, 4))
         self.assertEqual(self.full["known_categories_usd"]["data_transfer_out"]["value"], 0.0)
+        self.assertIn("not an egress bound", self.peak["data_transfer_model"])
 
     def test_the_peak_subtotal_replaces_exactly_four_lines_and_adds_nothing_else(self):
         known = self.full["known_categories_usd"]
@@ -645,7 +695,7 @@ class PeakExposureTests(unittest.TestCase):
 
     def test_the_peak_states_it_is_not_a_full_maximum_and_lists_what_it_leaves_out(self):
         self.assertIs(self.peak["full_maximum_computable"], False)
-        for unknown in ("control_db_lifetime_growth", "embeddings", "cloudwatch_logs", "cloudwatch_custom_metrics", "s3_get_list_restore", "s3_multipart_requests", "email_peak_volume"):
+        for unknown in ("control_db_lifetime_growth", "embeddings", "embedding_restore_and_reopen", "cloudwatch_logs", "cloudwatch_custom_metrics", "s3_get_list_restore", "s3_multipart_requests", "egress_response_size", "outbound_bytes_unmodeled", "email_peak_volume"):
             self.assertIn(unknown, self.peak["not_included"])
             self.assertIn(unknown, self.full["unknown_categories"])
         self.assertEqual(self.peak["kind"], "sensitivity_not_forecast")
@@ -653,51 +703,298 @@ class PeakExposureTests(unittest.TestCase):
 
 
 class ControlDatabaseTests(unittest.TestCase):
+    def cdb(self, name=FULL):
+        return cost_model.price_scenario(name, cost_model.SCENARIOS[name], None)["unknown_categories"]["control_db_lifetime_growth"]
+
     def test_the_twenty_megabyte_constant_is_a_scenario_assumption_never_a_lifetime_bound(self):
-        cdb = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)["unknown_categories"]["control_db_lifetime_growth"]
+        cdb = self.cdb()
         self.assertEqual(cdb["status"], "unbounded_in_current_runtime")
-        self.assertEqual(cdb["assumed_control_db_gb_in_snapshot"], 0.02)
+        self.assertEqual(cdb["assumed_control_db_bytes_in_snapshot"], 20_000_000)
+        self.assertEqual(cdb["assumed_control_db_gib_in_snapshot"], round(20_000_000 / 2**30, 6))
         self.assertIn("never a lifetime bound", cdb["assumed_control_db_kind"])
         self.assertIsNone(cdb["monthly_usd"])
         self.assertIn("not an upper bound", cost_model.UNKNOWN_RATES["control_db_lifetime_growth"])
         self.assertIn("not a forecast and not a bound", cdb["sensitivity_basis"])
 
     def test_sampled_row_sizes_come_from_the_real_writer_audit_and_are_labeled_a_sample(self):
-        cdb = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)["unknown_categories"]["control_db_lifetime_growth"]
+        cdb = self.cdb()
         self.assertEqual(cdb["sampled_row_bytes"], {"reservation": 301, "audit": 229, "per_write": 1060, "per_recall": 530})
         self.assertIn("cff5bb74012f404b345240e54acd83b62a8fdaeb3a4ae8cf9e0ed8b818a4ef40", cdb["sample"])
         self.assertIn("1,500 writes", cdb["sample"])
 
-    def test_the_full_mix_sensitivity_is_the_sampled_slope_times_usage_times_retention(self):
-        cdb = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)["unknown_categories"]["control_db_lifetime_growth"]
-        monthly = 40_000 * 1060 + 700_000 * 530
-        self.assertEqual(cdb["growth_bytes_per_month_at_scenario_usage"], monthly)
+    def test_the_components_are_named_and_the_sampled_slope_already_includes_its_provider_rows(self):
+        components = self.cdb()["components"]
+        self.assertEqual(set(components), {"write_and_recall_paths", "readiness_probe_rows", "restore_reembed_rows"})
+        slope = components["write_and_recall_paths"]
+        self.assertEqual(slope["monthly_bytes"], 40_000 * 1060 + 700_000 * 530)
+        self.assertIn("no second provider slope", slope["kind"])
+        self.assertNotIn("provider_rows_per_month", json.dumps(components))
+
+    def test_readiness_rows_are_their_own_component_at_the_derived_cadence_and_the_sampled_row_size(self):
+        ready = self.cdb()["components"]["readiness_probe_rows"]
+        self.assertEqual(ready["rows_per_month"], {"low": 28_800, "high": 43_200})
+        self.assertEqual(ready["monthly_bytes"], {"low": 28_800 * 229, "high": 43_200 * 229})
+        self.assertIn("not in the write and recall slope", ready["kind"])
+
+    def test_restore_rows_are_per_event_only_because_the_event_count_is_unknown(self):
+        restore = self.cdb()["components"]["restore_reembed_rows"]
+        self.assertEqual((restore["rows_per_event_max"], restore["bytes_per_event_max"]), (90_000, 90_000 * 229))
+        self.assertIsNone(restore["events_per_month"])
+        self.assertIsNone(restore["monthly_bytes"])
+
+    def test_the_sensitivity_is_the_sum_of_the_components_billed_at_gib_times_retention(self):
+        cdb = self.cdb()
+        slope = 40_000 * 1060 + 700_000 * 530
+        self.assertEqual(cdb["growth_bytes_per_month_at_scenario_usage"], {"low": slope + 28_800 * 229, "high": slope + 43_200 * 229})
         by_months = {h["months"]: h for h in cdb["sensitivity_by_horizon"]}
         self.assertEqual(set(by_months), {1, 12, 24})
         for months, entry in by_months.items():
-            grown_gb = months * monthly / 1e9
-            self.assertAlmostEqual(entry["control_db_gb"], 0.02 + grown_gb, places=3)
-            self.assertAlmostEqual(entry["added_s3_backup_storage_usd_per_month"], grown_gb * 1441 * 0.023, places=1)
-        self.assertGreater(by_months[12]["added_s3_backup_storage_usd_per_month"], 100)
+            for k, readiness_rows in (("low", 28_800), ("high", 43_200)):
+                grown = months * (slope + readiness_rows * 229)
+                self.assertEqual(entry["control_db_bytes"][k], round(20_000_000 + grown))
+                self.assertAlmostEqual(entry["control_db_gib"][k], (20_000_000 + grown) / 2**30, places=5)
+                self.assertAlmostEqual(entry["added_s3_backup_storage_usd_per_month"][k], grown / 2**30 * 1441 * 0.023, delta=0.006)
+        self.assertGreater(by_months[12]["added_s3_backup_storage_usd_per_month"]["low"], 100)
 
     def test_growth_is_not_replaced_by_a_hard_bound_in_the_snapshot_or_the_subtotal(self):
         no_growth = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)
-        self.assertEqual(no_growth["known_categories_usd"]["s3_storage_backups"]["snapshot_size_gb"], round(9.0 + 0.02, 4))
+        self.assertEqual(no_growth["known_categories_usd"]["s3_storage_backups"]["snapshot_size_bytes"], 9_020_000_000)
+        self.assertNotIn("control_db_lifetime_growth", no_growth["known_categories_usd"])
 
-    def test_an_idle_scenario_grows_nothing_but_is_still_reported_unbounded(self):
-        cdb = cost_model.price_scenario("idle", cost_model.SCENARIOS["idle_0_accounts"], None)["unknown_categories"]["control_db_lifetime_growth"]
-        self.assertEqual(cdb["growth_bytes_per_month_at_scenario_usage"], 0)
+    def test_an_idle_scenario_still_grows_from_readiness_rows_alone_and_is_reported_unbounded(self):
+        cdb = self.cdb("idle_0_accounts")
+        self.assertEqual(cdb["components"]["write_and_recall_paths"]["monthly_bytes"], 0)
+        self.assertEqual(cdb["growth_bytes_per_month_at_scenario_usage"], {"low": 28_800 * 229, "high": 43_200 * 229})
         self.assertEqual(cdb["status"], "unbounded_in_current_runtime")
 
-    def test_multipart_requests_are_a_sensitivity_outside_every_subtotal(self):
+    def test_actual_growth_needs_a_database_size_measurement_the_model_cannot_yet_accept(self):
+        need = self.cdb()["measurement_required"]
+        self.assertIn("dbstat", need["what"])
+        self.assertIn("cannot be told apart without instrumentation", need["attribution"])
+        self.assertIn("may not be ledgered", need["attribution"])
+        self.assertIs(need["accepted_by_this_model_today"], False)
+        self.assertNotIn("control_db_bytes", cost_model.MEASURED_QUANTITIES)
+        self.assertEqual(set(cost_model.MEASURED_QUANTITIES), {"snapshot_size_bytes", "s3_put_requests_per_month", "ec2_surplus_credit_vcpu_hours"})
+
+
+class StorageUnitTests(unittest.TestCase):
+    """S3 storage is billed in GiB (2^30 bytes); product quotas stay in decimal bytes and no other unit is re-based."""
+
+    def test_the_unit_receipt_states_the_binary_gigabyte_and_pins_the_page_hash(self):
+        receipt = json.loads((EVIDENCE / cost_model._S3_UNIT_RECEIPT).read_text())
+        self.assertEqual(receipt["url"], "https://aws.amazon.com/s3/pricing/")
+        self.assertIn("binary gigabytes (GB), where 1 GB is 2 30 bytes", receipt["excerpt"])
+        self.assertIn("gibibyte (GiB)", receipt["excerpt"])
+        self.assertRegex(receipt["page_sha256"], r"[0-9a-f]{64}")
+        self.assertEqual(receipt["page_sha256"], cost_model.RATE_RECEIPTS[cost_model._S3_UNIT_RECEIPT]["sources"][0]["sha256"])
+        self.assertEqual(receipt["retrieved_at"], cost_model.RATE_RECEIPTS[cost_model._S3_UNIT_RECEIPT]["sources"][0]["retrieved_at"])
+        self.assertIn("S3 storage billed quantity only", receipt["scope"])
+
+    def test_the_price_list_tier_boundaries_are_binary_multiples_too(self):
+        tiers = {r["begin_range"] for r in json.loads((EVIDENCE / "s3-rate.json").read_text())["rates"]}
+        self.assertEqual(tiers, {"0", str(50 * 1024), str(500 * 1024)})
+
+    def test_the_billed_quantity_divides_by_two_to_the_thirtieth_not_a_billion(self):
+        self.assertEqual(cost_model.BYTES_PER_GIB, 1_073_741_824)
+        full = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)["known_categories_usd"]["s3_storage_backups"]
+        gib_months = 9_020_000_000 / 2**30 * 1441
+        self.assertAlmostEqual(full["billed_quantity"]["value"], gib_months, places=3)
+        self.assertEqual(full["billed_quantity"]["unit"], "GiB-month")
+        self.assertEqual(full["value"], round(gib_months * 0.023, 4))
+        self.assertAlmostEqual(full["value"] / round(9_020_000_000 / 1e9 * 1441 * 0.023, 4), 1e9 / 2**30, places=4)  # the ~6.87% reduction.
+
+    def test_quotas_stay_in_decimal_bytes_and_are_not_converted(self):
+        self.assertEqual(cost_model.PLAN_ALLOWANCES["scale"]["storage_bytes"], 5_000_000_000)
+        totals, _ = cost_model.account_totals(cost_model.SCENARIOS[FULL]["mix"], 1.0)
+        self.assertEqual(totals["storage_bytes"], 9_000_000_000)
+        risk = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)["storage_risk"]
+        self.assertEqual(risk["usable_data_volume_bytes"], 24_000_000_000)
+
+    def test_only_the_s3_storage_unit_is_rebased_and_every_other_unit_names_its_own_source(self):
+        units = cost_model.UNIT_DEFINITIONS
+        self.assertEqual(units["s3_storage_billed"]["unit"], "GiB-month")
+        self.assertIn("2^30", units["s3_storage_billed"]["definition"])
+        for other in ("ebs_volume_size", "ebs_gp3_throughput", "data_transfer", "s3_requests", "kms_and_secrets_requests", "plan_quotas"):
+            self.assertNotEqual(units[other]["unit"], "GiB-month", other)
+        self.assertEqual(cost_model.rate("ebs_gp3_usd_per_gb_month"), 0.08)
+        self.assertEqual(cost_model.price_scenario("idle", cost_model.SCENARIOS["idle_0_accounts"], None)["known_categories_usd"]["ebs_fixed"], round(38 * 0.08, 4))
+        self.assertIn("not sourced", units["data_transfer"]["note"])
+
+    def test_the_committed_result_carries_the_unit_definitions(self):
+        data = json.loads((EVIDENCE / "cost.json").read_text())
+        self.assertEqual(data["unit_definitions"], cost_model.UNIT_DEFINITIONS)
+
+
+class S3RequestModelTests(unittest.TestCase):
+    """One request below the CLI multipart threshold; otherwise a create, one request per part and a complete."""
+
+    def test_the_cli_defaults_are_the_documented_eight_megabytes_and_the_receipt_pins_the_page(self):
+        receipt = json.loads((EVIDENCE / cost_model._CLI_RECEIPT).read_text())
+        self.assertEqual(receipt["url"], "https://docs.aws.amazon.com/cli/latest/topic/s3-config.html")
+        self.assertIn("multipart_threshold \u00b6 Default - 8MB", receipt["excerpts"]["multipart_threshold"])
+        self.assertIn("multipart_chunksize \u00b6 Default - 8MB", receipt["excerpts"]["multipart_chunksize"])
+        self.assertEqual(cost_model.MULTIPART_THRESHOLD_BYTES, 8 * 1024 * 1024)
+        self.assertEqual(cost_model.MULTIPART_CHUNK_BYTES, 8 * 1024 * 1024)
+        self.assertIn("not_stated_by_the_page", receipt)
+        self.assertIn("not_established", receipt)
+
+    def test_a_small_object_is_one_request_and_a_large_one_is_parts_plus_create_and_complete(self):
+        self.assertEqual(cost_model._objects_requests(4096, 3), {"objects": 3, "multipart_objects": 0, "parts": 0, "requests": 3})
+        self.assertEqual(cost_model._objects_requests(8 * 1024 * 1024 - 1, 1)["requests"], 1)
+        at = cost_model._objects_requests(8 * 1024 * 1024, 1)  # reaching the threshold switches to multipart.
+        self.assertEqual((at["multipart_objects"], at["parts"], at["requests"]), (1, 1, 3))
+        big = cost_model._objects_requests(100_000_000, 10)
+        self.assertEqual((big["parts"], big["requests"]), (10 * 12, 10 * 14))  # ceil(100e6 / 8 MiB) = 12 parts.
+
+    def test_the_idle_backup_is_seven_requests_for_three_objects(self):
+        idle = cost_model.price_scenario("idle", cost_model.SCENARIOS["idle_0_accounts"], None)["known_categories_usd"]["s3_requests"]
+        # manifest.json 1, COMPLETE 1, control.db 20 MB = 3 parts + create + complete = 5.
+        self.assertEqual(idle["per_backup"], {"objects": 3, "multipart_objects": 1, "parts": 3, "requests": 7})
+        self.assertEqual(idle["monthly_put_count"], 720 * 7)
+
+    def test_the_full_mix_backup_lists_every_object_size_assumption_and_totals_1145_requests(self):
+        s3 = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)["known_categories_usd"]["s3_requests"]
+        by_object = {d["object"]: d for d in s3["per_object_size_assumption"]}
+        self.assertEqual(by_object["scale brain bundle"]["count"], 10)
+        self.assertEqual(by_object["scale brain bundle"]["bytes_each"], 500_000_000)
+        self.assertEqual(by_object["builder brain bundle"]["count"], 9)
+        self.assertEqual(by_object["free brain bundle"]["count"], 10)
+        self.assertEqual(s3["per_backup"], {"objects": 32, "multipart_objects": 30, "parts": 1083, "requests": 1145})
+        self.assertEqual(sum(d["requests"] for d in s3["per_object_size_assumption"]), 1145)
+        self.assertIn("sizes are an assumption, not an inventory", s3["basis"])
+
+    def test_the_object_count_alone_is_no_longer_the_request_count(self):
+        for name in ("10_accounts_light", "100_accounts_light", FULL):
+            s3 = cost_model.price_scenario(name, cost_model.SCENARIOS[name], None)["known_categories_usd"]["s3_requests"]
+            self.assertGreater(s3["per_backup"]["requests"], s3["per_backup"]["objects"], name)
+
+    def test_the_kms_line_keeps_an_explicit_per_object_assumption_and_is_not_the_s3_request_count(self):
+        known = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)["known_categories_usd"]
+        self.assertEqual(cost_model.ASSUMED_KMS_REQUESTS_PER_OBJECT, 1)
+        self.assertEqual(known["kms_requests"]["monthly_kms_requests"], 720 * 32)
+        self.assertNotEqual(known["kms_requests"]["monthly_kms_requests"], known["s3_requests"]["monthly_put_count"])
+        self.assertIn("is not set equal to the S3 request count", known["kms_requests"]["note"])
+
+    def test_the_kms_per_part_ratio_is_an_unverified_sensitivity_outside_every_subtotal_and_peak(self):
         s = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)
-        mp = s["unknown_categories"]["s3_multipart_requests"]
-        parts = math.ceil(9_020_000_000 / (8 * 1024 * 1024))
-        self.assertEqual(mp["approx_parts_per_backup"], parts)
-        self.assertEqual(mp["extra_put_requests_per_month_beyond_one_per_object"], (parts - 32) * 720)
-        self.assertAlmostEqual(mp["sensitivity_usd_per_month"], (parts - 32) * 720 / 1000 * 0.005, places=3)
-        self.assertIsNone(mp["monthly_usd"])
+        unknown = s["unknown_categories"]["s3_multipart_requests"]
+        ratio = unknown["kms_ratio"]
+        self.assertIn("explicit assumption", ratio["status"])
+        sens = ratio["sensitivity_if_one_kms_request_per_s3_request"]
+        self.assertEqual(sens["kms_requests_per_month"], 824_400)
+        self.assertAlmostEqual(sens["usd_per_month_no_free_allowance"], 824_400 / 10_000 * 0.03, places=3)
+        self.assertIn("not in any subtotal or peak", sens["kind"])
+        self.assertIsNone(unknown["monthly_usd"])
         self.assertNotIn("s3_multipart_requests", s["known_categories_usd"])
+        self.assertEqual(s["peak_exposure"]["components_usd"]["kms_requests_no_free_allowance"], round(23_040 / 10_000 * 0.03, 4))
+
+    def test_the_unmeasured_inputs_are_listed_and_the_lifecycle_abort_rule_matches_the_template(self):
+        unknown = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)["unknown_categories"]["s3_multipart_requests"]
+        text = " ".join(unknown["unmeasured_inputs"])
+        for item in ("CLI version", "transfer client", "object size inventory", "retries", "aborted multipart uploads", "list or head checks", "KMS requests per multipart part"):
+            self.assertIn(item, text)
+        template = json.loads((REPO / "deploy" / "hosted" / "stack.json").read_text())
+        rules = [r for res in template["Resources"].values() if res["Type"] == "AWS::S3::Bucket" for r in res["Properties"]["LifecycleConfiguration"]["Rules"]]
+        self.assertEqual(rules[0]["AbortIncompleteMultipartUpload"]["DaysAfterInitiation"], 1)
+        script = (REPO / "deploy" / "hosted" / "backup.sh").read_text()
+        self.assertIn("s3 cp", script)
+        self.assertIn("--recursive", script)
+
+
+class ReadinessCadenceTests(unittest.TestCase):
+    def test_the_cadence_is_60_to_90_seconds_not_the_300_second_alarm_period(self):
+        cadence = cost_model.readiness_cadence()
+        self.assertEqual(cadence["spacing_seconds"], {"fastest_handler_floor": 60, "typical_with_caddy_tick": 90})
+        counts = cadence["successful_embeds_per_month"]
+        self.assertEqual(counts["30_day_month"], {"low": 28_800, "high": 43_200})
+        self.assertEqual(counts["730_hour_month"], {"low": 29_200, "high": 43_800})
+        self.assertEqual(cadence["event_month_basis"], "30_day_month")
+        self.assertGreater(counts["30_day_month"]["low"], 30 * 24 * 12)  # the old 8,640 (300 s) figure is gone.
+
+    def test_the_cadence_is_labeled_derived_and_unmeasured_and_the_alarms_are_not_a_source(self):
+        cadence = cost_model.readiness_cadence()
+        self.assertEqual(cadence["kind"], "cadence_range_derived_from_source_not_measured")
+        self.assertIn("never call /readyz", cadence["sources"]["not_a_source"])
+        self.assertIn("unmeasured", cadence["not_counted"])
+        self.assertIn("retries", cadence["not_counted"])
+        template = json.loads((REPO / "deploy" / "hosted" / "stack.json").read_text())
+        alarms = [r["Properties"] for r in template["Resources"].values() if r["Type"] == "AWS::CloudWatch::Alarm"]
+        self.assertEqual(sorted(a["MetricName"] for a in alarms), ["CPUUtilization", "StatusCheckFailed"])
+
+
+class EgressModelTests(unittest.TestCase):
+    def setUp(self):
+        self.full = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)
+
+    def test_egress_counts_recall_responses_only_and_excludes_inbound_write_bytes(self):
+        line = self.full["known_categories_usd"]["data_transfer_out"]
+        self.assertEqual(line["modeled_transfer_gb"], round(700_000 * 4096 / 1e9, 4))
+        self.assertIn("Inbound write bytes are not egress", line["note"])
+        writes_only = cost_model.price_scenario("w", {"mix": {"scale": 1}, "usage_fraction": 1.0, "assumption": "t"}, None)
+        self.assertEqual(writes_only["known_categories_usd"]["data_transfer_out"]["modeled_transfer_gb"], round(300_000 * 4096 / 1e9, 4))
+
+    def test_the_egress_model_is_an_average_unbounded_by_the_current_plan_and_not_a_hard_bound(self):
+        line = self.full["known_categories_usd"]["data_transfer_out"]
+        self.assertEqual(line["model"], "average_recall_response_unbounded_by_current_plan")
+        self.assertIn("average and not an exposure bound", line["note"])
+        unknown = self.full["unknown_categories"]["egress_response_size"]
+        self.assertIsNone(unknown["per_response_bound"])
+        self.assertIsNone(unknown["monthly_usd"])
+        self.assertIn("limit accepts any nonnegative integer", unknown["reason"])
+        self.assertIn("not a hard bound", unknown["reason"])
+        self.assertIn("implements no runtime cap", unknown["reason"])
+        text = json.dumps(self.full["unknown_categories"]) + json.dumps(self.full["known_categories_usd"])
+        self.assertNotIn("limit * 4096", text)
+        self.assertNotIn("204800", text)
+
+    def test_the_source_facts_behind_the_unbounded_label_hold(self):
+        recall = (REPO / "internal" / "server" / "memory" / "recall.go").read_text()
+        self.assertIn("limit must be nonnegative", recall)
+        self.assertNotIn("maxRecallLimit", recall)
+        self.assertNotIn("MaxLimit", recall)
+
+    def test_outbound_bytes_beyond_recall_responses_are_a_named_unknown_and_measured_bytes_need_scope_and_horizon(self):
+        unknown = self.full["unknown_categories"]["outbound_bytes_unmodeled"]
+        self.assertIsNone(unknown["monthly_usd"])
+        for item in ("embedding request text", "email API", "write and other tool responses"):
+            self.assertIn(item, unknown["reason"])
+        note = self.full["known_categories_usd"]["data_transfer_out"]["note"]
+        self.assertIn("scope (request mix and limit values) and horizon (window)", note)
+
+
+class RestoreAndReopenTests(unittest.TestCase):
+    def setUp(self):
+        self.full = cost_model.price_scenario(FULL, cost_model.SCENARIOS[FULL], None)
+        self.restore = self.full["unknown_categories"]["embedding_restore_and_reopen"]
+
+    def test_memory_counts_come_from_the_plan_table_not_from_bytes_divided_by_tokens(self):
+        event = self.restore["restore_full_reembed"]
+        self.assertEqual((event["stored_memories_at_scenario_usage"], event["provider_calls_per_event_max"]), (90_000, 90_000))
+        for name, expected in (("idle_0_accounts", 0), ("10_accounts_light", round(8 * 1000 * 0.1 + 2 * 10_000 * 0.1)), ("100_accounts_light", round(90 * 1000 * 0.1 + 8 * 10_000 * 0.1 + 2 * 50_000 * 0.1))):
+            scenario = cost_model.price_scenario(name, cost_model.SCENARIOS[name], None)
+            self.assertEqual(scenario["unknown_categories"]["embedding_restore_and_reopen"]["restore_full_reembed"]["provider_calls_per_event_max"], expected, name)
+
+    def test_restore_and_steady_state_retry_are_separate_and_their_counts_stay_unknown(self):
+        event, steady = self.restore["restore_full_reembed"], self.restore["steady_state_missing_vector_retry"]
+        for unknown in (event["events_per_month"], event["monthly_provider_calls"], event["provider_tokens_per_event"], steady["missing_vector_rate"], steady["reopens_per_month"], steady["monthly_provider_calls"], self.restore["monthly_usd"]):
+            self.assertIsNone(unknown)
+        self.assertIn("Git bundle excludes the derived index", event["reason"])
+        self.assertIn("once for every eligible unexpired fact", event["reason"])
+        self.assertIn("failed write-time embed", steady["reason"])
+
+    def test_the_account_input_cap_is_stated_not_to_govern_these_calls(self):
+        self.assertIn("does not meter restore, reopen, readiness or query embeds", self.restore["not_governed_by"])
+
+    def test_the_restore_source_facts_behind_the_label_hold(self):
+        pool = (REPO / "internal" / "hosted" / "pool" / "pool.go").read_text()
+        self.assertIn("RecoverMemorySearch", pool)
+        self.assertIn(".serenity/", pool)
+        backup = (REPO / "internal" / "hosted" / "backup" / "backup.go").read_text()
+        self.assertIn("bundle", backup)
+
+    def test_the_old_dimensionally_invalid_rebuild_constants_are_gone(self):
+        for gone in ("ASSUMED_COLD_REOPENS_PER_ACCOUNT_PER_MONTH", "ASSUMED_REBUILD_REEMBED_FRACTION", "ASSUMED_READINESS_PROBES_PER_MONTH", "embeddings_tokens"):
+            self.assertFalse(hasattr(cost_model, gone), gone)
 
 
 class CLITests(unittest.TestCase):
