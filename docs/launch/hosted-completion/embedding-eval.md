@@ -56,14 +56,22 @@ section; this file does not introduce new numbers, only implements them
   unrelated filler pass; that made the criterion vacuous and is removed).
   Cross-account/forgotten leakage = 0, with the cross-account sentinel
   scored separately.
-- At least 18 of the corpus's zero-content-word-overlap paraphrase cases
-  (21 in this revision, so the check is proportional — "at least 18 of
-  however many are flagged," not a literal 18-of-a-fixed-20 subset) must
-  hit semantically (expected fact in top 5) **and** miss in the local
-  lexical control (expected fact absent from the lexical-only top 5).
-  This proportional reading is this document's own interpretation,
-  offered for task41's reviewer to confirm or adjust — it is not itself
-  the freeze.
+- The contract asks for at least 18 of 20 lexical-negative paraphrases (a
+  90% ratio) to hit semantically (expected fact in top 5) **and** miss in the
+  local lexical control (expected fact absent from the lexical-only top 5).
+  This corpus flags **21** zero-content-word-overlap paraphrase cases, not
+  20, and the draft implementation is a **raw count**: it passes at 18 hits
+  when at least 20 cases are flagged (`LEXICAL_NEGATIVE_MIN_HITS = 18`,
+  `LEXICAL_NEGATIVE_MIN_DENOM = 20` in `evals/hosted/lib/scoring.py`). Over 21
+  flagged cases that is 18/21 = 85.7%, which is **weaker than** the
+  contract's 18/20 = 90%. It is not a proportional reading of the contract.
+  It is an unapproved interpretation, kept only so the harness has a number to
+  report, and it is not the freeze. **Before acceptance the named task41
+  reviewer must choose** either an exact subset of 20 of the 21 flagged
+  cases, named by id, scored 18 of 20; or an exact ratio (for example
+  at least 90%, which is 19 of 21). Nothing in this document, the harness or
+  the corpus changes until that choice is made and recorded as a reviewed
+  amendment.
 - A fixed-vector or lexical-only stub must fail the quality predicate;
   fixture mode may pass harness mechanics but must never report quality
   PASS. `scripts/hosted/eval_embeddings.py --fixtures` raises immediately
@@ -77,8 +85,10 @@ section; this file does not introduce new numbers, only implements them
 - Reviewer / date: **not yet executed**.
 - Corpus hash reviewed and accepted: **not yet executed** (current value:
   see `evals/hosted/corpus.json`'s `meta.corpus_hash_sha256`).
-- Threshold interpretation (the proportional 18-of-21 reading above)
-  confirmed or amended: **not yet executed**.
+- Lexical-negative criterion: the reviewer's choice of an exact subset of 20
+  of the 21 flagged cases (scored 18 of 20) or an exact ratio (for example 19
+  of 21), replacing the draft's unapproved raw-count 18-over-21
+  interpretation described above: **not yet executed**.
 - Live-phase seeding protocol (see "Seeding and the real-run recipe")
   confirmed: **not yet executed**.
 - Supplemental plan confirmed as a proposed addition outside `corpus.json`:
@@ -452,9 +462,11 @@ limitation in fixtures mode and blocks `--seed`/`--live`, because a recorded
   response does not report a model or dimensions.
 - **DNS resolution is not covered by the wall-clock deadline.** No claim is made
   of a total end-to-end time guarantee against a hostname.
-- **The lexical-negative reading is this document's own.** "At least 18 of the
-  flagged paraphrases" (21 in this revision) is proportional; task41's reviewer
-  confirms or amends it.
+- **The lexical-negative criterion is an unapproved raw-count interpretation.**
+  The draft passes at 18 hits over the 21 flagged paraphrases (85.7%), which is
+  weaker than the contract's 18 of 20 (90%). It is not proportional. The named
+  task41 reviewer must choose an exact subset of 20 flagged cases or an exact
+  ratio before acceptance; no scoring, threshold or corpus change is made here.
 
 ## Running it
 

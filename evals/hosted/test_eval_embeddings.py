@@ -1233,6 +1233,18 @@ class TestSupplementalPlanAndFrozenScope(unittest.TestCase):
         self.assertTrue(self.FROZEN_CORPUS_SHA256 in doc, "embedding-eval.md must name the frozen corpus hash")
         self.assertFalse("7f5e08628f903686403eb8a48c7841a4ff9bfa3cb3cd2d36d54de0f196251714" in doc, "the superseded supplemental hash must not linger")
 
+    def test_the_docs_call_the_lexical_negative_draft_an_unapproved_raw_count(self):
+        doc = (REPO_ROOT / "docs" / "launch" / "hosted-completion" / "embedding-eval.md").read_text()
+        flat = " ".join(doc.split())
+        self.assertIn("unapproved", flat)
+        self.assertIn("raw count", flat)
+        self.assertIn("18/21 = 85.7%", flat)
+        self.assertIn("exact subset", flat)
+        self.assertIn("exact ratio", flat)
+        # "proportional" may appear only negated.
+        for m in re.finditer(r"proportional", flat):
+            self.assertRegex(flat[max(0, m.start() - 20) : m.start()], r"not (a )?$", "docs may name 'proportional' only to negate it")
+
     def test_targets_are_synthetic_and_unrelated_to_any_frozen_query_text(self):
         corpus = json.loads(CORPUS_PATH.read_text())
         queries = {c["query"] for c in corpus["cases"]}
