@@ -37,9 +37,34 @@ from dataclasses import dataclass
 _RESULT_LINE = re.compile(r"^\s*\d+\.\s+(\S+)\s+score=")
 
 
-class LexicalControlUnavailable(RuntimeError):
+class LexicalControlError(RuntimeError):
+    """Base for every way the local lexical control cannot produce a result.
+    Messages are fixed text plus an exit code or a timeout: a control binary's
+    stderr is never echoed, because it can carry paths or environment values."""
+
+
+class LexicalControlUnavailable(LexicalControlError):
     """Raised when the serenity/seedbrain binaries are not available;
     callers must record this as a genuine skip, never a pass."""
+
+
+class LexicalControlFailed(LexicalControlError):
+    """The binaries exist but a step failed, hung or could not start. Callers
+    record BLOCKED (exit 2) with a result file, never an uncaught error."""
+
+
+def _run(argv: list[str], what: str, timeout_s: float, input_text: str | None = None) -> subprocess.CompletedProcess:
+    try:
+        proc = subprocess.run(
+            argv, capture_output=True, text=True, timeout=timeout_s, check=False, input=input_text
+        )
+    except subprocess.TimeoutExpired as e:
+        raise LexicalControlFailed(f"{what} timed out after {timeout_s:g}s") from e
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        raise LexicalControlFailed(f"{what} could not run: {type(e).__name__}") from e
+    if proc.returncode != 0:
+        raise LexicalControlFailed(f"{what} failed (exit {proc.returncode})")
+    return proc
 
 
 @dataclass
@@ -47,20 +72,16 @@ class DisposableBrain:
     root: str
     serenity_bin: str
 
+    def close(self) -> None:
+        """Removes this brain's directory. It is a mkdtemp this module created."""
+        shutil.rmtree(self.root, ignore_errors=True)
+
     def search(self, query: str, limit: int = 5, timeout_s: float = 30.0) -> list[str]:
         """Returns ranked chunk refs (e.g. "page:para-02a-fact"), most
         relevant first, from the real lexical-only (no embedder) search
         path. Empty list means "no results" (search.go prints that
         literally when nothing matches)."""
-        proc = subprocess.run(
-            [self.serenity_bin, "--root", self.root, "search", query, "--limit", str(limit)],
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            check=False,
-        )
-        if proc.returncode != 0:
-            raise RuntimeError(f"serenity search failed (exit {proc.returncode}): {proc.stderr.strip()}")
+        proc = _run([self.serenity_bin, "--root", self.root, "search", query, "--limit", str(limit)], "serenity search", timeout_s)
         refs = []
         for line in proc.stdout.splitlines():
             m = _RESULT_LINE.match(line)
@@ -99,33 +120,17 @@ def build_disposable_brain(
     """Creates a fresh temp brain repo, seeds it with `facts`
     ({id, type, text} dicts, matching evals/hosted/facts.json's shape),
     and runs the non-LLM `serenity sync` to build its derived FTS index.
-    Raises RuntimeError with the failing command's stderr on any step
-    failure -- never silently returns a partially-seeded brain.
+    Raises LexicalControlFailed (fixed text, no stderr) on any step failure or
+    timeout, and removes the brain it created first -- it never silently
+    returns a partially-seeded brain and never leaves one behind on failure.
     """
     root = tempfile.mkdtemp(prefix="serenity-t2343-", dir=workdir)
-
-    init_proc = subprocess.run(
-        [serenity_bin, "--root", root, "init"],
-        capture_output=True, text=True, timeout=timeout_s, check=False,
-    )
-    if init_proc.returncode != 0:
-        raise RuntimeError(f"serenity init failed: {init_proc.stderr.strip()}")
-
-    seed_input = json.dumps(
-        [{"slug": f["id"], "type": f["type"], "summary": f["text"]} for f in facts]
-    )
-    seed_proc = subprocess.run(
-        [seedbrain_bin, "-root", root],
-        input=seed_input, capture_output=True, text=True, timeout=timeout_s, check=False,
-    )
-    if seed_proc.returncode != 0:
-        raise RuntimeError(f"seedbrain failed: {seed_proc.stderr.strip()}")
-
-    sync_proc = subprocess.run(
-        [serenity_bin, "--root", root, "sync"],
-        capture_output=True, text=True, timeout=timeout_s, check=False,
-    )
-    if sync_proc.returncode != 0:
-        raise RuntimeError(f"serenity sync failed: {sync_proc.stderr.strip()}")
-
+    try:
+        _run([serenity_bin, "--root", root, "init"], "serenity init", timeout_s)
+        seed_input = json.dumps([{"slug": f["id"], "type": f["type"], "summary": f["text"]} for f in facts])
+        _run([seedbrain_bin, "-root", root], "seedbrain", timeout_s, input_text=seed_input)
+        _run([serenity_bin, "--root", root, "sync"], "serenity sync", timeout_s)
+    except BaseException:
+        shutil.rmtree(root, ignore_errors=True)
+        raise
     return DisposableBrain(root=root, serenity_bin=serenity_bin)

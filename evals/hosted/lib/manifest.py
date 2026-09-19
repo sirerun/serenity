@@ -18,6 +18,7 @@ defaults that turn missing fields into unlimited access."
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import math
 import re
@@ -29,6 +30,41 @@ from .mcp_client import validate_endpoint_url
 
 PHASE_SEED = "seed"
 PHASE_LIVE = "live"
+
+# The environment kinds this harness understands. An arbitrary non-empty string
+# is not a classification: it was accepted before, and "disposable" with a
+# loopback endpoint produced a live-provider PASS. `local-fixture` may only
+# name endpoints on this machine; the others may name remote hosts, but a
+# remote host still does not prove which provider is behind it.
+SUPPORTED_ENVIRONMENT_KINDS = ("local-fixture", "disposable", "staging", "production")
+
+ENDPOINT_CLASS_LOOPBACK = "loopback"
+ENDPOINT_CLASS_PRIVATE = "private-network"
+ENDPOINT_CLASS_REMOTE = "remote-unverified"
+
+
+def endpoint_class(url: str) -> str:
+    """Where an endpoint is, judged from its literal host only (no DNS is
+    resolved, so this stays offline). A loopback or private literal address, or
+    `localhost`, is local. Any other host name is `remote-unverified`: the
+    harness does not resolve it, so a name an operator points at a local
+    address is not detected. Neither class proves which provider serves it."""
+    host = urlsplit(url).hostname or ""
+    if host == "localhost" or host.endswith(".localhost"):
+        return ENDPOINT_CLASS_LOOPBACK
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return ENDPOINT_CLASS_REMOTE
+    if ip.is_loopback:
+        return ENDPOINT_CLASS_LOOPBACK
+    if ip.is_private or ip.is_link_local or ip.is_unspecified:
+        return ENDPOINT_CLASS_PRIVATE
+    return ENDPOINT_CLASS_REMOTE
+
+
+def is_local_endpoint(url: str) -> bool:
+    return endpoint_class(url) != ENDPOINT_CLASS_REMOTE
 
 
 def load_manifest(path: str) -> dict:
@@ -111,6 +147,13 @@ def _validate_environment(manifest: dict, problems: list[str]) -> None:
     kind = environment.get("kind")
     if not kind:
         problems.append("environment.kind is missing")
+    elif kind not in SUPPORTED_ENVIRONMENT_KINDS:
+        problems.append(f"environment.kind must be one of {list(SUPPORTED_ENVIRONMENT_KINDS)}, got {str(kind)[:40]!r}")
+    if kind == "local-fixture":
+        for prefix in ("hosted_mcp", "empty_case_hosted_mcp"):
+            url = (manifest.get(prefix) or {}).get("endpoint_url")
+            if url and not is_local_endpoint(url):
+                problems.append(f"environment.kind is 'local-fixture' but {prefix}.endpoint_url is not a local address")
     if environment.get("production_target_allowed") and kind != "production":
         problems.append("environment.production_target_allowed is true but environment.kind is not 'production'")
     if kind == "production" and not environment.get("production_target_allowed"):
@@ -146,6 +189,12 @@ def validate_live_manifest(manifest: dict, phase: str = PHASE_LIVE) -> list[str]
     _positive_finite_number(budget.get("max_cost_per_call_usd"), "budget.max_cost_per_call_usd", problems)
     if not budget.get("authorization_ref"):
         problems.append("budget.authorization_ref is missing; no recorded authorization for this spend")
+    ledger_path = budget.get("ledger_path")
+    if not (isinstance(ledger_path, str) and ledger_path.strip()):
+        problems.append(
+            "budget.ledger_path is missing; every request is reserved in a durable cumulative ledger bound to this "
+            "authorization, so the caps hold across retries and separate runs"
+        )
     if budget.get("automatic_reset"):
         problems.append("budget.automatic_reset must be false; no automatic top-up permitted")
     if budget.get("auto_top_up"):

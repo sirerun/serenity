@@ -66,7 +66,7 @@ from .scoring import K as RECALL_LIMIT
 ROLE_POSITIVE = "positive"
 ROLE_EMPTY_CASE = "empty_case"
 ROLES = (ROLE_POSITIVE, ROLE_EMPTY_CASE)
-RECEIPT_SCHEMA_VERSION = 2  # 2: expire-mode targets, expiry and expiry_check proofs
+RECEIPT_SCHEMA_VERSION = 3  # 2: expire-mode targets, expiry and expiry_check proofs; 3: ledger-backed spend provenance
 WAIT_CHUNK_SECONDS = 5.0  # the expiry wait sleeps in chunks so the elapsed cap is observed during it
 SOURCE_SLUG_PREFIX = "source-"
 INVENTORY_LIMIT = 1000
@@ -148,6 +148,34 @@ def plan_expiry(clock) -> Expiry:
 
 class SeedBlocked(RuntimeError):
     """Seeding stopped before completing; the message is the BLOCKED reason."""
+
+    kind = "other"
+
+
+class BudgetBlocked(SeedBlocked):
+    """A cumulative cap (or the ledger that enforces it) stopped the run."""
+
+    kind = "budget"
+
+
+class ProviderUnavailable(SeedBlocked):
+    """The service reported it had no working embedder (search degraded, or a
+    write stored no vector)."""
+
+    kind = "provider_unavailable"
+
+
+def blocked_kind(exc: BaseException) -> str:
+    """Why a run stopped, as one of "budget", "provider_unavailable", "other",
+    "unexpected". Only the first two are the criterion the budget-boundary
+    acceptance row is about."""
+    if isinstance(exc, BudgetExceeded):
+        return "budget"
+    if isinstance(exc, SeedBlocked):
+        return exc.kind
+    if isinstance(exc, MCPError):
+        return "other"
+    return "unexpected"
 
 
 def empty_case_ids(corpus: dict) -> list[str]:
@@ -234,7 +262,7 @@ def recall_query(client: MCPClient, guard_check, query: str, id_map: dict[str, s
     guard_check()
     resp = _args_ok(client.call_tool("recall", {"query": query, "limit": RECALL_LIMIT}), "recall")
     if resp.get("search_degraded"):
-        raise SeedBlocked("provider unavailable: recall reported search_degraded; results would be keyword-only")
+        raise ProviderUnavailable("provider unavailable: recall reported search_degraded; results would be keyword-only")
     results, facts = resp.get("results"), resp.get("facts")
     if not isinstance(results, list) or not isinstance(facts, list):
         raise SeedBlocked("recall response lacks results/facts lists")
@@ -336,6 +364,19 @@ def _verify_receipt(receipt, role, corpus, corpus_sha256, facts_sha256, endpoint
         "seed receipt usage counters must be nonnegative integers (a bad count would forge budget credit)",
     ):
         return
+
+    prov = receipt.get("ledger")
+    need(
+        isinstance(prov, dict)
+        and isinstance(prov.get("ledger_id"), str) and prov.get("ledger_id")
+        and isinstance(prov.get("identity_sha256"), str) and _SHA256_HEX.match(prov["identity_sha256"])
+        and isinstance(prov.get("invocation"), str) and prov.get("invocation")
+        and prov.get("role") == role
+        and _nonneg_int(prov.get("calls")) and _nonneg_int(prov.get("request_bytes"))
+        and (prov.get("calls"), prov.get("request_bytes")) == (usage["calls_made"], usage["request_bytes"]),
+        "seed receipt has no ledger-backed spend provenance that matches its usage counters; a receipt "
+        "cannot establish what was spent (re-seed under a ledger)",
+    )
 
     proof = receipt.get("empty_account_proof")
     need(isinstance(proof, dict) and proof.get("passed") is True, "seed receipt has no passing empty-account proof taken before the first write")
@@ -503,7 +544,7 @@ def prove_empty(client: MCPClient, guard_check) -> dict:
         "search_degraded": bool(probe.get("search_degraded")),
     }
     if proof["search_degraded"]:
-        raise SeedBlocked("provider unavailable: recall reported search_degraded; results would be keyword-only")
+        raise ProviderUnavailable("provider unavailable: recall reported search_degraded; results would be keyword-only")
     proof["passed"] = (
         proof["facts_total"] == 0 and proof["facts_returned"] == 0 and proof["search_results_returned"] == 0
     )
@@ -538,6 +579,7 @@ def fetch_inventory(client: MCPClient, guard_check) -> dict[str, str]:
 class SeedOutcome:
     receipt: dict
     blocked_reason: str | None
+    blocked_kind: str | None = None
 
 
 def seed_target(
@@ -588,6 +630,7 @@ def seed_target(
         "usage": None,
     }
     reason: str | None = None
+    kind: str | None = None
     expiry: Expiry | None = None
     try:
         guard_check()
@@ -619,7 +662,7 @@ def seed_target(
             if status != "inserted" or not isinstance(rid, str) or not _SHA256_HEX.match(rid):
                 raise SeedBlocked(f"remember {fid}: status={status}; an empty account must insert every fact")
             if state != "semantic" or resp.get("expired"):
-                raise SeedBlocked(
+                raise ProviderUnavailable(
                     f"remember {fid}: search_state={state}; no vector was stored, "
                     "so qualification would measure keyword search, not embeddings"
                 )
@@ -660,17 +703,19 @@ def seed_target(
             )
         receipt["complete"] = True
     except SeedBlocked as e:
-        reason = str(e)
+        reason, kind = str(e), blocked_kind(e)
     except BudgetExceeded as e:
-        reason = str(e)  # guard-authored text
+        reason, kind = str(e), "budget"  # guard-authored text
     except MCPError as e:
-        reason = f"live call failed: {e}"  # MCPError text is fixed classes only
+        reason, kind = f"live call failed: {e}", "other"  # MCPError text is fixed classes only
+    except Exception as e:  # noqa: BLE001 -- the partial receipt and its usage must survive any setup or parse error
+        reason, kind = f"unexpected error: {type(e).__name__}", "unexpected"  # class name only, never its text
     receipt["usage"] = {
         "calls_made": client.calls_made,
         "request_bytes": client.total_request_bytes,
         "response_bytes": client.total_response_bytes,
     }
-    return SeedOutcome(receipt, reason)
+    return SeedOutcome(receipt, reason, kind)
 
 
 def _await_expiry(guard_check, expiry: Expiry, clock, sleep, remaining_seconds) -> None:

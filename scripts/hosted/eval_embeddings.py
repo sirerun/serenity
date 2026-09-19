@@ -30,7 +30,7 @@ REPO_ROOT = HERE.parents[1]
 EVALS_HOSTED = REPO_ROOT / "evals" / "hosted"
 sys.path.insert(0, str(EVALS_HOSTED))
 
-from lib import forgotten_targets, lexical_control, manifest as manifest_lib, mcp_client, scoring, seeding  # noqa: E402
+from lib import forgotten_targets, ledger as ledger_lib, lexical_control, manifest as manifest_lib, mcp_client, scoring, seeding  # noqa: E402
 from lib.budget import BudgetGuard  # noqa: E402
 from lib.cosine import rank_by_cosine  # noqa: E402
 from lib.fixture_embedder import FixedVectorEmbedder, HashBagEmbedder  # noqa: E402
@@ -115,25 +115,32 @@ def run_lexical_arm(serenity_bin: str, seedbrain_bin: str, corpus: dict, fact_by
         {c["expected_fact_id"] for c in pos_cases} | {d for c in pos_cases for d in c["distractor_fact_ids"]}
     )
     facts_for_brain = [fact_by_id[fid] for fid in all_ids]
-    brain = lexical_control.build_disposable_brain(serenity_bin, seedbrain_bin, facts_for_brain)
+    brains: list = []  # every disposable brain this arm creates, removed on every path
+    try:
+        brain = lexical_control.build_disposable_brain(serenity_bin, seedbrain_bin, facts_for_brain)
+        brains.append(brain)
 
-    positive_results = []
-    for case in pos_cases:
-        refs = brain.search(case["query"], limit=scoring.K)
-        ranked_ids = [chunk_ref_to_fact_id(r) for r in refs]
-        positive_results.append(
-            scoring.score_positive_case(case["id"], case["category"], case["expected_fact_id"], ranked_ids)
-        )
+        positive_results = []
+        for case in pos_cases:
+            refs = brain.search(case["query"], limit=scoring.K)
+            ranked_ids = [chunk_ref_to_fact_id(r) for r in refs]
+            positive_results.append(
+                scoring.score_positive_case(case["id"], case["category"], case["expected_fact_id"], ranked_ids)
+            )
 
-    empty_results = []
-    for case in empty_cases(corpus):
-        filler = fact_by_id[case["isolated_filler_fact_id"]]
-        isolated = lexical_control.build_disposable_brain(serenity_bin, seedbrain_bin, [filler])
-        refs = isolated.search(case["query"], limit=scoring.K)
-        ranked_ids = [chunk_ref_to_fact_id(r) for r in refs]
-        # Strict: the control brain holds one unrelated filler fact, and
-        # returning it counts as a violation like any other result.
-        empty_results.append(scoring.score_empty_case(case["id"], ranked_ids))
+        empty_results = []
+        for case in empty_cases(corpus):
+            filler = fact_by_id[case["isolated_filler_fact_id"]]
+            isolated = lexical_control.build_disposable_brain(serenity_bin, seedbrain_bin, [filler])
+            brains.append(isolated)
+            refs = isolated.search(case["query"], limit=scoring.K)
+            ranked_ids = [chunk_ref_to_fact_id(r) for r in refs]
+            # Strict: the control brain holds one unrelated filler fact, and
+            # returning it counts as a violation like any other result.
+            empty_results.append(scoring.score_empty_case(case["id"], ranked_ids))
+    finally:
+        for b in brains:
+            b.close()
 
     return positive_results, empty_results
 
@@ -248,6 +255,13 @@ def run_fixtures(args: argparse.Namespace) -> tuple[dict, int]:
         lexical_summary = scoring.summarize(lexical_pos, lexical_empty)
     except lexical_control.LexicalControlUnavailable as e:
         result["limitations"].append(f"lexical-only control arm skipped: {e}")
+    except lexical_control.LexicalControlFailed as e:
+        # The binaries exist but a step failed or hung: not a tested failure and
+        # not a skip. A result file explains why (fixed text, no stderr).
+        return (
+            build_blocked_result(args, corpus, source_sha, [f"lexical control failed: {e}"], evidence_level="static"),
+            EXIT_BLOCKED,
+        )
 
     executed = len(positive_cases(corpus)) + (len(empty_cases(corpus)) if lexical_empty is not None else 0)
     skipped = total_cases - executed
@@ -343,21 +357,38 @@ def run_fixtures(args: argparse.Namespace) -> tuple[dict, int]:
     return result, EXIT_PASS
 
 
+BUDGET_CRITERION = "Budget exhausted/provider unavailable yields BLOCKED with partial results and no further calls"
+
+
+def budget_row(*, exercised: bool, expected: str, observed: str) -> dict:
+    """PASS only when this run actually met the boundary the criterion is about
+    (a budget cap or an unavailable provider stopped it). Any other outcome, a
+    successful run included, did not exercise it and is NOT_RUN; the unit tests
+    (TestLiveModeBudgetEnforcement, TestCumulativeLedger) carry that evidence."""
+    return acceptance_row(
+        BUDGET_CRITERION, expected,
+        observed if exercised else f"not exercised by this run: {observed}; the unit tests cover the boundary",
+        "PASS" if exercised else "NOT_RUN",
+    )
+
+
 def build_blocked_result(
-    args: argparse.Namespace, corpus: dict, source_sha: str, problems: list[str], *, evidence_level: str = "live-provider"
+    args: argparse.Namespace, corpus: dict, source_sha: str, problems: list[str], *, evidence_level: str = "static"
 ) -> dict:
+    """A run that never started: nothing was measured, so the evidence level is
+    `static` unless the caller says otherwise."""
     result = base_result(args.task_id, args.profile, source_sha, evidence_level)
     result["corpus_sha256"] = corpus["meta"]["corpus_hash_sha256"]
     result["status"] = "BLOCKED"
     result["cases"]["planned"] = len(corpus["cases"])
     result["cases"]["skipped"] = len(corpus["cases"])
     result["cases"]["skip_reasons"] = problems
+    exercised = any(p.startswith(("budget.", "ledger")) for p in problems)
     result["acceptance"] = [
-        acceptance_row(
-            criterion="Budget exhausted/provider unavailable yields BLOCKED with partial results and no further calls",
+        budget_row(
+            exercised=exercised,
             expected="Missing/null budget, credential, seed receipt or provider pin refuses the run rather than defaulting to unlimited access",
             observed="; ".join(problems),
-            status="PASS",
         )
     ]
     result["blockers"] = [{"owner": "coordinator/David", "required_input": p} for p in problems]
@@ -440,17 +471,118 @@ def default_lexical_provider(args, corpus: dict, fact_by_id: dict):
     return run_lexical_arm(serenity_bin, seedbrain_bin, corpus, fact_by_id)
 
 
-def provider_record(m: dict) -> dict:
+def classify_run(m: dict) -> dict:
+    """What kind of evidence a run against this manifest's endpoints can be.
+    Any local endpoint (loopback or private literal address, `localhost`), or an
+    environment declared `local-fixture`, makes it a FIXTURE: the harness cannot
+    tell a loopback oracle from a provider, so it never labels one live-provider
+    or lets it PASS. A remote endpoint is not thereby proven to serve the
+    declared provider either (see qualification_prerequisites)."""
+    classes = {key: manifest_lib.endpoint_class(m[key]["endpoint_url"]) for _role, key in TARGETS}
+    kind = (m.get("environment") or {}).get("kind")
+    local_targets = sorted(k for k, c in classes.items() if c != manifest_lib.ENDPOINT_CLASS_REMOTE)
+    fixture = bool(local_targets) or kind == "local-fixture"
+    return {
+        "fixture": fixture,
+        "evidence_level": "fixture" if fixture else "live-provider",
+        "endpoint_classes": classes,
+        "environment_kind": kind,
+        "local_targets": local_targets,
+    }
+
+
+def qualification_prerequisites(cls: dict) -> list[str]:
+    """What must still hold before a run counts toward the qualification. The
+    harness lists them; it does not observe them."""
+    out = []
+    if cls["fixture"]:
+        out.append(
+            "Run against the provisioned hosted test accounts on a remote endpoint: a local endpoint "
+            f"({', '.join(cls['local_targets']) or 'environment.kind=local-fixture'}) is a fixture and cannot satisfy a live-provider gate."
+        )
+    out += [
+        "The embedding provider, model pin and dimensions are declared by the manifest and are not observed: the "
+        "hosted recall response reports neither. Deployment configuration evidence (the EMBEDDINGS gate's key, allowance "
+        "and model pin, and T23.42's provider adapter) must show which provider served the run.",
+        "budget.authorization_ref must name the EMBEDDINGS authority's approval of these caps; the ledger enforces the "
+        "caps but does not check who approved them.",
+        "task41's reviewer must confirm the freeze receipt (corpus hash, lexical-negative criterion, supplemental hash).",
+    ]
+    return out
+
+
+def provider_record(m: dict, cls: dict) -> dict:
+    """Declared and observed are kept apart. `declared` is the manifest's pin,
+    copied verbatim; `observed` holds only what the harness saw (the endpoints
+    it called and where they are), never a model or dimension the service did
+    not report."""
     p = m["provider"]
     return {
-        "base_url": p.get("base_url"),
-        "model": p.get("model"),
-        "version_pin": p.get("version_pin"),
-        "dimensions": p.get("dimensions"),
-        "serving_provider": p.get("serving_provider"),
-        "privacy_review_ref": p.get("privacy_review_ref"),
-        "hosted_endpoint": m["hosted_mcp"].get("endpoint_url"),
+        "declared": {
+            "base_url": p.get("base_url"),
+            "model": p.get("model"),
+            "version_pin": p.get("version_pin"),
+            "dimensions": p.get("dimensions"),
+            "serving_provider": p.get("serving_provider"),
+            "privacy_review_ref": p.get("privacy_review_ref"),
+            "allow_fallback": p.get("allow_fallback"),
+            "environment_kind": cls["environment_kind"],
+        },
+        "observed": {
+            "hosted_endpoints": {
+                key: {"url": m[key].get("endpoint_url"), "class": cls["endpoint_classes"][key]} for _role, key in TARGETS
+            },
+            "model": None,
+            "dimensions": None,
+            "provider_identity_verified": False,
+        },
+        "qualification_prerequisites": qualification_prerequisites(cls),
     }
+
+
+def classification_limitations(cls: dict) -> list[str]:
+    out = []
+    if cls["fixture"]:
+        out.append(
+            f"Local endpoint(s) ({', '.join(cls['local_targets']) or 'environment.kind=local-fixture'}): this is a fixture run. "
+            "evidence_level is 'fixture' and the status cannot exceed PARTIAL, however the rankings score. A loopback "
+            "oracle can rank every expected fact first, so a local score is a mechanics rehearsal and never semantic-quality evidence."
+        )
+    out.append(
+        "provider.declared is the manifest's pin, not an observation; provider.observed lists only the endpoints called and "
+        "their class. An endpoint host name is not resolved, so a name pointed at a local address is not detected."
+    )
+    return out
+
+
+def _ledger_arguments(m: dict, manifest_path: Path, corpus: dict) -> tuple[Path, dict]:
+    path = resolve_receipt_path(manifest_path, m["budget"]["ledger_path"])
+    identity = ledger_lib.identity_of(
+        m,
+        corpus_sha256=corpus["meta"]["corpus_hash_sha256"],
+        facts_sha256=corpus["meta"]["facts_hash_sha256"],
+        supplemental_sha256=forgotten_targets.targets_sha256(),
+    )
+    return path, dict(
+        authorization_ref=m["budget"]["authorization_ref"], caps=ledger_lib.caps_of(m["budget"]), identity=identity
+    )
+
+
+def open_ledger(m: dict, manifest_path: Path, corpus: dict) -> ledger_lib.Ledger:
+    """Opens the EXISTING cumulative ledger this manifest's `budget.ledger_path`
+    names, bound to its authorization reference, caps and identity. A seed and a
+    live run only ever continue a ledger: a missing, empty or damaged one blocks
+    and is never re-created. `--init-ledger` is the one way to begin one."""
+    path, kwargs = _ledger_arguments(m, manifest_path, corpus)
+    return ledger_lib.Ledger.open(path, **kwargs)
+
+
+def initialize_ledger(m: dict, manifest_path: Path, corpus: dict) -> ledger_lib.Ledger:
+    """Begins the ledger at this manifest's `budget.ledger_path`. An intentional
+    operator step, never automatic budget renewal: it refuses a path where any
+    ledger, stale file or lock file already exists."""
+    path, kwargs = _ledger_arguments(m, manifest_path, corpus)
+    return ledger_lib.Ledger.initialize(path, **kwargs)
 
 
 def record_cost(result: dict, guard: BudgetGuard, authorization_refs: list[str]) -> None:
@@ -476,16 +608,21 @@ def guard_check_for(guard: BudgetGuard):
     def check() -> None:
         reason = guard.exhausted_reason()
         if reason:
-            raise seeding.SeedBlocked(reason)
+            raise seeding.BudgetBlocked(reason)
 
     return check
 
 
 def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, int]:
-    """Scores the real hosted recall endpoint. Everything that can be
-    checked without spending is checked first (manifest, clean tree, seed
-    receipts, credentials, the local lexical control), so a missing
-    prerequisite blocks before the first paid call."""
+    """Scores the hosted recall endpoint. Everything that can be checked
+    without spending is checked first (manifest, clean tree, seed receipts,
+    credentials, the cumulative ledger, the local lexical control), so a
+    missing prerequisite blocks before the first request.
+
+    Every request is reserved in the ledger before it is sent, so the manifest's
+    caps hold across this run, its retries and the seed run. A run against a
+    local endpoint is a fixture: evidence_level 'fixture', status never above
+    PARTIAL."""
     started = time.time()
     corpus, facts, fact_by_id = load_corpus(args.corpus, args.facts)
     source_sha = git_source_sha(REPO_ROOT)
@@ -513,23 +650,32 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
     if problems:
         return build_blocked_result(args, corpus, source_sha, problems), EXIT_BLOCKED
 
-    # The lexical control is local and free; run it before any paid call so
-    # a missing binary blocks here and not after the spend.
+    # The ledger, not the receipts, establishes what was spent. A receipt that
+    # was not produced under this ledger, or whose counters differ from what
+    # the ledger recorded, cannot stand in for spend.
+    try:
+        ledger = open_ledger(m, args.manifest, corpus)
+        for role, key in TARGETS:
+            problems += [f"{key}: {p}" for p in ledger.receipt_problems(receipts[role], role)]
+    except ledger_lib.LedgerError as e:
+        problems.append(f"ledger: {e}")
+    if problems:
+        return build_blocked_result(args, corpus, source_sha, problems), EXIT_BLOCKED
+
+    # The lexical control is local and free; run it before any request so a
+    # missing or failing binary blocks here and not after the spend.
     try:
         lexical_pos, _lexical_empty = (lexical_provider or (lambda: default_lexical_provider(args, corpus, fact_by_id)))()
-    except lexical_control.LexicalControlUnavailable as e:
+    except lexical_control.LexicalControlError as e:
         return build_blocked_result(args, corpus, source_sha, [f"lexical control unavailable: {e}"]), EXIT_BLOCKED
 
-    guard = BudgetGuard(
-        m["budget"],
-        prior_calls=sum(r["usage"]["calls_made"] for r in receipts.values()),
-        prior_request_bytes=sum(r["usage"]["request_bytes"] for r in receipts.values()),
-    )
+    cls = classify_run(m)
+    guard = BudgetGuard(m["budget"], ledger, mode="live")
     check = guard_check_for(guard)
 
-    def run_target(role: str, key: str, cases: list[dict], scorer) -> tuple[list, str | None]:
+    def run_target(role: str, key: str, cases: list[dict], scorer) -> tuple[list, str | None, str | None]:
         target, receipt = m[key], receipts[role]
-        client = guard.client(target["endpoint_url"], tokens[role], target["allowed_origins"])
+        client = guard.client(target["endpoint_url"], tokens[role], target["allowed_origins"], role=role)
         id_map = receipt["id_map"]
         # The positive account must still hold exactly what was seeded. The
         # empty-case account must hold NOTHING: every target was forgotten or expired.
@@ -553,12 +699,14 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
                     )
                 results.append(scorer(case, ranked, fact_ids))
         except (seeding.SeedBlocked, mcp_client.BudgetExceeded) as e:
-            return results, str(e)  # authored by this harness, never upstream text
+            return results, str(e), seeding.blocked_kind(e)  # authored by this harness, never upstream text
         except mcp_client.MCPError as e:
-            return results, f"live call failed: {e}"  # fixed classes only
-        return results, None
+            return results, f"live call failed: {e}", "other"  # fixed classes only
+        except Exception as e:  # noqa: BLE001 -- partial results and usage must survive an unexpected error
+            return results, f"unexpected error: {type(e).__name__}", "unexpected"  # class name only
+        return results, None, None
 
-    positive_results, blocked_reason = run_target(
+    positive_results, blocked_reason, blocked_kind = run_target(
         seeding.ROLE_POSITIVE,
         "hosted_mcp",
         positive_cases(corpus),
@@ -574,7 +722,7 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
         # fact fails. The sentinel is not one of the 5 cases and is reported
         # separately.
         probe = {"id": "sentinel-probe", "query": forgotten_targets.SENTINEL_FACT_TEXT}
-        both, blocked_reason = run_target(
+        both, blocked_reason, blocked_kind = run_target(
             seeding.ROLE_EMPTY_CASE,
             "empty_case_hosted_mcp",
             empty_cases(corpus) + [probe],
@@ -586,10 +734,10 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
     ln_results = lexical_negative_check(positive_results, lexical_pos, corpus) if blocked_reason is None else []
     summary = scoring.summarize(positive_results, empty_results, ln_results)
 
-    result = base_result(args.task_id, args.profile, source_sha, "live-provider")
+    result = base_result(args.task_id, args.profile, source_sha, cls["evidence_level"])
     result["corpus_sha256"] = actual_hash
     result["configuration_sha256"] = sha256_file(args.manifest)
-    result["provider"] = provider_record(m)
+    result["provider"] = provider_record(m, cls)
     result["commands"].append(f"python3 {Path(__file__).relative_to(REPO_ROOT)} --live --manifest {args.manifest} --output {args.output}")
     executed = len(positive_results) + len(empty_results)
     result["cases"].update(
@@ -605,10 +753,20 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
     quality_pass = (
         summary.overall_floor_pass and summary.empty_all_pass and summary.lexical_negative_pass and sentinel_ok
     )
+    if blocked_reason:
+        quality_status = "BLOCKED"
+    elif cls["fixture"]:
+        # A local oracle can rank every expected fact first: the scores are a
+        # mechanics rehearsal. Missing the thresholds is still a fact worth
+        # reporting; meeting them is never a PASS.
+        quality_status = "NOT_RUN" if quality_pass else "FAIL"
+    else:
+        quality_status = "PASS" if quality_pass else "FAIL"
+    exercised = blocked_kind in ("budget", "provider_unavailable")
     result["acceptance"] = [
         acceptance_row(
             criterion="Seed receipts verified: controlled seeding, empty-account proof and exact inventory for both accounts",
-            expected="Both receipts complete, hash-bound to the manifest, matching this corpus and endpoint origin",
+            expected="Both receipts complete, hash-bound to the manifest, matching this corpus and endpoint origin, and ledger-backed",
             observed="; ".join(
                 f"{role}: {len(r['seeded'])} facts, calls={r['usage']['calls_made']}, empty_proof={r['empty_account_proof']['passed']}"
                 for role, r in sorted(receipts.items())
@@ -623,8 +781,9 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
                 f"by_category={summary.by_category}; empty_leakage={summary.empty_leakage_total}; "
                 f"cross_account_sentinel_leakage={sentinel_leaked if sentinel_results else 'not run'}; "
                 f"lexical_negative={summary.lexical_negative_hits}/{summary.lexical_negative_total}"
+                + ("; measured against a LOCAL endpoint: a mechanics rehearsal, not quality evidence" if cls["fixture"] and not blocked_reason else "")
             ),
-            status="BLOCKED" if blocked_reason else ("PASS" if quality_pass else "FAIL"),
+            status=quality_status,
         ),
         acceptance_row(
             criterion="Fixed-vector/lexical-only stub fails the quality predicate (proven in a prior --fixtures run)",
@@ -632,19 +791,22 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
             observed="Not re-verified by --live; this criterion is fixtures-mode's responsibility",
             status="NOT_RUN",
         ),
-        acceptance_row(
-            criterion="Budget exhausted/provider unavailable yields BLOCKED with partial results and no further calls",
+        budget_row(
+            exercised=exercised,
             expected="On exhaustion or search_degraded, stop immediately and report partial results, never continue calling",
-            observed=blocked_reason or f"budget not exhausted: {guard.total_calls()}/{guard.max_calls} calls used",
-            status="PASS" if blocked_reason or guard.total_calls() <= guard.max_calls else "FAIL",
+            observed=blocked_reason or (
+                f"budget not exhausted: {guard.total_calls()}/{guard.max_calls} calls charged to the qualification"
+            ),
         ),
     ]
+    ledger_report = ledger.report(guard.invocation)
     result["usage"] = {
         "calls_this_run": guard.calls_made(),
-        "calls_from_seed_receipts": guard.prior_calls,
         "request_bytes": guard.request_bytes(),
         "response_bytes": guard.response_bytes(),
-        "input_token_upper_bound_including_seed": guard.tokens_used(),  # one token per request byte
+        "input_token_upper_bound_cumulative": ledger_report["cumulative_request_bytes"],  # one token per request byte
+        "reserved_not_sent": guard.reserved_not_sent,  # reservations that landed past max_elapsed_seconds: counted, never sent
+        "ledger": ledger_report,
     }
     result["elapsed_seconds"] = round(time.time() - started, 3)
     result["seed_receipts"] = {
@@ -667,15 +829,19 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
         "proposed addition pending task41 reviewer confirmation; the frozen queries, positive cases and "
         "thresholds are unchanged.",
         COST_LIMITATION,
-        "provider fields are the manifest's declared pin; the hosted recall response does not report a model or dimensions.",
+        ledger_lib.OPERATOR_GUARD_STATEMENT,
+        *classification_limitations(cls),
     ]
     record_cost(result, guard, [m["budget"]["authorization_ref"]])
 
     if blocked_reason:
         result["status"], exit_code = "BLOCKED", EXIT_BLOCKED
         result["blockers"] = [{"owner": "coordinator", "required_input": blocked_reason}]
-    elif quality_pass:
+    elif quality_pass and not cls["fixture"]:
         result["status"], exit_code = "PASS", EXIT_PASS
+    elif quality_pass:
+        result["status"], exit_code = "PARTIAL", EXIT_PASS
+        result["blockers"] = [{"owner": "coordinator", "required_input": p} for p in qualification_prerequisites(cls)[:1]]
     else:
         result["status"], exit_code = "FAIL", EXIT_TESTED_FAILURE
     return result, exit_code
@@ -734,18 +900,26 @@ def run_seed(args: argparse.Namespace, *, clock=time.time, sleep=time.sleep) -> 
         existing = [p for p in receipt_paths(args.receipt_dir).values() if p.exists()]
         if existing:
             problems.append(f"refusing to overwrite existing seed receipt(s): {', '.join(str(p) for p in existing)}")
+    ledger = None
+    if not problems:
+        try:
+            ledger = open_ledger(m, args.manifest, corpus)
+        except ledger_lib.LedgerError as e:
+            problems.append(f"ledger: {e}")
     if problems:
         return build_blocked_result(args, corpus, source_sha, problems), EXIT_BLOCKED
 
-    guard = BudgetGuard(m["budget"])
+    cls = classify_run(m)
+    guard = BudgetGuard(m["budget"], ledger, mode="seed")
     check = guard_check_for(guard)
     paths = receipt_paths(args.receipt_dir)
     outcomes: dict[str, seeding.SeedOutcome] = {}
     confirmations: dict[str, str] = {}
     blocked_reason: str | None = None
+    blocked_kind: str | None = None
     for role, key in TARGETS:
         target = m[key]
-        client = guard.client(target["endpoint_url"], tokens[role], target["allowed_origins"])
+        client = guard.client(target["endpoint_url"], tokens[role], target["allowed_origins"], role=role)
         outcome = seeding.seed_target(
             client, check, role=role, corpus=corpus, fact_by_id=fact_by_id, corpus_sha256=corpus_sha256,
             facts_sha256=facts_sha256, source_sha=source_sha, recorded_at=now_iso(),
@@ -754,16 +928,25 @@ def run_seed(args: argparse.Namespace, *, clock=time.time, sleep=time.sleep) -> 
             clock=clock, sleep=sleep, remaining_seconds=guard.remaining_seconds,
         )
         outcomes[role] = outcome
-        confirmations[role] = seeding.write_receipt(paths[role], outcome.receipt)
+        try:
+            # The ledger, not the client's counters, says what this account cost.
+            outcome.receipt["ledger"] = ledger.provenance(guard.invocation, role)
+            confirmations[role] = seeding.write_receipt(paths[role], outcome.receipt)
+        except (OSError, ledger_lib.LedgerError) as e:
+            confirmations[role] = ""
+            outcome.receipt["complete"] = False
+            outcome.blocked_reason = outcome.blocked_reason or f"receipt could not be written: {type(e).__name__}"
+            outcome.blocked_kind = outcome.blocked_kind or "other"
         if outcome.blocked_reason:
             blocked_reason = f"{key}: {outcome.blocked_reason}"
+            blocked_kind = outcome.blocked_kind
             break
 
     seeded = sum(len(o.receipt["seeded"]) for o in outcomes.values())
-    result = base_result(args.task_id, args.profile, source_sha, "live-provider")
+    result = base_result(args.task_id, args.profile, source_sha, cls["evidence_level"])
     result["corpus_sha256"] = corpus_sha256
     result["configuration_sha256"] = sha256_file(args.manifest)
-    result["provider"] = provider_record(m)
+    result["provider"] = provider_record(m, cls)
     result["commands"].append(
         f"python3 {Path(__file__).relative_to(REPO_ROOT)} --seed --manifest {args.manifest} --receipt-dir {args.receipt_dir} --output {args.output}"
     )
@@ -803,11 +986,14 @@ def run_seed(args: argparse.Namespace, *, clock=time.time, sleep=time.sleep) -> 
             status="PASS" if both_complete else "BLOCKED",
         ),
     ]
+    ledger_report = ledger.report(guard.invocation)
     result["usage"] = {
         "calls_this_run": guard.calls_made(),
         "request_bytes": guard.request_bytes(),
         "response_bytes": guard.response_bytes(),
-        "input_token_upper_bound": guard.tokens_used(),  # one token per request byte
+        "input_token_upper_bound_cumulative": ledger_report["cumulative_request_bytes"],  # one token per request byte
+        "reserved_not_sent": guard.reserved_not_sent,  # reservations that landed past max_elapsed_seconds: counted, never sent
+        "ledger": ledger_report,
     }
     result["elapsed_seconds"] = round(time.time() - started, 3)
     result["seed_receipts"] = {
@@ -816,6 +1002,8 @@ def run_seed(args: argparse.Namespace, *, clock=time.time, sleep=time.sleep) -> 
     }
     record_cost(result, guard, [m["budget"]["authorization_ref"], m["seeding"]["authorization_ref"]])
     result["limitations"].append(COST_LIMITATION)
+    result["limitations"].append(ledger_lib.OPERATOR_GUARD_STATEMENT)
+    result["limitations"] += classification_limitations(cls)
     result["limitations"].append(
         "Seeding proves the accounts held the corpus; it measures no retrieval quality. Status stays PARTIAL until a "
         "separate --live run scores recall against the receipts."
@@ -843,7 +1031,9 @@ def plan_requests(corpus: dict, fact_by_id: dict, corpus_sha256: str) -> dict:
     K = scoring.K
     tool = lambda name, args: ("tools/call", mcp_client.tool_call_params(name, args))  # noqa: E731
     recall = lambda args: tool("recall", args)  # noqa: E731
-    init = ("initialize", mcp_client.INITIALIZE_PARAMS)
+    # The handshake is two charged requests: `initialize`, then the
+    # `notifications/initialized` notification (params None: no id, no reply body).
+    init = [("initialize", mcp_client.INITIALIZE_PARAMS), (mcp_client.INITIALIZED_METHOD, None)]
     inventory = recall({"limit": seeding.INVENTORY_LIMIT})
     probes = [recall({"limit": 1}), recall({"query": seeding.EMPTY_PROBE_QUERY, "limit": K})]
     empty = empty_cases(corpus)
@@ -870,25 +1060,27 @@ def plan_requests(corpus: dict, fact_by_id: dict, corpus_sha256: str) -> dict:
         for _ in forgotten_targets.cases_with_mode(forgotten_targets.MODE_FORGET)
     ]
     requests = {
-        (seeding.ROLE_POSITIVE, "seed"): [init, *probes, *remembers(seeding.ROLE_POSITIVE), inventory],
+        (seeding.ROLE_POSITIVE, "seed"): [*init, *probes, *remembers(seeding.ROLE_POSITIVE), inventory],
         (seeding.ROLE_EMPTY_CASE, "seed"): [
-            init, *probes, *remembers(seeding.ROLE_EMPTY_CASE), inventory,
+            *init, *probes, *remembers(seeding.ROLE_EMPTY_CASE), inventory,
             *empty_queries,  # presence, all five
             inventory, *expire_queries,  # after the wait: expire-mode targets gone, forget-mode targets still there
             *forgets, inventory, *empty_queries, sentinel,  # then the strict zero-current-facts proof
         ],
         (seeding.ROLE_POSITIVE, "live"): [
-            init, inventory, *[recall({"query": c["query"], "limit": K}) for c in positive_cases(corpus)]
+            *init, inventory, *[recall({"query": c["query"], "limit": K}) for c in positive_cases(corpus)]
         ],
-        (seeding.ROLE_EMPTY_CASE, "live"): [init, inventory, *empty_queries, sentinel],
+        (seeding.ROLE_EMPTY_CASE, "live"): [*init, inventory, *empty_queries, sentinel],
     }
-    size = lambda reqs: sum(len(mcp_client.request_body(1000, m, p)) for m, p in reqs)  # noqa: E731
+    size = lambda reqs: sum(len(mcp_client.frame_body(1000, m, p)) for m, p in reqs)  # noqa: E731
     plan: dict = {"per_role": {}}
     for role, _ in TARGETS:
         plan["per_role"][role] = {
             "facts_to_seed": len(seeding.plan_fact_ids(corpus, role)),
             "seed_calls": len(requests[(role, "seed")]),
             "live_calls": len(requests[(role, "live")]),
+            "seed_request_bytes": size(requests[(role, "seed")]),
+            "live_request_bytes": size(requests[(role, "live")]),
             "request_bytes": size(requests[(role, "seed")]) + size(requests[(role, "live")]),
         }
     plan["expiry"] = {
@@ -926,19 +1118,48 @@ def run_preflight(args: argparse.Namespace) -> tuple[dict, int]:
         problems.append(dirty_message(dirty))
     plan = plan_requests(corpus, fact_by_id, corpus_sha256)
     budget = m.get("budget") or {}
+    ledger_summary = None
     if not [p for p in problems if p.startswith("budget.")]:
         if phase == manifest_lib.PHASE_SEED:
             problems += elapsed_floor_problems(m)
-        if plan["total_calls"] > budget["max_calls"]:
-            problems.append(f"budget.max_calls={budget['max_calls']} is below the {plan['total_calls']} calls the full seed+live plan needs")
-        if plan["input_token_upper_bound"] > budget["max_input_tokens"]:
+        # What is already charged to this authorization, from the ledger. A
+        # ledger that was never initialized is fine before the seed (this
+        # preflight is how an operator checks the caps BEFORE binding them with
+        # --init-ledger, and the seed itself blocks until that step is done) and
+        # a problem before the live run (receipts cannot stand in for it). A
+        # ledger that is empty, damaged, or missing next to its lock file is a
+        # problem in both phases.
+        used_calls = used_bytes = 0
+        try:
+            ledger = open_ledger(m, args.manifest, corpus)
+            state = ledger.snapshot()
+            used_calls, used_bytes = state.calls, state.request_bytes
+            ledger_summary = ledger.report()
+        except ledger_lib.LedgerError as e:
+            never_initialized = "no ledger exists" in str(e)
+            if never_initialized and phase == manifest_lib.PHASE_SEED:
+                ledger_summary = {
+                    "state": "not initialized",
+                    "next_step": "after this preflight passes, run --init-ledger with the same manifest; it binds these caps to "
+                                 "budget.authorization_ref, and --seed blocks until it has been done",
+                }
+            else:
+                problems.append(f"ledger: {e}")
+        needs = plan["per_role"]
+        need_calls = sum(r["live_calls"] + (r["seed_calls"] if phase == manifest_lib.PHASE_SEED else 0) for r in needs.values())
+        need_bytes = sum(r["live_request_bytes"] + (r["seed_request_bytes"] if phase == manifest_lib.PHASE_SEED else 0) for r in needs.values())
+        scope = "the full seed+live plan" if phase == manifest_lib.PHASE_SEED else "the live plan"
+        charged = f" (plus {used_calls} already charged in the ledger)" if used_calls else ""
+        if used_calls + need_calls > budget["max_calls"]:
+            problems.append(f"budget.max_calls={budget['max_calls']} is below the {need_calls} calls {scope} needs{charged}")
+        if used_bytes + need_bytes > budget["max_input_tokens"]:
             problems.append(
-                f"budget.max_input_tokens={budget['max_input_tokens']} is below the {plan['input_token_upper_bound']} "
-                "the plan needs (one token per serialized request byte, an upper bound)"
+                f"budget.max_input_tokens={budget['max_input_tokens']} is below the {need_bytes} "
+                f"{scope} needs{charged} (one token per serialized request byte, an upper bound)"
             )
-        if plan["total_calls"] * budget["max_cost_per_call_usd"] > budget["approved_max_usd"]:
+        if (used_calls + need_calls) * budget["max_cost_per_call_usd"] > budget["approved_max_usd"]:
             problems.append(
-                f"budget.approved_max_usd={budget['approved_max_usd']} is below {plan['total_calls']} calls x "
+                f"budget.approved_max_usd={budget['approved_max_usd']} is below {used_calls + need_calls} calls x "
                 f"max_cost_per_call_usd={budget['max_cost_per_call_usd']}"
             )
     if all(k in m for _, k in TARGETS):
@@ -954,6 +1175,8 @@ def run_preflight(args: argparse.Namespace) -> tuple[dict, int]:
     result["configuration_sha256"] = sha256_file(args.manifest)
     result["commands"].append(f"python3 {Path(__file__).relative_to(REPO_ROOT)} --preflight --phase {phase} --manifest {args.manifest} --output {args.output}")
     result["plan"] = plan
+    if ledger_summary is not None:
+        result["ledger"] = ledger_summary
     if not problems:
         result["status"] = "PARTIAL"
         result["cases"]["planned"] = len(corpus["cases"])
@@ -970,12 +1193,52 @@ def run_preflight(args: argparse.Namespace) -> tuple[dict, int]:
     return result, EXIT_BLOCKED
 
 
+def run_init_ledger(args: argparse.Namespace) -> tuple[dict, int]:
+    """The explicit step that begins a qualification's cumulative ledger. It runs
+    the seed-phase preflight first (manifest, pins, credentials present, clean
+    tree, caps that cover the whole plan), because the caps it binds are the
+    authorization's caps from then on: changing them never resets the ledger. It
+    makes no network call and spends nothing. It refuses a path where a ledger,
+    an empty file or a lock file already exists; a new authorization takes a new
+    path, chosen on purpose. Nothing else creates a ledger."""
+    args.phase = manifest_lib.PHASE_SEED
+    result, code = run_preflight(args)
+    if code != EXIT_PASS:
+        return result, code
+    corpus, _facts, _fact_by_id = load_corpus(args.corpus, args.facts)
+    m = manifest_lib.load_manifest(args.manifest)
+    try:
+        ledger = initialize_ledger(m, args.manifest, corpus)
+        report = ledger.report()
+    except ledger_lib.LedgerError as e:
+        source_sha = git_source_sha(REPO_ROOT)
+        return build_blocked_result(args, corpus, source_sha, [f"ledger: {e}"]), EXIT_BLOCKED
+    result["commands"] = [
+        f"python3 {Path(__file__).relative_to(REPO_ROOT)} --init-ledger --manifest {args.manifest} --output {args.output}"
+    ]
+    result["ledger"] = report
+    result["acceptance"] = [
+        acceptance_row(
+            criterion="Cumulative ledger initialized for this authorization, on purpose, at a path where nothing existed",
+            expected="a new ledger bound to budget.authorization_ref, the four caps and the corpus/provider/environment identity",
+            observed=f"ledger {report['ledger_id']} created; {report['cumulative_calls']} calls charged; remaining_calls={report['remaining_calls']}",
+            status="PASS",
+        )
+    ]
+    result["limitations"].append(ledger_lib.OPERATOR_GUARD_STATEMENT)
+    result["limitations"].append(
+        "Initializing the ledger measures nothing and spends nothing; it starts no run. Status stays PARTIAL."
+    )
+    return result, EXIT_PASS
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     mode = p.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fixtures", action="store_true", help="local synthetic provider only; no network")
     mode.add_argument("--preflight", action="store_true", help="offline readiness check for --seed/--live; no network")
-    mode.add_argument("--seed", action="store_true", help="seed both hosted accounts (writes; needs seeding.authorized)")
+    mode.add_argument("--init-ledger", action="store_true", help="begin the cumulative budget ledger for this authorization (offline; never resets one)")
+    mode.add_argument("--seed", action="store_true", help="seed both hosted accounts (writes; needs seeding.authorized and an initialized ledger)")
     mode.add_argument("--live", action="store_true", help="real hosted MCP endpoint; requires a valid manifest and seed receipts")
     p.add_argument("--manifest", required=True, help="path to the qualification manifest JSON")
     p.add_argument("--output", required=True, help="path to write the result JSON")
@@ -995,6 +1258,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return args
 
 
+def safe_source_sha() -> str:
+    try:
+        return git_source_sha(REPO_ROOT)
+    except (OSError, subprocess.SubprocessError):
+        return "unavailable"
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     if not args.corpus.is_file() or not args.facts.is_file():
@@ -1006,6 +1276,8 @@ def main(argv: list[str]) -> int:
             result, exit_code = run_fixtures(args)
         elif args.preflight:
             result, exit_code = run_preflight(args)
+        elif args.init_ledger:
+            result, exit_code = run_init_ledger(args)
         elif args.seed:
             result, exit_code = run_seed(args)
         else:
@@ -1014,8 +1286,16 @@ def main(argv: list[str]) -> int:
         # Unreadable or malformed manifest/receipt: invalid input, but the
         # contract still requires a result file explaining why.
         corpus = json.loads(args.corpus.read_text(encoding="utf-8"))
-        result = build_blocked_result(args, corpus, git_source_sha(REPO_ROOT), [f"invalid input: {type(e).__name__}: {e}"], evidence_level="static")
+        result = build_blocked_result(args, corpus, safe_source_sha(), [f"invalid input: {type(e).__name__}: {e}"], evidence_level="static")
         exit_code = EXIT_INVALID_INPUT
+    except Exception as e:  # noqa: BLE001 -- backstop: the contract says a result file is always written
+        # Ordinary exceptions only (KeyboardInterrupt and SystemExit still
+        # propagate). The class name is the whole message: the text of an
+        # unexpected error can carry a path or a value nobody reviewed. Spend is
+        # safe regardless: the ledger recorded every reservation before its request.
+        corpus = json.loads(args.corpus.read_text(encoding="utf-8"))
+        result = build_blocked_result(args, corpus, safe_source_sha(), [f"unexpected error: {type(e).__name__}"], evidence_level="static")
+        exit_code = EXIT_BLOCKED
 
     write_result(args.output, result)
     print(f"eval_embeddings: status={result['status']} written to {args.output}")

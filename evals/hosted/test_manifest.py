@@ -47,6 +47,7 @@ def _fully_authorized_manifest() -> dict:
         "max_elapsed_seconds": 600,
         "max_cost_per_call_usd": 0.001,
         "authorization_ref": "hq-dec-example",
+        "ledger_path": "qualification-ledger.jsonl",
         "automatic_reset": False,
         "auto_top_up": False,
     }
@@ -255,6 +256,47 @@ class TestSeedAndLivePhaseValidation(unittest.TestCase):
         m = _fully_authorized_manifest()
         m["environment"]["kind"] = "production"
         self.assertTrue(any("production targets are refused" in p for p in manifest_lib.validate_live_manifest(m)))
+
+    def test_an_arbitrary_environment_kind_is_not_a_classification(self):
+        """`environment.kind` used to accept any non-empty string, so a loopback
+        stub declared 'disposable' or 'whatever' produced a live-provider PASS."""
+        for kind in ("whatever", "prod", "STAGING", "local"):
+            m = _fully_authorized_manifest()
+            m["environment"]["kind"] = kind
+            with self.subTest(kind=kind):
+                self.assertTrue(any("environment.kind must be one of" in p for p in manifest_lib.validate_live_manifest(m)))
+        for kind in manifest_lib.SUPPORTED_ENVIRONMENT_KINDS:
+            m = _fully_authorized_manifest()
+            m["environment"]["kind"] = kind
+            m["environment"]["production_target_allowed"] = kind == "production"
+            with self.subTest(kind=kind):
+                self.assertFalse(any("environment.kind must be one of" in p for p in manifest_lib.validate_live_manifest(m)))
+
+    def test_a_local_fixture_kind_may_name_only_local_endpoints(self):
+        m = _fully_authorized_manifest()
+        m["environment"]["kind"] = "local-fixture"
+        self.assertTrue(any("not a local address" in p for p in manifest_lib.validate_live_manifest(m)))
+
+    def test_endpoint_class_reads_only_the_literal_host(self):
+        cases = {
+            "http://127.0.0.1:8080/mcp": "loopback",
+            "http://localhost:8080/mcp": "loopback",
+            "http://[::1]:8080/mcp": "loopback",
+            "http://10.1.2.3/mcp": "private-network",
+            "http://192.168.1.5/mcp": "private-network",
+            "https://app.serenity.sire.run/mcp": "remote-unverified",
+            "https://8.8.8.8/mcp": "remote-unverified",
+        }
+        for url, expected in cases.items():
+            with self.subTest(url=url):
+                self.assertEqual(manifest_lib.endpoint_class(url), expected)
+
+    def test_a_missing_ledger_path_blocks_because_the_caps_need_a_durable_ledger(self):
+        m = _fully_authorized_manifest()
+        del m["budget"]["ledger_path"]
+        self.assertTrue(any("budget.ledger_path" in p for p in manifest_lib.validate_live_manifest(m)))
+        m["budget"]["ledger_path"] = "   "
+        self.assertTrue(any("budget.ledger_path" in p for p in manifest_lib.validate_live_manifest(m)))
 
     def test_both_targets_may_not_share_one_credential_reference(self):
         m = _fully_authorized_manifest()

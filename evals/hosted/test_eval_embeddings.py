@@ -10,13 +10,17 @@ genuine, explicit skip, not a silent pass.
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -29,7 +33,7 @@ sys.path.insert(0, str(SCRIPTS_HOSTED))
 
 import eval_embeddings  # noqa: E402
 from fake_hosted_mcp import FakeClock, FakeHostedMCP, RealClock  # noqa: E402
-from lib import mcp_client, scoring, seeding  # noqa: E402
+from lib import ledger as ledger_lib, manifest as manifest_lib, mcp_client, scoring, seeding  # noqa: E402
 from lib.fixture_embedder import HashBagEmbedder  # noqa: E402
 
 CORPUS_PATH = HERE / "corpus.json"
@@ -154,6 +158,19 @@ class LiveFixture(unittest.TestCase):
         self.fake = FakeHostedMCP({POS_TOKEN: "acct-pos", EMPTY_TOKEN: "acct-empty"}, clock=self.clock)
         self.origin = self.fake.start()
         self.addCleanup(self.fake.stop)
+        # Every request that reaches the socket, counted at the handler and
+        # independent of the fake's own log and of the ledger.
+        self.wire = 0
+        self._wire_lock = threading.Lock()
+        handle = self.fake._handle
+
+        def counting(handler):
+            with self._wire_lock:
+                self.wire += 1
+            return handle(handler)
+
+        self.fake._handle = counting
+        self.environment_kind = "disposable"
         self.tmp = Path(tempfile.mkdtemp(prefix="t2343-live-"))
         self.addCleanup(lambda: __import__("shutil").rmtree(self.tmp, ignore_errors=True))
         for name, val in ((POS_ENV, POS_TOKEN), (EMPTY_ENV, EMPTY_TOKEN)):
@@ -164,18 +181,69 @@ class LiveFixture(unittest.TestCase):
         self.addCleanup(patcher.stop)
         self.corpus = json.loads(CORPUS_PATH.read_text())
         self.fact_by_id = {f["id"]: f for f in json.loads(FACTS_PATH.read_text())["facts"]}
+        # The four spend caps and the ledger belong to ONE authorization: they are
+        # fixed when the ledger is created (by the seed) and every later manifest
+        # must repeat them. `caps` records them; `ledger_name` names the file.
+        self.caps: dict = dict(GENEROUS, max_cost_per_call_usd=0.001)
+        self.ledger_name = "ledger.jsonl"
+
+    # -- ledger and caps ---------------------------------------------------
+    def plan(self) -> dict:
+        facts = {fid: {"text": f["text"]} for fid, f in self.fact_by_id.items()}
+        return eval_embeddings.plan_requests(self.corpus, facts, _corpus_hash())
+
+    def measured_seed_cost(self) -> tuple[int, int]:
+        """(calls, request bytes) a complete seed charges, measured by a scratch
+        seed under its own ledger. The plan's byte total is an upper bound (it
+        prices every request id at four digits), so an exact byte cap needs the
+        measurement."""
+        if getattr(self, "_seed_cost", None) is None:
+            saved_ledger, saved_caps, saved_wire = self.ledger_name, dict(self.caps), self.wire
+            saved_bytes = self.fake.bytes_received
+            self.ledger_name = "scratch-ledger.jsonl"
+            result, code = self.seed("scratch-receipts")
+            self.assertEqual(code, eval_embeddings.EXIT_PASS, result["blockers"])
+            state = self.ledger_state()
+            self._seed_cost = (state.calls, state.request_bytes)
+            self.ledger_name, self.caps = saved_ledger, saved_caps
+            self.wire, self.fake.bytes_received = saved_wire, saved_bytes  # the measuring run is not part of the test
+            self.reset_accounts()
+        return self._seed_cost
+
+    def caps_for(self, *, extra_calls: int | None = None, extra_bytes: int | None = None, **caps) -> dict:
+        """Caps that leave exactly `extra_calls` calls / `extra_bytes` request
+        bytes after a complete seed."""
+        seed_calls, seed_bytes = self.measured_seed_cost() if (extra_calls is not None or extra_bytes is not None) else (0, 0)
+        out = dict(self.caps, **caps)
+        if extra_calls is not None:
+            out["max_calls"] = seed_calls + extra_calls
+        if extra_bytes is not None:
+            out["max_input_tokens"] = seed_bytes + extra_bytes
+        return out
+
+    def ledger_path(self) -> Path:
+        return self.tmp / self.ledger_name
+
+    def ledger_state(self):
+        return ledger_lib.parse_ledger(self.ledger_path().read_text())
+
+    def reset_accounts(self) -> None:
+        """Stand-in for resetting both hosted accounts out-of-band."""
+        for a in self.fake.accounts:
+            self.fake.accounts[a] = []
+            self.fake.forgotten[a] = []
 
     # -- manifest builders -------------------------------------------------
     def manifest_dict(self, phase: str, *, receipts: dict | None = None, **budget) -> dict:
         m = json.loads(TEMPLATE_PATH.read_text())
         m["task_id"] = "T23.43"
-        b = dict(GENEROUS, max_elapsed_seconds=600, max_cost_per_call_usd=0.001,
-                 authorization_ref="test-authorization", automatic_reset=False, auto_top_up=False)
+        b = dict(self.caps, max_elapsed_seconds=600, authorization_ref="test-authorization",
+                 automatic_reset=False, auto_top_up=False, ledger_path=str(self.ledger_path()))
         b.update(budget)
         m["budget"] = b
         m["provider"].update(model="test-model", version_pin="test-pin-1", dimensions=8,
                              serving_provider="test-serving", privacy_review_ref="test-privacy", secret_ref="EMBEDDINGS_API_KEY")
-        m["environment"] = {"kind": "disposable", "origin": None, "allowed_hosts": ["127.0.0.1"], "production_target_allowed": False}
+        m["environment"] = {"kind": self.environment_kind, "origin": None, "allowed_hosts": ["127.0.0.1"], "production_target_allowed": False}
         for key, env in (("hosted_mcp", POS_ENV), ("empty_case_hosted_mcp", EMPTY_ENV)):
             m[key] = {"endpoint_url": f"{self.origin}/mcp", "credential_secret_ref": env, "allowed_origins": [self.origin]}
         m["corpus_sha256"] = _corpus_hash()
@@ -192,9 +260,22 @@ class LiveFixture(unittest.TestCase):
         path.write_text(json.dumps(m))
         return path
 
-    def seed(self, name: str = "receipts", *, clock=None, sleep=None, **budget) -> tuple[dict, int]:
+    def init_ledger(self, manifest_path: Path) -> None:
+        """The operator's explicit initialization step, at library level so a
+        deliberately small cap can be bound (the CLI's --init-ledger also
+        refuses caps below the plan). A seed never creates the ledger itself."""
+        m = manifest_lib.load_manifest(manifest_path)
+        eval_embeddings.initialize_ledger(m, manifest_path, self.corpus)
+
+    def seed(self, name: str = "receipts", *, clock=None, sleep=None, init: bool = True, **budget) -> tuple[dict, int]:
+        for cap in ledger_lib.CAP_FIELDS:  # a cap set at the seed is the authorization's cap from then on
+            if cap in budget:
+                self.caps[cap] = budget[cap]
         rdir = self.tmp / name
         mp = self.write_manifest(self.manifest_dict("seed", **budget), f"{name}-seed-manifest.json")
+        ledger_path = self.ledger_path()
+        if init and not ledger_path.exists() and not ledger_path.with_name(ledger_path.name + ".lock").exists():
+            self.init_ledger(mp)
         args = _mode_args("seed", self.tmp / f"{name}-seed-result.json", mp, "--receipt-dir", str(rdir))
         result, code = eval_embeddings.run_seed(args, clock=clock or self.clock.now, sleep=sleep or self.clock.sleep)
         self.seed_result, self.receipt_dir = result, rdir
@@ -208,13 +289,13 @@ class LiveFixture(unittest.TestCase):
             for role, info in self.seed_result["seed_receipts"].items()
         }
 
-    def prior(self, receipts: dict) -> tuple[int, int]:
-        return (sum(r["usage"]["calls_made"] for r in receipts.values()),
-                sum(r["usage"]["request_bytes"] for r in receipts.values()))
+    def prior(self, receipts: dict | None = None) -> tuple[int, int]:
+        """Calls and request bytes the ledger holds, which is what every later
+        run is measured against (a receipt's own counters never are)."""
+        state = self.ledger_state()
+        return state.calls, state.request_bytes
 
-    def live(self, receipts: dict, *, lexical=_no_lexical_hits, extra_calls=10_000, **budget):
-        calls, _ = self.prior(receipts)
-        budget.setdefault("max_calls", calls + extra_calls)
+    def live(self, receipts: dict, *, lexical=_no_lexical_hits, **budget):
         mp = self.write_manifest(self.manifest_dict("live", receipts=receipts, **budget), "live-manifest.json")
         args = _mode_args("live", self.tmp / "live-result.json", mp)
         return eval_embeddings.run_live(args, lexical_provider=lexical)
@@ -707,19 +788,21 @@ class TestCostReporting(LiveFixture):
         receipts = self.seeded_receipts()
         result, _ = self.live(receipts)
         self.assert_cost_shape(result["cost"])
-        calls = self.prior(receipts)[0] + result["usage"]["calls_this_run"]
+        calls = self.prior(receipts)[0]  # the ledger's cumulative calls: the seed's plus this run's
+        self.assertEqual(calls, result["usage"]["ledger"]["cumulative_calls"])
         self.assertEqual(result["cost"]["operator_ceiling_projection_usd"], round(calls * self.CEILING, 6))
         self.assertGreater(result["cost"]["operator_ceiling_projection_usd"], 0)
         self.assertIn(eval_embeddings.COST_LIMITATION, result["limitations"])
         self.assertNotIn("actual_usd is calls", " ".join(result["limitations"]))  # the old mislabel is gone
 
     def test_a_blocked_run_still_reports_null_actual(self):
-        self.seed()
+        self.seed(**self.caps_for(extra_calls=4))
         receipts = self.seeded_receipts()
-        result, code = self.live(receipts, extra_calls=4)
+        seed_calls = self.prior(receipts)[0]
+        result, code = self.live(receipts)
         self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
         self.assert_cost_shape(result["cost"])
-        self.assertEqual(result["cost"]["operator_ceiling_projection_usd"], round((self.prior(receipts)[0] + 4) * self.CEILING, 6))
+        self.assertEqual(result["cost"]["operator_ceiling_projection_usd"], round((seed_calls + 4) * self.CEILING, 6))
 
     def test_a_seed_blocked_before_any_call_reports_zero_projection_and_null_actual(self):
         result, _ = self.seed(max_elapsed_seconds=seeding.ft.expiry_wait_floor_seconds() - 1)
@@ -737,13 +820,15 @@ class TestCostReporting(LiveFixture):
 
 
 class TestLiveModeBudgetEnforcement(LiveFixture):
-    """The prior pass's hard-cap regressions, kept with their assertions and
-    now run against real seed receipts and a fake speaking the real wire
-    shapes. Caps are cumulative with the seed run's recorded spend."""
+    """The caps bind the whole qualification: a seed and every live run draw on
+    one ledger, and each is measured against what the ledger holds. Caps are
+    fixed when the ledger is created, so each test seeds under the caps it
+    wants and then runs live with the same manifest values."""
 
-    def setUp(self):
-        super().setUp()
-        self.seed()
+    def begin(self, name: str = "receipts", **caps) -> None:
+        """Seeds under `caps` (after `caps_for`-style extras) and keeps the receipts."""
+        result, code = self.seed(name, **self.caps_for(**caps))
+        self.assertEqual((result["status"], code), ("PARTIAL", eval_embeddings.EXIT_PASS), result["blockers"])
         self.receipts = self.seeded_receipts()
         self.seed_server_calls = self.fake.calls()
 
@@ -751,6 +836,7 @@ class TestLiveModeBudgetEnforcement(LiveFixture):
         return self.fake.calls() - self.seed_server_calls
 
     def test_missing_credential_env_blocks_before_any_call(self):
+        self.begin()
         del os.environ[POS_ENV]
         result, code = self.live(self.receipts)
         self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED))
@@ -759,6 +845,7 @@ class TestLiveModeBudgetEnforcement(LiveFixture):
     def test_missing_empty_case_credential_env_blocks_before_any_call(self):
         # Strengthened from the prior pass, which blocked only AFTER spending
         # 95 positive-phase calls: both credentials are now checked up front.
+        self.begin()
         del os.environ[EMPTY_ENV]
         result, code = self.live(self.receipts)
         self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
@@ -767,69 +854,73 @@ class TestLiveModeBudgetEnforcement(LiveFixture):
         self.assertIn(EMPTY_ENV, result["blockers"][0]["required_input"])
 
     def test_identical_credential_values_block_before_any_call(self):
+        self.begin()
         os.environ[EMPTY_ENV] = POS_TOKEN
         result, code = self.live(self.receipts)
         self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
         self.assertEqual(self.live_calls(), 0)
 
     def test_budget_exhaustion_stops_at_exact_cap_with_partial_results(self):
-        result, code = self.live(self.receipts, extra_calls=4)
+        self.begin(extra_calls=5)
+        result, code = self.live(self.receipts)
         self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED))
-        # initialize + inventory + 2 recall queries, then no further request.
-        self.assertEqual(self.live_calls(), 4)
+        # initialize + its notification + inventory + 2 recall queries, then no further request.
+        self.assertEqual(self.live_calls(), 5)
         self.assertEqual(result["cases"]["executed"], 2)
         self.assertGreater(result["cases"]["skipped"], 0)
         budget_row = next(r for r in result["acceptance"] if "Budget exhausted" in r["criterion"])
-        self.assertEqual(budget_row["status"], "PASS")
+        self.assertEqual(budget_row["status"], "PASS")  # this run was stopped by the cap
 
-    def test_max_calls_of_one_blocks_after_initialize_before_any_tool_call(self):
-        result, code = self.live(self.receipts, extra_calls=1)
+    def test_a_cap_of_one_call_is_spent_on_initialize_before_its_notification(self):
+        self.begin(extra_calls=1)
+        result, code = self.live(self.receipts)
         self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
-        # The single budgeted call is spent on initialize() itself.
         self.assertEqual(self.live_calls(), 1)
         self.assertEqual(result["cases"]["executed"], 0)
 
     def test_near_token_cap_blocks_after_initialize_before_tool_calls(self):
-        # Cap = bytes already charged by the seed receipts + exactly the
-        # initialize request. initialize fits; the next request cannot.
-        _, prior_bytes = self.prior(self.receipts)
+        # Headroom = exactly the initialize request. It fits; the next request cannot.
         init_bytes = len(mcp_client.request_body(1, "initialize", mcp_client.INITIALIZE_PARAMS))
-        result, code = self.live(self.receipts, max_input_tokens=prior_bytes + init_bytes)
+        self.begin(extra_bytes=init_bytes)
+        result, code = self.live(self.receipts)
         self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
-        self.assertEqual(self.live_calls(), 1)  # only initialize; the cap trips before any tool call
+        self.assertEqual(self.live_calls(), 1)  # only initialize; the cap trips before the notification
         self.assertIn("max_input_tokens", result["blockers"][0]["required_input"])
 
     def test_token_cap_smaller_than_the_first_request_sends_nothing(self):
-        _, prior_bytes = self.prior(self.receipts)
-        result, code = self.live(self.receipts, max_input_tokens=prior_bytes + 1)
+        self.begin(extra_bytes=1)
+        result, code = self.live(self.receipts)
         self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
         self.assertEqual(self.live_calls(), 0)
 
     def test_live_token_cap_never_overshoots_at_any_cap(self):
-        _, prior_bytes = self.prior(self.receipts)
         for extra in (10, 150, 400, 1200, 3000):
             with self.subTest(extra=extra):
+                self.reset_accounts()
+                self.ledger_name = f"ledger-{extra}.jsonl"
+                self.begin(f"receipts-{extra}", extra_bytes=extra)
                 before = self.fake.bytes_received
-                result, code = self.live(self.receipts, max_input_tokens=prior_bytes + extra)
+                result, code = self.live(self.receipts)
                 self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
                 self.assertLessEqual(self.fake.bytes_received - before, extra)
 
     def test_dollar_cap_blocks_before_any_network_call(self):
-        result, code = self.live(self.receipts, approved_max_usd=0.0005, max_cost_per_call_usd=0.01)
+        # Under these caps not even one call is affordable, so the seed itself sends nothing.
+        result, code = self.seed(approved_max_usd=0.0005, max_cost_per_call_usd=0.01)
         self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
-        self.assertEqual(self.live_calls(), 0)
+        self.assertEqual(self.fake.calls(), 0)
         self.assertIn("approved_max_usd", result["blockers"][0]["required_input"])
 
     def test_seed_spend_counts_against_the_live_caps(self):
-        # A live cap that would be ample on its own is exhausted by the seed
-        # receipts' recorded calls.
-        prior_calls, _ = self.prior(self.receipts)
-        result, code = self.live(self.receipts, max_calls=prior_calls)
+        # A cap that is ample for a live run alone is already spent by the seed.
+        self.begin(extra_calls=0)
+        result, code = self.live(self.receipts)
         self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
         self.assertEqual(self.live_calls(), 0)
 
     def test_elapsed_deadline_is_monotonic_and_bounds_the_socket(self):
         import time
+        self.begin()
         guard = __import__("lib.budget", fromlist=["BudgetGuard"]).BudgetGuard(
             self.manifest_dict("live", receipts=self.receipts)["budget"] | {"max_elapsed_seconds": 0.3}
         )
@@ -839,6 +930,7 @@ class TestLiveModeBudgetEnforcement(LiveFixture):
             guard.precharge(1)
 
     def test_full_run_authenticates_positive_and_empty_phases_separately(self):
+        self.begin()
         result, code = self.live(self.receipts)
         self.assertEqual(result["cases"]["executed"], 100)
         live_log = self.fake.log[self.seed_server_calls:]
@@ -869,13 +961,62 @@ class TestLiveScoring(LiveFixture):
             self.assertEqual(row["top5"], by_id[row["case_id"]].ranked_ids[:5], row["case_id"])
         self.assertGreater(sum(r["hit"] for r in result["per_query"]["positive"]), 0)
 
-    def test_perfect_retrieval_and_missed_lexical_control_is_the_only_pass(self):
+    def test_a_local_oracle_ranking_every_fact_first_never_produces_pass_or_live_provider(self):
+        """F2: the independent review drove a loopback stub to overall 95/95,
+        lexical-negative 21/21 and sentinel leakage 0, and the harness said
+        status PASS with evidence_level live-provider. A local endpoint is a
+        fixture whatever it scores."""
         self.set_oracle()
         result, code = self.live(self.receipts)
-        self.assertEqual((result["status"], code), ("PASS", eval_embeddings.EXIT_PASS), result["acceptance"])
+        self.assertEqual((result["status"], code), ("PARTIAL", eval_embeddings.EXIT_PASS), result["acceptance"])
+        self.assertEqual(result["evidence_level"], "fixture")
         self.assertEqual(result["cases"]["executed"], 100)
-        self.assertEqual(result["per_query"]["empty"] and len(result["per_query"]["empty"]), 5)
-        self.assertTrue(all(r["hit"] for r in result["per_query"]["positive"]))
+        self.assertEqual(len(result["per_query"]["empty"]), 5)
+        self.assertTrue(all(r["hit"] for r in result["per_query"]["positive"]))  # every ranking IS correct
+        quality = next(r for r in result["acceptance"] if r["criterion"].startswith("Hit@5"))
+        self.assertEqual(quality["status"], "NOT_RUN")
+        self.assertIn("LOCAL endpoint", quality["observed"])
+        self.assertTrue(any("fixture run" in x for x in result["limitations"]))
+        self.assertTrue(any("cannot satisfy a live-provider gate" in b["required_input"] for b in result["blockers"]))
+        # Declared and observed are kept apart; the endpoint class is what was called.
+        provider = result["provider"]
+        self.assertEqual(provider["declared"]["model"], "test-model")
+        self.assertEqual(provider["declared"]["dimensions"], 8)
+        self.assertEqual({e["class"] for e in provider["observed"]["hosted_endpoints"].values()}, {"loopback"})
+        self.assertIsNone(provider["observed"]["model"])
+        self.assertIsNone(provider["observed"]["dimensions"])
+        self.assertIs(provider["observed"]["provider_identity_verified"], False)
+        self.assertTrue(provider["qualification_prerequisites"])
+        self.assertNotIn("model", provider)  # nothing declared is copied up as if observed
+
+    def test_only_a_remote_endpoint_can_pass_and_it_still_lists_what_is_unverified(self):
+        """The harness has no remote endpoint to call in a unit test, so this
+        patches the classification and nothing else: it shows the PASS branch is
+        reachable only when no endpoint is local."""
+        self.set_oracle()
+        remote = eval_embeddings.manifest_lib.ENDPOINT_CLASS_REMOTE
+        with mock.patch.object(eval_embeddings.manifest_lib, "endpoint_class", return_value=remote):
+            result, code = self.live(self.receipts)
+        self.assertEqual((result["status"], code), ("PASS", eval_embeddings.EXIT_PASS), result["acceptance"])
+        self.assertEqual(result["evidence_level"], "live-provider")
+        provider = result["provider"]
+        self.assertIs(provider["observed"]["provider_identity_verified"], False)
+        self.assertTrue(any("not observed" in x for x in provider["qualification_prerequisites"]))
+        self.assertTrue(any("not an observation" in x for x in result["limitations"]))
+
+    def test_changing_the_environment_kind_after_seeding_conflicts_with_the_ledger(self):
+        """The kind is part of what the authorization is for: editing it after
+        the fact cannot relabel a run, and never resets the ledger."""
+        self.set_oracle()
+        mp = self.write_manifest(self.manifest_dict("live", receipts=self.receipts), "kind-manifest.json")
+        m = json.loads(mp.read_text())
+        m["environment"]["kind"] = "local-fixture"
+        mp.write_text(json.dumps(m))
+        before, wire = self.ledger_path().read_bytes(), self.wire
+        result, code = eval_embeddings.run_live(_mode_args("live", self.tmp / "kind-result.json", mp), lexical_provider=_no_lexical_hits)
+        self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED))
+        self.assertTrue(any("different authorization, caps or identity" in b["required_input"] for b in result["blockers"]))
+        self.assertEqual((self.ledger_path().read_bytes(), self.wire), (before, wire))
 
     def test_pass_requires_the_lexical_negative_criterion(self):
         self.set_oracle()
@@ -955,8 +1096,8 @@ class TestLiveScoring(LiveFixture):
 
     def test_result_records_pin_usage_elapsed_and_configuration_hash(self):
         result, _ = self.live(self.receipts)
-        self.assertEqual(result["provider"]["model"], "test-model")
-        self.assertEqual(result["provider"]["dimensions"], 8)
+        self.assertEqual(result["provider"]["declared"]["model"], "test-model")
+        self.assertEqual(result["provider"]["declared"]["dimensions"], 8)
         self.assertEqual(len(result["configuration_sha256"]), 64)
         self.assertGreater(result["usage"]["request_bytes"], 0)
         self.assertGreater(result["elapsed_seconds"], 0)
@@ -1093,6 +1234,466 @@ class TestNoCredentialOrUpstreamTextEverEscapes(LiveFixture):
         self.assertLessEqual(client.total_response_bytes, 1024)
 
 
+class TestCumulativeLedger(LiveFixture):
+    """F1: the manifest's caps bind the whole qualification, whichever process
+    and invocation spends them. Requests are counted at the socket (`self.wire`),
+    independently of the ledger."""
+
+    def live_plan_calls(self) -> int:
+        return sum(r["live_calls"] for r in self.plan()["per_role"].values())
+
+    def seed_then_receipts(self, name: str = "receipts", **caps):
+        result, code = self.seed(name, **self.caps_for(**caps))
+        self.assertEqual((result["status"], code), ("PARTIAL", eval_embeddings.EXIT_PASS), result["blockers"])
+        return self.seeded_receipts()
+
+    def assert_blocked_without_spending(self, result, code, *, wire: int, ledger_bytes: bytes | None = None):
+        self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED), result["acceptance"])
+        self.assertEqual(self.wire, wire)
+        if ledger_bytes is not None:
+            self.assertEqual(self.ledger_path().read_bytes(), ledger_bytes)
+
+    def test_three_live_invocations_under_one_cap_spend_it_once(self):
+        """The reviewer's reproduction: max_calls=237 let three live runs send
+        447 requests, each claiming 237/237."""
+        receipts = self.seed_then_receipts(extra_calls=self.live_plan_calls())
+        cap = self.caps["max_calls"]
+        self.assertEqual(self.wire, cap - self.live_plan_calls())
+        outcomes = []
+        for _ in range(3):
+            before = self.wire
+            result, code = self.live(receipts)
+            outcomes.append((result, code, self.wire - before))
+        first, second, third = outcomes
+        self.assertEqual(first[0]["cases"]["executed"], 100)
+        self.assertEqual(first[2], self.live_plan_calls())
+        for result, code, sent in (second, third):
+            self.assertEqual((result["status"], code, sent), ("BLOCKED", eval_embeddings.EXIT_BLOCKED, 0))
+            self.assertEqual(result["cases"]["executed"], 0)
+        self.assertEqual(self.wire, cap)  # 237 on the wire, not 447
+        state = self.ledger_state()
+        self.assertEqual((state.calls, state.reservations), (cap, cap))
+        self.assertEqual(first[0]["usage"]["ledger"]["cumulative_calls"], cap)
+        self.assertEqual(first[0]["usage"]["reserved_not_sent"], 0)
+        self.assertIn("not tamper-proof", first[0]["usage"]["ledger"]["guard"])
+
+    def test_ledger_calls_equal_socket_requests_for_a_full_seed_and_live_run(self):
+        receipts = self.seed_then_receipts()
+        result, _ = self.live(receipts)
+        self.assertEqual(self.ledger_state().calls, self.wire)
+        self.assertEqual(self.ledger_state().request_bytes, self.fake.bytes_received)
+        self.assertEqual(result["usage"]["ledger"]["cumulative_calls"], self.wire)
+
+    def test_seed_retries_share_one_budget(self):
+        """Two seed retries under max_calls=50 sent 100 requests."""
+        result, code = self.seed(max_calls=50)
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(self.wire, 50)
+        self.reset_accounts()  # a retry would be against clean accounts
+        result, code = self.seed("retry", max_calls=50)
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(self.wire, 50)  # the retry got no fresh 50
+        self.assertEqual(self.ledger_state().calls, 50)
+        self.assertIn("max_calls=50", result["blockers"][0]["required_input"])
+
+    def test_a_changed_cap_reference_or_kind_never_resets_the_ledger(self):
+        receipts = self.seed_then_receipts(extra_calls=5)
+        before, wire = self.ledger_path().read_bytes(), self.wire
+        saved = dict(self.caps)
+
+        def blocked_by_conflict(result, code):
+            self.assert_blocked_without_spending(result, code, wire=wire, ledger_bytes=before)
+            self.assertTrue(
+                any("different authorization, caps or identity" in b["required_input"] for b in result["blockers"]),
+                result["blockers"],
+            )
+
+        blocked_by_conflict(*self.live(receipts, max_calls=10**6))  # a bigger cap is not a renewal
+        blocked_by_conflict(*self.live(receipts, max_input_tokens=10**12))
+        blocked_by_conflict(*self.live(receipts, approved_max_usd=10**6))
+        blocked_by_conflict(*self.live(receipts, max_cost_per_call_usd=0.0000001))
+        blocked_by_conflict(*self.live(receipts, authorization_ref="a-fresh-authorization"))
+        blocked_by_conflict(*self.seed("retry", max_calls=10**6))  # the same for a seed retry
+        self.caps = saved
+        blocked_by_conflict(*self.seed("retry2", authorization_ref="a-fresh-authorization"))
+        self.caps = saved
+        mp = self.write_manifest(self.manifest_dict("live", receipts=receipts), "kind-manifest.json")
+        m = json.loads(mp.read_text())
+        m["environment"]["kind"] = "local-fixture"
+        mp.write_text(json.dumps(m))
+        blocked_by_conflict(*eval_embeddings.run_live(_mode_args("live", self.tmp / "k.json", mp), lexical_provider=_no_lexical_hits))
+        # The original binding still works, and its spend is intact.
+        self.assertEqual(self.ledger_path().read_bytes(), before)
+
+    def test_a_seed_never_creates_the_ledger(self):
+        result, code = self.seed(init=False)
+        self.assert_blocked_without_spending(result, code, wire=0)
+        self.assertTrue(any("--init-ledger" in b["required_input"] for b in result["blockers"]))
+        self.assertEqual(list(self.tmp.glob("ledger.jsonl*")), [])  # neither the ledger nor a lock file
+
+    def test_a_missing_ledger_blocks_a_live_run_and_is_not_recreated(self):
+        receipts = self.seed_then_receipts()
+        wire = self.wire
+        self.ledger_path().unlink()
+        result, code = self.live(receipts)  # the lock file is still there
+        self.assert_blocked_without_spending(result, code, wire=wire)
+        self.assertTrue(any("lock file remains" in b["required_input"] for b in result["blockers"]))
+        self.assertFalse(self.ledger_path().exists())
+        result, code = self.seed("retry")
+        self.assert_blocked_without_spending(result, code, wire=wire)
+        self.assertFalse(self.ledger_path().exists())
+        self.ledger_path().with_name("ledger.jsonl.lock").unlink()  # even with every trace gone
+        result, code = self.live(receipts)
+        self.assert_blocked_without_spending(result, code, wire=wire)
+        self.assertTrue(any("no ledger exists" in b["required_input"] for b in result["blockers"]))
+        self.assertFalse(self.ledger_path().exists())
+
+    def test_a_ledger_truncated_to_empty_blocks_seed_live_and_init(self):
+        """The coordinator's first WIP defect: at cap, then truncated to an
+        existing empty file, the ledger reopened with calls=0."""
+        receipts = self.seed_then_receipts()
+        wire = self.wire
+        self.ledger_path().write_text("")
+        result, code = self.live(receipts)
+        self.assert_blocked_without_spending(result, code, wire=wire)
+        result, code = self.seed("retry")
+        self.assert_blocked_without_spending(result, code, wire=wire)
+        mp = self.write_manifest(self.manifest_dict("seed"), "init-manifest.json")
+        result, code = eval_embeddings.run_init_ledger(_mode_args("init-ledger", self.tmp / "init.json", mp))
+        self.assert_blocked_without_spending(result, code, wire=wire)
+        self.assertEqual(self.ledger_path().read_bytes(), b"")  # nothing wrote a fresh opening record into it
+
+    def test_a_corrupt_ledger_blocks_live_and_seed_before_any_request(self):
+        receipts = self.seed_then_receipts()
+        wire = self.wire
+        good = self.ledger_path().read_text()
+        lines = good.split("\n")[:-1]
+        for label, text in {
+            "truncated tail": good[:-9],
+            "middle line removed": "\n".join(lines[:5] + lines[6:]) + "\n",
+            "garbage": "garbage\n",
+        }.items():
+            with self.subTest(label):
+                self.ledger_path().write_text(text)
+                self.assert_blocked_without_spending(*self.live(receipts), wire=wire, ledger_bytes=text.encode())
+                self.assert_blocked_without_spending(*self.seed("retry-" + label.split()[0]), wire=wire, ledger_bytes=text.encode())
+
+    def test_forged_receipts_cannot_establish_a_budget(self):
+        """A receipt is bound by its hash, so an edit is re-hashed into the
+        manifest here. Only ledger provenance stands between it and the budget."""
+        receipts = self.seed_then_receipts()
+        wire = self.wire
+        path = Path(receipts["positive"]["path"])
+        original = path.read_text()
+
+        def forged(mutate) -> dict:
+            path.write_text(original)
+            receipt = json.loads(original)
+            mutate(receipt)
+            path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
+            out = json.loads(json.dumps(receipts))
+            out["positive"]["confirmation"] = seeding.receipt_confirmation(json.loads(path.read_text()))
+            return out
+
+        def zero_everything(r):
+            r["usage"] = {"calls_made": 0, "request_bytes": 0, "response_bytes": 0}
+            r["ledger"].update(calls=0, request_bytes=0)
+
+        cases = {
+            "no ledger provenance at all": (lambda r: r.pop("ledger"), "ledger-backed spend provenance"),
+            "provenance calls and usage both zeroed": (zero_everything, "does not match what the ledger holds"),
+            "usage counters zeroed, provenance left": (
+                lambda r: r["usage"].update(calls_made=0, request_bytes=0), "ledger-backed spend provenance",
+            ),
+            "another ledger's id": (lambda r: r["ledger"].update(ledger_id="0" * 32), "different ledger"),
+            "another role": (lambda r: r["ledger"].update(role="empty_case"), "ledger-backed spend provenance"),
+            "an inflated call count": (lambda r: r["ledger"].update(calls=r["ledger"]["calls"] + 1), "ledger-backed spend provenance"),
+        }
+        for label, (mutate, expected) in cases.items():
+            with self.subTest(label):
+                result, code = self.live(forged(mutate))
+                self.assert_blocked_without_spending(result, code, wire=wire)
+                self.assertTrue(any(expected in b["required_input"] for b in result["blockers"]), (label, result["blockers"]))
+        path.write_text(original)
+
+    def test_a_receipt_from_another_ledger_is_rejected(self):
+        receipts_a = self.seed_then_receipts()
+        self.reset_accounts()
+        self.ledger_name = "second-ledger.jsonl"
+        self.seed_then_receipts("receipts-b")  # a second authorization with its own ledger and receipts
+        wire = self.wire
+        result, code = self.live(receipts_a)
+        self.assert_blocked_without_spending(result, code, wire=wire)
+        self.assertTrue(any("different ledger" in b["required_input"] for b in result["blockers"]))
+
+    def test_the_cli_entry_point_enforces_the_same_cumulative_cap(self):
+        """The same protection through main(), the way an operator runs it."""
+        receipts = self.seed_then_receipts(extra_calls=self.live_plan_calls())
+        mp = self.write_manifest(self.manifest_dict("live", receipts=receipts), "cli-live.json")
+        argv = ["--live", "--manifest", str(mp), "--serenity-bin", sys.executable, "--seedbrain-bin", sys.executable]
+        with mock.patch.object(eval_embeddings, "default_lexical_provider", lambda *a: _no_lexical_hits()):
+            first = eval_embeddings.main([*argv, "--output", str(self.tmp / "cli-1.json")])
+            wire = self.wire
+            second = eval_embeddings.main([*argv, "--output", str(self.tmp / "cli-2.json")])
+        self.assertNotEqual(first, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(second, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(self.wire, wire)
+        self.assertEqual(self.wire, self.caps["max_calls"])
+
+
+class TestInitLedgerCommand(LiveFixture):
+    """`--init-ledger` is the one way a ledger begins: deliberate, offline, and
+    never a renewal."""
+
+    def manifest_path(self, name: str = "init-manifest.json", **budget) -> Path:
+        return self.write_manifest(self.manifest_dict("seed", **budget), name)
+
+    def init(self, mp: Path, name: str = "init-result.json"):
+        return eval_embeddings.run_init_ledger(_mode_args("init-ledger", self.tmp / name, mp))
+
+    def test_init_creates_the_ledger_without_any_request_and_a_seed_then_continues_it(self):
+        mp = self.manifest_path()
+        result, code = self.init(mp)
+        self.assertEqual((result["status"], code), ("PARTIAL", eval_embeddings.EXIT_PASS), result["blockers"])
+        self.assertEqual((self.wire, self.fake.calls()), (0, 0))
+        self.assertEqual(result["ledger"]["cumulative_calls"], 0)
+        self.assertEqual(result["ledger"]["authorization_ref"], "test-authorization")
+        self.assertTrue(any("not tamper-proof" in x for x in result["limitations"]))
+        self.assertEqual(self.ledger_state().calls, 0)
+        seeded, seed_code = self.seed(init=False)
+        self.assertEqual((seeded["status"], seed_code), ("PARTIAL", eval_embeddings.EXIT_PASS), seeded["blockers"])
+        self.assertEqual(self.ledger_state().calls, self.wire)
+
+    def test_init_refuses_to_run_twice_and_leaves_the_ledger_alone(self):
+        mp = self.manifest_path()
+        self.init(mp)
+        before = self.ledger_path().read_bytes()
+        result, code = self.init(mp, "init-again.json")
+        self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED))
+        self.assertEqual(self.ledger_path().read_bytes(), before)
+        # ...and a different authorization at the same path is a conflict, never a reset.
+        result, code = self.init(self.manifest_path("other.json", authorization_ref="other"), "init-other.json")
+        self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED))
+        self.assertEqual(self.ledger_path().read_bytes(), before)
+
+    def test_init_refuses_caps_below_the_plan_and_creates_nothing(self):
+        result, code = self.init(self.manifest_path(max_calls=10))
+        self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED))
+        self.assertTrue(any("max_calls" in b["required_input"] for b in result["blockers"]))
+        self.assertEqual(list(self.tmp.glob("ledger.jsonl*")), [])
+
+    def test_the_cli_wires_init_ledger_and_writes_a_result(self):
+        mp = self.manifest_path()
+        out = self.tmp / "cli-init.json"
+        self.assertEqual(eval_embeddings.main(["--init-ledger", "--manifest", str(mp), "--output", str(out)]), eval_embeddings.EXIT_PASS)
+        self.assertEqual(json.loads(out.read_text())["ledger"]["cumulative_calls"], 0)
+        self.assertEqual(eval_embeddings.main(["--init-ledger", "--manifest", str(mp), "--output", str(out)]), eval_embeddings.EXIT_BLOCKED)
+
+    def test_preflight_before_init_passes_and_names_the_next_step(self):
+        args = _mode_args("preflight", self.tmp / "pre.json", self.manifest_path(), "--phase", "seed")
+        result, code = eval_embeddings.run_preflight(args)
+        self.assertEqual((result["status"], code), ("PARTIAL", eval_embeddings.EXIT_PASS), result["blockers"])
+        self.assertEqual(result["ledger"]["state"], "not initialized")
+        self.assertIn("--init-ledger", result["ledger"]["next_step"])
+        self.assertEqual(list(self.tmp.glob("ledger.jsonl*")), [])  # a preflight leaves no trace
+
+    def test_preflight_treats_an_empty_or_orphaned_ledger_as_a_problem_in_both_phases(self):
+        self.init(self.manifest_path())
+        self.ledger_path().write_text("")
+        for phase in ("seed", "live"):
+            with self.subTest("empty " + phase):
+                args = _mode_args("preflight", self.tmp / "pre.json", self.manifest_path(), "--phase", phase)
+                result, code = eval_embeddings.run_preflight(args)
+                self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+                self.assertTrue(any("ledger" in b["required_input"] for b in result["blockers"]), result["blockers"])
+        self.ledger_path().unlink()  # the lock file remains
+        args = _mode_args("preflight", self.tmp / "pre.json", self.manifest_path(), "--phase", "seed")
+        result, code = eval_embeddings.run_preflight(args)
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assertTrue(any("lock file remains" in b["required_input"] for b in result["blockers"]))
+
+
+class TestLexicalControlFailureIsBlocked(LiveFixture):
+    """F3: a lexical control that fails or hangs is a BLOCKED receipt and exit 2,
+    in fixtures and live runs, and never echoes what the binary printed."""
+
+    CANARY = "STDERR-CANARY-/Users/private/path-SECRET"
+
+    def stub(self, body: str) -> str:
+        path = self.tmp / "stub.sh"
+        path.write_text("#!/bin/sh\n" + body + "\n")
+        path.chmod(0o755)
+        return str(path)
+
+    def failing_binary(self) -> str:
+        return self.stub(f'echo "{self.CANARY}" >&2\necho "{self.CANARY}"\nexit 7')
+
+    def assert_sanitized(self, out: Path, captured: io.StringIO):
+        text = out.read_text() + captured.getvalue()
+        self.assertNotIn(self.CANARY, text)
+        self.assertNotIn("/Users/private", text)
+
+    @staticmethod
+    def lexical_subprocess(error: BaseException):
+        """Makes ONLY the lexical control's subprocess calls fail. (Patching
+        `subprocess.run` itself would also break the harness's own git calls.)"""
+        shim = types.SimpleNamespace(
+            run=mock.Mock(side_effect=error), TimeoutExpired=subprocess.TimeoutExpired,
+            SubprocessError=subprocess.SubprocessError, CompletedProcess=subprocess.CompletedProcess,
+        )
+        return mock.patch.object(eval_embeddings.lexical_control, "subprocess", shim)
+
+    def leftover_brains(self, root: Path) -> list[str]:
+        return [p.name for p in root.iterdir() if p.name.startswith("serenity-t2343-")]
+
+    def test_a_failing_binary_in_fixtures_mode_is_blocked_with_exit_2_and_a_result(self):
+        mp = self.write_manifest(self.manifest_dict("live", receipts={"positive": {"path": "x", "confirmation": "y"}, "empty_case": {"path": "x", "confirmation": "y"}}), "fx.json")
+        out = self.tmp / "fx-result.json"
+        binary = self.failing_binary()
+        scratch = self.tmp / "brains"
+        scratch.mkdir()
+        buf = io.StringIO()
+        with mock.patch.object(tempfile, "tempdir", str(scratch)), contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            code = eval_embeddings.main(["--fixtures", "--manifest", str(mp), "--output", str(out), "--serenity-bin", binary, "--seedbrain-bin", binary])
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        result = json.loads(out.read_text())
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertTrue(any("lexical control failed" in b["required_input"] for b in result["blockers"]))
+        self.assertIn("exit 7", json.dumps(result))  # the exit code is reported; the output is not
+        self.assert_sanitized(out, buf)
+        self.assertEqual(self.leftover_brains(scratch), [])
+
+    def test_a_failing_binary_in_a_live_run_blocks_before_any_request(self):
+        result, code = self.seed()
+        receipts = self.seeded_receipts()
+        wire = self.wire
+        mp = self.write_manifest(self.manifest_dict("live", receipts=receipts), "lx-live.json")
+        out = self.tmp / "lx-result.json"
+        binary = self.failing_binary()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            code = eval_embeddings.main(["--live", "--manifest", str(mp), "--output", str(out), "--serenity-bin", binary, "--seedbrain-bin", binary])
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(json.loads(out.read_text())["status"], "BLOCKED")
+        self.assertEqual(self.wire, wire)  # blocked before the first paid request
+        self.assert_sanitized(out, buf)
+
+    def test_a_hung_binary_times_out_to_blocked(self):
+        mp = self.write_manifest(self.manifest_dict("seed"), "hung.json")
+        out = self.tmp / "hung-result.json"
+        hung = subprocess.TimeoutExpired(["serenity"], 60)
+        with self.lexical_subprocess(hung):
+            code = eval_embeddings.main(["--fixtures", "--manifest", str(mp), "--output", str(out), "--serenity-bin", sys.executable, "--seedbrain-bin", sys.executable])
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        result = json.loads(out.read_text())
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("timed out", json.dumps(result))
+
+    def test_a_binary_that_cannot_start_is_blocked_with_only_the_error_class(self):
+        mp = self.write_manifest(self.manifest_dict("seed"), "nostart.json")
+        out = self.tmp / "nostart-result.json"
+        boom = PermissionError(13, f"{self.CANARY}")
+        with self.lexical_subprocess(boom):
+            code = eval_embeddings.main(["--fixtures", "--manifest", str(mp), "--output", str(out), "--serenity-bin", sys.executable, "--seedbrain-bin", sys.executable])
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assertNotIn(self.CANARY, out.read_text())
+        self.assertIn("PermissionError", out.read_text())
+
+
+class TestUnexpectedErrorsKeepEvidence(LiveFixture):
+    """F3: an unexpected setup or parse error must not lose partial usage or
+    receipts, must not echo its text, and must not stop an interrupt."""
+
+    def test_an_unexpected_error_mid_seed_keeps_the_partial_receipt_and_its_usage(self):
+        boom = KeyError("private-value-that-must-not-appear")
+        with mock.patch.object(seeding, "fetch_inventory", side_effect=boom):
+            result, code = self.seed()
+        self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED))
+        self.assertIn("unexpected error: KeyError", result["blockers"][0]["required_input"])
+        self.assertNotIn("private-value", json.dumps(result))
+        receipt = json.loads(Path(result["seed_receipts"]["positive"]["path"]).read_text())
+        self.assertFalse(receipt["complete"])
+        self.assertGreater(receipt["usage"]["calls_made"], 0)  # what was already spent is recorded
+        self.assertEqual(receipt["ledger"]["calls"], receipt["usage"]["calls_made"])
+        self.assertEqual(self.ledger_state().calls, self.wire)
+
+    def test_an_unexpected_error_mid_live_keeps_the_partial_results(self):
+        self.seed()
+        receipts = self.seeded_receipts()
+        with mock.patch.object(seeding, "recall_query", side_effect=ZeroDivisionError("private-value")):
+            result, code = self.live(receipts)
+        self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED))
+        self.assertIn("unexpected error: ZeroDivisionError", result["blockers"][0]["required_input"])
+        self.assertNotIn("private-value", json.dumps(result))
+        self.assertGreater(result["usage"]["calls_this_run"], 0)
+
+    def test_the_main_backstop_writes_a_result_with_the_class_name_only(self):
+        mp = self.write_manifest(self.manifest_dict("seed"), "bs.json")
+        out = self.tmp / "bs-result.json"
+        with mock.patch.object(eval_embeddings, "run_seed", side_effect=RuntimeError("private-value /Users/x")):
+            code = eval_embeddings.main(["--seed", "--manifest", str(mp), "--output", str(out), "--receipt-dir", str(self.tmp / "r")])
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        text = out.read_text()
+        self.assertIn("unexpected error: RuntimeError", text)
+        self.assertNotIn("private-value", text)
+
+    def test_an_interrupt_is_not_swallowed_by_the_backstop(self):
+        mp = self.write_manifest(self.manifest_dict("seed"), "ki.json")
+        with mock.patch.object(eval_embeddings, "run_seed", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                eval_embeddings.main(["--seed", "--manifest", str(mp), "--output", str(self.tmp / "ki.json"), "--receipt-dir", str(self.tmp / "r")])
+
+
+class TestBudgetAcceptanceRowIsTruthful(LiveFixture):
+    """F4: the budget-boundary row is PASS only when THIS run was actually
+    stopped by a cap or an unavailable provider. Any other run did not exercise
+    the boundary, and says so; the unit tests carry that evidence."""
+
+    def row(self, result: dict) -> dict:
+        return next(r for r in result["acceptance"] if r["criterion"] == eval_embeddings.BUDGET_CRITERION)
+
+    def setUp(self):
+        super().setUp()
+        self.seed()
+        self.receipts = self.seeded_receipts()
+
+    def test_a_full_successful_run_did_not_exercise_the_boundary(self):
+        result, _ = self.live(self.receipts)
+        self.assertEqual(result["cases"]["executed"], 100)
+        row = self.row(result)
+        self.assertEqual(row["status"], "NOT_RUN")
+        self.assertIn("not exercised by this run", row["observed"])
+
+    def test_an_inventory_drift_block_is_not_a_budget_observation(self):
+        self.fake.preload("acct-pos", "a stray fact added out of band")
+        result, code = self.live(self.receipts)
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assertIn("inventory differs", result["blockers"][0]["required_input"])
+        self.assertEqual(self.row(result)["status"], "NOT_RUN")
+
+    def test_a_pre_run_block_unrelated_to_the_budget_is_not_run(self):
+        del os.environ[POS_ENV]
+        result, code = self.live(self.receipts)
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(self.row(result)["status"], "NOT_RUN")
+
+    def test_a_pre_run_missing_budget_field_is_the_refusal_the_criterion_describes(self):
+        mp = self.write_manifest(self.manifest_dict("live", receipts=self.receipts), "nobudget.json")
+        m = json.loads(mp.read_text())
+        del m["budget"]["max_calls"]
+        mp.write_text(json.dumps(m))
+        result, code = eval_embeddings.run_live(_mode_args("live", self.tmp / "nb.json", mp), lexical_provider=_no_lexical_hits)
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(self.row(result)["status"], "PASS")
+
+    def test_degraded_search_is_the_unavailable_provider_the_criterion_describes(self):
+        self.fake.degraded = True
+        result, code = self.live(self.receipts)
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(self.row(result)["status"], "PASS")
+        self.assertIn("degraded", json.dumps(result).lower())
+
+
 class TestPreflight(LiveFixture):
     def preflight(self, phase="seed", receipts=None, **budget):
         m = self.manifest_dict(phase, receipts=receipts, **budget)
@@ -1111,8 +1712,7 @@ class TestPreflight(LiveFixture):
         self.seed()
         receipts = self.seeded_receipts()
         live, _ = self.live(receipts)
-        actual_calls = self.prior(receipts)[0] + live["usage"]["calls_this_run"]
-        actual_bytes = self.prior(receipts)[1] + live["usage"]["request_bytes"]
+        actual_calls, actual_bytes = self.prior(receipts)  # the ledger's cumulative totals: seed plus live
         self.assertEqual(actual_calls, plan["total_calls"])
         self.assertLessEqual(actual_bytes, plan["total_request_bytes"])
         self.assertLess(plan["total_request_bytes"] - actual_bytes, 4 * plan["total_calls"])  # only request-id digit slack
