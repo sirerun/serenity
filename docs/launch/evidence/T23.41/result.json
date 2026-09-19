@@ -12,7 +12,7 @@
     "go vet -tags hostedtest ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
     "golangci-lint run ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
     "golangci-lint run --build-tags hostedtest ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
-    "GOFLAGS=-p=2 GOCACHE=<offload> GOTMPDIR=<offload> TMPDIR=<offload> go test -race -count=1 -json -timeout 20m ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate"
+    "GOFLAGS=-p=2 GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp go test -race -count=1 -json -timeout 20m ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate"
   ],
   "cases": {
     "planned": 46,
@@ -51,7 +51,7 @@
   "artifacts": [
     {
       "path": "docs/launch/evidence/T23.41/architecture-review-request.md",
-      "sha256": "968777cd42756b1a93e3e454546476b910fb809a31f816997db90c2b0af46596"
+      "sha256": "74ee6f2a5c992ca9b656adc449cb3d761d75d91034f839b625d4ed313875e0d3"
     },
     {
       "path": "docs/launch/hosted-completion/interfaces.md",
@@ -204,7 +204,8 @@
     "Disclosure: an earlier lease-held verification in this pass started with 15Gi free on the internal disk, below the 20GB hold, without redirecting caches to the offload volume; the final run above did redirect them. An earlier stray test process was stopped with a broad pkill pattern; later work killed only exact PIDs.",
     "Ajent MCP tools were not used in this session; the coordinator handles Ajent centrally.",
     "gateway.go holds Gateway.mu across Pool.Acquire; documented in interfaces.md, not fixed (task45's scope).",
-    "Numeric values (headroom bytes, retention window) stay unset in the proposals: they need a task44 measurement or an operator decision, not a worker guess."
+    "Numeric values (headroom bytes, retention window) stay unset in the proposals: they need a task44 measurement or an operator decision, not a worker guess.",
+    "Coordinator independently reran contracts/... and internal/gate on the final code with race detection: 165 tests including subtests passed, zero failures/skips. Raw coordinator-T23.41-final-test.json sha256 3a665f633daaeb892e9f9b7adf9bd5949714a2441cdf80f9ab10ae570ce5a5a0 is retained outside the repo. Subsequent coordinator changes reconcile task wording and make the proposed storage guarantee explicitly conditional; source_sha identifies the unchanged tested Go code."
   ],
   "blockers": [
     {
@@ -225,7 +226,7 @@
     },
     {
       "owner": "coordinator",
-      "required_input": "Update task41 step 3 and task48 step 2 wording from Append to AppendDeletion; task49 rebases on the revised ManifestV2."
+      "required_input": "Task41 step 3 and task48 step 2 now use AppendDeletion; task49 must rebase on the revised ManifestV2 after the architecture gate."
     }
   ],
   "binary_sha256": null,

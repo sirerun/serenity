@@ -18,7 +18,7 @@ Reply per line: **approve**, **approve with amendment**, or **reject with requir
 
 | Question | Recommendation | Ruling |
 |---|---|---|
-| Adopt the staged-write design (global staging budget reserved before any stage byte exists, a stager that aborts at its ceiling, admission of measured growth including unpublished growth)? | Approve. It is hard by construction. | |
+| Adopt the staged-write design (global staging budget reserved before any stage byte exists, a stager that aborts at its ceiling, admission of measured growth including unpublished growth)? | Approve the design, conditional on the OS-enforced staging limit and allocation accounting below; neither exists in production yet. | |
 | Accept the prerequisite core-writer seam (Git quarantine objects, or equivalent) as a shared-seam request under T23.44 step 4? | Approve. Canonical state is a live Git worktree with no temp-and-rename step, so a stage cannot exist without it. | |
 | If the seam is rejected: adopt in-place admission with a proven per-mutation ceiling and a write-freezing tripwire instead? | Fallback only. It costs customers the last `MaxMutationStageBytes` of quota and is only as strong as the corner-case proof. | |
 | Claim a bound as "hard" only with an OS-enforced size limit (dedicated size-limited filesystem or quota volume under the staging area) plus allocation-based accounting that includes external Git and index writes | Approve. `StageMeter` is a cooperative counter of the bytes its caller reports. No fixture counter proves a hard bound, and until this exists the packet claims an accounting ceiling only. | |
@@ -62,7 +62,7 @@ Billing truth and closure, backup manifest v2 (except its journal watermark), th
 
 Backup manifest v2 changed in this pass: it now carries the control database artifact (relative path, length, SHA256), each non-empty brain's bundle heads, and a `Validate` method, because task49 step 1 and its roundtrip acceptance need them (independent audit D2). Nothing imports the type and task49 has not started. It reserves no incremental-backup fields. `Validate` proves structure and internal consistency only; it does not prove that files exist, that checksums match, that the inventory equals the control database's, or that a manifest is authentic.
 
-The journal write method is `DeletionJournal.AppendDeletion`, not `Append`, so the file-first gate (`internal/gate`) stays unchanged and passes. The task41 step 3 and task48 step 2 contract wording should follow the rename.
+The journal write method is `DeletionJournal.AppendDeletion`, not `Append`, so the file-first gate (`internal/gate`) stays unchanged and passes. Task41 step 3 and task48 step 2 contract wording now follows the rename.
 
 ## Not verified in this task
 
