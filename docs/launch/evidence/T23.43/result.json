@@ -63,7 +63,7 @@
   "blockers": [
     {
       "owner": "task41 reviewer",
-      "required_input": "Review and sign the freeze receipt in docs/launch/hosted-completion/embedding-eval.md: corpus hash f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6, the proportional 18-of-21 lexical-negative threshold reading, and the supplemental plan (hash 4a1b4822937f57c947ab2ef4c8d44462e3c7879d2280b32de5a07198827aa193: target texts, forget/expire modes, expiry timing, sentinel), before any --seed or --live run is authorized."
+      "required_input": "Review and sign the freeze receipt in docs/launch/hosted-completion/embedding-eval.md: corpus hash f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6; the lexical-negative criterion, where the draft's raw count (18 hits when at least 20 cases are flagged, 18 of 21 here) is an unapproved interpretation weaker than the contract's 18/20, so choose an exact 20-of-21 subset scored 18 of 20 or an exact ratio such as 19 of 21; and the supplemental plan (hash 4a1b4822937f57c947ab2ef4c8d44462e3c7879d2280b32de5a07198827aa193: target texts, forget/expire modes, expiry timing, sentinel), before any --seed or --live run is authorized."
     },
     {
       "owner": "David / EMBEDDINGS gate owner",
@@ -132,7 +132,7 @@
   ],
   "profile": "paid",
   "provider": null,
-  "recorded_at": "2026-09-19T05:37:38Z",
+  "recorded_at": "2026-09-19T05:39:31Z",
   "source_sha": "dcf3174d61a6ed4f1d0bbeeab32349916834cd47",
   "status": "PARTIAL",
   "task_id": "T23.43"
