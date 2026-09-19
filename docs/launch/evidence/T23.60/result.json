@@ -2,8 +2,8 @@
   "task_id": "T23.60",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "c33501f3fa74e477bb351e2ce596a8462d8bea4e",
-  "recorded_at": "2026-09-19T03:29:03.891299+00:00",
+  "source_sha": "c287a9f9d78df17b93ea8f18f50dfec2d1ed99b5",
+  "recorded_at": "2026-09-19T03:53:07.043169+00:00",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
@@ -13,9 +13,9 @@
     "python3 scripts/hosted/load.py --live --manifest docs/launch/evidence/T23.60/manifest.json --output /tmp/t2360-live-blocked.json (expected exit 2, BLOCKED, zero-call receipt)"
   ],
   "cases": {
-    "planned": 170,
-    "executed": 170,
-    "passed": 170,
+    "planned": 194,
+    "executed": 194,
+    "passed": 194,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
@@ -24,13 +24,13 @@
     {
       "criterion": "Cost math fixtures and complete recurring categories",
       "expected": "Units and full-snapshot multiplication tested; primary rates or explicit unknowns",
-      "observed": "170 local tests pass (repeated runs, none skipped), including cost units/retention and client tests. Regional S3 rate independently verified from the AWS offer catalog; assumptions/unknown costs remain explicit. Candidate full-limit known subtotal is $321.93/month, not an authorized quote.",
+      "observed": "194 local tests pass (repeated runs, none skipped), including cost units/retention and client tests. Regional S3 rate independently verified from the AWS offer catalog; assumptions/unknown costs remain explicit. Candidate full-limit known subtotal is $321.93/month, not an authorized quote.",
       "status": "PASS"
     },
     {
       "criterion": "Bounded live load execution",
       "expected": "Finite caps, production guards, real outcomes and full workload evidence",
-      "observed": "CLI --live is deliberately disabled before manifest/credential reads/network, returning BLOCKED/exit 2 with a zero-call receipt; a test proves a fully valid manifest, credential directory and running loopback server see zero requests. The candidate client is tested against a real loopback HTTP server for: per-request outcomes over all offered requests (status BLOCKED/FAIL/PARTIAL, never COMPLETE); a wall-clock deadline per exchange (0.6s budget, first byte at 0.5s then a stall: 0.604s measured, 1.105s before the fix); a cap check before every socket operation with queued-work cancellation; strict finite budget; byte-based token precharge with an operator-declared provider-work bound; canonical origins; fixed error classes with no credential prefix leak; confirmed-only session cleanup; a completed TLS exchange, default certificate verification and a TLS stall are covered with a throwaway self-signed certificate. Still open: seeded state, a real cold-open workload, host telemetry, a bounded resolver for hostname origins, reviewer freeze and a separately authorized real run (live-enable-requirements.md).",
+      "observed": "CLI --live is deliberately disabled before manifest/credential reads/network, returning BLOCKED/exit 2 with a zero-call receipt; a test proves a fully valid manifest, credential directory and running loopback server see zero requests. The candidate client is tested against a real loopback HTTP server for: per-request outcomes over all offered requests (status BLOCKED/FAIL/PARTIAL, never COMPLETE); one wall-clock deadline per exchange (0.6s budget, first byte at 0.5s then a stall: 0.604s measured, 1.105s before the fix) that also covers hostname resolution in a disposable child killed and reaped at the deadline (0.4s budget with a stalled lookup: 0.401s measured, 2.008s before; an IP-literal origin starts no child); a cap check before every socket operation with queued-work cancellation; strict finite budget; byte-based token precharge with an operator-declared provider-work bound; canonical origins; fixed error classes with no credential prefix leak; confirmed-only session cleanup; a completed TLS exchange, default certificate verification, a TLS stall, and hostname-not-IP certificate matching and SNI through the resolver are covered with throwaway certificates. The deadline keeps a 0.25s scheduling tolerance and is a client-side guarantee checked against local sockets, not observed behavior of a live target. Still open: seeded state, a real cold-open workload, host telemetry, isolation probes, reviewer freeze and a separately authorized real run (live-enable-requirements.md).",
       "status": "BLOCKED"
     },
     {
@@ -59,7 +59,7 @@
     },
     {
       "path": "docs/launch/hosted-economics.md",
-      "sha256": "1b3c455b3fda61509e0bc5613e8da0488c6ad6c71848161899880771fa36e0b6"
+      "sha256": "8c36f06f066ed7fdabb7489d4d3bc2a649128a37656253f81c76e1f5e3d21e94"
     },
     {
       "path": "scripts/hosted/cost_model.py",
@@ -67,7 +67,7 @@
     },
     {
       "path": "scripts/hosted/load.py",
-      "sha256": "0fbc317f9bc36904781dbed58427f59e9528f2b718d23613f47e6f6f22071202"
+      "sha256": "d57f69dbe7423184a5d4e83ff0c3ea2d0e998dbad60f883f2d2ef8c4e6c1d3fb"
     },
     {
       "path": "evals/hosted-load/harness.py",
@@ -75,7 +75,7 @@
     },
     {
       "path": "docs/launch/evidence/T23.60/live-enable-requirements.md",
-      "sha256": "1c7e8bab0b604cca4fda12bf9ec24a1db0a0c1286c89316c04aa7635cf3ce9e0"
+      "sha256": "4aa9d334dbc90aeedfd29e407c6d6e1c56860a3d0673a294339b4895541c37c8"
     },
     {
       "path": "docs/launch/evidence/T23.60/s3-rate.json",
@@ -83,7 +83,7 @@
     },
     {
       "path": "evals/hosted-load/test_load_cli.py",
-      "sha256": "551b6d00ec53946fafdb58ff63bb98d415b1b022e105efec5836eed0d25ac2c7"
+      "sha256": "aae2e578b742aec99addac1ad96df78ed84e6295e9dc5b945f0ddb4378922c74"
     },
     {
       "path": "evals/hosted-load/test_cost_model.py",
@@ -101,16 +101,16 @@
   },
   "limitations": [
     "No supported live-load execution: CLI is fail-closed until live-enable-requirements.md is satisfied. The candidate client has loopback-server tests only and never reports better than PARTIAL.",
-    "The per-exchange wall deadline is end to end only for IP-literal origins. getaddrinfo() cannot be interrupted and no bounded resolver is implemented, so hostname origins are unqualified; each live result states this in exchange_deadline_scope.",
+    "The per-exchange deadline covers hostname resolution (a disposable child, killed and reaped at the deadline), connect, TLS, headers and body under one monotonic deadline, within a 0.25s scheduling tolerance plus child start and post-deadline SIGTERM/SIGKILL/reap time (up to 1.2s if a child survives SIGTERM and SIGKILL). It runs the host's operating-system resolver unmodified, tries addresses sequentially, and adds one child (20-37ms measured locally) to each hostname exchange's recorded latency. It is checked against local sockets and a scripted resolver only; it says nothing about a live target or DNS provider.",
     "Token precharge is encoded argument bytes (an upper bound, no tokenizer verified), plus an operator-declared provider_work_bound for server-side work the client cannot observe. The committed manifest leaves that bound null, so a live run stays blocked.",
-    "No provider calls or deployment occurred. No complete cost or capacity qualification is claimed. Deadline tests are timing-based against real sockets and could flake on a heavily loaded host.",
+    "No provider calls or deployment occurred. No complete cost or capacity qualification is claimed. Deadline and resolver tests are timing-based against real sockets and child processes and could flake on a heavily loaded host.",
     "EC2 regional pricing parity, backup byte sizes, mixes, query/rebuild/readiness usage and shared-account free allowances remain assumptions; provider price, log volumes, custom metrics and restore activity remain unknown.",
     "Backup lifecycle model assumes about 60 days of full timestamped snapshots and needs measured/architecture validation; its full-limit exposure exceeds the historical $60 ceiling."
   ],
   "blockers": [
     {
       "owner": "T23.60 follow-up",
-      "required_input": "Close the still-open items in live-enable-requirements.md (seeded state, real cold-open workload, host telemetry, hostname resolver bound, separately authorized run) before removing the unconditional CLI gate."
+      "required_input": "Close the still-open items in live-enable-requirements.md (seeded state, real cold-open workload, host telemetry and isolation probes, separately authorized run) before removing the unconditional CLI gate."
     },
     {
       "owner": "chief-architect / T23.41 reviewer",
