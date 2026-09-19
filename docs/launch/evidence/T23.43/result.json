@@ -1,0 +1,95 @@
+{
+  "acceptance": [
+    {
+      "criterion": "Hit@5 thresholds (overall>=0.90, category floors, empty leakage=0, lexical-negative>=18/20) frozen before live results",
+      "expected": "Measured only against a live hosted MCP recall endpoint (see --live)",
+      "observed": "hashbag(mechanics-only) overall_hit_rate=0.579; fixed-vector(must-fail) overall_hit_rate=0.000; lexical-control overall_hit_rate=0.000 (none of these three arms is a live semantic-quality measurement)",
+      "status": "BLOCKED"
+    },
+    {
+      "criterion": "Fixed-vector/lexical-only stub fails the quality predicate; fixture mode passes harness mechanics but never marks quality PASS",
+      "expected": "fixed-vector overall_hit_rate < 0.90 AND all 95 positive cases mechanically scored",
+      "observed": "fixed-vector overall_hit_rate=0.000 (<0.90: True); mechanics completed for 95/95 positive cases",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Budget exhausted/provider unavailable yields BLOCKED with partial results and no further calls",
+      "expected": "N/A in --fixtures mode (no external budget/provider involved)",
+      "observed": "fixtures mode never calls a live provider; see --live for the budget-enforcement path",
+      "status": "NOT_RUN"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "evals/hosted/corpus.json",
+      "sha256": "b24603db8ae668198e9e942f4735ede6e43ac4251ed6e26bfc2c608cc6ac652e"
+    },
+    {
+      "path": "evals/hosted/facts.json",
+      "sha256": "d937fca2bee6aac5ea2fd1a72e2a30e7fd8bc7eff0350ee57c6a58ee4645907a"
+    },
+    {
+      "path": "docs/launch/evidence/T23.43/eval-fixture.json",
+      "sha256": "32bf9a35d09ed930e551edc522f52992d3e3e603b079174cf428abb7a16a542b"
+    },
+    {
+      "path": "docs/launch/hosted-completion/embedding-eval.md",
+      "sha256": "21ab269a3e8efd8651e4bf8383522542dce6a0a34bd4338c4671b2c93ca9a47d"
+    }
+  ],
+  "binary_sha256": "83c0ec7ae38e8d3ca9f5f8ea2671749ff04bc991a6818f76212f3b8f6f627439",
+  "blockers": [
+    {
+      "owner": "task41 reviewer",
+      "required_input": "Review and sign the freeze receipt in docs/launch/hosted-completion/embedding-eval.md (corpus hash f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6, the proportional 18-of-21 lexical-negative threshold reading, and the live-phase seeding gap) before any --live run is authorized."
+    },
+    {
+      "owner": "David / EMBEDDINGS gate owner",
+      "required_input": "Provision EMBEDDINGS_API_KEY with an approved allowance/model pin per docs/launch/hosted-plan.md's external gate registry, and merge T23.42's real provider adapter."
+    },
+    {
+      "owner": "coordinator (identity/provisioning owner, T23.44/46)",
+      "required_input": "Seed the frozen corpus into a real hosted test account/brain out-of-band and record hosted_mcp.corpus_seeded_confirmation in a --live manifest -- T23.43 does not own that write path and never seeds a live account itself."
+    }
+  ],
+  "cases": {
+    "executed": 50,
+    "failed": 0,
+    "passed": 50,
+    "planned": 50,
+    "skip_reasons": [],
+    "skipped": 0
+  },
+  "commands": [
+    "python3 -m unittest discover -s evals/hosted -p \"test_*.py\"",
+    "python3 evals/hosted/corpus_gen.py --check",
+    "SERENITY_BIN=<local build> SEEDBRAIN_BIN=<local build> python3 scripts/hosted/eval_embeddings.py --fixtures --manifest $QUALIFICATION_MANIFEST --output $EVIDENCE_DIR/eval-fixture.json",
+    "go build -o <tmp>/serenity ./cmd/serenity",
+    "go build -o <tmp>/seedbrain ./evals/hosted/fixtures/seedbrain"
+  ],
+  "configuration_sha256": null,
+  "corpus_sha256": "f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6",
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": null,
+    "authorization_refs": []
+  },
+  "dependencies": {
+    "main_base": "810349ba7c1ed2c05fe34e3892de764a26a4633c"
+  },
+  "evidence_level": "fixture",
+  "limitations": [
+    "python3 -m unittest discover -s evals/hosted -p \"test_*.py\" ran 50/50 tests passing, including the lexical-control-arm tests (SERENITY_BIN/SEEDBRAIN_BIN were set to a local build of the unmodified cmd/serenity, built under the R-build-lease protocol at a temporary, uncommitted path -- binary_sha256 above is the new evals/hosted/fixtures/seedbrain helper's binary hash; the unmodified serenity binary built alongside it is not this task's artifact); 'cases' above reflects this Python suite, not the 100-case corpus itself -- see docs/launch/evidence/T23.43/eval-fixture.json's own 'cases' (100 planned/executed) and '_debug' fields for the corpus-level Hit@5 mechanics run.",
+    "No live semantic measurement has ever been taken: EMBEDDINGS_API_KEY is not provisioned, T23.42's real provider adapter is not merged, and no hosted test account is seeded. Every Hit@5 number produced by this task is a fixtures-only mechanical rehearsal (hash-bag / fixed-vector / real-lexical-control arms), never a quality PASS -- see embedding-eval.md.",
+    "The production lexical fallback (internal/index.LiteralFTSQuery) implicit-ANDs every query term including stopwords, so natural-language questions almost never lexically match a short fact statement regardless of this corpus's designed word-overlap category -- verified directly against the real built serenity binary; see embedding-eval.md 'Known limits'.",
+    "Empty-case fixture arm approximates 'forgotten/expired' as 'never authored' since T23.43 does not own the remember/forget/expiry pipeline (T23.42/44/48).",
+    "task41's threshold-review freeze receipt (docs/launch/hosted-completion/embedding-eval.md) is not yet signed off; this task proposes the frozen corpus/thresholds but cannot self-approve them.",
+    "Ajent MCP tools (ajent_inbox/ajent_search) were unauthorized in this session (permission denied); coordination was cross-checked against ajent.social only, per AGENTS.md's documented fallback."
+  ],
+  "profile": "paid",
+  "provider": null,
+  "recorded_at": "2026-09-19T01:05:02Z",
+  "source_sha": "275e906e1a6f33b4335ed934fe2512d81e326d82",
+  "status": "PARTIAL",
+  "task_id": "T23.43"
+}

@@ -180,8 +180,8 @@
   ],
   "profile": "paid",
   "provider": null,
-  "recorded_at": "2026-09-19T01:02:09Z",
-  "source_sha": "810349ba7c1ed2c05fe34e3892de764a26a4633c",
+  "recorded_at": "2026-09-19T01:03:45Z",
+  "source_sha": "275e906e1a6f33b4335ed934fe2512d81e326d82",
   "status": "PARTIAL",
   "task_id": "T23.43"
 }
