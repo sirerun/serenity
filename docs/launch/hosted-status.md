@@ -25,3 +25,5 @@ All completion tasks are planned, not accepted. No implementation worker was lau
 - Invitation-only Free pilot is a proposal, not an approved scope replacement. Default plan profile preserves original paid launch; pilot activation is a separate explicit gate.
 
 The [historical plan](archive/hosted-plan-2026-09-11.md) preserves September11 discoveries. Its PR states, “no implementation exists,” OpenRouter capability claim and task statuses are superseded. Do not dispatch from it.
+
+Historical prerequisite-stack merge and verification receipts are preserved in [the September 12 T23.1 snapshot](archive/t23-1-merge-receipt-2026-09-12.md). That snapshot does not change the current execution queue.
