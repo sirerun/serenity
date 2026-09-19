@@ -66,6 +66,34 @@ class RateLimiterTests(unittest.TestCase):
         self.assertFalse(limiter.allow("acct-1", now_s=1.0))
         self.assertTrue(limiter.allow("acct-1", now_s=61.0))
 
+    def test_a_window_starts_at_the_first_request_not_on_a_wall_clock_minute(self):
+        """internal/hosted/gateway/admission.go: `if now.Sub(b.start) >= time.Minute { b = bucket{start: now} }`.
+        The wall-clock-minute model let a key that started at 45 s reset at 60 s."""
+        limiter = harness.RateLimiter(limit=1)
+        self.assertTrue(limiter.allow("k", now_s=45.0))
+        self.assertFalse(limiter.allow("k", now_s=61.0))  # 16 s into the window: refused (the old model reset at 60)
+        self.assertFalse(limiter.allow("k", now_s=104.999))
+        self.assertTrue(limiter.allow("k", now_s=105.0))  # exactly 60 s after the window started
+
+    def test_a_refused_request_neither_starts_nor_extends_a_window(self):
+        limiter = harness.RateLimiter(limit=1)
+        self.assertTrue(limiter.allow("k", now_s=0.0))
+        for t in (10.0, 30.0, 59.0):
+            self.assertFalse(limiter.allow("k", now_s=t))
+        self.assertTrue(limiter.allow("k", now_s=60.0))  # not pushed out by the refusals at 10, 30 and 59
+
+    def test_keys_have_independent_windows(self):
+        limiter = harness.RateLimiter(limit=1)
+        self.assertTrue(limiter.allow("a", now_s=0.0))
+        self.assertTrue(limiter.allow("b", now_s=30.0))
+        self.assertFalse(limiter.allow("a", now_s=59.0))
+        self.assertTrue(limiter.allow("a", now_s=60.0))
+        self.assertFalse(limiter.allow("b", now_s=60.0))
+        self.assertTrue(limiter.allow("b", now_s=90.0))
+
+    def test_the_production_limits_are_the_gateways(self):
+        self.assertEqual((harness.ACCOUNT_RATE_LIMIT_PER_MIN, harness.IP_RATE_LIMIT_PER_MIN), (120, 600))  # gateway.go: allow("account:..", 120), allow("ip:..", 600)
+
 
 class PoolAdmissionTests(unittest.TestCase):
     def test_admits_first_open_as_cold(self):
@@ -108,6 +136,32 @@ class PoolAdmissionTests(unittest.TestCase):
         pool.acquire("brain-a", now_s=0.0)  # still in flight, users=1 equivalent (no release)
         admitted, _ = pool.acquire("brain-b", now_s=1.0)
         self.assertFalse(admitted)
+
+
+class FactSizeBoundTests(unittest.TestCase):
+    """F1. The gateway refuses a fact over 4096 bytes (gateway.go, len(input.Fact) > 4096)."""
+
+    def test_the_vocabulary_is_short_enough_for_the_largest_frozen_fact(self):
+        workload = harness.load_workload(WORKLOAD_PATH)
+        top = workload["fact_tokens"]["max"]
+        self.assertLessEqual(max(len(w) for w in harness._TEXT_VOCAB), 7)
+        self.assertLessEqual(harness.max_rendered_bytes(top), harness.FACT_MAX_BYTES)
+        self.assertEqual(harness.FACT_MAX_BYTES, 4096)
+
+    def test_the_text_is_exactly_the_requested_number_of_words_never_truncated(self):
+        for tokens in (1, 32, 200, 512):
+            for seed in range(50):
+                text = harness.render_text(f"s{seed}", tokens)
+                self.assertEqual(len(text.split()), tokens)
+                self.assertLessEqual(len(text.encode("utf-8")), harness.max_rendered_bytes(tokens))
+
+    def test_the_vocabulary_has_no_duplicate_or_non_ascii_words(self):
+        self.assertEqual(len(set(harness._TEXT_VOCAB)), len(harness._TEXT_VOCAB))
+        self.assertTrue(all(w.isascii() and w.isalpha() and w == w.lower() for w in harness._TEXT_VOCAB))
+
+    def test_word_counts_are_documented_as_nominal(self):
+        self.assertIn("not a token count", harness.render_text.__doc__)
+        self.assertIn("no tokenizer is assumed", harness.render_text.__doc__)
 
 
 class RenderTextBoundTests(unittest.TestCase):
@@ -186,6 +240,49 @@ class RunRepetitionTests(unittest.TestCase):
         main = harness.run_repetition(self.workload, self.accounts, seed=99, saturation=False)
         saturation = harness.run_repetition(self.workload, self.accounts, seed=99, saturation=True)
         self.assertGreater(saturation["admission_rejection_pct"], main["admission_rejection_pct"])
+
+    def test_outcomes_are_broken_down_by_phase_and_the_phases_sum_to_the_whole_run(self):
+        r = harness.run_repetition(self.workload, self.accounts, seed=123)
+        self.assertEqual(sum(p["offered"] for p in r["outcomes_by_phase"].values()), r["total_offered"])
+        for outcome, count in r["outcomes"].items():
+            self.assertEqual(sum(p.get(outcome, 0) for p in r["outcomes_by_phase"].values()), count)
+        self.assertEqual(set(r["outcomes_by_phase"]), {p["name"] for p in self.workload["phases"]})
+
+    def test_the_frozen_hot_tenant_exceeds_the_account_limit_in_the_steady_phase(self):
+        """W1, reproduced with the limiter's real window. The reviewer computed 180 of 7379
+        steady requests (2.44 percent) independently; the numbers must match. If the reviewer
+        changes the workload, update docs/launch/evidence/T23.60/decision-request-hot-tenant-rate-limit.md."""
+        r = harness.run_repetition(self.workload, self.accounts, seed=20260918)
+        steady, burst = r["outcomes_by_phase"]["steady"], r["outcomes_by_phase"]["burst"]
+        self.assertEqual((steady["rejected_rate_limit"], steady["offered"]), (180, 7379))
+        self.assertEqual((burst["rejected_rate_limit"], burst["offered"]), (544, 2430))
+        self.assertEqual(r["rate_limited_by_account_and_phase"], {"scale-0": {"warmup": 28, "steady": 180, "burst": 544}})  # only the hot tenant
+        self.assertAlmostEqual(steady["rejected_rate_limit"] / steady["offered"] * 100, 2.4393, places=3)
+        self.assertGreater(steady["rejected_rate_limit"] / steady["offered"] * 100, self.workload["thresholds"]["unexpected_admission_rejection_max_pct"])
+
+    def test_the_simulator_matches_an_independent_fixed_window_count(self):
+        """A second implementation of admission.go's window, written from the Go source, agrees with the harness for any seed."""
+        for seed in (1, 20260918):
+            arrivals = harness.generate_arrivals(self.workload, self.accounts, __import__("random").Random(seed))
+            starts, counts, refused = {}, {}, 0
+            for a in arrivals:
+                key, t = a["account"], a["t"]
+                if key not in starts or t - starts[key] >= 60:
+                    starts[key], counts[key] = t, 0
+                if counts[key] >= 120:
+                    refused += 1
+                else:
+                    counts[key] += 1
+            r = harness.run_repetition(self.workload, self.accounts, seed=seed)
+            self.assertEqual(r["outcomes"].get("rejected_rate_limit", 0), refused)
+
+    def test_the_address_limit_is_checked_first_and_can_refuse_on_its_own(self):
+        """gateway.go checks allow("ip:..", 600) before the account limit. A workload of 20 requests a second
+        from one client address, spread over every account so no account limit binds, must hit the 600 a minute address limit."""
+        workload = dict(self.workload, concurrency={"clients": 8, "baseline_request_rate_per_s": 20}, hot_tenant_traffic_fraction=0.0, phases=[{"name": "steady", "minutes": 2}])
+        r = harness.run_repetition(workload, self.accounts, seed=3)
+        self.assertGreater(r["outcomes"].get("rejected_ip_rate_limit", 0), 0)
+        self.assertGreaterEqual(r["admission_rejection_pct"], r["outcomes"]["rejected_ip_rate_limit"] / r["total_offered"] * 100)
 
     def test_quota_boundary_saturation_kept_separate_from_main_completion_stat(self):
         main = harness.run_repetition(self.workload, self.accounts, seed=11, saturation=False)

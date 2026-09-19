@@ -7,103 +7,184 @@
       "saturation": false,
       "total_offered": 12187,
       "outcomes": {
-        "ok": 11328,
-        "rejected_rate_limit": 768,
-        "rejected_capacity": 91
+        "ok": 11341,
+        "rejected_rate_limit": 752,
+        "rejected_capacity": 94
       },
-      "completion_pct": 92.95150570279806,
-      "unexpected_5xx_pct": 0.0,
-      "admission_rejection_pct": 7.048494297201937,
-      "latency_by_verb_s": {
-        "recall": {
-          "p50": 0.4840298031722145,
-          "p95": 3.42592807067488,
-          "p99": 3.8655534656044663,
-          "max": 4.33415475061763
+      "outcomes_by_phase": {
+        "warmup": {
+          "offered": 2378,
+          "ok": 2347,
+          "rejected_rate_limit": 28,
+          "rejected_capacity": 3
         },
-        "remember": {
-          "p50": 0.6377907442901423,
-          "p95": 3.65042329633578,
-          "p99": 4.08468596973148,
-          "max": 4.4993913317524905
+        "steady": {
+          "offered": 7379,
+          "ok": 7175,
+          "rejected_rate_limit": 180,
+          "rejected_capacity": 24
         },
-        "forget": {
-          "p50": 0.431816310567426,
-          "p95": 3.3402705611778343,
-          "p99": 3.8496921039363,
-          "max": 4.050204427075223
+        "burst": {
+          "offered": 2430,
+          "ok": 1819,
+          "rejected_rate_limit": 544,
+          "rejected_capacity": 67
         }
       },
-      "cold_open_p95_s": 3.8679315138658588,
-      "cold_open_count": 2846
+      "rate_limited_by_account_and_phase": {
+        "scale-0": {
+          "warmup": 28,
+          "steady": 180,
+          "burst": 544
+        }
+      },
+      "completion_pct": 93.05817674571264,
+      "unexpected_5xx_pct": 0.0,
+      "admission_rejection_pct": 6.941823254287355,
+      "latency_by_verb_s": {
+        "recall": {
+          "p50": 0.4881464167244297,
+          "p95": 3.424066910804249,
+          "p99": 3.863748499286811,
+          "max": 4.410883088399273
+        },
+        "remember": {
+          "p50": 0.6384397129649209,
+          "p95": 3.5995053541498505,
+          "p99": 4.0033748054646825,
+          "max": 4.610634139268212
+        },
+        "forget": {
+          "p50": 0.4300079071900788,
+          "p95": 3.308123628888054,
+          "p99": 3.6921421302187394,
+          "max": 3.933162900674134
+        }
+      },
+      "cold_open_p95_s": 3.8426834637614826,
+      "cold_open_count": 2840
     },
     {
       "saturation": false,
       "total_offered": 12187,
       "outcomes": {
-        "ok": 11328,
-        "rejected_rate_limit": 768,
-        "rejected_capacity": 91
+        "ok": 11341,
+        "rejected_rate_limit": 752,
+        "rejected_capacity": 94
       },
-      "completion_pct": 92.95150570279806,
-      "unexpected_5xx_pct": 0.0,
-      "admission_rejection_pct": 7.048494297201937,
-      "latency_by_verb_s": {
-        "recall": {
-          "p50": 0.4840298031722145,
-          "p95": 3.42592807067488,
-          "p99": 3.8655534656044663,
-          "max": 4.33415475061763
+      "outcomes_by_phase": {
+        "warmup": {
+          "offered": 2378,
+          "ok": 2347,
+          "rejected_rate_limit": 28,
+          "rejected_capacity": 3
         },
-        "remember": {
-          "p50": 0.6377907442901423,
-          "p95": 3.65042329633578,
-          "p99": 4.08468596973148,
-          "max": 4.4993913317524905
+        "steady": {
+          "offered": 7379,
+          "ok": 7175,
+          "rejected_rate_limit": 180,
+          "rejected_capacity": 24
         },
-        "forget": {
-          "p50": 0.431816310567426,
-          "p95": 3.3402705611778343,
-          "p99": 3.8496921039363,
-          "max": 4.050204427075223
+        "burst": {
+          "offered": 2430,
+          "ok": 1819,
+          "rejected_rate_limit": 544,
+          "rejected_capacity": 67
         }
       },
-      "cold_open_p95_s": 3.8679315138658588,
-      "cold_open_count": 2846
+      "rate_limited_by_account_and_phase": {
+        "scale-0": {
+          "warmup": 28,
+          "steady": 180,
+          "burst": 544
+        }
+      },
+      "completion_pct": 93.05817674571264,
+      "unexpected_5xx_pct": 0.0,
+      "admission_rejection_pct": 6.941823254287355,
+      "latency_by_verb_s": {
+        "recall": {
+          "p50": 0.4881464167244297,
+          "p95": 3.424066910804249,
+          "p99": 3.863748499286811,
+          "max": 4.410883088399273
+        },
+        "remember": {
+          "p50": 0.6384397129649209,
+          "p95": 3.5995053541498505,
+          "p99": 4.0033748054646825,
+          "max": 4.610634139268212
+        },
+        "forget": {
+          "p50": 0.4300079071900788,
+          "p95": 3.308123628888054,
+          "p99": 3.6921421302187394,
+          "max": 3.933162900674134
+        }
+      },
+      "cold_open_p95_s": 3.8426834637614826,
+      "cold_open_count": 2840
     },
     {
       "saturation": false,
       "total_offered": 12187,
       "outcomes": {
-        "ok": 11328,
-        "rejected_rate_limit": 768,
-        "rejected_capacity": 91
+        "ok": 11341,
+        "rejected_rate_limit": 752,
+        "rejected_capacity": 94
       },
-      "completion_pct": 92.95150570279806,
-      "unexpected_5xx_pct": 0.0,
-      "admission_rejection_pct": 7.048494297201937,
-      "latency_by_verb_s": {
-        "recall": {
-          "p50": 0.4840298031722145,
-          "p95": 3.42592807067488,
-          "p99": 3.8655534656044663,
-          "max": 4.33415475061763
+      "outcomes_by_phase": {
+        "warmup": {
+          "offered": 2378,
+          "ok": 2347,
+          "rejected_rate_limit": 28,
+          "rejected_capacity": 3
         },
-        "remember": {
-          "p50": 0.6377907442901423,
-          "p95": 3.65042329633578,
-          "p99": 4.08468596973148,
-          "max": 4.4993913317524905
+        "steady": {
+          "offered": 7379,
+          "ok": 7175,
+          "rejected_rate_limit": 180,
+          "rejected_capacity": 24
         },
-        "forget": {
-          "p50": 0.431816310567426,
-          "p95": 3.3402705611778343,
-          "p99": 3.8496921039363,
-          "max": 4.050204427075223
+        "burst": {
+          "offered": 2430,
+          "ok": 1819,
+          "rejected_rate_limit": 544,
+          "rejected_capacity": 67
         }
       },
-      "cold_open_p95_s": 3.8679315138658588,
-      "cold_open_count": 2846
+      "rate_limited_by_account_and_phase": {
+        "scale-0": {
+          "warmup": 28,
+          "steady": 180,
+          "burst": 544
+        }
+      },
+      "completion_pct": 93.05817674571264,
+      "unexpected_5xx_pct": 0.0,
+      "admission_rejection_pct": 6.941823254287355,
+      "latency_by_verb_s": {
+        "recall": {
+          "p50": 0.4881464167244297,
+          "p95": 3.424066910804249,
+          "p99": 3.863748499286811,
+          "max": 4.410883088399273
+        },
+        "remember": {
+          "p50": 0.6384397129649209,
+          "p95": 3.5995053541498505,
+          "p99": 4.0033748054646825,
+          "max": 4.610634139268212
+        },
+        "forget": {
+          "p50": 0.4300079071900788,
+          "p95": 3.308123628888054,
+          "p99": 3.6921421302187394,
+          "max": 3.933162900674134
+        }
+      },
+      "cold_open_p95_s": 3.8426834637614826,
+      "cold_open_count": 2840
     }
   ],
   "replay_determinism_verified": true,
@@ -111,55 +192,82 @@
     "saturation": true,
     "total_offered": 11989,
     "outcomes": {
-      "ok": 2391,
-      "rejected_capacity": 8788,
-      "rejected_rate_limit": 810
+      "ok": 2450,
+      "rejected_capacity": 8777,
+      "rejected_rate_limit": 762
     },
-    "completion_pct": 19.94328134122946,
-    "unexpected_5xx_pct": 0.0,
-    "admission_rejection_pct": 80.05671865877055,
-    "latency_by_verb_s": {
-      "recall": {
-        "p50": 0.5231214347040372,
-        "p95": 3.6228797446762986,
-        "p99": 3.902072747506571,
-        "max": 4.351488703380795
+    "outcomes_by_phase": {
+      "warmup": {
+        "offered": 2446,
+        "ok": 566,
+        "rejected_capacity": 1824,
+        "rejected_rate_limit": 56
       },
-      "remember": {
-        "p50": 0.6961536253211784,
-        "p95": 3.778203635804843,
-        "p99": 4.170927504711458,
-        "max": 4.51781195340486
+      "steady": {
+        "offered": 7134,
+        "rejected_capacity": 5399,
+        "ok": 1595,
+        "rejected_rate_limit": 140
       },
-      "forget": {
-        "p50": 0.5188510085218934,
-        "p95": 3.7173680078499416,
-        "p99": 3.8768567200007293,
-        "max": 3.911480778603336
+      "burst": {
+        "offered": 2409,
+        "ok": 289,
+        "rejected_capacity": 1554,
+        "rejected_rate_limit": 566
       }
     },
-    "cold_open_p95_s": 3.8518257971392598,
-    "cold_open_count": 837
+    "rate_limited_by_account_and_phase": {
+      "scale-0": {
+        "warmup": 56,
+        "steady": 140,
+        "burst": 566
+      }
+    },
+    "completion_pct": 20.4353991158562,
+    "unexpected_5xx_pct": 0.0,
+    "admission_rejection_pct": 79.5646008841438,
+    "latency_by_verb_s": {
+      "recall": {
+        "p50": 0.5211345572489849,
+        "p95": 3.517657326204808,
+        "p99": 3.913919084136784,
+        "max": 4.089403304952836
+      },
+      "remember": {
+        "p50": 0.7077958746583062,
+        "p95": 3.868679205655622,
+        "p99": 4.190727458000694,
+        "max": 4.652790231611268
+      },
+      "forget": {
+        "p50": 0.4852528528165528,
+        "p95": 3.5406688194200093,
+        "p99": 3.7491079092941115,
+        "max": 3.783024983175541
+      }
+    },
+    "cold_open_p95_s": 3.859753129051373,
+    "cold_open_count": 804
   },
   "threshold_evaluation": {
     "cold_ready_max_s": {
       "limit": 60,
-      "observed": 3.8679315138658588,
+      "observed": 3.8426834637614826,
       "pass": true
     },
     "recall_p95_max_s": {
       "limit": 2,
-      "observed": 3.42592807067488,
+      "observed": 3.424066910804249,
       "pass": false
     },
     "remember_p95_max_s": {
       "limit": 3,
-      "observed": 3.65042329633578,
+      "observed": 3.5995053541498505,
       "pass": false
     },
     "min_offered_completion_pct": {
       "limit": 99,
-      "observed": 92.95150570279806,
+      "observed": 93.05817674571264,
       "pass": false
     },
     "unexpected_5xx_max_pct": {
@@ -169,7 +277,7 @@
     },
     "unexpected_admission_rejection_max_pct": {
       "limit": 1,
-      "observed": 7.048494297201937,
+      "observed": 6.941823254287355,
       "pass": false
     },
     "cpu_max_pct": {
@@ -196,6 +304,20 @@
       "pass": true,
       "reason": "fixtures mode has no real storage; zero by construction, not proof"
     }
+  },
+  "hot_tenant_rate_limit_exposure": {
+    "status": "decision_pending",
+    "decision_request": "docs/launch/evidence/T23.60/decision-request-hot-tenant-rate-limit.md",
+    "server_account_limit_per_min": 120,
+    "hot_tenant_offered_per_min_at_baseline": 120.0,
+    "hot_tenant_steady_rate_limit_rejections": 180,
+    "steady_offered": 7379,
+    "steady_rate_limit_rejection_pct": 2.439,
+    "burst_rate_limit_rejection_pct": 22.387,
+    "admission_rejection_limit_pct": 1,
+    "counted_as": "failure: inside the admission-rejection and completion checks, not excluded as expected saturation",
+    "thresholds_changed": false,
+    "simulator_scope": "counts offered arrivals only; the server also counts initialize, notification and close requests against the account window"
   },
   "thresholds_frozen": false,
   "resource_usage": {

@@ -67,7 +67,9 @@ LIVE_GATE_REASON = "Live load execution is disabled pending outcome, deadline, b
 OK = "ok"
 TOOL_ERROR = "tool_error"
 PROTOCOL_ERROR = "protocol_error"
-REJECTED_ADMISSION = "rejected_admission"  # HTTP 429 only.
+REJECTED_ADMISSION = "rejected_admission"  # HTTP 429, or a tool result the gateway refused as capacity/operation_in_progress.
+ADMISSION_HTTP_429 = "http_429"
+ADMISSION_TOOL_RESULT = "tool_result"
 UNEXPECTED_5XX = "unexpected_5xx"  # every 5xx, including 503 capacity refusals: the stricter bucket.
 NETWORK_ERROR = "network_error"
 CLIENT_ERROR = "client_error"
@@ -249,29 +251,50 @@ class Budget(NamedTuple):
     provider_work_basis: str  # where the two declared bounds come from; the client cannot observe server-side provider work.
 
 
+MAX_BUDGET_COUNT = 2**63 - 1  # JSON integer literals are unbounded; a budget count is a machine-sized integer.
+
+
 def _is_count(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _is_finite_number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:  # an int too large to convert to a float, such as 10**400
+        return False
+
+
+def _shown(value: object) -> str:
+    """A bounded rendering of a rejected value for an error message. repr() of an
+    int past the interpreter's string-conversion limit raises, and a message
+    must never be the reason validation itself crashes."""
+    try:
+        text = repr(value)
+    except (ValueError, RecursionError):
+        return f"<{type(value).__name__}, too large to show>"
+    return text if len(text) <= 40 else text[:37] + "..."
 
 
 def _budget_value_error(b: Budget) -> str | None:
     """Value rules shared by parse_budget and RunBudget, so a Budget built by hand
     is held to the same numeric rules as one parsed from a manifest."""
     for name in ("max_calls", "max_input_tokens"):
-        if not _is_count(getattr(b, name)) or getattr(b, name) <= 0:
-            return f"budget.{name} must be a positive integer, got {getattr(b, name)!r}"
+        value = getattr(b, name)
+        if not _is_count(value) or value <= 0 or value > MAX_BUDGET_COUNT:
+            return f"budget.{name} must be a positive integer no larger than {MAX_BUDGET_COUNT}, got {_shown(value)}"
     for name in ("readiness_tokens", "cold_open_tokens"):
-        if not _is_count(getattr(b, name)) or getattr(b, name) < 0:
-            return f"budget.provider_work_bound.{name} must be an integer >= 0, got {getattr(b, name)!r}"
+        value = getattr(b, name)
+        if not _is_count(value) or value < 0 or value > MAX_BUDGET_COUNT:
+            return f"budget.provider_work_bound.{name} must be an integer from 0 to {MAX_BUDGET_COUNT}, got {_shown(value)}"
     if not _is_finite_number(b.max_elapsed_seconds) or b.max_elapsed_seconds <= 0:
-        return f"budget.max_elapsed_seconds must be a positive finite number, got {b.max_elapsed_seconds!r}"
+        return f"budget.max_elapsed_seconds must be a positive finite number, got {_shown(b.max_elapsed_seconds)}"
     if not _is_finite_number(b.approved_max_usd) or b.approved_max_usd < 0:
-        return f"budget.approved_max_usd must be a finite number >= 0, got {b.approved_max_usd!r}"
+        return f"budget.approved_max_usd must be a finite number >= 0, got {_shown(b.approved_max_usd)}"
     if not _is_finite_number(b.worst_case_usd_per_call) or b.worst_case_usd_per_call <= 0:
-        return f"budget.worst_case_usd_per_call must be a positive finite number, got {b.worst_case_usd_per_call!r}"
+        return f"budget.worst_case_usd_per_call must be a positive finite number, got {_shown(b.worst_case_usd_per_call)}"
     for name in ("authorization_ref", "provider_work_basis"):
         if not isinstance(getattr(b, name), str) or not getattr(b, name).strip():
             return f"budget.{name} must be a non-empty string"
@@ -379,9 +402,9 @@ class RunBudget:
         if operation not in OPERATIONS:
             raise ValueError(f"unknown operation {operation!r}")
         if not _is_count(tokens) or tokens < 0:
-            raise ValueError(f"tokens must be an integer >= 0, got {tokens!r}")
+            raise ValueError(f"tokens must be an integer >= 0, got {_shown(tokens)}")
         if not _is_finite_number(default_timeout_s) or default_timeout_s <= 0:
-            raise ValueError(f"default_timeout_s must be a positive finite number, got {default_timeout_s!r}")
+            raise ValueError(f"default_timeout_s must be a positive finite number, got {_shown(default_timeout_s)}")
         b = self.budget
         with self._lock:
             reason = None
@@ -451,7 +474,11 @@ def tool_arguments(verb: str, account_id: str, rep: int, seq: int, tokens: int, 
     if verb == "recall":
         return {"query": harness.render_text(f"{account_id}:recall:{rep}:{seq}", tokens)}
     if verb == "remember":
-        return {"fact": harness.render_text(f"{account_id}:remember:{rep}:{seq}", tokens), "provenance": "hosted-load-harness T23.60"}
+        fact = harness.render_text(f"{account_id}:remember:{rep}:{seq}", tokens)
+        if len(fact.encode("utf-8")) > harness.FACT_MAX_BYTES:
+            # Never truncate or reshape the frozen size: refuse to send a request the gateway is known to reject.
+            raise ValueError(f"a {tokens}-word fact renders past the gateway's {harness.FACT_MAX_BYTES}-byte limit")
+        return {"fact": fact, "provenance": "hosted-load-harness T23.60"}
     if verb == "forget":
         return {"id": fact_id}
     raise ValueError(f"unknown verb {verb!r}")
@@ -509,15 +536,37 @@ def check_authority_inputs(manifest: dict, workload: dict) -> str | None:
     return None
 
 
+def elapsed_requirement(workload: dict, accounts: list[dict]) -> dict:
+    """The elapsed seconds a run needs, by component, so that its own budget
+    cannot cut it short. The RunBudget clock starts at construction, so the
+    schedule is not the whole requirement:
+
+    - schedule: every repetition's full span (the schedule origin is set only after setup).
+    - setup: one readiness probe, then initialize and notification for each account, one after another.
+    - drain: the last dispatched call can run to one full call timeout after the schedule ends.
+    - cleanup: one close per account, one after another; close needs elapsed budget left to be attempted at all.
+
+    Setup, drain and cleanup are worst cases: every exchange running to its full timeout
+    (READINESS_TIMEOUT_S, DEFAULT_CALL_TIMEOUT_S). The drain figure assumes the workers keep pace; it does not
+    bound a backlog. This is arithmetic on the client's own timeouts, not a change to any threshold or cap.
+    """
+    schedule = workload["repetitions"] * sum(p["minutes"] * 60 for p in workload["phases"])
+    setup = READINESS_TIMEOUT_S + 2 * len(accounts) * DEFAULT_CALL_TIMEOUT_S
+    drain = DEFAULT_CALL_TIMEOUT_S
+    cleanup = len(accounts) * DEFAULT_CALL_TIMEOUT_S
+    return {"schedule": schedule, "setup": setup, "drain": drain, "cleanup": cleanup, "total": schedule + setup + drain + cleanup}
+
+
 def preflight_budget(budget: Budget, workload: dict, accounts: list[dict], arrivals: list[dict]) -> str | None:
     """Refuse before spending when the caps cannot cover the whole frozen workload.
 
     Lower bounds on need, upper bounds on cost: one readiness probe, three
     authenticated operations per account (initialize, notification, close),
     every offered request at its byte-based token bound, the declared
-    provider-work bound on every authenticated operation, and every
-    repetition's full schedule span. A run that could only ever be cut short
-    by its own budget must not start.
+    provider-work bound on every authenticated operation, and the elapsed
+    time of setup, every repetition's schedule, the final drain and cleanup
+    (elapsed_requirement). A run that could only ever be cut short by its own
+    budget must not start.
     """
     reps = workload["repetitions"]
     offered = reps * len(arrivals)
@@ -529,7 +578,7 @@ def preflight_budget(budget: Budget, workload: dict, accounts: list[dict], arriv
         + reps * sum(argument_bytes_upper_bound(a["verb"], a["tokens"]) for a in arrivals)
     )
     usd = calls * budget.worst_case_usd_per_call
-    elapsed = reps * sum(p["minutes"] * 60 for p in workload["phases"])
+    elapsed = elapsed_requirement(workload, accounts)
     shortfalls = []
     if calls > budget.max_calls:
         shortfalls.append(f"max_calls {budget.max_calls} < required {calls}")
@@ -537,8 +586,11 @@ def preflight_budget(budget: Budget, workload: dict, accounts: list[dict], arriv
         shortfalls.append(f"max_input_tokens {budget.max_input_tokens} < byte-based required {tokens}")
     if usd > budget.approved_max_usd:
         shortfalls.append(f"approved_max_usd {budget.approved_max_usd} < worst-case required {round(usd, 6)}")
-    if elapsed > budget.max_elapsed_seconds:
-        shortfalls.append(f"max_elapsed_seconds {budget.max_elapsed_seconds} < required schedule {elapsed}")
+    if elapsed["total"] > budget.max_elapsed_seconds:
+        shortfalls.append(
+            f"max_elapsed_seconds {budget.max_elapsed_seconds} < required {elapsed['total']} "
+            f"(schedule {elapsed['schedule']} + setup {elapsed['setup']} + final drain {elapsed['drain']} + cleanup {elapsed['cleanup']})"
+        )
     if shortfalls:
         return "budget cannot cover the full frozen workload (" + "; ".join(shortfalls) + ")"
     return None
@@ -562,6 +614,11 @@ def prepare_live(manifest: dict, workload: dict) -> tuple[LivePlan | None, str |
     credential_dir = (manifest.get("live") or {}).get("credential_dir")
     if not credential_dir:
         return None, "manifest.live.credential_dir is required for --live"
+    if harness.max_rendered_bytes(workload["fact_tokens"]["max"]) > harness.FACT_MAX_BYTES:
+        return None, (
+            f"workload.fact_tokens.max {workload['fact_tokens']['max']} words can render up to {harness.max_rendered_bytes(workload['fact_tokens']['max'])} bytes, "
+            f"past the gateway's {harness.FACT_MAX_BYTES}-byte fact limit: the reviewer must change the range or the vocabulary; the client never truncates it"
+        )
     arrivals = harness.generate_arrivals(workload, accounts, random.Random(BASE_SEED))
     error = preflight_budget(budget, workload, accounts, arrivals)
     if error:
@@ -582,6 +639,13 @@ def run_fixtures(manifest: dict, workload: dict) -> dict:
     saturation = harness.run_repetition(workload, accounts, seed=base_seed + 1000, saturation=True)
     main_run = reps[0]
     thresholds = harness.evaluate_thresholds(workload, main_run)
+    phases = main_run["outcomes_by_phase"]
+
+    def phase_rate_limit_pct(phase: str) -> float | None:
+        counts = phases.get(phase)
+        return round(counts.get("rejected_rate_limit", 0) / counts["offered"] * 100.0, 3) if counts else None
+
+    hot_rate_per_min = workload["concurrency"]["baseline_request_rate_per_s"] * workload["hot_tenant_traffic_fraction"] * 60
     return {
         "mode": "fixtures",
         "profile": manifest.get("profile", "paid"),
@@ -590,6 +654,23 @@ def run_fixtures(manifest: dict, workload: dict) -> dict:
         "replay_determinism_verified": replay_identical,
         "saturation_run": saturation,
         "threshold_evaluation": thresholds,
+        # Not an exclusion and not expected saturation: these rejections are inside the
+        # admission and completion figures above. The frozen hot tenant offers the gateway's
+        # per-account limit, so the workload and the limit disagree, and a named review must decide.
+        "hot_tenant_rate_limit_exposure": {
+            "status": "decision_pending",
+            "decision_request": "docs/launch/evidence/T23.60/decision-request-hot-tenant-rate-limit.md",
+            "server_account_limit_per_min": harness.ACCOUNT_RATE_LIMIT_PER_MIN,
+            "hot_tenant_offered_per_min_at_baseline": hot_rate_per_min,
+            "hot_tenant_steady_rate_limit_rejections": phases.get(STEADY_PHASE, {}).get("rejected_rate_limit", 0),
+            "steady_offered": phases.get(STEADY_PHASE, {}).get("offered", 0),
+            "steady_rate_limit_rejection_pct": phase_rate_limit_pct(STEADY_PHASE),
+            "burst_rate_limit_rejection_pct": phase_rate_limit_pct("burst"),
+            "admission_rejection_limit_pct": workload["thresholds"]["unexpected_admission_rejection_max_pct"],
+            "counted_as": "failure: inside the admission-rejection and completion checks, not excluded as expected saturation",
+            "thresholds_changed": False,
+            "simulator_scope": "counts offered arrivals only; the server also counts initialize, notification and close requests against the account window",
+        },
         "thresholds_frozen": bool(workload.get("reviewer")),
         "resource_usage": {"available": False, "reason": "fixtures mode does not exercise a real host or provider"},
     }
@@ -895,6 +976,38 @@ def _http_exchange(method: str, origin: tuple[str, str, int | None], path: str, 
                 pass
 
 
+# The error codes a tool result can carry, mapped to the failure class they mean
+# for this run. Sources: internal/hosted/gateway/gateway.go failure() (scope_denied,
+# invalid_params, input_too_large, capacity, limit_exceeded, operation_in_progress)
+# and the memory verbs' envelope, internal/server/memory/memory.go ErrCode*. The
+# gateway returns these as an isError tool result over HTTP 200, so the HTTP
+# status alone never shows them. Only a member of this set is ever recorded.
+TOOL_ERROR_CLASSES = {
+    "capacity": "admission",  # the brain pool refused: no open slot or in-flight permit.
+    "operation_in_progress": "admission",  # the same operation key is already running.
+    "limit_exceeded": "quota",  # a plan allowance boundary, not a fault of the server.
+    "input_too_large": "client_fault",
+    "invalid_params": "client_fault",
+    "provenance_required": "client_fault",
+    "scope_denied": "client_fault",  # credential scope or brain ownership: a configuration fault.
+    "not_found": "not_found",
+    "operation_conflict": "operation",
+    "operation_canceled": "operation",
+    "unavailable": "server_fault",
+    "internal": "server_fault",
+    "budget_unsatisfiable": "server_fault",
+}
+UNRECOGNIZED = "unrecognized"
+
+
+def decode_tool_error(parsed_text: object) -> str:
+    """The fixed enum value for a tool error: a member of TOOL_ERROR_CLASSES, else
+    UNRECOGNIZED. The `error` field is upstream-controlled text, so an unknown,
+    missing or non-string value is never reflected: it becomes UNRECOGNIZED."""
+    code = parsed_text.get("error") if isinstance(parsed_text, dict) else None
+    return code if isinstance(code, str) and code in TOOL_ERROR_CLASSES else UNRECOGNIZED
+
+
 class McpSession:
     """One real MCP-over-HTTP session: initialize -> notifications/initialized -> tools/call.
 
@@ -952,8 +1065,18 @@ class McpSession:
         self._run.mark_completed(operation)
         return status, resp_headers, raw, latency_s
 
-    def _post(self, payload: dict, operation: str, arg_bytes: int, expect_body: bool):
+    def _bind_issued_session(self, headers) -> None:
+        """Remember a well-formed session id the moment the server issues it, before
+        the body is read or parsed, so a reply that then fails to parse still
+        leaves a session the run can close."""
+        session_id = headers.get("Mcp-Session-Id")
+        if session_id and _SESSION_ID.fullmatch(session_id):
+            self._session_id = session_id
+
+    def _post(self, payload: dict, operation: str, arg_bytes: int, expect_body: bool, bind_session: bool = False):
         status, resp_headers, raw, latency_s = self._request("POST", operation, json.dumps(payload).encode("utf-8"), arg_bytes)
+        if bind_session and status == 200:
+            self._bind_issued_session(resp_headers)
         if 300 <= status < 400:
             raise McpHttpStatusError(status, f"refused HTTP {status} redirect")
         if not expect_body:
@@ -964,8 +1087,10 @@ class McpSession:
             raise McpHttpStatusError(status, f"unexpected HTTP status {status}")
         try:
             parsed = json.loads(raw)
-        except (json.JSONDecodeError, UnicodeDecodeError):
+        except ValueError:  # JSONDecodeError, UnicodeDecodeError, and an integer literal past the string-conversion limit
             raise McpProtocolError("non-JSON response body") from None
+        except RecursionError:  # a body nested past the interpreter's recursion limit (bounded by MAX_BODY_BYTES)
+            raise McpProtocolError("response body is nested too deeply") from None
         if not isinstance(parsed, dict):
             raise McpProtocolError("response body is not a JSON-RPC object")
         return parsed, resp_headers, latency_s
@@ -989,17 +1114,15 @@ class McpSession:
                 "clientInfo": {"name": CLIENT_NAME, "version": CLIENT_VERSION},
             },
         }
-        parsed, headers, latency_s = self._post(payload, "initialize", 0, expect_body=True)
+        parsed, headers, latency_s = self._post(payload, "initialize", 0, expect_body=True, bind_session=True)
         if parsed.get("id") != rid:
             raise McpProtocolError("initialize response id does not match the request id")
         if parsed.get("error") is not None:
             raise McpProtocolError(f"initialize failed with JSON-RPC error code {self._jsonrpc_code(parsed['error'])}")
-        session_id = headers.get("Mcp-Session-Id")
-        if not session_id:
+        if not headers.get("Mcp-Session-Id"):
             raise McpProtocolError("initialize succeeded but the server did not return Mcp-Session-Id")
-        if not _SESSION_ID.fullmatch(session_id):
+        if self._session_id is None:  # present but rejected by _bind_issued_session
             raise McpProtocolError("server returned a malformed Mcp-Session-Id")
-        self._session_id = session_id
         self._post({"jsonrpc": "2.0", "method": "notifications/initialized"}, "notification", 0, expect_body=False)
         self._initialized = True
         return latency_s
@@ -1027,7 +1150,10 @@ class McpSession:
                 parsed_text = json.loads(text)
             except json.JSONDecodeError:
                 parsed_text = None
-        return {"ok": not is_error, "level": "tool", "is_error": is_error, "text": parsed_text, "latency_s": latency_s}
+        return {
+            "ok": not is_error, "level": "tool", "is_error": is_error, "text": parsed_text, "latency_s": latency_s,
+            "error_code": decode_tool_error(parsed_text) if is_error else None,
+        }
 
     def close(self) -> tuple[str, str | None]:
         """(status, detail). status is "closed" only when the server confirmed the
@@ -1041,7 +1167,7 @@ class McpSession:
             status, _headers, _raw, _latency = self._request("DELETE", "close", None, 0)
         except BudgetExhausted:
             return "not_attempted", "budget"
-        except (*TRANSPORT_ERRORS, McpProtocolError) as e:
+        except Exception as e:  # noqa: BLE001 - a close that fails for any reason is recorded by class, never allowed to discard the run's results
             return "failed", error_class(e)
         if status in (200, 204):
             self.closed = True
@@ -1109,7 +1235,11 @@ def evaluate_live_thresholds(workload: dict, records: list[dict]) -> dict:
             checks[name] = unmeasured(t[name], why)
     else:
         n_ok = sum(1 for r in steady if r["outcome"] == OK)
+        n_undispatched = sum(1 for r in steady if r["outcome"] == NOT_DISPATCHED)
         checks["min_offered_completion_pct"] = rate(t["min_offered_completion_pct"], n_ok, maximum=False)
+        # Whether completion would still be below its limit if every request that never
+        # dispatched had succeeded: False means dispatched requests alone caused the miss.
+        checks["min_offered_completion_pct"]["pass_if_undispatched_were_ok"] = (n_ok + n_undispatched) / len(steady) * 100.0 >= t["min_offered_completion_pct"]
         checks["unexpected_5xx_max_pct"] = rate(t["unexpected_5xx_max_pct"], sum(1 for r in steady if r["outcome"] == UNEXPECTED_5XX))
         checks["unexpected_admission_rejection_max_pct"] = rate(t["unexpected_admission_rejection_max_pct"], sum(1 for r in steady if r["outcome"] == REJECTED_ADMISSION))
         for verb, name in (("recall", "recall_p95_max_s"), ("remember", "remember_p95_max_s")):
@@ -1127,7 +1257,7 @@ def evaluate_live_thresholds(workload: dict, records: list[dict]) -> dict:
         "limit": t["isolation_durability_errors_max"],
         "observed": durability,
         "pass": False if durability > t["isolation_durability_errors_max"] else None,
-        "reason": "durability counts forget failures on ids this run remembered; no cross-tenant isolation probe exists, so a zero is not a pass",
+        "reason": "durability counts a not_found answer to a forget of an id this run remembered; a forget refused for any other reason (capacity, quota, a fault) is not counted, and no cross-tenant isolation probe exists, so a zero is not a pass",
     }
     return checks
 
@@ -1147,29 +1277,30 @@ def _scrub(value, secrets: list[str]):
     return value
 
 
-def _execute(origin: str, workload: dict, accounts: list[dict], credentials: dict[str, str], arrivals: list[dict], run: RunBudget, records: list) -> list[McpSession]:
+def _execute(origin: str, workload: dict, accounts: list[dict], credentials: dict[str, str], arrivals: list[dict], run: RunBudget, records: list, created: list[McpSession]) -> None:
     """Readiness, sessions, then the schedule. Fills `records` by flat index
-    (rep * len(arrivals) + seq); an index left None was never dispatched."""
+    (rep * len(arrivals) + seq); an index left None was never dispatched.
+    Appends every session to `created` as it is made, so the caller can still
+    close them if this function raises."""
     sessions: dict[str, McpSession] = {}
-    created: list[McpSession] = []
     readiness_error = check_readiness(origin, run)
     if readiness_error:
         run.stop(readiness_error)
-        return created
+        return
     for account in accounts:
         try:
             session = McpSession(origin, credentials[account["id"]], run)
         except (ValueError, KeyError) as e:
             run.stop(f"cannot create a session for account {account['id']!r}: {type(e).__name__}")
-            return created
+            return
         created.append(session)
         try:
             session.initialize()
         except BudgetExhausted:
-            return created
-        except (*TRANSPORT_ERRORS, McpProtocolError, ValueError) as e:
+            return
+        except Exception as e:  # noqa: BLE001 - any initialize failure, including a parser RecursionError, becomes a receipt; the session it may have issued is closed by the caller
             run.stop(f"session initialize failed for account {account['id']!r}: {error_class(e)}")
-            return created
+            return
         sessions[account["id"]] = session
 
     remembered: dict[str, dict[str, None]] = {a["id"]: {} for a in accounts}
@@ -1218,7 +1349,10 @@ def _execute(origin: str, workload: dict, accounts: list[dict], credentials: dic
             records[idx] = {**base, "outcome": NOT_DISPATCHED, "reason": e.reason}
             return
         except McpHttpStatusError as e:
-            records[idx] = {**base, "outcome": _classify_status(e.status), "http_status": e.status}
+            outcome_name = _classify_status(e.status)
+            records[idx] = {**base, "outcome": outcome_name, "http_status": e.status}
+            if outcome_name == REJECTED_ADMISSION:
+                records[idx]["admission_source"] = ADMISSION_HTTP_429
             return
         except McpProtocolError as e:
             records[idx] = {**base, "outcome": PROTOCOL_ERROR, "error": str(e)}
@@ -1231,7 +1365,18 @@ def _execute(origin: str, workload: dict, accounts: list[dict], credentials: dic
         if outcome["level"] == "protocol":
             records[idx] = {**record, "outcome": PROTOCOL_ERROR, "jsonrpc_code": outcome["jsonrpc_code"]}
         elif outcome["is_error"]:
-            records[idx] = {**record, "outcome": TOOL_ERROR, "durability_error": verb == "forget"}
+            code = outcome["error_code"]
+            failure_class = TOOL_ERROR_CLASSES.get(code, UNRECOGNIZED)
+            if failure_class == "admission":
+                # A pool refusal is admission control even though it arrives as HTTP 200.
+                records[idx] = {**record, "outcome": REJECTED_ADMISSION, "admission_source": ADMISSION_TOOL_RESULT, "error_code": code, "failure_class": failure_class}
+            else:
+                # Only a not_found on a forget of an id this run remembered is lost durability.
+                # A refused forget (capacity, quota, a fault) says nothing about what was stored.
+                records[idx] = {
+                    **record, "outcome": TOOL_ERROR, "error_code": code, "failure_class": failure_class,
+                    "durability_error": verb == "forget" and code == "not_found",
+                }
         elif verb == "remember":
             text = outcome.get("text")
             new_id = text.get("id") if isinstance(text, dict) else None
@@ -1283,19 +1428,39 @@ def run_live(manifest: dict, workload: dict, accounts: list[dict], credentials: 
     budget = None
     if reason is None:
         budget, reason = parse_budget(manifest)
-    if reason is None:
-        run = RunBudget(budget)
-        created = _execute(manifest["environment"]["origin"], workload, accounts, credentials, arrivals, run, records)
-        reason = run.stopped_reason  # captured before cleanup, so a cleanup refusal cannot rewrite it
-        elapsed_s = run.elapsed()
-    else:
-        elapsed_s = 0.0
+    elapsed_s = 0.0
+    try:
+        if reason is None:
+            run = RunBudget(budget)
+            client_error = None
+            try:
+                _execute(manifest["environment"]["origin"], workload, accounts, credentials, arrivals, run, records, created)
+            except Exception as e:  # noqa: BLE001 - a client failure must end as a sanitized receipt, not a lost run; BaseException (an interrupt) still propagates
+                client_error = f"client error during the run: {error_class(e)}"
+                run.stop(client_error)
+            reason = run.stopped_reason  # captured before cleanup, so a cleanup refusal cannot rewrite it
+            if client_error and client_error not in reason:  # an earlier stop reason won; the client failure must still be named
+                reason = f"{reason}; {client_error}"
+            elapsed_s = run.elapsed()
+    finally:
+        # Closes whatever the server issued, on every exit path including an interrupt.
+        cleanup = _close_sessions(created)
+    total_elapsed_s = run.elapsed() if run else 0.0
+    return _build_result(workload, arrivals, records, run, budget, reason, elapsed_s, total_elapsed_s, cleanup, credentials, (manifest.get("environment") or {}).get("origin"))
+
+
+def _close_sessions(created: list[McpSession]) -> dict:
+    """Close every session the server issued and account for each one. A failing
+    close is recorded by class and never discards the run's results."""
     cleanup = {"accounts_initialized": sum(1 for s in created if s.initialized), "server_sessions_created": 0, "closed_confirmed": 0, "close_failed": {}, "close_not_attempted": 0}
     for session in created:
         if not session.has_server_session:
             continue
         cleanup["server_sessions_created"] += 1
-        status, detail = session.close()
+        try:
+            status, detail = session.close()
+        except Exception as e:  # noqa: BLE001 - McpSession.close() already contains its own failures; this is the last line
+            status, detail = "failed", error_class(e)
         if status == "closed":
             cleanup["closed_confirmed"] += 1
         elif status == "failed":
@@ -1303,8 +1468,7 @@ def run_live(manifest: dict, workload: dict, accounts: list[dict], credentials: 
         else:
             cleanup["close_not_attempted"] += 1
     cleanup["sessions_left_open"] = cleanup["server_sessions_created"] - cleanup["closed_confirmed"]
-    total_elapsed_s = run.elapsed() if run else 0.0
-    return _build_result(workload, arrivals, records, run, budget, reason, elapsed_s, total_elapsed_s, cleanup, credentials, (manifest.get("environment") or {}).get("origin"))
+    return cleanup
 
 
 def _deadline_scope(origin: object) -> str:
@@ -1345,15 +1509,22 @@ def _build_result(workload, arrivals, records, run, budget, reason, elapsed_s, t
     not_dispatched = total.get(NOT_DISPATCHED, 0)
     over_cap = max(0.0, elapsed_s - budget.max_elapsed_seconds) if budget else 0.0
     overran = over_cap > DEADLINE_JITTER_S
-    failed_checks = [
-        f"rep {rep['rep']}: {name}" for rep in by_repetition for name, c in rep["threshold_evaluation"].items() if c["pass"] is False
-    ]
-    if reason or not_dispatched:
-        status = "BLOCKED"
-        reason = reason or f"{not_dispatched} offered requests were not dispatched"
-    elif failed_checks or overran:
+    # A check that failed is a measured failure unless it failed only because
+    # arrivals that never dispatched sit in the completion denominator: the
+    # completion check carries pass_if_undispatched_were_ok for exactly that test.
+    failed = [(rep["rep"], name, c) for rep in by_repetition for name, c in rep["threshold_evaluation"].items() if c["pass"] is False]
+    measured_failures = [f"rep {rep}: {name}" for rep, name, c in failed if c.get("pass_if_undispatched_were_ok") is not True]
+    undispatched_only = [f"rep {rep}: {name}" for rep, name, c in failed if c.get("pass_if_undispatched_were_ok") is True]
+    if overran:
+        measured_failures.append(f"elapsed cap overrun by {round(over_cap, 3)}s")
+    stopped_or_undispatched = reason or (f"{not_dispatched} offered requests were not dispatched" if not_dispatched else None)
+    if measured_failures:
+        # Failures measured on dispatched requests are never masked by a budget stop.
         status = "FAIL"
-        reason = "; ".join(failed_checks + ([f"elapsed cap overrun by {round(over_cap, 3)}s"] if overran else []))
+        reason = "; ".join(measured_failures) + (f"; the run also stopped early: {stopped_or_undispatched}" if stopped_or_undispatched else "")
+    elif stopped_or_undispatched:
+        status = "BLOCKED"
+        reason = stopped_or_undispatched
     else:
         status = "PARTIAL"
         reason = "no published threshold failed and no offered request was left undispatched; qualification gaps remain"
@@ -1363,8 +1534,11 @@ def _build_result(workload, arrivals, records, run, budget, reason, elapsed_s, t
         "seeded account/brain/cardinality/storage state is not verified by this client",
         "the cold flag is a schedule label only: no cold-open workload was executed and no cold-ready time was measured",
         "provider work triggered by readiness and cold opens is charged at the operator-declared provider_work_bound and is not observed by this client",
-        "input tokens are precharged as encoded argument bytes, an upper bound rather than a provider-billed count",
-        "no cross-tenant isolation probe exists; durability covers only forget of ids this run remembered",
+        "input tokens are precharged as encoded argument bytes, an upper bound rather than a provider-billed count; the per-request token figures in the workload are nominal word counts of synthetic text, not gateway-metered or provider-billed tokens, and no provider tokenizer is assumed",
+        "no cross-tenant isolation probe exists; durability counts only a not_found answer to a forget of an id this run remembered",
+        "the frozen hot tenant offers the gateway's per-account limit (120 requests a minute, every /mcp request counts): steady-phase 429s are counted as failures here, not excluded as expected saturation; the workload-versus-limit decision is open (docs/launch/evidence/T23.60/decision-request-hot-tenant-rate-limit.md)",
+        "every request sends Connection: close, so each pays a fresh TCP and, for https, TLS handshake: recorded latency and the handshake load on the server include it, which a client that reuses connections would not add; read the p95 and CPU limits with that",
+        "latency_s runs from dispatch, not from the scheduled arrival: queue_delay_s (the wait for one of the concurrent workers) is recorded per request but no threshold uses it, so client-side queueing is not in the p95",
         "the quota-boundary saturation run is separate and not implemented in this client",
         "per-exchange deadline: one monotonic deadline bounds resolution, connect, TLS, headers and body within a scheduling tolerance (DEADLINE_JITTER_S) plus resolver-child fork and terminate/kill/reap time; it is a client-side guarantee checked against local sockets, not observed behavior of a live target",
         "hostname origins: every exchange spawns one resolver child, whose time is inside the recorded latency, so latency samples for a hostname origin are not comparable with IP-literal samples; the child runs the operating-system resolver, which this client does not control",
@@ -1378,6 +1552,8 @@ def _build_result(workload, arrivals, records, run, budget, reason, elapsed_s, t
         gaps.append(f"{skipped} forget requests were offered with no fact id to forget: seeding is not implemented")
     if non_steady_failures:
         gaps.append(f"{non_steady_failures} non-ok outcomes fall outside the steady phase, where no published threshold applies: reviewer disposition required")
+    if undispatched_only:
+        gaps.append(f"completion is below its limit only because offered requests were never dispatched, not because a dispatched request failed: {undispatched_only}")
     if cleanup["sessions_left_open"]:
         gaps.append(f"{cleanup['sessions_left_open']} server sessions were not confirmed closed: they remain until the server's idle timeout")
     result = {
@@ -1390,6 +1566,9 @@ def _build_result(workload, arrivals, records, run, budget, reason, elapsed_s, t
         "repetitions_fully_dispatched": sum(1 for r in by_repetition if r["outcome_counts"][NOT_DISPATCHED] == 0),
         "offered_total": len(full),
         "outcome_counts": {o: total.get(o, 0) for o in ALL_OUTCOMES},
+        # Fixed enums only: never upstream text. admission_source separates an HTTP 429 from a pool refusal that arrived as a 200 tool result.
+        "admission_rejections_by_source": dict(Counter(r["admission_source"] for r in full if r.get("admission_source"))),
+        "tool_errors_by_code": dict(Counter(r["error_code"] for r in full if r.get("error_code"))),
         "by_repetition": by_repetition,
         "cold_requests_flagged": sum(1 for r in full if r["cold_flagged"]),
         "cold_workload_verified": False,
@@ -1439,7 +1618,7 @@ def main() -> int:
         die({"status": "BLOCKED", "reason": f"manifest not found: {args.manifest}"}, 2)
     try:
         manifest = load_manifest(args.manifest)
-    except json.JSONDecodeError as e:
+    except ValueError as e:  # JSONDecodeError, UnicodeDecodeError, and an integer literal past the string-conversion limit
         die({"status": "BLOCKED", "reason": f"manifest is not valid JSON: {e}"}, 2)
 
     workload_path = Path(__file__).resolve().parents[2] / "evals" / "hosted-load" / "workload.json"

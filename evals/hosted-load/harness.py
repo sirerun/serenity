@@ -66,19 +66,27 @@ def build_accounts(cardinalities: dict, profile: str) -> list[dict]:
 
 @dataclass
 class RateLimiter:
-    """Reproduces the fixed one-minute bucket in internal/hosted/gateway/admission.go."""
+    """Reproduces the fixed window in internal/hosted/gateway/admission.go (limiter.allow).
+
+    A key's window starts at its first request, not on a wall-clock minute, lasts
+    60 s, and restarts at the first request after it has expired. A refused request
+    neither starts nor extends a window. The earlier model reset every key on the
+    wall-clock minute, which moves rejections between windows and does not match the
+    server. One difference remains: the server counts every /mcp request (initialize,
+    notification, tools/call, DELETE), and the simulator counts only the offered arrivals.
+    """
     limit: int
+    window_s: float = 60.0
     buckets: dict = field(default_factory=dict)
 
     def allow(self, key: str, now_s: float) -> bool:
-        minute = int(now_s // 60)
-        window_start, count = self.buckets.get(key, (minute, 0))
-        if window_start != minute:
-            window_start, count = minute, 0
+        start, count = self.buckets.get(key, (None, 0))
+        if start is None or now_s - start >= self.window_s:
+            start, count = now_s, 0
         if count >= self.limit:
-            self.buckets[key] = (window_start, count)
+            self.buckets[key] = (start, count)
             return False
-        self.buckets[key] = (window_start, count + 1)
+        self.buckets[key] = (start, count + 1)
         return True
 
 
@@ -176,6 +184,7 @@ def run_repetition(workload: dict, accounts: list[dict], seed: int, saturation: 
     max_in_flight = 2 if saturation else MAX_IN_FLIGHT
     pool = Pool(max_open=max_open, max_in_flight=max_in_flight, idle_timeout_s=IDLE_TIMEOUT_S)
     rate_limiter = RateLimiter(limit=ACCOUNT_RATE_LIMIT_PER_MIN)
+    ip_limiter = RateLimiter(limit=IP_RATE_LIMIT_PER_MIN)  # every request of this workload comes from one client address
     writer_busy_until: dict = {}
     pending: list = []  # (end_time, brain_id) still holding a pool slot.
     failure_rate = workload.get("provider_failure_injection", {}).get("rate", 0.0)
@@ -192,6 +201,11 @@ def run_repetition(workload: dict, accounts: list[dict], seed: int, saturation: 
                 still_pending.append((end_time, brain_id))
         pending = still_pending
 
+        # gateway.go ServeHTTP: the per-address limit is checked first, then the per-account
+        # limit, so a request the account limiter refuses has already counted against the address.
+        if not ip_limiter.allow("client", now):
+            results.append({**arrival, "outcome": "rejected_ip_rate_limit", "latency_s": None})
+            continue
         if not rate_limiter.allow(arrival["account"], now):
             results.append({**arrival, "outcome": "rejected_rate_limit", "latency_s": None})
             continue
@@ -242,11 +256,24 @@ def run_repetition(workload: dict, accounts: list[dict], seed: int, saturation: 
     total = len(results)
     ok = outcomes.get("ok", 0)
     unexpected_5xx = outcomes.get("unexpected_5xx", 0)
-    rejected = outcomes.get("rejected_capacity", 0) + outcomes.get("rejected_rate_limit", 0)
+    rejected = outcomes.get("rejected_capacity", 0) + outcomes.get("rejected_rate_limit", 0) + outcomes.get("rejected_ip_rate_limit", 0)
+    # Per-phase and per-account outcomes, so a rejection cannot hide in the whole-run
+    # figure: the frozen thresholds apply to the steady phase, the run figure mixes all three.
+    outcomes_by_phase: dict = {}
+    rate_limited_by_account: dict = {}
+    for r in results:
+        phase = outcomes_by_phase.setdefault(r["phase"], {"offered": 0})
+        phase["offered"] += 1
+        phase[r["outcome"]] = phase.get(r["outcome"], 0) + 1
+        if r["outcome"] == "rejected_rate_limit":
+            by_phase = rate_limited_by_account.setdefault(r["account"], {})
+            by_phase[r["phase"]] = by_phase.get(r["phase"], 0) + 1
     return {
         "saturation": saturation,
         "total_offered": total,
         "outcomes": outcomes,
+        "outcomes_by_phase": outcomes_by_phase,
+        "rate_limited_by_account_and_phase": rate_limited_by_account,
         "completion_pct": (ok / total * 100.0) if total else 0.0,
         "unexpected_5xx_pct": (unexpected_5xx / total * 100.0) if total else 0.0,
         "admission_rejection_pct": (rejected / total * 100.0) if total else 0.0,
@@ -275,13 +302,20 @@ def evaluate_thresholds(workload: dict, main_run: dict) -> dict:
     return checks
 
 
+# The gateway refuses a remember whose fact exceeds this many bytes with an
+# input_too_large tool error (internal/hosted/gateway/gateway.go, len(input.Fact) > 4096).
+FACT_MAX_BYTES = 4096
+
+# Every word is at most 7 bytes, so the frozen fact range (up to 512 words, joined
+# by single spaces) renders to at most 512*7 + 511 = 4095 bytes and can never reach
+# FACT_MAX_BYTES. The range is not truncated or changed: the words are short enough
+# that all of it fits. Word counts are nominal sizes, not tokens (see render_text).
 _TEXT_VOCAB = [
-    "onboarding", "latency", "budget", "provenance", "brain", "recall", "remember",
-    "forget", "account", "plan", "migration", "cutover", "incident", "runbook",
-    "review", "threshold", "capacity", "gateway", "pool", "session", "credential",
-    "retention", "backup", "snapshot", "embedding", "index", "queue", "worker",
-    "deploy", "rollback", "signal", "metric", "alarm", "region", "instance",
-    "customer", "ticket", "escalation", "vendor", "invoice", "renewal", "quota",
+    "intake", "latency", "budget", "origin", "brain", "recall", "memory", "fact",
+    "account", "plan", "upgrade", "cutover", "outage", "runbook",
+    "review", "limit", "quota", "gateway", "pool", "session", "token", "retain",
+    "backup", "index", "queue", "worker", "deploy", "rebuild", "signal", "metric", "alarm", "region",
+    "server", "ticket", "vendor", "invoice", "renewal", "policy", "export", "import", "tenant", "audit",
 ]
 
 
@@ -292,10 +326,12 @@ def max_rendered_bytes(tokens: int) -> int:
 
 
 def render_text(seed_str: str, tokens: int) -> str:
-    """Deterministic pseudo-natural text, roughly `tokens` whitespace-separated
-    words for a given seed. Not a real tokenizer count (words != model tokens)
-    -- an approximate sizing for exercising the wire protocol with real,
-    non-placeholder request bodies, never a claim about actual token billing."""
+    """Deterministic pseudo-natural text of exactly `tokens` whitespace-separated
+    words for a given seed. A word count is a nominal size, not a token count: the
+    number of tokens a gateway meter or an embedding provider counts for this text
+    is unknown here, and no tokenizer is assumed. The text exists to exercise the
+    wire protocol with real, non-placeholder request bodies, never as a claim
+    about token metering or billing."""
     rng = random.Random(seed_str)
     n = max(int(tokens), 1)
     return " ".join(rng.choice(_TEXT_VOCAB) for _ in range(n))

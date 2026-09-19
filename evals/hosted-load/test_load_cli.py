@@ -160,12 +160,24 @@ class FakeMcpState:
         self.forget_loses = False
         self.tools_delay_s = 0.0
         self.init_mode = "ok"
+        self.init_delay_s = 0.0
         self.delete_mode = "ok"  # ok | status:<n> | drop | redirect
+        self.deleted_ids: list[str] = []  # session ids the server saw a DELETE for
+        self.fail_verb: str | None = None  # with tools_mode "tool_code": fail only this verb (None: every verb)
+        self.fail_code = "internal"  # the gateway error code tools_mode "tool_code" returns
+        self.fail_extra: dict = {}  # extra fields on that failure (the gateway adds reset_at and upgrade_url to limit_exceeded)
         self.drip_interval_s = 0.02
 
     def tools_calls_seen(self) -> list[float]:
         with self.lock:
             return [t for m, t in self.rpc_seen if m == "tools/call"]
+
+
+def gateway_failure(code, **extra):
+    """The tool-result payload internal/hosted/gateway/gateway.go failure() and the memory
+    verbs' envelope build: error/message/suggestion at the top level, returned as an
+    isError tool result over HTTP 200 (never as an HTTP error status)."""
+    return {"protocol_version": 1, "error": code, "message": code, "suggestion": "Review your connection and account limits.", **extra}
 
 
 class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
@@ -287,6 +299,7 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
         session_id = self.headers.get("Mcp-Session-Id")
         with self.state.lock:
             self.state.sessions.pop(session_id, None)
+            self.state.deleted_ids.append(session_id)
         self._send_status(204)
 
     def do_POST(self):
@@ -328,6 +341,8 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
             if not params.get("protocolVersion") or not client_info.get("name") or not client_info.get("version"):
                 self._send_json(200, {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "Invalid initialize parameters"}})
                 return
+            if self.state.init_delay_s:
+                time.sleep(self.state.init_delay_s)
             if self.state.init_mode == "echo_jsonrpc_error":
                 self._send_json(200, {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": "x" * 150 + auth}})
                 return
@@ -335,6 +350,10 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
                 self.state.next_session += 1
                 new_id = f"sess-{self.state.next_session}"
                 self.state.sessions[new_id] = {"state": 1}
+            if self.state.init_mode in ("deep_json", "not_json"):  # issued a session, then a body that cannot be parsed
+                body = b"[" * 200000 if self.state.init_mode == "deep_json" else b"secret upstream text, not JSON"
+                self._send_status(200, body, {"Content-Type": "application/json", "Mcp-Session-Id": new_id})
+                return
             self._send_json(
                 200,
                 {
@@ -395,6 +414,9 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
         if mode == "drop":
             self.close_connection = True
             return
+        if mode == "deep_json":
+            self._send_status(200, b"[" * 200000, {"Content-Type": "application/json"})
+            return
         if mode == "drip_body":
             self._drip_body(100000, 2000)
             return
@@ -402,16 +424,22 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
             self._stall_after_first_byte()
             return
         if mode == "tool_error":
-            payload, is_error = {"code": "boom", "message": "forced failure"}, True
+            payload, is_error = gateway_failure("internal"), True
         elif mode == "echo_tool":
-            payload, is_error = {"code": "boom", "message": "z" * 150 + auth}, True
+            payload, is_error = {**gateway_failure("internal"), "message": "z" * 150 + auth}, True
+        elif mode == "echo_code":  # an unknown error code that carries the credential
+            payload, is_error = gateway_failure(auth), True
+        elif mode == "tool_code" and self.state.fail_verb in (None, name):
+            payload, is_error = gateway_failure(self.state.fail_code, **self.state.fail_extra), True
         elif name == "recall":
             payload, is_error = {"facts": []}, False
         elif name == "remember":
             fact = arguments.get("fact")
             provenance = arguments.get("provenance")
             if not fact or not provenance:
-                payload, is_error = {"code": "invalid_params", "message": "fact and provenance are required"}, True
+                payload, is_error = gateway_failure("invalid_params"), True
+            elif len(fact.encode()) > 4096:  # gateway.go: len(input.Fact) > 4096
+                payload, is_error = gateway_failure("input_too_large"), True
             else:
                 with self.state.lock:
                     self.state.next_fact += 1
@@ -423,7 +451,7 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
             with self.state.lock:
                 known = self.state.remembered.pop(fid, None) if fid and not self.state.forget_loses else None
             if known is None:
-                payload, is_error = {"code": "not_found", "message": "unknown fact id"}, True
+                payload, is_error = gateway_failure("not_found"), True
             else:
                 payload, is_error = {"id": fid, "status": "deleted"}, False
         else:
@@ -1867,7 +1895,7 @@ def authorized_manifest(cred_dir="/nonexistent-test-creds", **budget_overrides):
     # TEST-ONLY provider/source values: no authority is implied by these.
     return base_manifest(
         environment={"kind": "disposable", "origin": "http://127.0.0.1:9443", "allowed_hosts": ["127.0.0.1"], "production_target_allowed": False},
-        budget=budget_dict(**budget_overrides),
+        budget=budget_dict(**{"max_elapsed_seconds": 120, **budget_overrides}),  # the elapsed requirement includes setup, drain and cleanup
         provider={"version_pin": "test-only", "serving_provider": "test-only", "privacy_review_ref": "test-only", "dimensions": 8},
         source_sha="a" * 40,
         binary_sha256="b" * 64,
@@ -1955,6 +1983,533 @@ class PrepareLiveTests(unittest.TestCase):
         self.assertIsNone(load_cli.preflight_budget(budget, workload, accounts, arrivals))
         tight = budget._replace(max_input_tokens=floor - 1)
         self.assertIn("max_input_tokens", load_cli.preflight_budget(tight, workload, accounts, arrivals))
+
+
+# ---------------------------------------------------------------------------
+# Repairs from the independent load review (T23.41-independent-load-review.md):
+# C1 gateway error classification, B1 elapsed preflight, E1/E2 exceptions,
+# S1 status masking, F1 fact size. Each test states the review finding it guards.
+# ---------------------------------------------------------------------------
+
+def recall_only(**overrides):
+    return small_workload(traffic_mix={"recall": 1.0}, **overrides)
+
+
+class GatewayErrorClassificationTests(FakeServerTestCase):
+    """C1. The gateway returns pool and quota refusals as isError tool results over
+    HTTP 200 with the payload {"protocol_version", "error", "message", "suggestion"};
+    only the rate limits are HTTP 429. The fixture emits exactly that shape."""
+
+    def fail(self, code, verb=None, **extra):
+        self.server.state.tools_mode = "tool_code"
+        self.server.state.fail_code = code
+        self.server.state.fail_verb = verb
+        self.server.state.fail_extra = extra
+
+    def results(self, result, outcome):
+        return [r for r in result["results"] if r["outcome"] == outcome]
+
+    def test_the_decoder_maps_every_known_code_and_never_reflects_anything_else(self):
+        for code in load_cli.TOOL_ERROR_CLASSES:
+            with self.subTest(code=code):
+                self.assertEqual(load_cli.decode_tool_error(gateway_failure(code)), code)
+        for hostile in (None, "capacity", 7, True, ["capacity"], {"error": "capacity"}, "Bearer secret-token", "CAPACITY", "capacity ", ""):
+            with self.subTest(error=hostile):
+                self.assertEqual(load_cli.decode_tool_error({"error": hostile}), load_cli.UNRECOGNIZED)
+        for not_a_dict in (None, "capacity", ["capacity"], 5, {}):
+            with self.subTest(payload=not_a_dict):
+                self.assertEqual(load_cli.decode_tool_error(not_a_dict), load_cli.UNRECOGNIZED)
+
+    def test_capacity_and_operation_in_progress_are_counted_as_admission_rejections(self):
+        """Reproduction of the finding: with the pool refusing every recall as `capacity`
+        the old client reported admission rejections 0.0%, pass true."""
+        for code in ("capacity", "operation_in_progress"):
+            with self.subTest(code=code):
+                self.fail(code)
+                result = self.run_live(recall_only())
+                offered = result["offered_total"]
+                self.assertEqual(result["outcome_counts"]["rejected_admission"], offered)
+                self.assertEqual(result["outcome_counts"]["tool_error"], 0)
+                self.assertEqual(result["admission_rejections_by_source"], {"tool_result": offered})
+                self.assertEqual(result["tool_errors_by_code"], {code: offered})
+                check = result["by_repetition"][0]["threshold_evaluation"]["unexpected_admission_rejection_max_pct"]
+                self.assertEqual(check["observed"], 100.0)
+                self.assertIs(check["pass"], False)
+                record = self.results(result, "rejected_admission")[0]
+                self.assertEqual((record["error_code"], record["failure_class"], record["admission_source"]), (code, "admission", "tool_result"))
+                self.assertEqual(result["status"], "FAIL")
+
+    def test_an_http_429_is_still_an_admission_rejection_with_its_own_source(self):
+        self.server.state.tools_mode = "http429"
+        result = self.run_live(recall_only())
+        self.assertEqual(result["admission_rejections_by_source"], {"http_429": result["offered_total"]})
+        self.assertEqual(self.results(result, "rejected_admission")[0]["http_status"], 429)
+
+    def test_a_quota_refusal_is_distinguished_from_admission_and_from_client_faults(self):
+        self.fail("limit_exceeded", reset_at="2026-10-01T00:00:00Z", upgrade_url="/billing")
+        result = self.run_live(recall_only())
+        self.assertEqual(result["outcome_counts"]["rejected_admission"], 0)
+        self.assertEqual(result["outcome_counts"]["tool_error"], result["offered_total"])
+        record = self.results(result, "tool_error")[0]
+        self.assertEqual((record["error_code"], record["failure_class"]), ("limit_exceeded", "quota"))
+        check = result["by_repetition"][0]["threshold_evaluation"]["unexpected_admission_rejection_max_pct"]
+        self.assertEqual((check["observed"], check["pass"]), (0.0, True))  # a quota boundary is not an admission rejection
+        self.assertIs(result["by_repetition"][0]["threshold_evaluation"]["min_offered_completion_pct"]["pass"], False)  # but it is a failure to complete
+        self.assertNotIn("2026-10-01", json.dumps(result))  # reset_at and upgrade_url are not recorded
+
+    def test_client_and_server_faults_keep_their_own_classes(self):
+        expected = {
+            "input_too_large": "client_fault", "invalid_params": "client_fault", "provenance_required": "client_fault", "scope_denied": "client_fault",
+            "internal": "server_fault", "unavailable": "server_fault", "operation_conflict": "operation", "operation_canceled": "operation", "not_found": "not_found",
+        }
+        for code, failure_class in expected.items():
+            with self.subTest(code=code):
+                self.fail(code)
+                result = self.run_live(recall_only())
+                record = self.results(result, "tool_error")[0]
+                self.assertEqual((record["error_code"], record["failure_class"]), (code, failure_class))
+                self.assertEqual(result["tool_errors_by_code"], {code: result["offered_total"]})
+
+    def test_a_forget_refused_for_any_reason_other_than_not_found_is_not_a_durability_error(self):
+        """Reproduction of the finding: four forgets refused as `capacity` gave
+        isolation_durability_errors_max observed 4, pass false."""
+        for code in ("capacity", "limit_exceeded", "internal", "unavailable", "scope_denied", "operation_in_progress"):
+            with self.subTest(code=code):
+                self.fail(code, verb="forget")
+                workload = small_workload(traffic_mix={"remember": 0.5, "forget": 0.5}, concurrency={"clients": 2, "baseline_request_rate_per_s": 60})
+                result = self.run_live(workload)
+                forgets = [r for r in result["results"] if r["verb"] == "forget" and r["outcome"] in ("rejected_admission", "tool_error")]
+                self.assertGreater(len(forgets), 0)  # forgets were offered, dispatched and refused
+                self.assertFalse(any(r.get("durability_error") for r in result["results"]))
+                check = result["by_repetition"][0]["threshold_evaluation"]["isolation_durability_errors_max"]
+                self.assertEqual(check["observed"], 0)
+                self.assertIsNot(check["pass"], False)
+
+    def test_a_forget_answered_not_found_for_an_id_this_run_remembered_is_the_durability_error(self):
+        self.server.state.forget_loses = True
+        workload = small_workload(traffic_mix={"remember": 0.5, "forget": 0.5}, concurrency={"clients": 2, "baseline_request_rate_per_s": 60})
+        result = self.run_live(workload)
+        lost = [r for r in result["results"] if r.get("durability_error")]
+        self.assertGreaterEqual(len(lost), 1)
+        self.assertTrue(all(r["verb"] == "forget" and r["error_code"] == "not_found" for r in lost))
+        self.assertIs(result["by_repetition"][0]["threshold_evaluation"]["isolation_durability_errors_max"]["pass"], False)
+
+    def test_an_unknown_or_hostile_error_code_is_unrecognized_and_never_reflected(self):
+        self.server.state.tools_mode = "echo_code"  # the error field carries the request's Authorization header
+        result = self.run_live(recall_only(), credential=LONG_CRED)
+        self.assertEqual(result["tool_errors_by_code"], {"unrecognized": result["offered_total"]})
+        record = self.results(result, "tool_error")[0]
+        self.assertEqual((record["error_code"], record["failure_class"]), ("unrecognized", "unrecognized"))
+        blob = json.dumps(result)
+        self.assertNotIn(LONG_CRED, blob)
+        self.assertNotIn("Bearer", blob)
+
+
+class ElapsedPreflightTests(unittest.TestCase):
+    """B1. The run clock starts at construction, so setup, the final drain and cleanup
+    are elapsed time the preflight must count, not only the schedule."""
+
+    def setUp(self):
+        # Two accounts; 3 repetitions of (6 s steady + 3 s burst) = 27 s of schedule.
+        self.workload = authorized_workload(phases=[{"name": "steady", "minutes": 0.1, "rate_multiplier": 1}, {"name": "burst", "minutes": 0.05, "rate_multiplier": 1}])
+        self.accounts = harness.build_accounts(self.workload["cardinalities"], "paid")
+        self.arrivals = harness.generate_arrivals(self.workload, self.accounts, random.Random(load_cli.BASE_SEED))
+
+    def preflight(self, cap):
+        budget = load_cli.parse_budget(authorized_manifest(max_elapsed_seconds=cap))[0]
+        return load_cli.preflight_budget(budget, self.workload, self.accounts, self.arrivals)
+
+    def test_the_requirement_is_the_exact_sum_of_its_components(self):
+        need = load_cli.elapsed_requirement(self.workload, self.accounts)
+        self.assertAlmostEqual(need["schedule"], 27.0)
+        self.assertAlmostEqual(need["setup"], load_cli.READINESS_TIMEOUT_S + 2 * 2 * load_cli.DEFAULT_CALL_TIMEOUT_S)  # 5 + 40
+        self.assertAlmostEqual(need["drain"], load_cli.DEFAULT_CALL_TIMEOUT_S)  # 10
+        self.assertAlmostEqual(need["cleanup"], 2 * load_cli.DEFAULT_CALL_TIMEOUT_S)  # 20
+        self.assertAlmostEqual(need["total"], 27.0 + 45.0 + 10.0 + 20.0)
+        self.assertEqual((load_cli.READINESS_TIMEOUT_S, load_cli.DEFAULT_CALL_TIMEOUT_S), (5.0, 10.0))  # the arithmetic above assumes these
+
+    def test_a_cap_exactly_at_the_requirement_passes_and_one_millisecond_less_is_refused_with_the_breakdown(self):
+        total = load_cli.elapsed_requirement(self.workload, self.accounts)["total"]
+        self.assertIsNone(self.preflight(total))
+        error = self.preflight(total - 0.001)
+        self.assertIn(f"max_elapsed_seconds {total - 0.001} < required {total}", error)
+        for part in ("schedule 27.0", "setup 45.0", "final drain 10.0", "cleanup 20.0"):
+            self.assertIn(part, error)
+
+    def test_a_cap_equal_to_the_schedule_alone_is_now_refused(self):
+        """Reproduction of the finding: a cap equal to the schedule passed preflight and was certain to be cut short."""
+        self.assertIn("required", self.preflight(27.0))
+
+    def test_the_reviewers_fixture_arithmetic(self):
+        """3 x 6 s, one account: 18 + (5 + 20) + 10 + 10 = 63. Caps 18 and 22 (which the old preflight accepted) are refused."""
+        workload = authorized_workload(phases=[{"name": "steady", "minutes": 0.1}], cardinalities={"paid": {"accounts": {"scale": 1}, "total_facts": 10}})
+        accounts = harness.build_accounts(workload["cardinalities"], "paid")
+        arrivals = harness.generate_arrivals(workload, accounts, random.Random(load_cli.BASE_SEED))
+        need = load_cli.elapsed_requirement(workload, accounts)
+        self.assertAlmostEqual(need["total"], 63.0)
+        for cap, refused in ((18.0, True), (22.0, True), (62.999, True), (63.0, False)):
+            budget = load_cli.parse_budget(authorized_manifest(max_elapsed_seconds=cap))[0]
+            self.assertEqual(load_cli.preflight_budget(budget, workload, accounts, arrivals) is not None, refused, cap)
+
+    def test_the_real_frozen_workload_needs_8535_seconds(self):
+        workload = json.loads(WORKLOAD_PATH.read_text())
+        accounts = harness.build_accounts(workload["cardinalities"], "paid")
+        need = load_cli.elapsed_requirement(workload, accounts)
+        self.assertEqual(len(accounts), 14)
+        self.assertAlmostEqual(need["schedule"], 3 * 45 * 60)  # 8100
+        self.assertAlmostEqual(need["setup"], 5 + 14 * 2 * 10)  # 285
+        self.assertAlmostEqual(need["cleanup"], 14 * 10)  # 140
+        self.assertAlmostEqual(need["total"], 8100 + 285 + 10 + 140)  # 8535
+
+    def test_prepare_live_reports_the_setup_and_cleanup_shortfall(self):
+        workload = authorized_workload()
+        accounts = harness.build_accounts(workload["cardinalities"], "paid")
+        cred_dir = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, cred_dir, True)
+        make_credential_dir(cred_dir, accounts)
+        plan, error = load_cli.prepare_live(authorized_manifest(cred_dir / "creds", max_elapsed_seconds=30), workload)
+        self.assertIsNone(plan)
+        self.assertIn("setup", error)
+        self.assertIn("cleanup", error)
+
+
+class SlowSetupRunTests(FakeServerTestCase):
+    """B1 end to end: a cap that the elapsed requirement accepts is enough for a run
+    with a slow setup, and a cap equal to the schedule alone is cut short."""
+
+    def workload(self):
+        return small_workload(repetitions=3, traffic_mix={"recall": 1.0})  # 3 x 0.6 s = 1.8 s of schedule, 2 accounts
+
+    def test_a_schedule_only_cap_is_cut_short_by_a_slow_setup(self):
+        self.server.state.init_delay_s = 0.6  # two initializes: 1.2 s of setup before the schedule origin
+        result = self.run_live(self.workload(), max_elapsed_seconds=1.8)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertGreater(result["outcome_counts"]["not_dispatched"], 0)
+
+    def test_a_cap_that_covers_the_requirement_is_not_cut_short(self):
+        self.server.state.init_delay_s = 0.6
+        # Scale the two timeouts the requirement is built from down to this fixture's speed (every exchange here takes well under 0.7 s).
+        with mock.patch.object(load_cli, "READINESS_TIMEOUT_S", 0.7), mock.patch.object(load_cli, "DEFAULT_CALL_TIMEOUT_S", 0.7):
+            workload = self.workload()
+            accounts = harness.build_accounts(workload["cardinalities"], "paid")
+            need = load_cli.elapsed_requirement(workload, accounts)
+        self.assertAlmostEqual(need["total"], 1.8 + (0.7 + 2 * 2 * 0.7) + 0.7 + 2 * 0.7)
+        result = self.run_live(workload, max_elapsed_seconds=need["total"])
+        self.assertEqual(result["status"], "PARTIAL")
+        self.assertEqual(result["outcome_counts"]["not_dispatched"], 0)
+        self.assertEqual(result["outcome_counts"]["ok"], result["offered_total"])
+        self.assertEqual(result["cleanup"]["closed_confirmed"], 2)
+
+
+class MalformedInitializeTests(FakeServerTestCase):
+    """E1. A 200 reply to initialize that issues a session id and then cannot be parsed
+    used to raise RecursionError out of run_live: no receipt and no cleanup."""
+
+    def test_a_deeply_nested_initialize_reply_still_returns_a_sanitized_receipt(self):
+        self.server.state.init_mode = "deep_json"
+        result = self.run_live(recall_only())
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("session initialize failed for account", result["reason"])
+        self.assertIn("McpProtocolError", result["reason"])
+        self.assertEqual(result["outcome_counts"]["not_dispatched"], result["offered_total"])
+        self.assertNotIn("[[[[", json.dumps(result))
+
+    def test_the_session_id_issued_with_an_unparseable_reply_is_closed(self):
+        self.server.state.init_mode = "deep_json"
+        result = self.run_live(recall_only())
+        self.assertEqual(result["cleanup"]["server_sessions_created"], 1)
+        self.assertEqual(result["cleanup"]["closed_confirmed"], 1)
+        self.assertEqual(result["cleanup"]["sessions_left_open"], 0)
+        self.assertEqual(self.server.state.deleted_ids, ["sess-1"])
+
+    def test_the_session_object_binds_the_id_before_the_body_is_parsed(self):
+        self.server.state.init_mode = "deep_json"
+        session = self.session()
+        with self.assertRaises(load_cli.McpProtocolError) as ctx:
+            session.initialize()
+        self.assertEqual(str(ctx.exception), "response body is nested too deeply")
+        self.assertTrue(session.has_server_session)
+        self.assertFalse(session.initialized)
+        self.assertEqual(session.close(), ("closed", None))
+
+    def test_a_reply_that_is_not_json_still_leaves_a_closable_session(self):
+        self.server.state.init_mode = "not_json"
+        session = self.session()
+        with self.assertRaises(load_cli.McpProtocolError) as ctx:
+            session.initialize()
+        self.assertEqual(str(ctx.exception), "non-JSON response body")  # fixed text: the upstream body is never echoed
+        self.assertTrue(session.has_server_session)
+        self.assertEqual(session.close(), ("closed", None))
+
+    def test_a_malformed_session_id_is_not_bound_and_is_reported(self):
+        session = self.session()
+        session._bind_issued_session({"Mcp-Session-Id": "has a space"})
+        self.assertFalse(session.has_server_session)
+        session._bind_issued_session({"Mcp-Session-Id": "ok-id-1"})
+        self.assertTrue(session.has_server_session)
+
+    def test_a_deeply_nested_tools_call_reply_is_a_protocol_error_not_a_lost_run(self):
+        self.server.state.tools_mode = "deep_json"
+        result = self.run_live(recall_only())
+        self.assertEqual(result["outcome_counts"]["protocol_error"], result["offered_total"])
+        self.assertEqual({r["error"] for r in result["results"]}, {"response body is nested too deeply"})
+
+    def test_any_exception_from_the_run_becomes_a_receipt_and_the_session_it_made_is_closed(self):
+        def crashing_execute(origin, workload, accounts, credentials, arrivals, run, records, created):
+            session = load_cli.McpSession(origin, credentials[accounts[0]["id"]], run)
+            created.append(session)
+            session.initialize()
+            raise RuntimeError("SECRET-upstream-text " + LONG_CRED)
+
+        with mock.patch.object(load_cli, "_execute", crashing_execute):
+            result = self.run_live(recall_only(), credential=LONG_CRED)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("client error during the run: RuntimeError", result["reason"])
+        blob = json.dumps(result)
+        self.assertNotIn("SECRET-upstream-text", blob)
+        self.assertNotIn(LONG_CRED, blob)
+        self.assertEqual(result["cleanup"]["closed_confirmed"], 1)
+        self.assertEqual(self.server.state.deleted_ids, ["sess-1"])
+
+    def test_a_client_error_is_named_even_when_an_earlier_stop_reason_won(self):
+        def crashing_execute(origin, workload, accounts, credentials, arrivals, run, records, created):
+            run.stop("max_calls budget exhausted")
+            raise ZeroDivisionError
+
+        with mock.patch.object(load_cli, "_execute", crashing_execute):
+            result = self.run_live(recall_only())
+        self.assertIn("max_calls budget exhausted", result["reason"])
+        self.assertIn("client error during the run: ZeroDivisionError", result["reason"])
+
+    def test_an_initialize_that_raises_anything_at_all_is_recorded_by_class_only(self):
+        with mock.patch.object(load_cli.McpSession, "initialize", side_effect=RuntimeError("SECRET-upstream-text")):
+            result = self.run_live(recall_only())
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("RuntimeError", result["reason"])
+        self.assertNotIn("SECRET-upstream-text", json.dumps(result))
+
+    def test_an_interrupt_is_not_swallowed_but_the_session_is_still_closed(self):
+        def interrupted_execute(origin, workload, accounts, credentials, arrivals, run, records, created):
+            session = load_cli.McpSession(origin, credentials[accounts[0]["id"]], run)
+            created.append(session)
+            session.initialize()
+            raise KeyboardInterrupt
+
+        with mock.patch.object(load_cli, "_execute", interrupted_execute):
+            with self.assertRaises(KeyboardInterrupt):
+                self.run_live(recall_only())
+        self.assertEqual(self.server.state.deleted_ids, ["sess-1"])
+
+    def test_a_close_that_raises_cannot_discard_the_results(self):
+        with mock.patch.object(load_cli.McpSession, "close", side_effect=RuntimeError("SECRET-upstream-text")):
+            result = self.run_live(recall_only())
+        self.assertEqual(result["outcome_counts"]["ok"], result["offered_total"])
+        self.assertEqual(result["cleanup"]["close_failed"], {"RuntimeError": 2})
+        self.assertEqual(result["cleanup"]["sessions_left_open"], 2)
+        self.assertNotIn("SECRET-upstream-text", json.dumps(result))
+
+    def test_a_close_exchange_that_raises_a_non_transport_error_is_recorded_by_class(self):
+        session = self.session()
+        session.initialize()
+        real = load_cli._http_exchange
+
+        def failing_on_delete(method, *args, **kwargs):
+            if method == "DELETE":
+                raise ValueError("SECRET-upstream-text")
+            return real(method, *args, **kwargs)
+
+        with mock.patch.object(load_cli, "_http_exchange", failing_on_delete):
+            self.assertEqual(session.close(), ("failed", "ValueError"))
+
+
+class HugeIntegerTests(unittest.TestCase):
+    """E2. JSON integer literals are unbounded: 10**400 made math.isfinite raise OverflowError."""
+
+    def budget(self, **overrides):
+        return {"budget": budget_dict(**overrides)}
+
+    def test_a_huge_integer_in_any_numeric_field_is_an_invalid_budget_not_an_overflow(self):
+        huge = 10**400
+        for field in ("max_elapsed_seconds", "approved_max_usd", "worst_case_usd_per_call", "max_calls", "max_input_tokens"):
+            with self.subTest(field=field):
+                budget, error = load_cli.parse_budget(self.budget(**{field: huge}))
+                self.assertIsNone(budget)
+                self.assertIn(field, error)
+                self.assertLess(len(error), 400)  # the value is not echoed
+        for field in ("readiness_tokens", "cold_open_tokens"):
+            with self.subTest(field=field):
+                bound = {"readiness_tokens": 0, "cold_open_tokens": 0, "basis": "test-only", field: huge}
+                self.assertIsNotNone(load_cli.parse_budget(self.budget(provider_work_bound=bound))[1])
+
+    def test_an_integer_past_the_string_conversion_limit_does_not_crash_the_error_message(self):
+        budget, error = load_cli.parse_budget(self.budget(max_elapsed_seconds=10**5000))
+        self.assertIsNone(budget)
+        self.assertIn("too large to show", error)
+
+    def test_the_machine_sized_limit_is_inclusive(self):
+        limit = load_cli.MAX_BUDGET_COUNT
+        self.assertIsNotNone(load_cli.parse_budget(self.budget(max_calls=limit + 1))[1])
+        self.assertIsNone(load_cli.parse_budget(self.budget(max_calls=limit, max_input_tokens=limit))[1])
+
+    def test_a_hand_built_budget_and_the_ledger_are_held_to_the_same_rules(self):
+        with self.assertRaises(ValueError):
+            load_cli.RunBudget(make_budget(max_elapsed_seconds=10**400))
+        run = make_run()
+        with self.assertRaises(ValueError):
+            run.reserve("readiness", 0, 10**400)
+        self.assertEqual(run.calls, 0)
+
+    def test_run_live_and_prepare_live_return_blocked_and_send_nothing(self):
+        server = FakeMcpServer()
+        server.start()
+        self.addCleanup(server.stop)
+        workload = small_workload()
+        accounts = harness.build_accounts(workload["cardinalities"], "paid")
+        manifest = live_manifest(server.origin, max_elapsed_seconds=10**400)
+        result = load_cli.run_live(manifest, workload, accounts, {a["id"]: "test-credential-value" for a in accounts})
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("max_elapsed_seconds", result["reason"])
+        self.assertEqual(server.state.requests_seen, [])
+        plan, error = load_cli.prepare_live(authorized_manifest(max_elapsed_seconds=10**400), authorized_workload())
+        self.assertIsNone(plan)
+        self.assertIn("max_elapsed_seconds", error)
+
+    def test_a_manifest_file_with_an_absurd_integer_is_a_blocked_receipt_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "manifest.json"
+            path.write_text('{"budget": {"max_calls": ' + "9" * 5000 + "}}")
+            out = Path(tmp) / "out.json"
+            with self.assertRaises(SystemExit) as ctx:
+                run_main("--fixtures", "--manifest", str(path), "--output", str(out))
+        self.assertEqual(ctx.exception.code, 2)
+
+
+class MeasuredFailureStatusTests(FakeServerTestCase):
+    """S1. A budget stop used to report BLOCKED and hide checks that had already failed."""
+
+    def workload(self):
+        return small_workload(repetitions=3, traffic_mix={"recall": 1.0})  # 3 x 0.6 s
+
+    def test_measured_failures_are_reported_as_fail_even_when_a_cap_stopped_the_run(self):
+        """Reproduction of the finding: every call answered 500 and a cap ended the run in repetition 1: BLOCKED."""
+        self.server.state.tools_mode = "http500"
+        result = self.run_live(self.workload(), max_elapsed_seconds=1.0)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("rep 0: unexpected_5xx_max_pct", result["reason"])
+        self.assertIn("rep 0: min_offered_completion_pct", result["reason"])
+        self.assertIn("the run also stopped early: max_elapsed_seconds budget exhausted", result["reason"])
+        self.assertGreater(result["outcome_counts"]["not_dispatched"], 0)
+        self.assertGreater(result["outcome_counts"]["unexpected_5xx"], 0)
+        self.assertFalse(result["qualified"])
+
+    def test_a_cut_short_run_whose_dispatched_requests_all_succeeded_stays_blocked(self):
+        result = self.run_live(self.workload(), max_elapsed_seconds=1.0)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertGreater(result["outcome_counts"]["not_dispatched"], 0)
+        self.assertEqual(result["outcome_counts"]["ok"] + result["outcome_counts"]["not_dispatched"], result["offered_total"])
+        rep1 = result["by_repetition"][1]["threshold_evaluation"]["min_offered_completion_pct"]
+        self.assertIs(rep1["pass"], False)  # the full denominator still counts undispatched arrivals
+        self.assertIs(rep1["pass_if_undispatched_were_ok"], True)  # but dispatched requests alone did not cause the miss
+        self.assertTrue(any("only because offered requests were never dispatched" in g for g in result["qualification_gaps"]))
+
+    def test_a_wholly_undispatched_run_is_blocked_and_its_synthetic_completion_failure_is_not_a_measured_one(self):
+        self.server.state.readyz_status = 503
+        result = self.run_live(self.workload())
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("readiness probe returned HTTP 503", result["reason"])
+        self.assertEqual(result["outcome_counts"]["not_dispatched"], result["offered_total"])
+        completion = result["by_repetition"][0]["threshold_evaluation"]["min_offered_completion_pct"]
+        self.assertEqual((completion["observed"], completion["pass"]), (0.0, False))
+        self.assertIs(completion["pass_if_undispatched_were_ok"], True)
+        self.assertNotIn("min_offered_completion_pct", result["reason"])
+
+    def test_a_completion_miss_caused_by_dispatched_failures_is_measured_even_with_undispatched_arrivals(self):
+        self.server.state.tools_mode = "http500"
+        result = self.run_live(self.workload(), max_elapsed_seconds=1.0)
+        completion = result["by_repetition"][0]["threshold_evaluation"]["min_offered_completion_pct"]
+        self.assertIs(completion["pass"], False)
+        self.assertIs(completion["pass_if_undispatched_were_ok"], False)
+
+    def test_an_uncapped_run_with_a_failing_server_is_still_fail_with_the_same_reason_format(self):
+        self.server.state.tools_mode = "http500"
+        result = self.run_live(self.workload())
+        self.assertEqual(result["status"], "FAIL")
+        self.assertNotIn("stopped early", result["reason"])
+        self.assertIn("rep 0: unexpected_5xx_max_pct", result["reason"])
+
+
+class FactSizeTests(FakeServerTestCase):
+    """F1. 12 steady remember calls rendered past the gateway's 4096-byte fact limit.
+    The fixture now enforces that limit exactly as gateway.go does."""
+
+    def test_the_frozen_fact_range_renders_inside_the_limit_without_truncation(self):
+        workload = harness.load_workload(WORKLOAD_PATH)
+        accounts = harness.build_accounts(workload["cardinalities"], "paid")
+        arrivals = harness.generate_arrivals(workload, accounts, random.Random(load_cli.BASE_SEED))
+        low, high = workload["fact_tokens"]["min"], workload["fact_tokens"]["max"]
+        remembers = [a for a in arrivals if a["verb"] == "remember"]
+        self.assertGreater(len(remembers), 1000)
+        largest = 0
+        for rep in range(workload["repetitions"]):
+            for seq, arrival in enumerate(arrivals):
+                if arrival["verb"] != "remember":
+                    continue
+                fact = load_cli.tool_arguments("remember", arrival["account"], rep, seq, arrival["tokens"])["fact"]
+                self.assertEqual(len(fact.split()), arrival["tokens"])  # exactly the requested size: not truncated
+                self.assertTrue(low <= arrival["tokens"] <= high)
+                largest = max(largest, len(fact.encode()))
+        self.assertLessEqual(largest, harness.FACT_MAX_BYTES)
+        self.assertLessEqual(harness.max_rendered_bytes(high), harness.FACT_MAX_BYTES)  # the seed-independent bound also fits
+
+    def test_a_run_at_the_top_of_the_frozen_range_gets_no_input_too_large(self):
+        high = harness.load_workload(WORKLOAD_PATH)["fact_tokens"]["max"]
+        workload = small_workload(traffic_mix={"remember": 1.0}, fact_tokens={"min": high, "max": high})
+        result = self.run_live(workload)
+        self.assertEqual(result["outcome_counts"]["ok"], result["offered_total"])
+        self.assertEqual(result["tool_errors_by_code"], {})
+
+    def test_the_fixture_really_enforces_the_limit(self):
+        """Control: an oversized fact is refused as input_too_large, so the run above is not vacuous."""
+        session = self.session()
+        session.initialize()
+        oversized = {"fact": "x" * 4097, "provenance": "test-only"}
+        outcome = session.call_tool("remember", oversized)
+        self.assertEqual((outcome["is_error"], outcome["error_code"]), (True, "input_too_large"))
+
+    def test_a_range_that_can_exceed_the_limit_blocks_prepare_live_and_is_never_truncated(self):
+        workload = authorized_workload(fact_tokens={"min": 32, "max": 800})
+        plan, error = load_cli.prepare_live(authorized_manifest(), workload)
+        self.assertIsNone(plan)
+        self.assertIn("fact limit", error)
+        self.assertIn("never truncates", error)
+        with self.assertRaises(ValueError):
+            load_cli.tool_arguments("remember", "free-0", 0, 0, 800)
+
+    def test_word_counts_are_documented_as_nominal_not_token_counts(self):
+        self.assertIn("not a token count", harness.render_text.__doc__)
+        result = self.run_live()
+        self.assertTrue(any("nominal word counts" in g and "no provider tokenizer is assumed" in g for g in result["qualification_gaps"]))
+
+
+class LatencyAndAdmissionLimitationTests(FakeServerTestCase):
+    """Fresh-connection overhead, dispatch-versus-arrival latency and the hot-tenant
+    rate limit are recorded limitations of every live result."""
+
+    def test_every_result_records_the_three_limitations(self):
+        gaps = " | ".join(self.run_live()["qualification_gaps"])
+        self.assertIn("Connection: close", gaps)
+        self.assertIn("fresh TCP", gaps)
+        self.assertIn("TLS handshake", gaps)
+        self.assertIn("latency_s runs from dispatch, not from the scheduled arrival", gaps)
+        self.assertIn("queue_delay_s", gaps)
+        self.assertIn("per-account limit (120 requests a minute", gaps)
+        self.assertIn("counted as failures here, not excluded as expected saturation", gaps)
+        self.assertIn("decision-request-hot-tenant-rate-limit.md", gaps)
+
+    def test_the_client_really_sends_connection_close_on_every_request(self):
+        self.run_live()
+        self.assertTrue(self.server.state.requests_seen)
+        self.assertEqual({headers.get("Connection") for _m, _p, headers in self.server.state.requests_seen}, {"close"})
 
 
 # ---------------------------------------------------------------------------

@@ -11,12 +11,24 @@ estimates and local fixture results, not measured capacity or authority to spend
 - `scripts/hosted/load.py --fixtures --manifest PATH --output PATH` exercises a
   deterministic simulator: three repetitions, replay, burst/cold/skewed tenants,
   quota saturation separate from the eligible workload, explicit failed thresholds.
+  Its rate limiter reproduces the gateway's fixed window, which starts at an
+  account's first request.
+- **The frozen hot tenant offers the gateway's per-account rate limit** (120
+  requests a minute), so a healthy server fails the admission and completion
+  thresholds: 180 of 7,379 steady requests, 2.44%. The client and the simulator
+  count these as failures, not as expected saturation. No number changed. A named
+  decision is open in
+  [decision-request-hot-tenant-rate-limit.md](evidence/T23.60/decision-request-hot-tenant-rate-limit.md).
 - A candidate MCP client has local tests against a real loopback HTTP server:
   per-request outcomes over all offered requests, one wall-clock deadline on each
   exchange that includes name resolution (a disposable child process, killed at
   the deadline, for hostnames), a cap check before every socket operation,
   byte-based token precharge, canonical origins, redirect refusal, fixed error
-  classes and confirmed-only session cleanup. It never reports better than
+  classes, gateway error codes decoded into a fixed enum (capacity as admission,
+  quota and client faults kept apart, a refused forget never lost durability),
+  an elapsed-budget preflight that counts setup, drain and cleanup, and
+  confirmed-only session cleanup that survives a malformed reply. Word counts in
+  the workload are nominal sizes, not tokens. It never reports better than
   `PARTIAL` and is not a supported live qualification runner.
 - **`--live` is disabled unconditionally**, returning BLOCKED/exit 2 and a zero-call
   receipt before manifest/credential reads or networking. Seeded state, a real
