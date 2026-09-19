@@ -40,7 +40,8 @@
     "authorization_ref": "fixtures-only-no-live-spend-T23.60",
     "worst_case_usd_per_call": 0.01,
     "automatic_reset": false,
-    "auto_top_up": false
+    "auto_top_up": false,
+    "provider_work_bound": null
   },
   "live": {
     "credential_dir": null
@@ -51,5 +52,5 @@
   "workload_sha256": null,
   "gate_evidence": {},
   "artifact_destination": "docs/launch/evidence/T23.60",
-  "note": "Fixtures-mode manifest for T23.60 local evidence. budget/environment/live are filled with concrete, safe values to demonstrate the contract shape; --live is never executed from this manifest (production_target_allowed stays false, environment.origin stays null, and live.credential_dir stays null, all three refused by check_environment_guard / check_credentials before any network call). worst_case_usd_per_call=0.01 is an operator-supplied upper bound used only to precharge the dollar cap per call -- real embeddings pricing is still an unverified unknown (see hosted-economics.md), so this number is deliberately conservative, not a real observed cost. workload_sha256 is filled by the run and recorded in result.json, not hand-maintained here."
+  "note": "Fixtures-mode manifest for T23.60 local evidence. budget/environment/live are filled with concrete, safe values to demonstrate the contract shape; --live is never executed from this manifest (production_target_allowed stays false, environment.origin stays null, and live.credential_dir stays null, all three refused by check_environment_guard / check_credentials before any network call). worst_case_usd_per_call=0.01 is an operator-supplied upper bound used only to precharge the dollar cap per call -- real embeddings pricing is still an unverified unknown (see hosted-economics.md), so this number is deliberately conservative, not a real observed cost. workload_sha256 is filled by the run and recorded in result.json, not hand-maintained here. budget.provider_work_bound (readiness_tokens, cold_open_tokens, basis) is null: the client cannot observe provider work a readiness probe or cold open triggers server-side, so a live run stays blocked until an operator declares an upper bound with its basis."
 }

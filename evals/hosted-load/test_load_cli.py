@@ -1,22 +1,32 @@
 import http.server
 import importlib.util
 import json
+import os
+import random
+import socket
 import sys
 import tempfile
 import threading
+import time
 import unittest
-from unittest import mock
 import urllib.error
 import urllib.request
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "hosted" / "load.py"
 spec = importlib.util.spec_from_file_location("load_cli", SCRIPT)
 load_cli = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(load_cli)
+harness = load_cli.harness
 
 MANIFEST_PATH = Path(__file__).resolve().parents[2] / "docs" / "launch" / "evidence" / "T23.60" / "manifest.json"
+WORKLOAD_PATH = Path(__file__).with_name("workload.json")
 PROTOCOL_VERSION = load_cli.PROTOCOL_VERSION
+THRESHOLDS = json.loads(WORKLOAD_PATH.read_text())["thresholds"]
+
+# A long printable credential, so a truncation boundary can fall inside it.
+LONG_CRED = "cr3d-" + "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789" * 9
 
 
 def base_manifest(**overrides):
@@ -27,18 +37,50 @@ def base_manifest(**overrides):
 
 def small_workload(**overrides):
     w = {
-        "phases": [{"name": "main", "minutes": 0.01, "rate_multiplier": 1}],
+        "phases": [{"name": "steady", "minutes": 0.01, "rate_multiplier": 1}],
         "concurrency": {"clients": 2, "baseline_request_rate_per_s": 20},
-        "traffic_mix": {"recall": 0.5, "remember": 0.3, "forget": 0.2},
+        "traffic_mix": {"recall": 0.6, "remember": 0.4},
         "cardinalities": {"paid": {"accounts": {"free": 2}, "total_facts": 10}},
         "repetitions": 1,
         "hot_tenant_traffic_fraction": 0.5,
         "cold_brain_fraction": 0.1,
         "query_tokens": {"min": 3, "max": 6},
         "fact_tokens": {"min": 4, "max": 8},
+        "thresholds": THRESHOLDS,
     }
     w.update(overrides)
     return w
+
+
+def budget_dict(**overrides):
+    """A manifest.budget for tests. Values are test-only; none is an authorization."""
+    b = {
+        "approved_max_usd": 10.0, "max_calls": 10000, "max_input_tokens": 10_000_000, "max_elapsed_seconds": 30,
+        "worst_case_usd_per_call": 0.001, "authorization_ref": "test-only",
+        "provider_work_bound": {"readiness_tokens": 0, "cold_open_tokens": 0, "basis": "test-only loopback fixture"},
+    }
+    b.update(overrides)
+    return b
+
+
+def live_manifest(origin, **budget_overrides):
+    return {
+        "environment": {"kind": "disposable", "origin": origin, "allowed_hosts": ["127.0.0.1"], "production_target_allowed": False},
+        "budget": budget_dict(**budget_overrides),
+    }
+
+
+def make_budget(**overrides):
+    fields = dict(
+        approved_max_usd=10.0, max_calls=10000, max_input_tokens=10_000_000, max_elapsed_seconds=30, worst_case_usd_per_call=0.001,
+        authorization_ref="test-only", readiness_tokens=0, cold_open_tokens=0, provider_work_basis="test-only loopback fixture",
+    )
+    fields.update(overrides)
+    return load_cli.Budget(**fields)
+
+
+def make_run(**overrides):
+    return load_cli.RunBudget(make_budget(**overrides))
 
 
 def make_credential_dir(root: Path, accounts: list[dict], mode: int = 0o600, value: str = "test-credential-value") -> Path:
@@ -51,17 +93,53 @@ def make_credential_dir(root: Path, accounts: list[dict], mode: int = 0o600, val
     return cred_dir
 
 
+def unused_port() -> int:
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()  # nothing listens here now
+    return port
+
+
+class SilentListener:
+    """Accepts TCP connections and never writes a byte (a stalled peer, and for
+    https a stalled TLS handshake). Real sockets; no HTTP semantics at all."""
+
+    def __init__(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.bind(("127.0.0.1", 0))
+        self.sock.listen(8)
+        self.port = self.sock.getsockname()[1]
+        self.accepted: list[socket.socket] = []
+        self.thread = threading.Thread(target=self._accept, daemon=True)
+        self.thread.start()
+
+    def _accept(self):
+        while True:
+            try:
+                conn, _addr = self.sock.accept()
+            except OSError:
+                return
+            self.accepted.append(conn)
+
+    def close(self):
+        self.sock.close()
+        for conn in self.accepted:
+            conn.close()
+
+
 # ---------------------------------------------------------------------------
 # A real local MCP-over-HTTP fixture: genuine sockets, genuine JSON
 # (de)serialization on both sides -- not an injected mock-transport function.
 # Mirrors internal/server/mcp/http.go's own wire behavior (session bootstrap,
-# header requirements, JSON-RPC dual failure modes) closely enough to
-# exercise the real client, without importing Go.
+# header requirements, JSON-RPC dual failure modes) closely enough to exercise
+# the real client, plus deterministic fault knobs (drip, drop, echo, status).
 # ---------------------------------------------------------------------------
 
 class FakeMcpState:
     def __init__(self):
         self.lock = threading.Lock()
+        self.stopped = threading.Event()
         self.sessions: dict[str, dict] = {}
         self.next_session = 0
         self.remembered: dict[str, bool] = {}
@@ -69,7 +147,21 @@ class FakeMcpState:
         self.redirect_hit = False
         self.always_redirect_mcp = False
         self.readyz_status = 200
+        self.readyz_body = b'{"ready": true}'
         self.requests_seen: list[tuple[str, str, dict]] = []
+        self.rpc_seen: list[tuple[str, float]] = []  # (JSON-RPC method, server-side arrival time)
+        self.tool_arg_bytes = 0
+        self.delete_seen = 0
+        self.tools_mode = "ok"
+        self.forget_loses = False
+        self.tools_delay_s = 0.0
+        self.init_mode = "ok"
+        self.delete_mode = "ok"  # ok | status:<n> | drop | redirect
+        self.drip_interval_s = 0.02
+
+    def tools_calls_seen(self) -> list[float]:
+        with self.lock:
+            return [t for m, t in self.rpc_seen if m == "tools/call"]
 
 
 class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
@@ -83,14 +175,63 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
         return self.server.state  # type: ignore[attr-defined]
 
     def _send_json(self, status, payload, extra_headers=None):
-        body = json.dumps(payload).encode()
+        self._send_status(status, json.dumps(payload).encode(), {"Content-Type": "application/json", **(extra_headers or {})})
+
+    def _send_status(self, status, body=b"", extra_headers=None):
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         for k, v in (extra_headers or {}).items():
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
+
+    def _write_slowly(self, chunks):
+        for chunk in chunks:
+            if self.state.stopped.is_set():
+                break
+            try:
+                self.wfile.write(chunk)
+                self.wfile.flush()
+            except OSError:
+                break
+            time.sleep(self.state.drip_interval_s)
+        self.close_connection = True
+
+    def _drip_body(self, declared_length, sent_bytes):
+        self.send_response(200)
+        self.send_header("Content-Length", str(declared_length))
+        self.end_headers()
+        self.wfile.flush()
+        self._write_slowly(b"x" for _ in range(sent_bytes))
+
+    def _drip_headers(self):
+        # A status line, then a header line that never ends: one byte per interval.
+        self.wfile.write(b"HTTP/1.1 200 OK\r\nX-Slow: ")
+        self.wfile.flush()
+        self._write_slowly(b"a" for _ in range(2000))
+
+    def _stall_after_first_byte(self, http10=False):
+        """Headers at once, first body byte at 0.5s, then a stall. Both the
+        `Connection: close` and the HTTP/1.0 forms make http.client's response
+        take ownership of the socket (conn.sock is cleared by getresponse)."""
+        if http10:
+            self.protocol_version = "HTTP/1.0"
+        self.send_response(200)
+        self.send_header("Content-Length", "2")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.flush()
+        self.close_connection = True
+        if self.state.stopped.wait(0.5):
+            return
+        try:
+            self.wfile.write(b"x")
+            self.wfile.flush()
+            self.state.stopped.wait(1.0)
+            self.wfile.write(b"y")
+            self.wfile.flush()
+        except OSError:
+            pass
 
     def _read_body(self) -> bytes:
         length = int(self.headers.get("Content-Length", "0"))
@@ -103,30 +244,46 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
             with self.state.lock:
                 self.state.redirect_hit = True
             self._send_json(200, {"hit": True})
-            return
-        if self.path == "/readyz":
+        elif self.path == "/readyz":
             status = self.state.readyz_status
             if status >= 300:
-                self.send_response(status)
-                if 300 <= status < 400:
-                    self.send_header("Location", f"http://{self.headers.get('Host')}/redirect-target")
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-                return
-            self._send_json(status, {"ready": True})
-            return
-        self.send_response(404)
-        self.end_headers()
+                extra = {"Location": f"http://{self.headers.get('Host')}/redirect-target"} if 300 <= status < 400 else {}
+                self._send_status(status, self.state.readyz_body if status >= 400 else b"", extra)
+            else:
+                self._send_json(status, {"ready": True})
+        elif self.path == "/stall-after-first-byte":
+            self._stall_after_first_byte()
+        elif self.path == "/stall-after-first-byte-http10":
+            self._stall_after_first_byte(http10=True)
+        elif self.path == "/drip-body-30":
+            self._drip_body(30, 30)  # a complete 30-byte body, delivered slowly
+        elif self.path == "/drip-body":
+            self._drip_body(100000, 2000)
+        elif self.path == "/drip-headers" or self.path == "/readyz-drip-headers":
+            self._drip_headers()
+        else:
+            self._send_status(404)
 
     def do_DELETE(self):
+        with self.state.lock:
+            self.state.delete_seen += 1
         if self.headers.get("Origin"):
             self._send_json(403, {"error": "Origin header not allowed"})
+            return
+        mode = self.state.delete_mode
+        if mode == "drop":
+            self.close_connection = True
+            return
+        if mode == "redirect":
+            self._send_status(302, b"", {"Location": f"http://{self.headers.get('Host')}/redirect-target"})
+            return
+        if mode.startswith("status:"):
+            self._send_status(int(mode.split(":")[1]), b"cleanup refused")
             return
         session_id = self.headers.get("Mcp-Session-Id")
         with self.state.lock:
             self.state.sessions.pop(session_id, None)
-        self.send_response(204)
-        self.end_headers()
+        self._send_status(204)
 
     def do_POST(self):
         with self.state.lock:
@@ -138,14 +295,10 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
             self._send_json(415, {"error": "Content-Type must be application/json"})
             return
         if self.state.always_redirect_mcp:
-            self.send_response(302)
-            self.send_header("Location", f"http://{self.headers.get('Host')}/redirect-target")
-            self.send_header("Content-Length", "0")
-            self.end_headers()
+            self._send_status(302, b"", {"Location": f"http://{self.headers.get('Host')}/redirect-target"})
             return
         if self.path != "/mcp":
-            self.send_response(404)
-            self.end_headers()
+            self._send_status(404)
             return
 
         raw = self._read_body()
@@ -159,15 +312,20 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
         req_id = msg.get("id")
         method = msg.get("method")
         params = msg.get("params") or {}
+        auth = self.headers.get("Authorization", "")
+        with self.state.lock:
+            self.state.rpc_seen.append((method, time.monotonic()))
 
         if session_id is None:
             if method != "initialize":
-                self.send_response(400)
-                self.end_headers()
+                self._send_status(400)
                 return
             client_info = params.get("clientInfo") or {}
             if not params.get("protocolVersion") or not client_info.get("name") or not client_info.get("version"):
                 self._send_json(200, {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32602, "message": "Invalid initialize parameters"}})
+                return
+            if self.state.init_mode == "echo_jsonrpc_error":
+                self._send_json(200, {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": "x" * 150 + auth}})
                 return
             with self.state.lock:
                 self.state.next_session += 1
@@ -187,12 +345,10 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
         with self.state.lock:
             sess = self.state.sessions.get(session_id)
         if sess is None:
-            self.send_response(404)
-            self.end_headers()
+            self._send_status(404)
             return
         if self.headers.get("MCP-Protocol-Version") != PROTOCOL_VERSION:
-            self.send_response(400)
-            self.end_headers()
+            self._send_status(400)
             return
 
         if req_id is None:
@@ -200,9 +356,7 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
                 with self.state.lock:
                     if sess["state"] == 1:
                         sess["state"] = 2
-            self.send_response(202)
-            self.send_header("Content-Length", "0")
-            self.end_headers()
+            self._send_status(202)
             return
 
         if method != "tools/call":
@@ -214,7 +368,40 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
 
         name = params.get("name")
         arguments = params.get("arguments") or {}
-        if name == "recall":
+        with self.state.lock:
+            self.state.tool_arg_bytes += len(json.dumps(arguments))
+        if self.state.tools_delay_s:
+            time.sleep(self.state.tools_delay_s)
+        mode = self.state.tools_mode
+        if mode == "http500":
+            self._send_status(500, b"upstream exploded")
+            return
+        if mode == "echo_http500":
+            self._send_status(500, ("x" * 150 + auth).encode())
+            return
+        if mode == "http429":
+            self._send_status(429, b"slow down", {"Retry-After": "60"})
+            return
+        if mode == "jsonrpc_error":
+            self._send_json(200, {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": "forced"}})
+            return
+        if mode == "echo_jsonrpc":
+            self._send_json(200, {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": "y" * 150 + auth}})
+            return
+        if mode == "drop":
+            self.close_connection = True
+            return
+        if mode == "drip_body":
+            self._drip_body(100000, 2000)
+            return
+        if mode == "stall_body":
+            self._stall_after_first_byte()
+            return
+        if mode == "tool_error":
+            payload, is_error = {"code": "boom", "message": "forced failure"}, True
+        elif mode == "echo_tool":
+            payload, is_error = {"code": "boom", "message": "z" * 150 + auth}, True
+        elif name == "recall":
             payload, is_error = {"facts": []}, False
         elif name == "remember":
             fact = arguments.get("fact")
@@ -230,7 +417,7 @@ class FakeMcpHandler(http.server.BaseHTTPRequestHandler):
         elif name == "forget":
             fid = arguments.get("id")
             with self.state.lock:
-                known = self.state.remembered.pop(fid, None) if fid else None
+                known = self.state.remembered.pop(fid, None) if fid and not self.state.forget_loses else None
             if known is None:
                 payload, is_error = {"code": "not_found", "message": "unknown fact id"}, True
             else:
@@ -247,16 +434,21 @@ class FakeMcpServer:
         self.state = FakeMcpState()
         self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), FakeMcpHandler)
         self.httpd.state = self.state  # type: ignore[attr-defined]
-        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread = threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)  # shutdown() waits one poll
 
     @property
     def origin(self) -> str:
         return f"http://127.0.0.1:{self.httpd.server_address[1]}"
 
+    @property
+    def parsed_origin(self):
+        return load_cli.canonical_origin(self.origin)[0]
+
     def start(self):
         self.thread.start()
 
     def stop(self):
+        self.state.stopped.set()
         self.httpd.shutdown()
         self.httpd.server_close()
 
@@ -272,77 +464,120 @@ class FakeServerTestCase(unittest.TestCase):
         self.server.stop()
         self.tmpdir.cleanup()
 
+    def session(self, credential="test-cred", **budget_overrides):
+        return load_cli.McpSession(self.server.origin, credential, make_run(**budget_overrides))
+
+    def run_live(self, workload=None, credential="test-credential-value", origin=None, **budget_overrides):
+        workload = workload or small_workload()
+        accounts = harness.build_accounts(workload["cardinalities"], "paid")
+        cred_dir = make_credential_dir(self.tmp, accounts, value=credential)
+        creds, error = load_cli.check_credentials(cred_dir, accounts)
+        self.assertIsNone(error)
+        manifest = live_manifest(origin or self.server.origin, **budget_overrides)
+        return load_cli.run_live(manifest, workload, accounts, creds)
+
+
+# ---------------------------------------------------------------------------
+# Handshake, protocol vs tool errors, redirects, fixture fidelity.
+# ---------------------------------------------------------------------------
 
 class McpSessionHandshakeTests(FakeServerTestCase):
     def test_full_initialize_notified_tools_call_handshake_succeeds(self):
-        session = load_cli.McpSession(self.server.origin, "test-cred", timeout_s=5.0)
+        session = self.session()
         session.initialize()
-        outcome = session.call_tool("recall", {"query": "onboarding latency"}, timeout_s=5.0)
+        outcome = session.call_tool("recall", {"query": "onboarding latency"})
         self.assertTrue(outcome["ok"])
         self.assertEqual(outcome["level"], "tool")
         self.assertFalse(outcome["is_error"])
         self.assertEqual(outcome["text"], {"facts": []})
 
     def test_never_sends_an_origin_header(self):
-        session = load_cli.McpSession(self.server.origin, "test-cred", timeout_s=5.0)
+        session = self.session()
         session.initialize()
-        session.call_tool("recall", {"query": "x"}, timeout_s=5.0)
+        session.call_tool("recall", {"query": "x"})
+        self.assertEqual(session.close(), ("closed", None))
         for _method, _path, headers in self.server.state.requests_seen:
             self.assertNotIn("Origin", headers)
 
     def test_sends_the_real_loaded_credential_as_bearer_token(self):
-        session = load_cli.McpSession(self.server.origin, "super-secret-value", timeout_s=5.0)
+        session = self.session("super-secret-value")
         session.initialize()
         _method, _path, headers = self.server.state.requests_seen[-1]
         self.assertEqual(headers.get("Authorization"), "Bearer super-secret-value")
 
+    def test_rejects_a_malformed_credential_before_any_socket(self):
+        for bad in ("", "has space", "line\nbreak", "tab\there", "nonasciié"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                self.session(bad)
+        self.assertEqual(self.server.state.requests_seen, [])
+
 
 class ProtocolAndToolErrorTests(FakeServerTestCase):
     def test_json_rpc_top_level_error_is_reported_as_protocol_level(self):
-        session = load_cli.McpSession(self.server.origin, "test-cred", timeout_s=5.0)
+        session = self.session()
         session.initialize()
-        outcome = session.call_tool("not_a_real_tool", {}, timeout_s=5.0)
+        outcome = session.call_tool("not_a_real_tool", {})
         self.assertFalse(outcome["ok"])
         self.assertEqual(outcome["level"], "protocol")
-        self.assertIn("error", outcome)
+        self.assertEqual(outcome["jsonrpc_code"], -32602)
 
     def test_tool_level_is_error_true_inside_http_200_is_detected(self):
-        session = load_cli.McpSession(self.server.origin, "test-cred", timeout_s=5.0)
+        session = self.session()
         session.initialize()
-        outcome = session.call_tool("remember", {}, timeout_s=5.0)  # missing required fact/provenance
+        outcome = session.call_tool("remember", {})  # missing required fact/provenance
         self.assertFalse(outcome["ok"])
         self.assertEqual(outcome["level"], "tool")
         self.assertTrue(outcome["is_error"])
 
     def test_forget_of_unknown_id_is_a_tool_level_error_not_silently_ok(self):
-        session = load_cli.McpSession(self.server.origin, "test-cred", timeout_s=5.0)
+        session = self.session()
         session.initialize()
-        outcome = session.call_tool("forget", {"id": "fact-does-not-exist"}, timeout_s=5.0)
+        outcome = session.call_tool("forget", {"id": "fact-does-not-exist"})
         self.assertFalse(outcome["ok"])
         self.assertTrue(outcome["is_error"])
 
     def test_remember_then_forget_the_real_returned_id_succeeds(self):
-        session = load_cli.McpSession(self.server.origin, "test-cred", timeout_s=5.0)
+        session = self.session()
         session.initialize()
-        remembered = session.call_tool("remember", {"fact": "x", "provenance": "test"}, timeout_s=5.0)
-        fact_id = remembered["text"]["id"]
-        forgotten = session.call_tool("forget", {"id": fact_id}, timeout_s=5.0)
+        remembered = session.call_tool("remember", {"fact": "x", "provenance": "test"})
+        forgotten = session.call_tool("forget", {"id": remembered["text"]["id"]})
         self.assertTrue(forgotten["ok"])
+
+    def test_a_non_object_reply_is_a_protocol_error_not_a_crash(self):
+        session = self.session()
+        with mock.patch.object(load_cli, "_http_exchange", return_value=(200, {}, b"[1, 2, 3]")):
+            with self.assertRaises(load_cli.McpProtocolError):
+                session.initialize()
+
+    def test_a_malformed_session_id_from_the_server_is_refused(self):
+        session = self.session()
+        body = json.dumps({"jsonrpc": "2.0", "id": 1, "result": {}}).encode()
+        with mock.patch.object(load_cli, "_http_exchange", return_value=(200, {"Mcp-Session-Id": "bad id\r\nInjected: 1"}, body)):
+            with self.assertRaises(load_cli.McpProtocolError):
+                session.initialize()
 
 
 class RedirectRejectionTests(FakeServerTestCase):
     def test_client_refuses_to_follow_a_redirect_and_never_dials_the_target(self):
         self.server.state.always_redirect_mcp = True
-        session = load_cli.McpSession(self.server.origin, "test-cred", timeout_s=5.0)
-        with self.assertRaises(load_cli.McpProtocolError):
+        session = self.session()
+        with self.assertRaises(load_cli.McpHttpStatusError) as ctx:
             session.initialize()
+        self.assertEqual(ctx.exception.status, 302)
         self.assertFalse(self.server.state.redirect_hit)
 
     def test_readiness_probe_refuses_a_redirect(self):
         self.server.state.readyz_status = 302
-        error = load_cli.check_readiness(self.server.origin, timeout_s=5.0)
-        self.assertIsNotNone(error)
+        error = load_cli.check_readiness(self.server.origin, make_run())
+        self.assertIn("redirect", error)
         self.assertFalse(self.server.state.redirect_hit)
+
+    def test_environment_proxy_variables_are_not_honored(self):
+        # A proxy env var must never receive the bearer credential.
+        proxy = f"http://127.0.0.1:{unused_port()}"
+        with mock.patch.dict(os.environ, {"HTTP_PROXY": proxy, "http_proxy": proxy, "ALL_PROXY": proxy}):
+            self.session().initialize()
+        self.assertTrue(self.server.state.requests_seen)
 
 
 class FakeServerFidelityTests(FakeServerTestCase):
@@ -350,29 +585,38 @@ class FakeServerFidelityTests(FakeServerTestCase):
     internal/server/mcp/http.go, so a client that passes against it is
     exercising real protocol behavior, not a lenient stand-in."""
 
+    def _raw_post(self, payload, headers):
+        req = urllib.request.Request(self.server.origin + "/mcp", data=json.dumps(payload).encode(), method="POST", headers=headers)
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        return opener.open(req, timeout=5.0)
+
     def test_fixture_rejects_missing_or_mismatched_protocol_version_header_on_subsequent_requests(self):
-        session = load_cli.McpSession(self.server.origin, "test-cred", timeout_s=5.0)
+        session = self.session()
         session.initialize()
-        req = urllib.request.Request(
-            self.server.origin + "/mcp",
-            data=json.dumps({"jsonrpc": "2.0", "id": 999, "method": "tools/call", "params": {"name": "recall", "arguments": {}}}).encode(),
-            method="POST",
-            headers={"Content-Type": "application/json", "Mcp-Session-Id": session._session_id, "MCP-Protocol-Version": "9999-01-01"},
-        )
         with self.assertRaises(urllib.error.HTTPError) as ctx:
-            urllib.request.urlopen(req, timeout=5.0)
+            self._raw_post(
+                {"jsonrpc": "2.0", "id": 999, "method": "tools/call", "params": {"name": "recall", "arguments": {}}},
+                {"Content-Type": "application/json", "Mcp-Session-Id": session._session_id, "MCP-Protocol-Version": "9999-01-01"},
+            )
+        ctx.exception.close()
         self.assertEqual(ctx.exception.code, 400)
 
     def test_fixture_rejects_a_request_carrying_an_origin_header(self):
-        req = urllib.request.Request(
-            self.server.origin + "/mcp",
-            data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": PROTOCOL_VERSION, "capabilities": {}, "clientInfo": {"name": "x", "version": "1"}}}).encode(),
-            method="POST",
-            headers={"Content-Type": "application/json", "Origin": "https://evil.example.com"},
-        )
         with self.assertRaises(urllib.error.HTTPError) as ctx:
-            urllib.request.urlopen(req, timeout=5.0)
+            self._raw_post(
+                {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": PROTOCOL_VERSION, "capabilities": {}, "clientInfo": {"name": "x", "version": "1"}}},
+                {"Content-Type": "application/json", "Origin": "https://evil.example.com"},
+            )
+        ctx.exception.close()
         self.assertEqual(ctx.exception.code, 403)
+
+
+# ---------------------------------------------------------------------------
+# Environment guard, canonical origins, budget parse, credentials.
+# ---------------------------------------------------------------------------
+
+def env_manifest(origin, allowed, production_target_allowed=False):
+    return base_manifest(environment={"kind": "disposable", "origin": origin, "allowed_hosts": allowed, "production_target_allowed": production_target_allowed})
 
 
 class EnvironmentGuardTests(unittest.TestCase):
@@ -380,47 +624,204 @@ class EnvironmentGuardTests(unittest.TestCase):
         self.assertIsNotNone(load_cli.check_environment_guard(base_manifest()))
 
     def test_host_not_allowlisted_blocked(self):
-        m = base_manifest(environment={"kind": "disposable", "origin": "https://evil.example.com", "allowed_hosts": ["127.0.0.1"], "production_target_allowed": False})
-        self.assertIsNotNone(load_cli.check_environment_guard(m))
+        self.assertIsNotNone(load_cli.check_environment_guard(env_manifest("https://evil.example.com", ["127.0.0.1"])))
 
     def test_production_target_allowed_flag_always_refused(self):
-        m = base_manifest(environment={"kind": "disposable", "origin": "https://127.0.0.1:9443", "allowed_hosts": ["127.0.0.1"], "production_target_allowed": True})
-        self.assertIsNotNone(load_cli.check_environment_guard(m))
+        self.assertIsNotNone(load_cli.check_environment_guard(env_manifest("https://127.0.0.1:9443", ["127.0.0.1"], production_target_allowed=True)))
+
+    def test_production_target_allowed_must_be_exactly_false(self):
+        for value in (None, "false", 0, []):
+            with self.subTest(value=value):
+                m = env_manifest("http://127.0.0.1:9443", ["127.0.0.1"], production_target_allowed=value)
+                self.assertIn("exactly false", load_cli.check_environment_guard(m))
+        m = env_manifest("http://127.0.0.1:9443", ["127.0.0.1"])
+        del m["environment"]["production_target_allowed"]
+        self.assertIn("exactly false", load_cli.check_environment_guard(m))
 
     def test_production_hostname_refused_even_if_allowlisted(self):
-        m = base_manifest(environment={"kind": "disposable", "origin": "https://app.serenity.sire.run", "allowed_hosts": ["app.serenity.sire.run"], "production_target_allowed": False})
-        self.assertIsNotNone(load_cli.check_environment_guard(m))
+        self.assertIn("production", load_cli.check_environment_guard(env_manifest("https://app.serenity.sire.run", ["app.serenity.sire.run"])))
+
+    def test_production_hostname_variants_are_refused_as_production(self):
+        cases = [
+            ("https://APP.serenity.sire.run", ["app.serenity.sire.run"]),
+            ("https://app.serenity.sire.run.", ["app.serenity.sire.run."]),
+            ("https://SERENITY.sire.run", ["serenity.sire.run"]),
+            ("https://serenity.sire.run.", ["serenity.sire.run"]),
+            ("https://staging.example.com", ["staging.example.com", "APP.serenity.sire.run"]),
+            ("https://staging.example.com", ["staging.example.com", "serenity.sire.run."]),
+        ]
+        for origin, allowed in cases:
+            with self.subTest(origin=origin, allowed=allowed):
+                self.assertIn("production", load_cli.check_environment_guard(env_manifest(origin, allowed)))
 
     def test_allowlisted_loopback_http_origin_passes_real_sensitivity(self):
         """Proves the guard actually discriminates rather than always refusing."""
-        m = base_manifest(environment={"kind": "disposable", "origin": "http://127.0.0.1:9443", "allowed_hosts": ["127.0.0.1"], "production_target_allowed": False})
-        self.assertIsNone(load_cli.check_environment_guard(m))
+        self.assertIsNone(load_cli.check_environment_guard(env_manifest("http://127.0.0.1:9443", ["127.0.0.1"])))
 
     def test_plaintext_http_to_non_loopback_host_refused(self):
-        m = base_manifest(environment={"kind": "disposable", "origin": "http://staging.internal.example.com", "allowed_hosts": ["staging.internal.example.com"], "production_target_allowed": False})
-        self.assertIsNotNone(load_cli.check_environment_guard(m))
+        self.assertIsNotNone(load_cli.check_environment_guard(env_manifest("http://staging.internal.example.com", ["staging.internal.example.com"])))
 
     def test_https_to_non_loopback_allowlisted_host_accepted(self):
-        m = base_manifest(environment={"kind": "disposable", "origin": "https://staging.internal.example.com", "allowed_hosts": ["staging.internal.example.com"], "production_target_allowed": False})
-        self.assertIsNone(load_cli.check_environment_guard(m))
+        self.assertIsNone(load_cli.check_environment_guard(env_manifest("https://staging.internal.example.com", ["staging.internal.example.com"])))
 
     def test_localhost_hostname_treated_as_loopback(self):
-        m = base_manifest(environment={"kind": "disposable", "origin": "http://localhost:9443", "allowed_hosts": ["localhost"], "production_target_allowed": False})
-        self.assertIsNone(load_cli.check_environment_guard(m))
+        self.assertIsNone(load_cli.check_environment_guard(env_manifest("http://localhost:9443", ["localhost"])))
+
+    def test_ipv6_loopback_literal_is_canonical_and_accepted(self):
+        self.assertIsNone(load_cli.check_environment_guard(env_manifest("http://[::1]:9443", ["::1"])))
+
+    def test_allowed_hosts_entries_must_themselves_be_canonical(self):
+        for entry in ("*", "LOCALHOST", "localhost.", "127.1", "http://localhost", "localhost:9443", ""):
+            with self.subTest(entry=entry):
+                self.assertIsNotNone(load_cli.check_environment_guard(env_manifest("http://localhost:9443", ["localhost", entry])))
+        self.assertIsNotNone(load_cli.check_environment_guard(env_manifest("http://localhost:9443", [])))
+
+
+class CanonicalOriginTests(unittest.TestCase):
+    GOOD = ["http://127.0.0.1:9443", "http://localhost:9443", "https://staging.example.com", "https://staging.example.com:8443", "http://[::1]:9443"]
+    BAD = [
+        "http://127.0.0.1:9443/", "http://127.0.0.1:9443/mcp", "HTTP://127.0.0.1:9443", "http://LOCALHOST:9443", "http://localhost.:9443",
+        "http://user@127.0.0.1:9443", "http://user:pass@127.0.0.1:9443", "http://127.0.0.1:9443?x=1", "http://127.0.0.1:9443#frag",
+        "http://127.0.0.1:80", "https://staging.example.com:443", "http://127.0.0.1:0", "http://127.0.0.1:99999", "http://127.1:9443",
+        "http://0x7f.1:9443", "http://2130706433:9443", " http://127.0.0.1:9443", "http://127.0.0.1:9443 ", "http://127.0.0.1:9443\\@evil.example.com",
+        "http://127.0.0.1\t:9443", "http://exa mple.com", "http://café.example.com", "ftp://127.0.0.1:9443", "//127.0.0.1:9443", "127.0.0.1:9443",
+        "http://", "http://:9443", "http://a..b:9443", "http://-a.example.com", "", None, 9443, ["http://127.0.0.1:9443"],
+    ]
+
+    def test_canonical_origins_parse_to_scheme_host_port(self):
+        for origin in self.GOOD:
+            with self.subTest(origin=origin):
+                parsed, error = load_cli.canonical_origin(origin)
+                self.assertIsNone(error)
+                self.assertEqual(parsed[0], origin.split(":")[0])
+
+    def test_every_noncanonical_origin_is_rejected(self):
+        for origin in self.BAD:
+            with self.subTest(origin=origin):
+                parsed, error = load_cli.canonical_origin(origin)
+                self.assertIsNone(parsed)
+                self.assertTrue(error)
+
+    def test_the_client_never_dials_a_noncanonical_origin(self):
+        run = make_run()
+        for origin in self.BAD:
+            with self.subTest(origin=origin), mock.patch.object(load_cli, "_http_exchange", side_effect=AssertionError("socket opened")):
+                with self.assertRaises(ValueError):
+                    load_cli.McpSession(origin, "test-cred", run)
+                self.assertTrue(load_cli.check_readiness(origin, run))
+        self.assertEqual(run.calls, 0)
 
 
 class BudgetGuardTests(unittest.TestCase):
+    def manifest(self, **overrides):
+        return base_manifest(budget=budget_dict(**overrides))
+
     def test_missing_budget_field_blocked(self):
-        m = base_manifest(budget={"approved_max_usd": None, "max_calls": 10, "max_input_tokens": 10, "max_elapsed_seconds": 10, "authorization_ref": "x", "worst_case_usd_per_call": 0.01})
-        self.assertIsNotNone(load_cli.check_budget(m))
+        self.assertIsNotNone(load_cli.check_budget(self.manifest(approved_max_usd=None)))
 
     def test_missing_worst_case_usd_per_call_blocked(self):
-        m = base_manifest(budget={"approved_max_usd": 1, "max_calls": 10, "max_input_tokens": 10, "max_elapsed_seconds": 10, "authorization_ref": "x"})
-        self.assertIsNotNone(load_cli.check_budget(m))
+        b = budget_dict()
+        del b["worst_case_usd_per_call"]
+        self.assertIsNotNone(load_cli.check_budget(base_manifest(budget=b)))
 
-    def test_complete_budget_passes(self):
-        m = base_manifest(budget={"approved_max_usd": 0, "max_calls": 10, "max_input_tokens": 10, "max_elapsed_seconds": 10, "authorization_ref": "x", "worst_case_usd_per_call": 0.01})
-        self.assertIsNone(load_cli.check_budget(m))
+    def test_complete_budget_passes_and_zero_usd_is_a_valid_value(self):
+        self.assertIsNone(load_cli.check_budget(self.manifest()))
+        budget, error = load_cli.parse_budget(self.manifest(approved_max_usd=0))
+        self.assertIsNone(error)
+        self.assertEqual(budget.approved_max_usd, 0)
+
+    def test_nonfinite_boolean_negative_zero_and_malformed_values_are_rejected(self):
+        nan, inf = float("nan"), float("inf")
+        bad = {
+            "approved_max_usd": [nan, inf, -inf, -0.01, True, False, "5", [1], {}],
+            "max_calls": [0, -1, 10.5, 10.0, nan, inf, True, "10", None],
+            "max_input_tokens": [0, -1, 1.5, nan, inf, True, "10"],
+            "max_elapsed_seconds": [0, -1, nan, inf, -inf, True, False, "30", [30]],
+            "worst_case_usd_per_call": [0, -0.001, nan, inf, True, "0.01"],
+            "authorization_ref": ["", "   ", 7, True, ["x"]],
+            "automatic_reset": [True, "false", 0],
+            "auto_top_up": [True, "false", 0],
+        }
+        for field, values in bad.items():
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    self.assertIsNotNone(load_cli.check_budget(self.manifest(**{field: value})))
+
+    def test_nan_and_infinity_literals_in_manifest_json_are_rejected(self):
+        # json.loads accepts NaN/Infinity by default; the budget parse must not.
+        text = json.dumps(self.manifest()).replace('"max_elapsed_seconds": 30', '"max_elapsed_seconds": NaN').replace('"approved_max_usd": 10.0', '"approved_max_usd": Infinity')
+        loaded = json.loads(text)
+        self.assertTrue(load_cli.check_budget(loaded))
+        self.assertTrue(load_cli.check_budget(json.loads(text.replace("Infinity", "-Infinity"))))
+
+    def test_undeclared_provider_work_bound_blocks_the_run(self):
+        for bound in (None, {}, {"readiness_tokens": 0, "cold_open_tokens": 0}, {"readiness_tokens": 0, "cold_open_tokens": 0, "basis": ""}, "declared"):
+            with self.subTest(bound=bound):
+                self.assertIn("provider_work_bound", load_cli.check_budget(self.manifest(provider_work_bound=bound)))
+        for field in ("readiness_tokens", "cold_open_tokens"):
+            for value in (-1, 1.5, True, float("nan"), "0", None):
+                with self.subTest(field=field, value=value):
+                    bound = {"readiness_tokens": 0, "cold_open_tokens": 0, "basis": "test-only"}
+                    bound[field] = value
+                    self.assertIsNotNone(load_cli.check_budget(self.manifest(provider_work_bound=bound)))
+
+    def test_committed_manifest_budget_is_not_liveable(self):
+        self.assertIn("provider_work_bound", load_cli.check_budget(json.loads(MANIFEST_PATH.read_text())))
+
+
+class RunBudgetLedgerTests(unittest.TestCase):
+    def test_a_hand_built_budget_is_held_to_the_same_numeric_rules(self):
+        for overrides in ({"max_elapsed_seconds": float("nan")}, {"max_calls": True}, {"approved_max_usd": -1}, {"worst_case_usd_per_call": float("inf")}, {"cold_open_tokens": -1}, {"authorization_ref": ""}):
+            with self.subTest(overrides=overrides), self.assertRaises(ValueError):
+                make_run(**overrides)
+
+    def test_reserve_rejects_bad_arguments_without_changing_state(self):
+        run = make_run()
+        bad_calls = [
+            dict(operation="tools_call", tokens=-1), dict(operation="tools_call", tokens=True), dict(operation="tools_call", tokens=1.5),
+            dict(operation="tools_call", tokens=float("nan")), dict(operation="tools_call", default_timeout_s=float("nan")),
+            dict(operation="tools_call", default_timeout_s=float("inf")), dict(operation="tools_call", default_timeout_s=0),
+            dict(operation="tools_call", default_timeout_s=-1), dict(operation="tools_call", default_timeout_s=True), dict(operation="teleport"),
+        ]
+        for kwargs in bad_calls:
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
+                run.reserve(**kwargs)
+        self.assertEqual((run.calls, run.tokens, run.usd), (0, 0, 0.0))
+        self.assertFalse(run.stop_event.is_set())
+
+    def test_negative_tokens_cannot_credit_the_budget(self):
+        run = make_run(max_input_tokens=10)
+        with self.assertRaises(ValueError):
+            run.reserve("tools_call", -1000)
+        run.reserve("tools_call", 10)
+        with self.assertRaises(load_cli.BudgetExhausted):
+            run.reserve("tools_call", 1)
+
+    def test_timeout_is_the_remaining_elapsed_budget_with_no_floor_above_it(self):
+        now = [100.0]
+        run = load_cli.RunBudget(make_budget(max_elapsed_seconds=5), clock=lambda: now[0])
+        self.assertEqual(run.reserve("tools_call"), 5.0)
+        now[0] = 104.95
+        self.assertAlmostEqual(run.reserve("tools_call"), 0.05, places=6)  # not raised to any minimum
+        now[0] = 105.0
+        with self.assertRaises(load_cli.BudgetExhausted) as ctx:
+            run.reserve("tools_call")
+        self.assertIn("max_elapsed_seconds", ctx.exception.reason)
+
+    def test_each_cap_refuses_the_reservation_that_would_cross_it(self):
+        cases = [
+            ({"max_calls": 2}, {}, "max_calls"),
+            ({"max_input_tokens": 9}, {"tokens": 5}, "max_input_tokens"),
+            ({"approved_max_usd": 0.0025}, {}, "approved_max_usd"),
+        ]
+        for overrides, kwargs, needle in cases:
+            with self.subTest(needle=needle):
+                run = make_run(**overrides)
+                with self.assertRaises(load_cli.BudgetExhausted) as ctx:
+                    for _ in range(5):
+                        run.reserve("tools_call", **kwargs)
+                self.assertIn(needle, ctx.exception.reason)
+                self.assertTrue(run.stop_event.is_set())
 
 
 class CredentialGuardTests(unittest.TestCase):
@@ -455,236 +856,735 @@ class CredentialGuardTests(unittest.TestCase):
         self.assertIsNone(error)
         self.assertEqual(creds["free-0"], "abc123")
 
-    def test_cli_blocks_before_any_network_when_credential_dir_missing(self):
-        """A closed loopback port would hang/refuse a real connection attempt;
-        this must never be reached because the credential guard fails first."""
-        import socket
-        closed = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        closed.bind(("127.0.0.1", 0))
-        port = closed.getsockname()[1]
-        closed.close()  # now guaranteed nothing is listening on this port
+    def test_a_credential_with_whitespace_or_control_bytes_is_rejected(self):
+        for value in ("two words", "a\tb", "a\x01b"):
+            with self.subTest(value=value):
+                cred_dir = make_credential_dir(self.tmp, self.accounts, value=value)
+                creds, error = load_cli.check_credentials(cred_dir, self.accounts)
+                self.assertIsNone(creds)
+                self.assertIn("printable ASCII", error)
 
-        with tempfile.TemporaryDirectory() as tmp:
-            manifest = base_manifest(
-                environment={"kind": "disposable", "origin": f"http://127.0.0.1:{port}", "allowed_hosts": ["127.0.0.1"], "production_target_allowed": False},
-                budget={"approved_max_usd": 1, "max_calls": 10, "max_input_tokens": 10000, "max_elapsed_seconds": 10, "authorization_ref": "x", "worst_case_usd_per_call": 0.01},
-                live={"credential_dir": str(Path(tmp) / "nonexistent-creds")},
-            )
-            manifest_path = Path(tmp) / "manifest.json"
-            manifest_path.write_text(json.dumps(manifest))
-            out = Path(tmp) / "load.json"
-            argv = sys.argv
-            sys.argv = ["load.py", "--live", "--manifest", str(manifest_path), "--output", str(out)]
-            try:
-                code = load_cli.main()
-            finally:
-                sys.argv = argv
-            self.assertEqual(code, 2)
-            self.assertEqual(json.loads(out.read_text())["calls_used"], 0)
+    def test_a_symlinked_credential_file_is_rejected(self):
+        cred_dir = make_credential_dir(self.tmp, self.accounts)
+        real = self.tmp / "elsewhere.token"
+        real.write_text("x\n")
+        real.chmod(0o600)
+        link = cred_dir / "free-0.token"
+        link.unlink()
+        link.symlink_to(real)
+        creds, error = load_cli.check_credentials(cred_dir, self.accounts)
+        self.assertIsNone(creds)
+        self.assertIn("symlink", error)
 
+
+# ---------------------------------------------------------------------------
+# Wall-clock deadline: urllib/http.client timeouts are per-socket-read inactivity
+# timeouts; a drip feed defeats them. Real slow servers, real sockets.
+# ---------------------------------------------------------------------------
+
+class ExchangeWallDeadlineTests(FakeServerTestCase):
+    def exchange(self, path, timeout_s):
+        start = time.monotonic()
+        try:
+            return load_cli._http_exchange("GET", self.server.parsed_origin, path, {}, None, timeout_s), time.monotonic() - start
+        except load_cli.ExchangeDeadlineExceeded:
+            return None, time.monotonic() - start
+
+    def test_control_plain_urllib_read_outlasts_its_own_socket_timeout(self):
+        """The failure this whole class guards against, reproduced: a 30-byte body
+        dripped at 20ms/byte takes ~0.6s although the socket timeout is 0.1s."""
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        start = time.monotonic()
+        with opener.open(self.server.origin + "/drip-body-30", timeout=0.1) as resp:
+            body = resp.read()
+        elapsed = time.monotonic() - start
+        self.assertEqual(len(body), 30)
+        self.assertGreater(elapsed, 0.3)
+
+    def test_the_same_slow_body_is_cut_off_at_the_wall_deadline(self):
+        result, elapsed = self.exchange("/drip-body-30", 0.2)
+        self.assertIsNone(result)
+        self.assertLess(elapsed, 0.2 + 0.4)
+        self.assertGreaterEqual(elapsed, 0.19)
+
+    def test_a_response_that_finishes_inside_the_deadline_is_returned_whole(self):
+        result, elapsed = self.exchange("/readyz", 5.0)
+        self.assertEqual(result[0], 200)
+        self.assertLess(elapsed, 2.0)
+
+    def test_an_endless_body_drip_is_cut_off_at_the_deadline(self):
+        result, elapsed = self.exchange("/drip-body", 0.3)
+        self.assertIsNone(result)
+        self.assertLess(elapsed, 0.3 + 0.5)
+
+    def test_delayed_first_byte_then_stall_is_cut_off_at_the_deadline_on_a_closing_response(self):
+        """The measured defect: on `Connection: close` (or HTTP/1.0) getresponse()
+        clears conn.sock and the response owns the socket, so a watchdog that shuts
+        down conn.sock has nothing to act on and read1 waits out its own timeout.
+        Budget 0.6s, first byte 0.5s, then a 1s stall: must end at ~0.6s, not ~1.1s."""
+        for path in ("/stall-after-first-byte", "/stall-after-first-byte-http10"):
+            with self.subTest(path=path):
+                result, elapsed = self.exchange(path, 0.6)
+                self.assertIsNone(result)
+                self.assertGreaterEqual(elapsed, 0.59)
+                self.assertLessEqual(elapsed, 0.6 + load_cli.DEADLINE_JITTER_S)
+
+    def test_a_stall_after_the_first_byte_is_cut_off_even_with_a_tiny_inactivity_budget(self):
+        result, elapsed = self.exchange("/stall-after-first-byte", 0.55)
+        self.assertIsNone(result)
+        self.assertLessEqual(elapsed, 0.55 + load_cli.DEADLINE_JITTER_S)
+
+    def test_a_response_that_completes_after_a_late_first_byte_inside_the_deadline_is_returned(self):
+        result, elapsed = self.exchange("/stall-after-first-byte", 3.0)  # 0.5s + 1.0s stall, then the second byte
+        self.assertEqual(result[0], 200)
+        self.assertEqual(result[2], b"xy")
+        self.assertLess(elapsed, 2.5)
+
+    def test_an_accepted_connection_that_never_answers_is_cut_off_at_the_deadline(self):
+        silent = SilentListener()
+        self.addCleanup(silent.close)
+        start = time.monotonic()
+        with self.assertRaises(load_cli.ExchangeDeadlineExceeded):
+            load_cli._http_exchange("GET", ("http", "127.0.0.1", silent.port), "/x", {}, None, 0.4)
+        self.assertLessEqual(time.monotonic() - start, 0.4 + load_cli.DEADLINE_JITTER_S)
+
+    def test_a_stalled_tls_handshake_is_cut_off_at_the_deadline(self):
+        silent = SilentListener()
+        self.addCleanup(silent.close)
+        start = time.monotonic()
+        with self.assertRaises(load_cli.ExchangeDeadlineExceeded):
+            load_cli._http_exchange("GET", ("https", "127.0.0.1", silent.port), "/x", {}, None, 0.4)
+        self.assertLessEqual(time.monotonic() - start, 0.4 + load_cli.DEADLINE_JITTER_S)
+
+    def test_every_socket_the_exchange_owned_is_really_closed_on_every_exit_path(self):
+        opened: list[socket.socket] = []
+        real_connect = load_cli._connect
+
+        def recording_connect(scheme, host, port, deadline, hold):
+            def recording_hold(sock):
+                opened.append(sock)
+                hold(sock)
+            return real_connect(scheme, host, port, deadline, recording_hold)
+
+        silent = SilentListener()
+        self.addCleanup(silent.close)
+        with mock.patch.object(load_cli, "_connect", recording_connect):
+            self.exchange("/readyz", 5.0)  # completes
+            self.exchange("/stall-after-first-byte", 0.6)  # deadline while the response owns the socket
+            self.exchange("/drip-headers", 0.3)  # deadline in the header phase
+            with self.assertRaises(load_cli.ExchangeDeadlineExceeded):
+                load_cli._http_exchange("GET", ("https", "127.0.0.1", silent.port), "/x", {}, None, 0.3)  # deadline in a TLS handshake
+        self.assertGreaterEqual(len(opened), 5)  # plain sockets, plus the TLS wrapper
+        self.assertEqual([s for s in opened if s.fileno() != -1], [])
+
+    def test_a_stalled_response_body_cannot_hold_the_run_past_its_elapsed_cap(self):
+        self.server.state.tools_mode = "stall_body"
+        workload = small_workload(traffic_mix={"recall": 1.0}, phases=[{"name": "steady", "minutes": 0.5, "rate_multiplier": 1}])
+        cap = 1.0
+        start = time.monotonic()
+        result = self.run_live(workload, max_elapsed_seconds=cap)
+        wall = time.monotonic() - start
+        self.assertLess(wall, cap + 1.0)
+        self.assertLessEqual(result["elapsed_over_cap_s"], load_cli.DEADLINE_JITTER_S)
+        classes = {r.get("error_class") for r in result["results"] if r["outcome"] == "network_error"}
+        self.assertEqual(classes, {"ExchangeDeadlineExceeded"})
+        self.assertNotEqual(result["status"], "PARTIAL")
+
+    def test_an_endless_header_drip_is_cut_off_at_the_deadline(self):
+        """Header drip: no chunk loop to check the clock in. Only the watchdog that
+        shuts the socket down can end a read blocked inside getresponse()."""
+        result, elapsed = self.exchange("/drip-headers", 0.3)
+        self.assertIsNone(result)
+        self.assertLess(elapsed, 0.3 + 0.5)
+        self.assertGreaterEqual(elapsed, 0.29)
+
+    def test_readiness_header_drip_is_bounded_and_reports_a_fixed_class(self):
+        self.server.state.readyz_status = 200
+        with mock.patch.object(load_cli, "READINESS_TIMEOUT_S", 0.3):
+            start = time.monotonic()
+            error = self._readiness_against("/readyz-drip-headers")
+        self.assertLess(time.monotonic() - start, 0.3 + 0.5)
+        self.assertEqual(error, "readiness probe failed: ExchangeDeadlineExceeded")
+
+    def _readiness_against(self, path):
+        run = make_run()
+        timeout_s = run.reserve("readiness", 0, load_cli.READINESS_TIMEOUT_S)
+        try:
+            load_cli._http_exchange("GET", self.server.parsed_origin, path, {}, None, timeout_s)
+        except (*load_cli.TRANSPORT_ERRORS, load_cli.McpProtocolError) as e:
+            return f"readiness probe failed: {load_cli.error_class(e)}"
+        return None
+
+    def test_the_deadline_is_the_tighter_of_the_default_and_the_remaining_elapsed_budget(self):
+        run = make_run(max_elapsed_seconds=0.4)
+        timeout_s = run.reserve("readiness", 0, 5.0)
+        self.assertLessEqual(timeout_s, 0.4)
+
+    def test_a_drip_response_cannot_hold_the_run_past_its_elapsed_cap_and_shutdown_does_not_hang(self):
+        self.server.state.tools_mode = "drip_body"
+        workload = small_workload(traffic_mix={"recall": 1.0}, phases=[{"name": "steady", "minutes": 0.5, "rate_multiplier": 1}])
+        cap = 1.0
+        start = time.monotonic()
+        result = self.run_live(workload, max_elapsed_seconds=cap)
+        wall = time.monotonic() - start
+        self.assertLess(wall, cap + 1.5)
+        self.assertLessEqual(result["elapsed_over_cap_s"], load_cli.DEADLINE_JITTER_S)
+        self.assertGreater(result["outcome_counts"]["network_error"], 0)
+        classes = {r.get("error_class") for r in result["results"] if r["outcome"] == "network_error"}
+        self.assertEqual(classes, {"ExchangeDeadlineExceeded"})
+        self.assertNotEqual(result["status"], "PARTIAL")
+
+
+# ---------------------------------------------------------------------------
+# Every socket operation is guarded immediately before it opens.
+# ---------------------------------------------------------------------------
+
+class PreSocketGuardTests(FakeServerTestCase):
+    def test_notification_is_guarded_before_its_socket(self):
+        session = self.session(max_calls=1)  # initialize spends the only call
+        with self.assertRaises(load_cli.BudgetExhausted):
+            session.initialize()
+        methods = [m for m, _t in self.server.state.rpc_seen]
+        self.assertEqual(methods, ["initialize"])  # the notification never reached the server
+        self.assertTrue(session.has_server_session)
+        self.assertFalse(session.initialized)
+
+    def test_initialize_is_guarded_before_its_socket(self):
+        session = self.session(approved_max_usd=0)
+        with self.assertRaises(load_cli.BudgetExhausted):
+            session.initialize()
+        self.assertEqual(self.server.state.requests_seen, [])
+
+    def test_readiness_is_guarded_before_its_socket(self):
+        run = make_run(max_elapsed_seconds=0.001)
+        time.sleep(0.01)
+        error = load_cli.check_readiness(self.server.origin, run)
+        self.assertIn("not sent", error)
+        self.assertEqual(self.server.state.requests_seen, [])
+
+    def test_run_live_with_no_dollar_budget_sends_nothing_at_all(self):
+        result = self.run_live(approved_max_usd=0)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("approved_max_usd", result["reason"])
+        self.assertEqual(self.server.state.requests_seen, [])
+        self.assertEqual(result["calls_attempted"], 0)
+        self.assertEqual(result["outcome_counts"]["not_dispatched"], result["offered_total"])
+
+    def test_run_live_revalidates_a_bad_budget_and_sends_nothing(self):
+        for overrides in ({"max_elapsed_seconds": float("nan")}, {"max_calls": True}, {"approved_max_usd": -1}, {"worst_case_usd_per_call": 0}, {"provider_work_bound": None}):
+            with self.subTest(overrides=overrides):
+                result = self.run_live(**overrides)
+                self.assertEqual(result["status"], "BLOCKED")
+                self.assertEqual(result["calls_attempted"], 0)
+        self.assertEqual(self.server.state.requests_seen, [])
+
+    def test_run_live_refuses_a_noncanonical_or_production_origin_and_sends_nothing(self):
+        for origin in (self.server.origin + "/", self.server.origin.upper(), "https://app.serenity.sire.run", "https://APP.serenity.sire.run."):
+            with self.subTest(origin=origin):
+                result = self.run_live(origin=origin)
+                self.assertEqual(result["status"], "BLOCKED")
+                self.assertEqual(result["calls_attempted"], 0)
+        self.assertEqual(self.server.state.requests_seen, [])
+
+    def test_a_dead_origin_counts_an_attempt_but_not_a_sent_or_completed_exchange(self):
+        result = self.run_live(origin=f"http://127.0.0.1:{unused_port()}")
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("readiness probe failed", result["reason"])
+        self.assertEqual(result["calls_attempted_by_operation"], {"readiness": 1})
+        self.assertEqual(result["calls_sent"], 0)
+        self.assertEqual(result["calls_completed"], 0)
+
+
+class QueuedCancellationTests(FakeServerTestCase):
+    def test_queued_requests_are_cancelled_not_launched_after_the_elapsed_deadline(self):
+        self.server.state.tools_delay_s = 0.3
+        workload = small_workload(
+            traffic_mix={"recall": 1.0}, concurrency={"clients": 1, "baseline_request_rate_per_s": 50},
+            phases=[{"name": "steady", "minutes": 0.1, "rate_multiplier": 1}],  # ~300 arrivals over 6s
+        )
+        cap = 1.5
+        t0 = time.monotonic()
+        result = self.run_live(workload, max_elapsed_seconds=cap)
+        wall = time.monotonic() - t0
+        arrivals_at_server = self.server.state.tools_calls_seen()
+        attempted = result["calls_attempted_by_operation"]["tools_call"]
+        self.assertGreater(len(arrivals_at_server), 0)
+        self.assertLessEqual(max(arrivals_at_server), t0 + cap + load_cli.DEADLINE_JITTER_S)  # nothing launched after the deadline
+        self.assertLessEqual(attempted - 1, len(arrivals_at_server))
+        self.assertLessEqual(len(arrivals_at_server), attempted)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertGreater(result["outcome_counts"]["not_dispatched"], 100)
+        self.assertEqual(sum(result["outcome_counts"].values()), result["offered_total"])
+        self.assertLess(wall, cap + 1.5)
+
+
+# ---------------------------------------------------------------------------
+# Conservative input-token precharge.
+# ---------------------------------------------------------------------------
+
+class TokenPrechargeTests(FakeServerTestCase):
+    def test_precharge_is_the_encoded_argument_bytes_actually_sent(self):
+        result = self.run_live(small_workload(traffic_mix={"recall": 0.5, "remember": 0.5}))
+        sent = self.server.state.tool_arg_bytes
+        synthetic_words = sum(r["tokens"] for r in result["results"])
+        self.assertGreater(sent, synthetic_words)  # the synthetic word count understates the input
+        self.assertEqual(result["input_tokens_precharged_upper_bound"], sent)
+
+    def test_the_byte_based_cap_binds_where_the_synthetic_word_count_would_not(self):
+        workload = small_workload(phases=[{"name": "steady", "minutes": 0.02, "rate_multiplier": 1}])
+        accounts = harness.build_accounts(workload["cardinalities"], "paid")
+        arrivals = harness.generate_arrivals(workload, accounts, random.Random(load_cli.BASE_SEED))
+        cap = 600
+        self.assertLess(sum(a["tokens"] for a in arrivals), cap)  # word counts alone would admit every request
+        result = self.run_live(workload, max_input_tokens=cap)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("max_input_tokens", result["reason"])
+        self.assertLessEqual(result["input_tokens_precharged_upper_bound"], cap)
+        self.assertLessEqual(self.server.state.tool_arg_bytes, cap)
+        self.assertGreater(result["outcome_counts"]["not_dispatched"], 0)
+
+    def test_declared_provider_work_bound_is_charged_on_readiness_and_every_authenticated_operation(self):
+        bound = {"readiness_tokens": 7, "cold_open_tokens": 5, "basis": "test-only loopback fixture"}
+        result = self.run_live(small_workload(traffic_mix={"recall": 1.0}), provider_work_bound=bound)
+        authenticated = sum(result["calls_attempted_by_operation"].get(op, 0) for op in ("initialize", "notification", "tools_call", "close"))
+        self.assertGreater(result["calls_attempted_by_operation"]["tools_call"], 0)
+        self.assertEqual(result["input_tokens_precharged_upper_bound"], 7 + 5 * authenticated + self.server.state.tool_arg_bytes)
+
+    def test_a_declared_cold_open_bound_can_exhaust_the_token_cap(self):
+        bound = {"readiness_tokens": 0, "cold_open_tokens": 1000, "basis": "test-only loopback fixture"}
+        result = self.run_live(max_input_tokens=1500, provider_work_bound=bound)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("max_input_tokens", result["reason"])
+        self.assertLessEqual(result["input_tokens_precharged_upper_bound"], 1500)
+
+    def test_preflight_upper_bound_is_never_below_the_actual_argument_bytes(self):
+        workload = json.loads(WORKLOAD_PATH.read_text())
+        accounts = harness.build_accounts(workload["cardinalities"], "paid")
+        arrivals = harness.generate_arrivals(workload, accounts, random.Random(load_cli.BASE_SEED))
+        for seq, a in list(enumerate(arrivals))[:400]:
+            actual = load_cli.argument_bytes(load_cli.tool_arguments(a["verb"], a["account"], 0, seq, a["tokens"], fact_id="f" * 40))
+            self.assertLessEqual(actual, load_cli.argument_bytes_upper_bound(a["verb"], a["tokens"]))
+
+
+# ---------------------------------------------------------------------------
+# Upstream text never reaches the output: fixed classes only.
+# ---------------------------------------------------------------------------
+
+class ErrorSanitizationTests(FakeServerTestCase):
+    def assert_no_credential(self, result):
+        text = json.dumps(result)
+        for fragment in (LONG_CRED, LONG_CRED[:8], LONG_CRED[:14], LONG_CRED[-8:], LONG_CRED[40:52]):
+            self.assertNotIn(fragment, text)
+
+    def test_initialize_error_echoing_the_credential_across_a_truncation_boundary_leaks_no_prefix(self):
+        self.server.state.init_mode = "echo_jsonrpc_error"
+        result = self.run_live(credential=LONG_CRED)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("McpProtocolError", result["reason"])
+        self.assert_no_credential(result)
+
+    def test_error_bodies_and_messages_echoing_the_credential_leak_no_prefix(self):
+        for mode, expected in (("echo_http500", "unexpected_5xx"), ("echo_jsonrpc", "protocol_error"), ("echo_tool", "tool_error")):
+            with self.subTest(mode=mode):
+                self.server.state.tools_mode = mode
+                result = self.run_live(small_workload(traffic_mix={"recall": 1.0}), credential=LONG_CRED)
+                self.assertGreater(result["outcome_counts"][expected], 0)
+                self.assert_no_credential(result)
+
+    def test_readiness_failure_text_is_a_fixed_string_not_the_response_body(self):
+        self.server.state.readyz_status = 500
+        self.server.state.readyz_body = b"BODYSENTINEL " + LONG_CRED.encode()
+        result = self.run_live(credential=LONG_CRED)
+        self.assertEqual(result["reason"], "readiness probe returned HTTP 500")
+        self.assertNotIn("BODYSENTINEL", json.dumps(result))
+        self.assert_no_credential(result)
+
+    def test_failed_records_carry_only_a_status_or_a_fixed_class(self):
+        self.server.state.tools_mode = "http500"
+        result = self.run_live(small_workload(traffic_mix={"recall": 1.0}))
+        failed = [r for r in result["results"] if r["outcome"] == "unexpected_5xx"]
+        self.assertTrue(failed)
+        for r in failed:
+            self.assertEqual(r["http_status"], 500)
+            self.assertNotIn("exploded", json.dumps(r))
+            self.assertNotIn("text", r)
+
+    def test_error_class_is_a_class_name_and_errno_only(self):
+        self.assertEqual(load_cli.error_class(ConnectionRefusedError(61, "Connection refused: SECRET")), "ConnectionRefusedError:ECONNREFUSED")
+        self.assertEqual(load_cli.error_class(RuntimeError("SECRET")), "RuntimeError")
+
+
+# ---------------------------------------------------------------------------
+# Truthful cleanup and attempted/sent/completed accounting.
+# ---------------------------------------------------------------------------
+
+class CleanupStatusTests(FakeServerTestCase):
+    def cleanup_of(self, **kwargs):
+        return self.run_live(small_workload(traffic_mix={"recall": 1.0}), **kwargs)
+
+    def test_confirmed_cleanup_is_204_and_leaves_no_session(self):
+        result = self.cleanup_of()
+        c = result["cleanup"]
+        self.assertEqual((c["server_sessions_created"], c["closed_confirmed"], c["sessions_left_open"]), (2, 2, 0))
+        self.assertEqual(self.server.state.sessions, {})
+        self.assertEqual(self.server.state.delete_seen, 2)
+
+    def test_an_unexpected_delete_status_is_a_cleanup_failure_not_a_close(self):
+        for mode, detail in (("status:500", "http_500"), ("status:404", "http_404"), ("status:401", "http_401"), ("status:200", None)):
+            with self.subTest(mode=mode):
+                self.server.state.delete_mode = mode
+                self.server.state.sessions.clear()
+                result = self.cleanup_of()
+                c = result["cleanup"]
+                if detail is None:  # 200 is an acceptable confirmation
+                    self.assertEqual(c["closed_confirmed"], 2)
+                    continue
+                self.assertEqual(c["closed_confirmed"], 0)
+                self.assertEqual(c["close_failed"], {detail: 2})
+                self.assertEqual(c["sessions_left_open"], 2)
+                self.assertTrue(any("not confirmed closed" in g for g in result["qualification_gaps"]))
+
+    def test_a_redirected_delete_is_a_failure_and_the_target_is_never_dialed(self):
+        self.server.state.delete_mode = "redirect"
+        c = self.cleanup_of()["cleanup"]
+        self.assertEqual(c["close_failed"], {"http_302": 2})
+        self.assertFalse(self.server.state.redirect_hit)
+
+    def test_a_dropped_delete_connection_is_recorded_as_a_failure_class(self):
+        self.server.state.delete_mode = "drop"
+        c = self.cleanup_of()["cleanup"]
+        self.assertEqual(c["closed_confirmed"], 0)
+        self.assertEqual(sum(c["close_failed"].values()), 2)
+        self.assertEqual(c["sessions_left_open"], 2)
+        for detail in c["close_failed"]:
+            self.assertNotIn(" ", detail)  # a class name, never message text
+
+    def test_cleanup_the_budget_forbids_is_reported_not_attempted_and_not_closed(self):
+        # readiness + (initialize, notification) for two accounts = 5 calls; close gets none.
+        result = self.cleanup_of(max_calls=5)
+        c = result["cleanup"]
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual((c["closed_confirmed"], c["close_not_attempted"], c["sessions_left_open"]), (0, 2, 2))
+        self.assertEqual(self.server.state.delete_seen, 0)
+        self.assertEqual(len(self.server.state.sessions), 2)
+
+    def test_attempted_sent_and_completed_are_counted_separately(self):
+        self.server.state.tools_mode = "drop"
+        result = self.cleanup_of()
+        attempted = result["calls_attempted_by_operation"]["tools_call"]
+        self.assertGreater(attempted, 0)
+        self.assertEqual(result["calls_sent_by_operation"]["tools_call"], attempted)  # fully written
+        self.assertEqual(result["calls_completed_by_operation"].get("tools_call", 0), 0)  # never answered
+        self.assertGreater(result["calls_attempted"], result["calls_completed"])
+        self.assertEqual(result["outcome_counts"]["network_error"], attempted)
+
+    def test_a_healthy_run_attempts_sends_and_completes_the_same_calls(self):
+        result = self.cleanup_of()
+        self.assertEqual(result["calls_attempted"], result["calls_sent"])
+        self.assertEqual(result["calls_sent"], result["calls_completed"])
+
+
+# ---------------------------------------------------------------------------
+# All-offered outcome semantics.
+# ---------------------------------------------------------------------------
+
+class OfferedOutcomeTests(FakeServerTestCase):
+    def assert_accounted(self, result):
+        self.assertEqual(sum(result["outcome_counts"].values()), result["offered_total"])
+        self.assertEqual(len(result["results"]), result["offered_total"])
+        self.assertTrue(all(r["outcome"] in load_cli.ALL_OUTCOMES for r in result["results"]))
+
+    def test_a_healthy_run_is_never_better_than_partial_and_lists_its_gaps(self):
+        result = self.run_live()
+        self.assert_accounted(result)
+        self.assertEqual(result["status"], "PARTIAL")
+        self.assertFalse(result["qualified"])
+        self.assertEqual(result["outcome_counts"]["ok"], result["offered_total"])
+        self.assertFalse(result["seeded_state_verified"])
+        self.assertFalse(result["cold_workload_verified"])
+        joined = " ".join(result["qualification_gaps"])
+        for needle in ("seeded", "cold flag", "provider_work_bound", "unmeasured is not passed", "not reviewer-frozen"):
+            self.assertIn(needle, joined)
+
+    def test_the_deadline_scope_is_stated_and_hostname_origins_stay_unqualified(self):
+        result = self.run_live()
+        self.assertTrue(result["exchange_deadline_scope"].startswith("end to end"))  # loopback IP literal
+        self.assertTrue(any("getaddrinfo" in g and "unqualified" in g for g in result["qualification_gaps"]))
+        for origin, expected in (("https://staging.example.com", "excludes name resolution"), ("http://localhost:9443", "excludes name resolution"), ("http://[::1]:9443", "end to end"), (None, "not applicable")):
+            with self.subTest(origin=origin):
+                self.assertTrue(load_cli._deadline_scope(origin).startswith(expected))
+
+    def test_unmeasured_thresholds_are_none_never_true(self):
+        checks = self.run_live()["by_repetition"][0]["threshold_evaluation"]
+        for name in ("cpu_max_pct", "rss_max_pct_of_ram", "disk_max_pct", "cold_ready_max_s", "isolation_durability_errors_max"):
+            self.assertIsNone(checks[name]["pass"], name)
+        for name in ("min_offered_completion_pct", "unexpected_5xx_max_pct", "unexpected_admission_rejection_max_pct", "recall_p95_max_s"):
+            self.assertIs(checks[name]["pass"], True, name)
+
+    def test_each_failure_class_is_counted_and_fails_the_run(self):
+        cases = [
+            ("tool_error", "tool_error"), ("http500", "unexpected_5xx"), ("http429", "rejected_admission"),
+            ("jsonrpc_error", "protocol_error"), ("drop", "network_error"),
+        ]
+        for mode, outcome in cases:
+            with self.subTest(mode=mode):
+                self.server.state.tools_mode = mode
+                result = self.run_live(small_workload(traffic_mix={"recall": 1.0}))
+                self.assert_accounted(result)
+                self.assertEqual(result["status"], "FAIL")
+                self.assertEqual(result["outcome_counts"][outcome], result["offered_total"])
+                self.assertIn("min_offered_completion_pct", result["reason"])
+                self.assertEqual(result["by_repetition"][0]["threshold_evaluation"]["min_offered_completion_pct"]["observed"], 0.0)
+
+    def test_5xx_and_admission_rejections_fail_their_own_thresholds(self):
+        self.server.state.tools_mode = "http500"
+        checks = self.run_live(small_workload(traffic_mix={"recall": 1.0}))["by_repetition"][0]["threshold_evaluation"]
+        self.assertIs(checks["unexpected_5xx_max_pct"]["pass"], False)
+        self.server.state.tools_mode = "http429"
+        checks = self.run_live(small_workload(traffic_mix={"recall": 1.0}))["by_repetition"][0]["threshold_evaluation"]
+        self.assertIs(checks["unexpected_admission_rejection_max_pct"]["pass"], False)
+
+    def test_offered_forgets_with_no_fact_id_stay_in_the_denominator(self):
+        result = self.run_live(small_workload(traffic_mix={"forget": 1.0}))
+        self.assert_accounted(result)
+        self.assertEqual(result["outcome_counts"]["skipped_forget_no_fact"], result["offered_total"])
+        self.assertEqual(result["outcome_counts"]["tool_error"], 0)
+        self.assertEqual(result["calls_attempted_by_operation"].get("tools_call", 0), 0)  # nothing was sent for them
+        self.assertEqual(result["status"], "FAIL")
+        self.assertTrue(any("seeding is not implemented" in g for g in result["qualification_gaps"]))
+
+    def test_a_forget_failure_on_an_id_this_run_remembered_is_a_durability_error(self):
+        self.server.state.forget_loses = True
+        workload = small_workload(traffic_mix={"remember": 0.5, "forget": 0.5}, concurrency={"clients": 2, "baseline_request_rate_per_s": 60})
+        result = self.run_live(workload)
+        check = result["by_repetition"][0]["threshold_evaluation"]["isolation_durability_errors_max"]
+        self.assertGreaterEqual(check["observed"], 1)
+        self.assertIs(check["pass"], False)
+        self.assertEqual(result["status"], "FAIL")
+
+    def test_all_frozen_repetitions_replay_the_same_arrivals(self):
+        result = self.run_live(small_workload(repetitions=3))
+        self.assert_accounted(result)
+        self.assertEqual(result["repetitions_planned"], 3)
+        self.assertEqual(result["repetitions_fully_dispatched"], 3)
+        self.assertEqual(len(result["by_repetition"]), 3)
+        per_rep = [[(r["phase"], r["account"], r["verb"], r["tokens"]) for r in result["results"] if r["rep"] == rep] for rep in range(3)]
+        self.assertEqual(per_rep[0], per_rep[1])
+        self.assertEqual(per_rep[1], per_rep[2])
+        self.assertEqual(result["offered_total"], 3 * len(per_rep[0]))
+
+    def test_a_run_cut_short_reports_the_repetitions_it_never_dispatched(self):
+        result = self.run_live(small_workload(repetitions=3), max_calls=12)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertLess(result["repetitions_fully_dispatched"], 3)
+        self.assert_accounted(result)
+
+    def test_the_cold_flag_is_reported_as_a_label_not_a_cold_workload(self):
+        workload = small_workload(cold_brain_fraction=1.0)
+        result = self.run_live(workload)
+        self.assertEqual(result["cold_requests_flagged"], result["offered_total"])
+        self.assertFalse(result["cold_workload_verified"])
+        self.assertIsNone(result["by_repetition"][0]["threshold_evaluation"]["cold_ready_max_s"]["pass"])
+
+    def test_without_a_steady_phase_nothing_is_evaluated_and_the_gap_says_so(self):
+        workload = small_workload(phases=[{"name": "main", "minutes": 0.01, "rate_multiplier": 1}])
+        result = self.run_live(workload)
+        checks = result["by_repetition"][0]["threshold_evaluation"]
+        self.assertIsNone(checks["min_offered_completion_pct"]["pass"])
+        self.assertTrue(any("min_offered_completion_pct" in g for g in result["qualification_gaps"]))
+
+    def test_a_slow_and_a_failed_request_never_yield_a_zero_exit_shaped_result(self):
+        for mode in ("tool_error", "drop", "http500"):
+            self.server.state.tools_mode = mode
+            self.assertNotIn(self.run_live()["status"], ("PARTIAL", "COMPLETE", "PASS"), mode)
+
+    def test_output_never_contains_the_raw_credential_value(self):
+        result = self.run_live(credential="a-distinct-credential-value")
+        self.assertNotIn("a-distinct-credential-value", json.dumps(result))
+
+
+# ---------------------------------------------------------------------------
+# prepare_live: authority inputs, guards and full-workload budget coverage.
+# ---------------------------------------------------------------------------
+
+def authorized_workload(**overrides):
+    # TEST-ONLY reviewer values: no authority is implied by these.
+    fields = dict(repetitions=3, frozen=True, reviewer="test-only reviewer", review_date="test-only date")
+    fields.update(overrides)
+    return small_workload(**fields)
+
+
+def authorized_manifest(cred_dir="/nonexistent-test-creds", **budget_overrides):
+    # TEST-ONLY provider/source values: no authority is implied by these.
+    return base_manifest(
+        environment={"kind": "disposable", "origin": "http://127.0.0.1:9443", "allowed_hosts": ["127.0.0.1"], "production_target_allowed": False},
+        budget=budget_dict(**budget_overrides),
+        provider={"version_pin": "test-only", "serving_provider": "test-only", "privacy_review_ref": "test-only", "dimensions": 8},
+        source_sha="a" * 40,
+        binary_sha256="b" * 64,
+        live={"credential_dir": str(cred_dir)},
+    )
+
+
+class PrepareLiveTests(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.object(load_cli, "_http_exchange", side_effect=AssertionError("prepare_live opened a socket"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.tmp = Path(self.tmpdir.name)
+
+    def test_committed_manifest_and_workload_are_not_liveable(self):
+        workload = load_cli.harness.load_workload(WORKLOAD_PATH)
+        plan, error = load_cli.prepare_live(json.loads(MANIFEST_PATH.read_text()), workload)
+        self.assertIsNone(plan)
+        self.assertIn("reviewer-frozen", error)
+
+    def test_a_fully_specified_input_passes_every_guard_with_zero_sockets(self):
+        workload = authorized_workload()
+        accounts = harness.build_accounts(workload["cardinalities"], "paid")
+        cred_dir = make_credential_dir(self.tmp, accounts)
+        plan, error = load_cli.prepare_live(authorized_manifest(cred_dir), workload)
+        self.assertIsNone(error)
+        self.assertEqual(len(plan.accounts), 2)
+        self.assertEqual(set(plan.credentials), {a["id"] for a in accounts})
+
+    def test_each_missing_authority_input_blocks(self):
+        workload = authorized_workload()
+        accounts = harness.build_accounts(workload["cardinalities"], "paid")
+        cred_dir = make_credential_dir(self.tmp, accounts)
+
+        def blocked(manifest=None, workload=workload):
+            plan, error = load_cli.prepare_live(manifest or authorized_manifest(cred_dir), workload)
+            self.assertIsNone(plan)
+            self.assertTrue(error)
+            return error
+
+        for key in ("frozen", "reviewer", "review_date"):
+            with self.subTest(workload_key=key):
+                w = dict(workload)
+                w[key] = None
+                blocked(workload=w)
+        blocked(workload=authorized_workload(repetitions=1))
+        for path in (("provider", "version_pin"), ("provider", "serving_provider"), ("provider", "privacy_review_ref"), ("provider", "dimensions"), ("source_sha",), ("binary_sha256",)):
+            with self.subTest(path=path):
+                m = authorized_manifest(cred_dir)
+                target = m
+                for part in path[:-1]:
+                    target = target[part]
+                target[path[-1]] = None
+                blocked(m)
+        blocked(authorized_manifest(cred_dir, provider_work_bound=None))
+
+    def test_a_budget_that_cannot_cover_the_frozen_workload_blocks_before_any_spend(self):
+        workload = authorized_workload()
+        for field, value in (("max_calls", 5), ("max_input_tokens", 100), ("approved_max_usd", 0.001), ("max_elapsed_seconds", 1)):
+            with self.subTest(field=field):
+                plan, error = load_cli.prepare_live(authorized_manifest(**{field: value}), workload)
+                self.assertIsNone(plan)
+                self.assertIn(field, error)
+                self.assertIn("cannot cover", error)
+
+    def test_the_committed_budget_cannot_cover_the_real_frozen_workload_even_with_authority_filled(self):
+        workload = json.loads(WORKLOAD_PATH.read_text())
+        workload.update(frozen=True, reviewer="test-only reviewer", review_date="test-only date")
+        committed = json.loads(MANIFEST_PATH.read_text())["budget"]
+        manifest = authorized_manifest(**{**committed, "provider_work_bound": budget_dict()["provider_work_bound"]})
+        plan, error = load_cli.prepare_live(manifest, workload)
+        self.assertIsNone(plan)
+        for field in ("max_calls", "max_input_tokens", "max_elapsed_seconds"):
+            self.assertIn(field, error)
+
+    def test_preflight_counts_bytes_and_the_declared_bound_per_authenticated_operation(self):
+        workload = authorized_workload()
+        accounts = harness.build_accounts(workload["cardinalities"], "paid")
+        arrivals = harness.generate_arrivals(workload, accounts, random.Random(load_cli.BASE_SEED))
+        bound = {"readiness_tokens": 11, "cold_open_tokens": 3, "basis": "test-only"}
+        floor = 11 + 3 * (3 * len(accounts) + 3 * len(arrivals)) + 3 * sum(load_cli.argument_bytes_upper_bound(a["verb"], a["tokens"]) for a in arrivals)
+        budget = load_cli.parse_budget(authorized_manifest(provider_work_bound=bound, max_input_tokens=floor))[0]
+        self.assertIsNone(load_cli.preflight_budget(budget, workload, accounts, arrivals))
+        tight = budget._replace(max_input_tokens=floor - 1)
+        self.assertIn("max_input_tokens", load_cli.preflight_budget(tight, workload, accounts, arrivals))
+
+
+# ---------------------------------------------------------------------------
+# The CLI: fixtures mode works; --live is unconditionally BLOCKED.
+# ---------------------------------------------------------------------------
+
+def run_main(*argv):
+    saved = sys.argv
+    sys.argv = ["load.py", *argv]
+    try:
+        return load_cli.main()
+    finally:
+        sys.argv = saved
 
 
 class RunFixturesTests(unittest.TestCase):
     def test_produces_valid_structure_with_replay_verified(self):
-        manifest = base_manifest()
-        workload = load_cli.harness.load_workload(Path(__file__).with_name("workload.json"))
-        result = load_cli.run_fixtures(manifest, workload)
+        workload = load_cli.harness.load_workload(WORKLOAD_PATH)
+        result = load_cli.run_fixtures(base_manifest(), workload)
         self.assertTrue(result["replay_determinism_verified"])
         self.assertEqual(len(result["repetitions"]), workload["repetitions"])
         self.assertFalse(result["resource_usage"]["available"])
 
 
-class RunLiveTests(FakeServerTestCase):
-    def _accounts_and_creds(self, workload):
-        accounts = load_cli.harness.build_accounts(workload["cardinalities"], "paid")
+class CLIEndToEndTests(FakeServerTestCase):
+    def test_fixtures_mode_exits_zero_and_writes_output(self):
+        out = self.tmp / "load-fixture.json"
+        self.assertEqual(run_main("--fixtures", "--manifest", str(MANIFEST_PATH), "--output", str(out)), 0)
+        data = json.loads(out.read_text())
+        self.assertEqual(data["mode"], "fixtures")
+        self.assertTrue(data["replay_determinism_verified"])
+
+    def test_live_mode_is_blocked_with_a_zero_call_receipt(self):
+        manifest_path = self.tmp / "manifest.json"
+        manifest_path.write_text(json.dumps(base_manifest()))
+        out = self.tmp / "load.json"
+        self.assertEqual(run_main("--live", "--manifest", str(manifest_path), "--output", str(out)), 2)
+        data = json.loads(out.read_text())
+        self.assertEqual(data["status"], "BLOCKED")
+        self.assertEqual((data["calls_used"], data["tokens_used"], data["usd_used_worst_case"]), (0, 0, 0))
+
+    def test_live_stays_blocked_even_with_fully_valid_inputs_and_a_live_server(self):
+        workload = json.loads(WORKLOAD_PATH.read_text())
+        accounts = harness.build_accounts(workload["cardinalities"], "paid")
         cred_dir = make_credential_dir(self.tmp, accounts)
-        creds, error = load_cli.check_credentials(cred_dir, accounts)
-        self.assertIsNone(error)
-        return accounts, creds
-
-    def test_full_run_against_fake_server_completes_and_exercises_all_verbs(self):
-        workload = small_workload()
-        accounts, creds = self._accounts_and_creds(workload)
-        result = load_cli.run_live(
-            {"environment": {"origin": self.server.origin}, "budget": {"approved_max_usd": 10.0, "max_calls": 10000, "max_input_tokens": 10_000_000, "max_elapsed_seconds": 30, "worst_case_usd_per_call": 0.001, "authorization_ref": "t"}},
-            workload,
-            accounts,
-            creds,
-        )
-        self.assertEqual(result["status"], "COMPLETE")
-        self.assertEqual(result["accounts_initialized"], len(accounts))
-        self.assertGreater(result["calls_used"], 0)
-        self.assertEqual(result["protocol_errors"], 0)
-        verbs_seen = {r["verb"] for r in result["results"]}
-        self.assertIn("recall", verbs_seen)
-
-    def test_precharge_never_sends_a_request_whose_tokens_would_exceed_the_cap(self):
-        workload = small_workload(traffic_mix={"recall": 1.0}, phases=[{"name": "main", "minutes": 0.02, "rate_multiplier": 1}])
-        accounts, creds = self._accounts_and_creds(workload)
-        result = load_cli.run_live(
-            {"environment": {"origin": self.server.origin}, "budget": {"approved_max_usd": 10.0, "max_calls": 10000, "max_input_tokens": 5, "max_elapsed_seconds": 30, "worst_case_usd_per_call": 0.001, "authorization_ref": "t"}},
-            workload,
-            accounts,
-            creds,
-        )
-        self.assertEqual(result["status"], "BLOCKED")
-        self.assertIn("max_input_tokens", result["reason"])
-        self.assertLessEqual(result["tokens_used"], 5)
-
-    def test_stops_at_max_calls_cap_real_sensitivity(self):
-        workload = small_workload(phases=[{"name": "main", "minutes": 0.02, "rate_multiplier": 1}])
-        accounts, creds = self._accounts_and_creds(workload)
-        result = load_cli.run_live(
-            {"environment": {"origin": self.server.origin}, "budget": {"approved_max_usd": 10.0, "max_calls": len(accounts) + 1, "max_input_tokens": 10_000_000, "max_elapsed_seconds": 30, "worst_case_usd_per_call": 0.001, "authorization_ref": "t"}},
-            workload,
-            accounts,
-            creds,
-        )
-        self.assertEqual(result["status"], "BLOCKED")
-        self.assertIn("max_calls", result["reason"])
-        self.assertLessEqual(result["calls_used"], len(accounts) + 1)
-
-    def test_stops_at_dollar_cap_using_worst_case_precharge(self):
-        workload = small_workload(phases=[{"name": "main", "minutes": 0.02, "rate_multiplier": 1}])
-        accounts, creds = self._accounts_and_creds(workload)
-        # Budget covers only the session-bootstrap calls (one per account, $0 tokens
-        # but still precharged) plus one workload call before the dollar cap bites.
-        worst_case = 1.0
-        approved = worst_case * (len(accounts) + 1)
-        result = load_cli.run_live(
-            {"environment": {"origin": self.server.origin}, "budget": {"approved_max_usd": approved, "max_calls": 10000, "max_input_tokens": 10_000_000, "max_elapsed_seconds": 30, "worst_case_usd_per_call": worst_case, "authorization_ref": "t"}},
-            workload,
-            accounts,
-            creds,
-        )
-        self.assertEqual(result["status"], "BLOCKED")
-        self.assertIn("approved_max_usd", result["reason"])
-        self.assertLessEqual(result["usd_used_worst_case"], approved)
-
-    def test_stops_at_elapsed_cap(self):
-        workload = small_workload(phases=[{"name": "main", "minutes": 1, "rate_multiplier": 1}])
-        accounts, creds = self._accounts_and_creds(workload)
-        result = load_cli.run_live(
-            {"environment": {"origin": self.server.origin}, "budget": {"approved_max_usd": 10.0, "max_calls": 100000, "max_input_tokens": 10_000_000, "max_elapsed_seconds": 1, "worst_case_usd_per_call": 0.0001, "authorization_ref": "t"}},
-            workload,
-            accounts,
-            creds,
-        )
-        self.assertEqual(result["status"], "BLOCKED")
-        self.assertIn("max_elapsed_seconds", result["reason"])
-        self.assertLess(result["elapsed_s"], 5.0)
-
-    def test_forget_without_a_prior_remember_is_skipped_not_sent_as_a_broken_call(self):
-        workload = small_workload(traffic_mix={"forget": 1.0}, phases=[{"name": "main", "minutes": 0.02, "rate_multiplier": 1}])
-        accounts, creds = self._accounts_and_creds(workload)
-        result = load_cli.run_live(
-            {"environment": {"origin": self.server.origin}, "budget": {"approved_max_usd": 10.0, "max_calls": 10000, "max_input_tokens": 10_000_000, "max_elapsed_seconds": 30, "worst_case_usd_per_call": 0.001, "authorization_ref": "t"}},
-            workload,
-            accounts,
-            creds,
-        )
-        self.assertEqual(result["tool_errors"], 0)
-        self.assertGreater(result["skipped_forgets"], 0)
-
-    def test_main_cli_end_to_end_against_fake_server_exits_zero_and_writes_output(self):
-        workload_path = Path(__file__).with_name("workload.json")
-        real_workload = json.loads(workload_path.read_text())
-        accounts = load_cli.harness.build_accounts(real_workload["cardinalities"], "paid")
-        cred_dir = make_credential_dir(self.tmp, accounts)
-        manifest = base_manifest(
-            environment={"kind": "disposable", "origin": self.server.origin, "allowed_hosts": ["127.0.0.1"], "production_target_allowed": False},
-            budget={"approved_max_usd": 10.0, "max_calls": 60, "max_input_tokens": 10_000_000, "max_elapsed_seconds": 3, "authorization_ref": "test", "worst_case_usd_per_call": 0.001},
-            live={"credential_dir": str(cred_dir)},
-        )
+        manifest = authorized_manifest(cred_dir, max_calls=10**7, max_input_tokens=10**9, approved_max_usd=10**6, max_elapsed_seconds=10**6)
+        manifest["environment"]["origin"] = self.server.origin
         manifest_path = self.tmp / "manifest.json"
         manifest_path.write_text(json.dumps(manifest))
         out = self.tmp / "load-live.json"
-        argv = sys.argv
-        sys.argv = ["load.py", "--live", "--manifest", str(manifest_path), "--output", str(out)]
-        try:
-            code = load_cli.main()
-        finally:
-            sys.argv = argv
-        self.assertEqual(code, 2)
-        data = json.loads(out.read_text())
-        self.assertEqual(data["status"], "BLOCKED")
-        self.assertEqual(data["calls_used"], 0)
-
-    def test_output_never_contains_the_raw_credential_value(self):
-        workload = small_workload()
-        accounts, creds = self._accounts_and_creds(workload)
-        secret = list(creds.values())[0]
-        result = load_cli.run_live(
-            {"environment": {"origin": self.server.origin}, "budget": {"approved_max_usd": 10.0, "max_calls": 10000, "max_input_tokens": 10_000_000, "max_elapsed_seconds": 30, "worst_case_usd_per_call": 0.001, "authorization_ref": "t"}},
-            workload,
-            accounts,
-            creds,
-        )
-        self.assertNotIn(secret, json.dumps(result))
-
-
-class CLIEndToEndTests(unittest.TestCase):
-    def test_fixtures_mode_exits_zero_and_writes_output(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            out = Path(tmp) / "load-fixture.json"
-            argv = sys.argv
-            sys.argv = ["load.py", "--fixtures", "--manifest", str(MANIFEST_PATH), "--output", str(out)]
-            try:
-                code = load_cli.main()
-            finally:
-                sys.argv = argv
-            self.assertEqual(code, 0)
-            data = json.loads(out.read_text())
-            self.assertEqual(data["mode"], "fixtures")
-            self.assertTrue(data["replay_determinism_verified"])
-
-    def test_live_mode_blocked_without_environment_origin(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            manifest_path = Path(tmp) / "manifest.json"
-            manifest_path.write_text(json.dumps(base_manifest()))
-            out = Path(tmp) / "load.json"
-            argv = sys.argv
-            sys.argv = ["load.py", "--live", "--manifest", str(manifest_path), "--output", str(out)]
-            try:
-                code = load_cli.main()
-            finally:
-                sys.argv = argv
-            self.assertEqual(code, 2)
-            self.assertEqual(json.loads(out.read_text())["calls_used"], 0)
+        with mock.patch.object(load_cli, "check_credentials", side_effect=AssertionError("secret read")), \
+             mock.patch.object(load_cli, "prepare_live", side_effect=AssertionError("prepared")), \
+             mock.patch.object(load_cli, "run_live", side_effect=AssertionError("ran")), \
+             mock.patch.object(load_cli, "check_readiness", side_effect=AssertionError("network")):
+            self.assertEqual(run_main("--live", "--manifest", str(manifest_path), "--output", str(out)), 2)
+        self.assertEqual(self.server.state.requests_seen, [])
+        self.assertEqual(json.loads(out.read_text())["status"], "BLOCKED")
 
     def test_live_gate_precedes_manifest_credentials_and_network(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            out = Path(tmp) / "blocked.json"
-            with mock.patch.object(sys, "argv", ["load.py", "--live", "--manifest", str(Path(tmp) / "does-not-exist"), "--output", str(out)]), \
-                 mock.patch.object(load_cli, "load_manifest", side_effect=AssertionError("manifest read")), \
-                 mock.patch.object(load_cli, "check_credentials", side_effect=AssertionError("secret read")), \
-                 mock.patch.object(load_cli, "check_readiness", side_effect=AssertionError("network")), \
-                 mock.patch.object(load_cli, "run_live", side_effect=AssertionError("network")):
-                self.assertEqual(load_cli.main(), 2)
-            self.assertEqual(json.loads(out.read_text())["status"], "BLOCKED")
+        out = self.tmp / "blocked.json"
+        with mock.patch.object(load_cli, "load_manifest", side_effect=AssertionError("manifest read")), \
+             mock.patch.object(load_cli, "check_credentials", side_effect=AssertionError("secret read")), \
+             mock.patch.object(load_cli, "check_readiness", side_effect=AssertionError("network")), \
+             mock.patch.object(load_cli, "_http_exchange", side_effect=AssertionError("network")), \
+             mock.patch.object(load_cli, "run_live", side_effect=AssertionError("network")):
+            self.assertEqual(run_main("--live", "--manifest", str(self.tmp / "does-not-exist"), "--output", str(out)), 2)
+        self.assertEqual(json.loads(out.read_text())["status"], "BLOCKED")
 
     def test_manifest_not_found_blocked_json_not_bare_exception(self):
-        argv = sys.argv
-        sys.argv = ["load.py", "--fixtures", "--manifest", "/nonexistent/manifest.json", "--output", "/tmp/out.json"]
-        try:
-            with self.assertRaises(SystemExit) as ctx:
-                load_cli.main()
-        finally:
-            sys.argv = argv
+        with self.assertRaises(SystemExit) as ctx:
+            run_main("--fixtures", "--manifest", "/nonexistent/manifest.json", "--output", str(self.tmp / "out.json"))
         self.assertEqual(ctx.exception.code, 2)
 
     def test_invalid_json_manifest_blocked_json_not_bare_exception(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            bad = Path(tmp) / "manifest.json"
-            bad.write_text("{not valid json")
-            argv = sys.argv
-            sys.argv = ["load.py", "--fixtures", "--manifest", str(bad), "--output", str(Path(tmp) / "out.json")]
-            try:
-                with self.assertRaises(SystemExit) as ctx:
-                    load_cli.main()
-            finally:
-                sys.argv = argv
-            self.assertEqual(ctx.exception.code, 2)
+        bad = self.tmp / "manifest.json"
+        bad.write_text("{not valid json")
+        with self.assertRaises(SystemExit) as ctx:
+            run_main("--fixtures", "--manifest", str(bad), "--output", str(self.tmp / "out.json"))
+        self.assertEqual(ctx.exception.code, 2)
 
 
 if __name__ == "__main__":

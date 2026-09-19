@@ -285,6 +285,12 @@ _TEXT_VOCAB = [
 ]
 
 
+def max_rendered_bytes(tokens: int) -> int:
+    """Upper bound on len(render_text(seed, tokens).encode()) for any seed."""
+    n = max(int(tokens), 1)
+    return n * max(len(w) for w in _TEXT_VOCAB) + (n - 1)
+
+
 def render_text(seed_str: str, tokens: int) -> str:
     """Deterministic pseudo-natural text, roughly `tokens` whitespace-separated
     words for a given seed. Not a real tokenizer count (words != model tokens)

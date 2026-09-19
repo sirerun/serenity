@@ -110,6 +110,20 @@ class PoolAdmissionTests(unittest.TestCase):
         self.assertFalse(admitted)
 
 
+class RenderTextBoundTests(unittest.TestCase):
+    def test_max_rendered_bytes_bounds_every_seed_and_is_tight_for_the_longest_word(self):
+        for tokens in (1, 2, 20, 128, 512):
+            bound = harness.max_rendered_bytes(tokens)
+            for seed in range(200):
+                self.assertLessEqual(len(harness.render_text(f"seed-{seed}", tokens).encode("utf-8")), bound)
+        longest = max(len(w) for w in harness._TEXT_VOCAB)
+        self.assertEqual(harness.max_rendered_bytes(3), 3 * longest + 2)
+
+    def test_a_non_positive_token_count_renders_and_bounds_one_word(self):
+        self.assertEqual(harness.max_rendered_bytes(0), harness.max_rendered_bytes(1))
+        self.assertLessEqual(len(harness.render_text("x", 0)), harness.max_rendered_bytes(0))
+
+
 class PercentileTests(unittest.TestCase):
     def test_known_values(self):
         values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]

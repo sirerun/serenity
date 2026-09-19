@@ -11,12 +11,17 @@ estimates and local fixture results, not measured capacity or authority to spend
 - `scripts/hosted/load.py --fixtures --manifest PATH --output PATH` exercises a
   deterministic simulator: three repetitions, replay, burst/cold/skewed tenants,
   quota saturation separate from the eligible workload, explicit failed thresholds.
-- Candidate MCP client helpers have local HTTP tests for serialized tool calls,
-  initialization, private credential files, redirects and budgets. They are not
-  a supported live qualification runner.
+- A candidate MCP client has local tests against a real loopback HTTP server:
+  per-request outcomes over all offered requests, a wall-clock deadline on each
+  exchange, a cap check before every socket operation, byte-based token precharge,
+  canonical origins, redirect refusal, fixed error classes and confirmed-only
+  session cleanup. It never reports better than `PARTIAL` and is not a supported
+  live qualification runner.
 - **`--live` is disabled unconditionally**, returning BLOCKED/exit 2 and a zero-call
-  receipt before manifest/credential reads or networking. Remaining acceptance work
-  is in [live-enable-requirements.md](evidence/T23.60/live-enable-requirements.md).
+  receipt before manifest/credential reads or networking. Seeded state, a real
+  cold-open workload, host telemetry, a bounded resolver for hostname origins and
+  the reviewer freeze remain open in
+  [live-enable-requirements.md](evidence/T23.60/live-enable-requirements.md).
 
 ## Candidate monthly cost
 
