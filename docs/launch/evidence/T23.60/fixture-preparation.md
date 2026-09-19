@@ -200,6 +200,22 @@ go test ./evals/hosted-load/fixtureprep/
 python3 evals/hosted-load/fixture_receipt.py --help
 ```
 
-See `T23.60-offline-fixture-handoff.md` for the exact commands that produced the committed reports and receipt.
+### Commands that produced the committed evidence
+
+```sh
+# prepare (binary built from the source named in Hashes); every fixture goes in a new directory off the internal disk
+"$PREP" prepare -local-fixture-only -out "$F/full-b500"       -profile full  -workers 2 -commit-every 500
+"$PREP" prepare -local-fixture-only -out "$F/full-d1536"      -profile full  -workers 2 -commit-every 500 -dim 1536
+"$PREP" prepare -local-fixture-only -out "$F/full-b1"         -profile full  -workers 2 -commit-every 1          # stopped after 15 of 29 brains
+"$PREP" prepare -local-fixture-only -out "$F/smoke10-b500"    -profile smoke -smoke-facts 10  -commit-every 500
+"$PREP" prepare -local-fixture-only -out "$F/smoke100-b500"   -profile smoke -smoke-facts 100 -commit-every 500
+"$PREP" prepare -local-fixture-only -out "$F/smoke100-b1"     -profile smoke -smoke-facts 100 -commit-every 1
+# verify and recount each complete fixture (expect smoke for the last three; --smoke-facts matches the preparation)
+"$VERIFY" verify -dir "$F/full-b500" -expect full -workers 3 -report fixture/verify-full-b500.json
+python3 evals/hosted-load/fixture_recount.py --dir "$F/full-b500" --expect full --output fixture/recount-full-b500.json
+# partial per-write history, then the receipt
+python3 docs/launch/evidence/T23.60/fixture/partial_history_measure.py --batched "$F/full-b500" --per-write "$F/full-b1" --output fixture/partial-per-write-history.json
+python3 evals/hosted-load/fixture_receipt.py --full ... --smoke ... --history-batched ... --history-per-write ... --full-wide ... --history-partial ... --recount NAME=FILE ... --output fixture-receipt.json
+```
 
 A full preparation with batched commits takes 13 to 20 minutes at 2 workers and 1.2 GiB of allocated disk at 64-wide vectors (measured in [fixture-receipt.json](fixture-receipt.json)); one commit per fact takes far longer. Build the fixture outside the repository and off the internal disk.
