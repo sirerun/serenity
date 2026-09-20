@@ -26,7 +26,7 @@
 
 ## Status of every seam
 
-Nothing below is approved by chief-architect. **FROZEN** means the Go signature is compiled and tested and does not depend on an open decision; **PROPOSED** means a concrete mechanism with an executable specification exists and awaits a named review; **BLOCKED** means dependent implementation must not start.
+Chief-architect reviewed the four design decisions at PR236 revision `218d7234d9abea5964f9d4640d1bfffe5c9f8087`; see the [ruling comment](https://github.com/sirerun/serenity/pull/236#issuecomment-5746461189) and the per-line receipt in `docs/launch/evidence/T23.41/architecture-review-request.md`. **FROZEN** means the Go signature is compiled and tested and does not depend on an open decision; **PROPOSED** means a concrete mechanism with an executable specification exists but still needs implementation and ordinary review; **BLOCKED** means dependent implementation must not start.
 
 | Seam | Status | Artifact | Executable specification |
 |---|---|---|---|
@@ -46,7 +46,7 @@ Compile-time conformance means a `var _ contracts.X = fakeX{}` assertion in `con
 
 This pass changed three shapes that an earlier draft of this document listed as frozen (`ManifestV2.JournalWatermark`, `RecoveryPlan.JournalWatermark` and `.Generation`, `RecoveryApplyResult.Fence`) because they carry the journal position and fence proof, which are open decisions. It also revised `ManifestV2` because an independent audit (finding D2, `launch-audit-pass2-handoff.md`) showed it could not hold what task49 step 1 and its roundtrip acceptance require. `ManifestV2` now has `ControlDB ArtifactRef` (relative path, length, SHA256), each non-empty brain's `Heads []BundleHead` (ref and object ID, strictly ascending by ref, none for an empty brain), and `Validate`. Every artifact path is a single safe path element, unique across the control database and bundles compared case-insensitively, and never `manifest.json`. `Validate` checks structure and internal consistency only. It does not prove the files exist or match, that the inventory equals the control database's, or that the manifest is authentic: task49 checks those. No field is reserved for an incremental-backup scheme, and the audit's suggestion to reserve `Kind` and `Base` was not taken. No package outside `contracts` imports any of these types, so no dependent receipt reopens. Task49 has not started and rebases on this shape.
 
-## Proposed decisions - pending chief-architect review
+## Architecture-ratified design decisions
 
 Each decision states what to adopt, the rules that make it checkable, what the previous draft got wrong, and the questions the reviewer must answer, with a recommendation. Names in code font are in `internal/hosted/contracts`. See `docs/launch/evidence/T23.41/architecture-review-request.md` for the per-decision approve/amend/reject form.
 
@@ -123,7 +123,7 @@ Each decision states what to adopt, the rules that make it checkable, what the p
 
 **Questions for the reviewer.**
 
-- *Commit-section extent.* The `remember` handler embeds through the provider and then writes; a section around the whole handler holds the fence across up to 60 seconds of provider I/O. **Recommended: accept it.** A slow embedding only defers that brain's reconciliation. Reject it only if task44 can split embedding from the write cheaply.
+- *Commit-section extent — chief-architect ruling.* The section begins at the first canonical byte and ends when `writer.Flush` returns. Embedding and other provider calls happen before it; the fence must not be held across provider I/O, which could defer reconciliation for up to 60 seconds. Task44 must enter the section immediately around the canonical write.
 - *Failed flush.* **Recommended:** task44 proposes a core-writer change so a failed `Flush` rolls back the working tree. Until then the checker's Unknown rule sends those rows to pending review.
 - *Operator path for pending review.* **Recommended:** a `serenity hosted operations review` command owned by task44 with CLI registration by the integrator, printing only opaque IDs and the stored evidence.
 - *Fingerprint fields for other mutations.* `forget`: the fact identifier. Owned by task44 in its freeze evidence.
@@ -262,13 +262,13 @@ Task41’s reviewer freezes the task43 Hit@5 corpus/scoring and task60 workload/
 
 ## Freeze receipt (task41)
 
-Nothing in this receipt is an approval. The receipt is complete only when it names a reviewer and a revision.
+This receipt records the design rulings only; it does not mark task41 accepted, approve implementation, or authorize merge.
 
-- **Source and review.** Drafted in worktree branch `hosted/t23.41-20260918` on base `810349ba7c1ed2c05fe34e3892de764a26a4633c`. Not reviewed by chief-architect and not merged. No reviewer was available to the headless worker sessions. An independent code review and a coordinator review found defects in earlier drafts. Each was fixed and is listed under its decision above.
+- **Source and review.** Drafted in worktree branch `hosted/t23.41-20260918` on base `810349ba7c1ed2c05fe34e3892de764a26a4633c`. Chief-architect reviewed revision `218d7234d9abea5964f9d4640d1bfffe5c9f8087`; its rulings are recorded in the architecture-review request. This follow-up reconciles the rejected wide commit-section recommendation. Not merged. An independent code review and a coordinator review found defects in earlier drafts; those were fixed and are listed under their decision above.
 - **Exact Go interface and SQL revision.** `internal/hosted/contracts/**`, `internal/hosted/contracts/contractstest/**` and `internal/hosted/testhooks/**` in this branch. No SQL applied: the `operations` table is design-only pending review and `store/migrations.go` is unchanged.
-- **Storage envelope approved: no.** Blocked. The staged-write proposal is specified and awaits a ruling on the route and on the core-writer seam it requires. It also needs allocation-based accounting and an OS-enforced size limit before any bound is called hard, and no `MaxMutationStageBytes` measurement exists.
-- **Operation accounting, quiescence and retry-key binding approved: no.** Proposed with an executable specification.
-- **Journal completeness and old-writer fence approved: no.** Proposed with an executable specification. S3 conditional create is documented but not qualified against our bucket, policy or CLI build, and that live qualification is missing.
+- **Storage admission design:** approved conditionally by chief-architect. It remains **BLOCKED** until task44 supplies allocation-based accounting, an OS-enforced staging limit, and the `MaxMutationStageBytes` measurement; none is claimed here.
+- **Operation accounting, quiescence and retry-key binding:** approved by chief-architect at PR236 revision `218d7234d9abea5964f9d4640d1bfffe5c9f8087`, with the narrow commit-section extent stated above. Proposed schema/migration remains unapplied until implementation and ordinary review.
+- **Journal completeness:** approved by chief-architect at PR236 revision `218d7234d9abea5964f9d4640d1bfffe5c9f8087`; the existing versioned-bucket substrate remains conditional on task48's live S3 qualification against our bucket, policy and CLI build. **Restore fencing:** the three-fact receipt is approved. Implementation and ordinary review remain outstanding.
 - **Provider, model and accounting-unit contract.** `AccountingUnit`, `RegistrationMode` and the `ProviderPin` shape are frozen and independent of the four decisions. The actual provider, model and version remain task42's to verify and pin.
 - **Quality and load thresholds.** Not evaluated here. Task43 owns the Hit@5 corpus and task60 owns the workload targets.
 
