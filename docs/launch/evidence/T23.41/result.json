@@ -2,7 +2,7 @@
   "task_id": "T23.41",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "378a3f1f",
+  "source_sha": "378a3f153fab820196cbec2e3169d10c52f5cb82",
   "recorded_at": "2026-09-21T12:26:33Z",
   "evidence_level": "local-process",
   "dependencies": {},
@@ -49,7 +49,7 @@
     {
       "criterion": "Existing hosted tests and file-first gate pass.",
       "expected": "go test -race -count=1 over ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate exits 0 with no skips.",
-      "observed": "The final scoped race suite passed under the recorded R-build-lease on source 378a3f1: store, service, contracts, contractstest, testhooks and internal/gate all passed with no skips. The contracts package also passed focused race tests, go vet and golangci-lint after the recovery-plan binding changes. The tests now reject self-attested plan generations, request/plan hash mismatches, accounts outside the approved plan, apply-all sentinels, malformed or stale journal seals, and mixed unfreeze/refusal results. All 13 GitHub checks passed on prior PR #236 head cdaaf7413dfa207553d51a8ab01116c181c4a65d; CI on current code source 378a3f1 is pending. CI success is not ordinary review or merge approval.",
+      "observed": "The final scoped race suite passed under the recorded R-build-lease on source 378a3f153fab820196cbec2e3169d10c52f5cb82: store, service, contracts, contractstest, testhooks and internal/gate all passed with no skips. The contracts package also passed focused race tests, go vet and golangci-lint after the recovery-plan binding changes. The tests now reject self-attested plan generations, request/plan hash mismatches, accounts outside the approved plan, apply-all sentinels, malformed or stale journal seals, and mixed unfreeze/refusal results. All 13 GitHub checks passed on prior PR #236 head cdaaf7413dfa207553d51a8ab01116c181c4a65d; CI on current code source 378a3f153fab820196cbec2e3169d10c52f5cb82 is pending. CI success is not ordinary review or merge approval.",
       "status": "PASS"
     },
     {
