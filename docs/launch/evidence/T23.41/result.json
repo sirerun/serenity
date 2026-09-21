@@ -2,8 +2,8 @@
   "task_id": "T23.41",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "fe905eca06c294287ca2ebcf76f7dd319df70577",
-  "recorded_at": "2026-09-21T10:15:15Z",
+  "source_sha": "5306141849fe6d71268433685c4ef605291f896f",
+  "recorded_at": "2026-09-21T10:23:17Z",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
@@ -20,7 +20,8 @@
     "GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp golangci-lint run --build-tags hostedtest ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
     "go vet ./internal/hosted/store",
     "go test ./internal/hosted/store",
-    "go test ./internal/hosted/contracts"
+    "go test ./internal/hosted/contracts",
+    "GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp golangci-lint run ./internal/hosted/store"
   ],
   "cases": {
     "planned": 49,
@@ -46,7 +47,7 @@
     {
       "criterion": "Existing hosted tests and file-first gate pass.",
       "expected": "go test -race -count=1 over ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate exits 0 with no skips.",
-      "observed": "Final command passed under R-build-lease f3e7db37b65b07c647685462f138a28e42cc073d: store, service, contracts, contractstest, testhooks and internal/gate all passed with race detection and no skips. Plain/tagged go vet and golangci-lint checks passed; the focused store vet/test passed. internal/gate was unchanged.",
+      "observed": "Final command passed under R-build-lease f34184ad190d586db973426ef806ffbdccbd29d7: store, service, contracts, contractstest, testhooks and internal/gate all passed with race detection and no skips. Plain/tagged go vet and golangci-lint checks passed; store-package vet, test and lint passed. internal/gate was unchanged. Remote CI was still running after a first lint run identified three unchecked test-resource closes; these are fixed in source 5306141 and the corrected local checks pass.",
       "status": "PASS"
     },
     {
@@ -175,7 +176,7 @@
     },
     {
       "path": "internal/hosted/store/migrations_test.go",
-      "sha256": "40c9322c1a3e5a51b91d6f9d28a2897964461a1cc98ba13042b7de849258bb25"
+      "sha256": "9ce2aae491c60b8152657d432e8dbd29c34f83a111398320954a2104ab40965a"
     },
     {
       "path": "internal/hosted/store/store.go",
@@ -220,12 +221,12 @@
     "authorization_refs": []
   },
   "limitations": [
-    "The chief-architect ruling is recorded at exact revision 218d7234d9abea5964f9d4640d1bfffe5c9f8087 and approves the four designs (storage conditionally). This branch now reconciles that ruling and adds migration v4, but ordinary PR code review and merge approval remain pending.",
+    "The chief-architect ruling is recorded at exact revision 218d7234d9abea5964f9d4640d1bfffe5c9f8087 and approves the four designs (storage conditionally). This branch reconciles that ruling and adds migration v4, but ordinary PR code review, green CI on the latest head and merge approval remain pending.",
     "S3 conditional create is documented (the coordinator's source check, s3-conditional-write-source-check.md) but was not qualified against the real bucket, bucket policy or CLI/SDK build. Task48 live qualification remains required.",
     "No MaxMutationStageBytes measurement exists, and no OS-enforced size limit under the staging area is designed or tested. StageMeter is cooperative accounting, so storage admission remains BLOCKED.",
     "Migration v4 adds the operation journal schema and constraints, but it does not implement the operation ledger, quota admission, transitions, or canonical reconciliation. No operation contract is wired under internal/hosted/service or internal/cli; task44 owns that work.",
     "Mutation checks on reference models and ManifestV2.Validate were run with throwaway scripts that are not committed; their resulting conformance cases are in the repository.",
-    "Disclosure: an earlier lease-held verification in this pass started with 15Gi free on the internal disk, below the 20GB hold, without redirecting caches to the offload volume; the final runs did redirect them. An earlier stray test process was stopped with a broad pkill pattern; later work killed only exact PIDs.",
+    "Disclosure: an earlier lease-held verification in this pass started with 15Gi free on the internal disk, below the 20GB hold, without redirecting caches to the offload volume; the final runs did redirect them. An earlier stray test process was stopped with a broad pkill pattern; later work killed only exact PIDs. The first pushed head also had three CI errcheck findings on test cleanup; these were corrected and retested locally in 5306141.",
     "Ajent inbox and search were used at session start; inbox cursor 144 contained no new posts and the focused search found no relevant prior finding. No Ajent publication has been made yet for this work.",
     "Gateway.ServeHTTP holds Gateway.mu across Pool.Acquire; documented in interfaces.md, not fixed (task45 scope).",
     "Storage headroom, retention window and other numeric values remain unset where they require task44 measurement or an operator decision.",
