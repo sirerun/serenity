@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "task_id": "T23.60",
+  "frozen": true,
+  "reviewer": null,
+  "review_date": null,
+  "status_note": "Proposed frozen targets transcribed verbatim from docs/tasks/hosted-completion/T23.60.md and docs/launch/hosted-completion/interfaces.md §Threshold review. Task41's reviewer must sign reviewer/review_date here before a --live or --measurements run is treated as an accepted capacity claim; a failed live result never authorizes a worker to edit these numbers.",
+  "phases": [
+    {"name": "warmup", "minutes": 10},
+    {"name": "steady", "minutes": 30},
+    {"name": "burst", "minutes": 5, "rate_multiplier": 2}
+  ],
+  "concurrency": {
+    "clients": 8,
+    "baseline_request_rate_per_s": 4
+  },
+  "traffic_mix": {"recall": 0.80, "remember": 0.15, "forget": 0.05},
+  "cold_brain_fraction": 0.20,
+  "hot_tenant_traffic_fraction": 0.50,
+  "hot_tenant_count": 1,
+  "query_tokens": {"min": 20, "max": 128},
+  "fact_tokens": {"min": 32, "max": 512},
+  "cardinalities": {
+    "paid": {"accounts": {"scale": 1, "builder": 3, "free": 10}, "total_facts": 90000},
+    "pilot": {"note": "pilot cardinalities match its separately approved cohort/caps; not frozen here."}
+  },
+  "quota_boundary_saturation": {
+    "separate_run": true,
+    "note": "Run after the steady-state eligible sample completes so expected 429s at the plan ceiling never hide unexpected failures in the main completion-rate stat."
+  },
+  "repetitions": 3,
+  "provider_failure_injection": {
+    "rate": 0.02,
+    "max_retries": 2,
+    "note": "Assumption pending live provider qualification (task42/65); models bounded retry, not an observed failure rate."
+  },
+  "thresholds": {
+    "cpu_max_pct": 70,
+    "rss_max_pct_of_ram": 80,
+    "disk_max_pct": 80,
+    "cold_ready_max_s": 60,
+    "recall_p95_max_s": 2,
+    "remember_p95_max_s": 3,
+    "min_offered_completion_pct": 99,
+    "unexpected_5xx_max_pct": 0.1,
+    "unexpected_admission_rejection_max_pct": 1,
+    "isolation_durability_errors_max": 0
+  }
+}

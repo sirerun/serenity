@@ -1,0 +1,172 @@
+{
+  "batched": {
+    "commits": 150,
+    "git_bytes": 105892649
+  },
+  "brains_measured": 15,
+  "brains_not_finished": [
+    "builder-1/1",
+    "builder-1/2",
+    "builder-2/1",
+    "builder-2/2",
+    "free-0/0",
+    "free-1/0",
+    "free-2/0",
+    "free-3/0",
+    "free-4/0",
+    "free-5/0",
+    "free-6/0",
+    "free-7/0",
+    "free-8/0",
+    "free-9/0"
+  ],
+  "brains_not_in_the_batched_fixture": [],
+  "extra_commits": 66533,
+  "extra_git_bytes": 89291119,
+  "extra_git_bytes_per_extra_commit": 1342.1,
+  "facts": 66668,
+  "per_brain": [
+    {
+      "commits_batched": 11,
+      "commits_per_write": 5001,
+      "facts": 5000,
+      "git_bytes_batched": 8140004,
+      "git_bytes_per_write": 14793759,
+      "index": 0,
+      "label": "scale-0"
+    },
+    {
+      "commits_batched": 11,
+      "commits_per_write": 5001,
+      "facts": 5000,
+      "git_bytes_batched": 7701355,
+      "git_bytes_per_write": 14483780,
+      "index": 1,
+      "label": "scale-0"
+    },
+    {
+      "commits_batched": 11,
+      "commits_per_write": 5001,
+      "facts": 5000,
+      "git_bytes_batched": 7716866,
+      "git_bytes_per_write": 14643308,
+      "index": 2,
+      "label": "scale-0"
+    },
+    {
+      "commits_batched": 11,
+      "commits_per_write": 5001,
+      "facts": 5000,
+      "git_bytes_batched": 8127386,
+      "git_bytes_per_write": 14337127,
+      "index": 3,
+      "label": "scale-0"
+    },
+    {
+      "commits_batched": 11,
+      "commits_per_write": 5001,
+      "facts": 5000,
+      "git_bytes_batched": 8154847,
+      "git_bytes_per_write": 14640996,
+      "index": 4,
+      "label": "scale-0"
+    },
+    {
+      "commits_batched": 11,
+      "commits_per_write": 5001,
+      "facts": 5000,
+      "git_bytes_batched": 7731261,
+      "git_bytes_per_write": 14547193,
+      "index": 5,
+      "label": "scale-0"
+    },
+    {
+      "commits_batched": 11,
+      "commits_per_write": 5001,
+      "facts": 5000,
+      "git_bytes_batched": 7687788,
+      "git_bytes_per_write": 14939463,
+      "index": 6,
+      "label": "scale-0"
+    },
+    {
+      "commits_batched": 11,
+      "commits_per_write": 5001,
+      "facts": 5000,
+      "git_bytes_batched": 7744332,
+      "git_bytes_per_write": 14802025,
+      "index": 7,
+      "label": "scale-0"
+    },
+    {
+      "commits_batched": 11,
+      "commits_per_write": 5001,
+      "facts": 5000,
+      "git_bytes_batched": 8194325,
+      "git_bytes_per_write": 15300039,
+      "index": 8,
+      "label": "scale-0"
+    },
+    {
+      "commits_batched": 11,
+      "commits_per_write": 5001,
+      "facts": 5000,
+      "git_bytes_batched": 8185355,
+      "git_bytes_per_write": 14544593,
+      "index": 9,
+      "label": "scale-0"
+    },
+    {
+      "commits_batched": 8,
+      "commits_per_write": 3335,
+      "facts": 3334,
+      "git_bytes_batched": 5306102,
+      "git_bytes_per_write": 9674025,
+      "index": 0,
+      "label": "builder-0"
+    },
+    {
+      "commits_batched": 8,
+      "commits_per_write": 3334,
+      "facts": 3333,
+      "git_bytes_batched": 5313540,
+      "git_bytes_per_write": 9735354,
+      "index": 1,
+      "label": "builder-0"
+    },
+    {
+      "commits_batched": 8,
+      "commits_per_write": 3334,
+      "facts": 3333,
+      "git_bytes_batched": 5295863,
+      "git_bytes_per_write": 9477088,
+      "index": 2,
+      "label": "builder-0"
+    },
+    {
+      "commits_batched": 8,
+      "commits_per_write": 3335,
+      "facts": 3334,
+      "git_bytes_batched": 5302587,
+      "git_bytes_per_write": 9417367,
+      "index": 0,
+      "label": "builder-1"
+    },
+    {
+      "commits_batched": 8,
+      "commits_per_write": 3335,
+      "facts": 3334,
+      "git_bytes_batched": 5291038,
+      "git_bytes_per_write": 9847651,
+      "index": 0,
+      "label": "builder-2"
+    }
+  ],
+  "per_write": {
+    "commits": 66683,
+    "git_bytes": 195183768
+  },
+  "schema": "serenity-hosted-load-partial-history-measurement",
+  "scope": "Per-write Git history on the brains that finished in an interrupted full preparation, paired with the same brains (same account label, brain index and facts) in a verified full fixture that batched its commits. Partial: not a whole-fixture number and not a production bound. Measured on this host's Git.",
+  "version": 1
+}

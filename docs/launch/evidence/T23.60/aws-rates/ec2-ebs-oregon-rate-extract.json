@@ -1,0 +1,169 @@
+{
+  "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/20260918212757/us-west-2/index.json",
+  "retrieved_at": "2026-09-19T04:16:28.417612+00:00",
+  "source_bytes": 474950676,
+  "source_sha256": "ec1e0d93973aa692ae4c350df1f52688b0c5b76abc2523a2d536e374dca8e904",
+  "source_metadata": {
+    "version": "20260918212757",
+    "publicationDate": "2026-09-18T21:27:57Z"
+  },
+  "elapsed_s": 35.16,
+  "products": {
+    "BB8UJWJ4XPFJB95G": {
+      "sku": "BB8UJWJ4XPFJB95G",
+      "productFamily": "Storage",
+      "attributes": {
+        "servicecode": "AmazonEC2",
+        "location": "US West (Oregon)",
+        "locationType": "AWS Region",
+        "storageMedia": "SSD-backed",
+        "volumeType": "General Purpose",
+        "maxVolumeSize": "64 TiB",
+        "maxIopsvolume": "80000",
+        "maxThroughputvolume": "2000 MiB/s",
+        "usagetype": "USW2-EBS:VolumeUsage.gp3",
+        "operation": "",
+        "regionCode": "us-west-2",
+        "servicename": "Amazon Elastic Compute Cloud",
+        "volumeApiName": "gp3"
+      }
+    },
+    "XBTB827YUJSN6SSV": {
+      "sku": "XBTB827YUJSN6SSV",
+      "productFamily": "System Operation",
+      "attributes": {
+        "servicecode": "AmazonEC2",
+        "location": "US West (Oregon)",
+        "locationType": "AWS Region",
+        "provisioned": "Yes",
+        "group": "EBS IOPS",
+        "groupDescription": "IOPS",
+        "usagetype": "USW2-EBS:VolumeP-IOPS.gp3",
+        "operation": "",
+        "regionCode": "us-west-2",
+        "servicename": "Amazon Elastic Compute Cloud",
+        "volumeApiName": "gp3"
+      }
+    },
+    "U8TTEWHUFZA4FZYG": {
+      "sku": "U8TTEWHUFZA4FZYG",
+      "productFamily": "CPU Credits",
+      "attributes": {
+        "servicecode": "AmazonEC2",
+        "location": "US West (Oregon)",
+        "locationType": "AWS Region",
+        "operatingSystem": "Linux",
+        "usagetype": "USW2-CPUCredits:t4g",
+        "operation": "T4GCPUCredits",
+        "instance": "T4G",
+        "instanceFamilyCategory": "General Purpose",
+        "marketoption": "OnDemand",
+        "regionCode": "us-west-2",
+        "servicename": "Amazon Elastic Compute Cloud"
+      }
+    },
+    "3MQHJKUUZSKTF82F": {
+      "sku": "3MQHJKUUZSKTF82F",
+      "productFamily": "Provisioned Throughput",
+      "attributes": {
+        "servicecode": "AmazonEC2",
+        "location": "US West (Oregon)",
+        "locationType": "AWS Region",
+        "provisioned": "Yes",
+        "group": "EBS Throughput",
+        "groupDescription": "Charge per Provisioned mbps",
+        "usagetype": "USW2-EBS:VolumeP-Throughput.gp3",
+        "operation": "",
+        "regionCode": "us-west-2",
+        "servicename": "Amazon Elastic Compute Cloud",
+        "volumeApiName": "gp3"
+      }
+    }
+  },
+  "on_demand_terms": {
+    "3MQHJKUUZSKTF82F": {
+      "3MQHJKUUZSKTF82F.JRTCKXETXF": {
+        "offerTermCode": "JRTCKXETXF",
+        "sku": "3MQHJKUUZSKTF82F",
+        "effectiveDate": "2026-09-01T00:00:00Z",
+        "priceDimensions": {
+          "3MQHJKUUZSKTF82F.JRTCKXETXF.6YS6EN2CT7": {
+            "rateCode": "3MQHJKUUZSKTF82F.JRTCKXETXF.6YS6EN2CT7",
+            "description": "$0.04 per provisioned MiBps-month of gp3 - US West (Oregon)",
+            "beginRange": "0",
+            "endRange": "Inf",
+            "unit": "GiBps-mo",
+            "pricePerUnit": {
+              "USD": "40.9600000000"
+            },
+            "appliesTo": []
+          }
+        },
+        "termAttributes": {}
+      }
+    },
+    "U8TTEWHUFZA4FZYG": {
+      "U8TTEWHUFZA4FZYG.JRTCKXETXF": {
+        "offerTermCode": "JRTCKXETXF",
+        "sku": "U8TTEWHUFZA4FZYG",
+        "effectiveDate": "2026-09-01T00:00:00Z",
+        "priceDimensions": {
+          "U8TTEWHUFZA4FZYG.JRTCKXETXF.6YS6EN2CT7": {
+            "rateCode": "U8TTEWHUFZA4FZYG.JRTCKXETXF.6YS6EN2CT7",
+            "description": "$0.04 per vCPU-Hour of T4G CPU Credits",
+            "beginRange": "0",
+            "endRange": "Inf",
+            "unit": "vCPU-Hours",
+            "pricePerUnit": {
+              "USD": "0.0400000000"
+            },
+            "appliesTo": []
+          }
+        },
+        "termAttributes": {}
+      }
+    },
+    "XBTB827YUJSN6SSV": {
+      "XBTB827YUJSN6SSV.JRTCKXETXF": {
+        "offerTermCode": "JRTCKXETXF",
+        "sku": "XBTB827YUJSN6SSV",
+        "effectiveDate": "2026-09-01T00:00:00Z",
+        "priceDimensions": {
+          "XBTB827YUJSN6SSV.JRTCKXETXF.6YS6EN2CT7": {
+            "rateCode": "XBTB827YUJSN6SSV.JRTCKXETXF.6YS6EN2CT7",
+            "description": "$0.005 per provisioned IOPS-month of gp3 - US West (Oregon)",
+            "beginRange": "0",
+            "endRange": "Inf",
+            "unit": "IOPS-Mo",
+            "pricePerUnit": {
+              "USD": "0.0050000000"
+            },
+            "appliesTo": []
+          }
+        },
+        "termAttributes": {}
+      }
+    },
+    "BB8UJWJ4XPFJB95G": {
+      "BB8UJWJ4XPFJB95G.JRTCKXETXF": {
+        "offerTermCode": "JRTCKXETXF",
+        "sku": "BB8UJWJ4XPFJB95G",
+        "effectiveDate": "2026-09-01T00:00:00Z",
+        "priceDimensions": {
+          "BB8UJWJ4XPFJB95G.JRTCKXETXF.6YS6EN2CT7": {
+            "rateCode": "BB8UJWJ4XPFJB95G.JRTCKXETXF.6YS6EN2CT7",
+            "description": "$0.08 per GB-month of General Purpose (gp3) provisioned storage - US West (Oregon)",
+            "beginRange": "0",
+            "endRange": "Inf",
+            "unit": "GB-Mo",
+            "pricePerUnit": {
+              "USD": "0.0800000000"
+            },
+            "appliesTo": []
+          }
+        },
+        "termAttributes": {}
+      }
+    }
+  }
+}

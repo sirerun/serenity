@@ -1,0 +1,518 @@
+{
+  "retrieved_at": "2026-09-19T04:18:51.156382+00:00",
+  "region": "us-west-2",
+  "sources": [
+    {
+      "service": "awskms",
+      "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/awskms/current/us-west-2/index.json",
+      "version": "20260911124601",
+      "publicationDate": "2026-09-11T12:46:01Z",
+      "sha256": "1b76589db555229b457c8d8c22549bd4b39ed20ff70b8eacc37fc1871b9f4ed7",
+      "products": {
+        "SE9KXT6M6JTP7E4W": {
+          "sku": "SE9KXT6M6JTP7E4W",
+          "productFamily": "API Request",
+          "attributes": {
+            "servicecode": "awskms",
+            "location": "US West (Oregon)",
+            "locationType": "AWS Region",
+            "group": "awskms-APIRequest-All",
+            "groupDescription": "All AWS KMS API requests",
+            "usagetype": "us-west-2-KMS-Requests",
+            "operation": "",
+            "regionCode": "us-west-2",
+            "servicename": "AWS Key Management Service"
+          }
+        },
+        "S8HBXBVJKWKDP9AS": {
+          "sku": "S8HBXBVJKWKDP9AS",
+          "productFamily": "Encryption Key",
+          "attributes": {
+            "servicecode": "awskms",
+            "location": "US West (Oregon)",
+            "locationType": "AWS Region",
+            "usagetype": "us-west-2-KMS-Keys",
+            "operation": "",
+            "regionCode": "us-west-2",
+            "servicename": "AWS Key Management Service"
+          }
+        },
+        "VTFSAGP364M6QE4A": {
+          "sku": "VTFSAGP364M6QE4A",
+          "productFamily": "Bundle",
+          "attributes": {
+            "servicecode": "awskms",
+            "location": "Any",
+            "locationType": "Other",
+            "group": "awskms-Requests",
+            "groupDescription": "Monthly free usage of KMS API Requests",
+            "usagetype": "Global-KMS-Requests",
+            "operation": "",
+            "regionCode": "",
+            "servicename": "AWS Key Management Service"
+          }
+        }
+      },
+      "terms": {
+        "SE9KXT6M6JTP7E4W": {
+          "SE9KXT6M6JTP7E4W.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "SE9KXT6M6JTP7E4W",
+            "effectiveDate": "2025-07-01T00:00:00Z",
+            "priceDimensions": {
+              "SE9KXT6M6JTP7E4W.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "SE9KXT6M6JTP7E4W.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$0.03 per 10000 KMS requests in US West (Oregon)",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "Requests",
+                "pricePerUnit": {
+                  "USD": "0.0000030000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        },
+        "S8HBXBVJKWKDP9AS": {
+          "S8HBXBVJKWKDP9AS.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "S8HBXBVJKWKDP9AS",
+            "effectiveDate": "2025-07-01T00:00:00Z",
+            "priceDimensions": {
+              "S8HBXBVJKWKDP9AS.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "S8HBXBVJKWKDP9AS.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$1 per customer managed KMS key version in US West (Oregon)",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "Keys",
+                "pricePerUnit": {
+                  "USD": "1.0000000000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        },
+        "VTFSAGP364M6QE4A": {
+          "VTFSAGP364M6QE4A.A429C66SYZ": {
+            "offerTermCode": "A429C66SYZ",
+            "sku": "VTFSAGP364M6QE4A",
+            "effectiveDate": "2025-07-01T00:00:00Z",
+            "priceDimensions": {
+              "VTFSAGP364M6QE4A.A429C66SYZ.7K6Z2V4Y4Q": {
+                "rateCode": "VTFSAGP364M6QE4A.A429C66SYZ.7K6Z2V4Y4Q",
+                "description": "$0.00 per request - Monthly Global Free Tier for KMS requests",
+                "beginRange": "0",
+                "endRange": "20000",
+                "unit": "Requests",
+                "pricePerUnit": {
+                  "USD": "0.0000000000"
+                },
+                "appliesTo": [
+                  "A3247YR2SJRYKDEX",
+                  "MFEBZPX8NHM5FY7Z",
+                  "GAG46BCKTJNCPRCD",
+                  "H4VQ25AJP5STBY2V",
+                  "MG69RRR3V9FG2YMF",
+                  "WCDV7H2SEWSQDPHE",
+                  "2S77H5MZU5BVWEXS",
+                  "GKJ2WA9PUPY889NV",
+                  "8XH9DBV4329CDSSS",
+                  "74AFRTWKY4BVPBF7",
+                  "22NGFM2U7FQGBC49",
+                  "EZCZH4NG992U5FTR",
+                  "XV5CERB5VJ728MSB",
+                  "KHS2JMB7WKYW8C7Z",
+                  "GNYCWMXMCTZC5JHT",
+                  "Y2YQ2HC2B26TT67Y",
+                  "UM499D63PU3S76VD",
+                  "5Y7QS22JD2KZBNBG",
+                  "9XXHSZC4PS7S6AY2",
+                  "UBKP744W7HW7MT76",
+                  "GKZE5RA8VKSV68NC",
+                  "H9GF6XQC7UBUWPRJ",
+                  "49JKURJSSQHXXAKH",
+                  "4H6XVYZMMD8MKVZD",
+                  "7AVHXGCZK6D9ARBK",
+                  "3QRVDNCQFVZRB88M",
+                  "HZSWET2JVDK3QKYM",
+                  "N8ZHDTY86X2AN7DE",
+                  "MPVASE9XEU8AVWM6",
+                  "23PVFMNC6R4J3AB6",
+                  "QCRBRVP4WHFE4RN9",
+                  "SE9KXT6M6JTP7E4W",
+                  "2V8H8RKD5G49TF84",
+                  "ERNZKT7S85V564AK",
+                  "SN4PUPSHPREACEHV",
+                  "ZXP6ZS4WWG9FNXHG",
+                  "EVSMZX4D7HGSBAQF"
+                ]
+              }
+            },
+            "termAttributes": {
+              "Restriction": "Limited SKU Usage"
+            }
+          }
+        }
+      }
+    },
+    {
+      "service": "AWSSecretsManager",
+      "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSSecretsManager/current/us-west-2/index.json",
+      "version": "20260911124610",
+      "publicationDate": "2026-09-11T12:46:10Z",
+      "sha256": "eca00c993943f761212d1df8cc90dd12f85b85e9f865ce2f82379baa99c4ce7b",
+      "products": {
+        "AEBQHWFEG8Q4Y7AT": {
+          "sku": "AEBQHWFEG8Q4Y7AT",
+          "productFamily": "API Request",
+          "attributes": {
+            "servicecode": "AWSSecretsManager",
+            "location": "US West (Oregon)",
+            "locationType": "AWS Region",
+            "group": "AWSSecretsManager-APIRequest",
+            "usagetype": "USW2-AWSSecretsManagerAPIRequest",
+            "operation": "",
+            "regionCode": "us-west-2",
+            "servicename": "AWS Secrets Manager"
+          }
+        },
+        "DWJP9S4V3HP98UNC": {
+          "sku": "DWJP9S4V3HP98UNC",
+          "productFamily": "Secret",
+          "attributes": {
+            "servicecode": "AWSSecretsManager",
+            "location": "US West (Oregon)",
+            "locationType": "AWS Region",
+            "group": "AWSSecretsManager-Secret",
+            "usagetype": "USW2-AWSSecretsManager-Secrets",
+            "operation": "",
+            "regionCode": "us-west-2",
+            "servicename": "AWS Secrets Manager"
+          }
+        }
+      },
+      "terms": {
+        "AEBQHWFEG8Q4Y7AT": {
+          "AEBQHWFEG8Q4Y7AT.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "AEBQHWFEG8Q4Y7AT",
+            "effectiveDate": "2025-07-01T00:00:00Z",
+            "priceDimensions": {
+              "AEBQHWFEG8Q4Y7AT.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "AEBQHWFEG8Q4Y7AT.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$0.05 per 10000 API Requests",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "API Requests",
+                "pricePerUnit": {
+                  "USD": "0.0000050000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        },
+        "DWJP9S4V3HP98UNC": {
+          "DWJP9S4V3HP98UNC.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "DWJP9S4V3HP98UNC",
+            "effectiveDate": "2025-07-01T00:00:00Z",
+            "priceDimensions": {
+              "DWJP9S4V3HP98UNC.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "DWJP9S4V3HP98UNC.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$0.40 per Secret",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "Secrets",
+                "pricePerUnit": {
+                  "USD": "0.4000000000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        }
+      }
+    },
+    {
+      "service": "AmazonVPC",
+      "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonVPC/current/us-west-2/index.json",
+      "version": "20260917190528",
+      "publicationDate": "2026-09-17T19:05:28Z",
+      "sha256": "135af0c0e46094eb449afcd990a970fded51f409a3998c727ac0bad09e09a0e8",
+      "products": {
+        "NBHXEKTE88TJDDQF": {
+          "sku": "NBHXEKTE88TJDDQF",
+          "attributes": {
+            "servicecode": "AmazonVPC",
+            "location": "US West (Oregon)",
+            "locationType": "AWS Region",
+            "group": "VPCPublicIPv4Address",
+            "groupDescription": "Hourly charge for In-use Public IPv4 Addresses",
+            "usagetype": "USW2-PublicIPv4:InUseAddress",
+            "operation": "",
+            "regionCode": "us-west-2",
+            "servicename": "Amazon Virtual Private Cloud"
+          }
+        },
+        "4KKZ7RH6GMEH6Q4Q": {
+          "sku": "4KKZ7RH6GMEH6Q4Q",
+          "attributes": {
+            "servicecode": "AmazonVPC",
+            "location": "US West (Oregon)",
+            "locationType": "AWS Region",
+            "group": "VPCPublicIPv4Address",
+            "groupDescription": "Hourly charge for Idle Public IPv4 Addresses",
+            "usagetype": "USW2-PublicIPv4:IdleAddress",
+            "operation": "",
+            "regionCode": "us-west-2",
+            "servicename": "Amazon Virtual Private Cloud"
+          }
+        }
+      },
+      "terms": {
+        "NBHXEKTE88TJDDQF": {
+          "NBHXEKTE88TJDDQF.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "NBHXEKTE88TJDDQF",
+            "effectiveDate": "2026-09-01T00:00:00Z",
+            "priceDimensions": {
+              "NBHXEKTE88TJDDQF.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "NBHXEKTE88TJDDQF.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$0.005 per In-use public IPv4 address per hour",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "Hrs",
+                "pricePerUnit": {
+                  "USD": "0.0050000000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        },
+        "4KKZ7RH6GMEH6Q4Q": {
+          "4KKZ7RH6GMEH6Q4Q.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "4KKZ7RH6GMEH6Q4Q",
+            "effectiveDate": "2026-09-01T00:00:00Z",
+            "priceDimensions": {
+              "4KKZ7RH6GMEH6Q4Q.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "4KKZ7RH6GMEH6Q4Q.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$0.005 per Idle public IPv4 address per hour",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "Hrs",
+                "pricePerUnit": {
+                  "USD": "0.0050000000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        }
+      }
+    },
+    {
+      "service": "AmazonCloudWatch",
+      "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/current/us-west-2/index.json",
+      "version": "20260918142158",
+      "publicationDate": "2026-09-18T14:21:58Z",
+      "sha256": "cbc665d7f5c6ebf83792a44f342ce10c0e002dc2bf128d5b0b8ea088160c6c21",
+      "products": {
+        "CN6TP6ZEVS58RK7M": {
+          "sku": "CN6TP6ZEVS58RK7M",
+          "productFamily": "Metric",
+          "attributes": {
+            "servicecode": "AmazonCloudWatch",
+            "location": "US West (Oregon)",
+            "locationType": "AWS Region",
+            "group": "Metric",
+            "groupDescription": "CloudWatch Custom Metrics",
+            "usagetype": "USW2-CW:MetricMonitorUsage",
+            "operation": "",
+            "regionCode": "us-west-2",
+            "servicename": "AmazonCloudWatch"
+          }
+        },
+        "SJTFAZNHSW2WVZB2": {
+          "sku": "SJTFAZNHSW2WVZB2",
+          "productFamily": "Alarm",
+          "attributes": {
+            "servicecode": "AmazonCloudWatch",
+            "location": "US West (Oregon)",
+            "locationType": "AWS Region",
+            "group": "Alarm",
+            "groupDescription": "CloudWatch Alarms",
+            "usagetype": "USW2-CW:AlarmMonitorUsage",
+            "operation": "",
+            "alarmType": "Standard",
+            "regionCode": "us-west-2",
+            "servicename": "AmazonCloudWatch"
+          }
+        },
+        "CWY7X4MZ4F3MP5SD": {
+          "sku": "CWY7X4MZ4F3MP5SD",
+          "productFamily": "Data Payload",
+          "attributes": {
+            "servicecode": "AmazonCloudWatch",
+            "location": "US West (Oregon)",
+            "locationType": "AWS Region",
+            "group": "Ingested Logs",
+            "groupDescription": "Existing system, application, and custom log files",
+            "usagetype": "USW2-DataProcessing-Bytes",
+            "operation": "PutLogEvents",
+            "logsDestination": "Amazon CloudWatch Logs",
+            "regionCode": "us-west-2",
+            "servicename": "AmazonCloudWatch",
+            "version": "Current"
+          }
+        },
+        "MN45SJANDTCPR9QA": {
+          "sku": "MN45SJANDTCPR9QA",
+          "productFamily": "Storage Snapshot",
+          "attributes": {
+            "servicecode": "AmazonCloudWatch",
+            "location": "US West (Oregon)",
+            "locationType": "AWS Region",
+            "storageMedia": "Amazon S3",
+            "group": "Amazon CloudWatch Standard Storage pricing current",
+            "groupDescription": "Amazon CloudWatch Logs Storage Current version",
+            "usagetype": "USW2-TimedStorage-ByteHrs",
+            "operation": "",
+            "regionCode": "us-west-2",
+            "servicename": "AmazonCloudWatch",
+            "version": "Current"
+          }
+        }
+      },
+      "terms": {
+        "CN6TP6ZEVS58RK7M": {
+          "CN6TP6ZEVS58RK7M.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "CN6TP6ZEVS58RK7M",
+            "effectiveDate": "2026-08-01T00:00:00Z",
+            "priceDimensions": {
+              "CN6TP6ZEVS58RK7M.JRTCKXETXF.A6VD9GXV7W": {
+                "rateCode": "CN6TP6ZEVS58RK7M.JRTCKXETXF.A6VD9GXV7W",
+                "description": "$0.30 per metric-month for the first 10,000 metrics - US West (Oregon)",
+                "beginRange": "0",
+                "endRange": "10000",
+                "unit": "Metrics",
+                "pricePerUnit": {
+                  "USD": "0.3000000000"
+                },
+                "appliesTo": []
+              },
+              "CN6TP6ZEVS58RK7M.JRTCKXETXF.FG3KHZ79QN": {
+                "rateCode": "CN6TP6ZEVS58RK7M.JRTCKXETXF.FG3KHZ79QN",
+                "description": "$0.10 per metric-month for the next 240,000 metrics - US West (Oregon)",
+                "beginRange": "10000",
+                "endRange": "250000",
+                "unit": "Metrics",
+                "pricePerUnit": {
+                  "USD": "0.1000000000"
+                },
+                "appliesTo": []
+              },
+              "CN6TP6ZEVS58RK7M.JRTCKXETXF.95SDKRWVHH": {
+                "rateCode": "CN6TP6ZEVS58RK7M.JRTCKXETXF.95SDKRWVHH",
+                "description": "$0.05 per metric-month for the next 750,000 metrics - US West (Oregon)",
+                "beginRange": "250000",
+                "endRange": "1000000",
+                "unit": "Metrics",
+                "pricePerUnit": {
+                  "USD": "0.0500000000"
+                },
+                "appliesTo": []
+              },
+              "CN6TP6ZEVS58RK7M.JRTCKXETXF.VNJQCFJPS4": {
+                "rateCode": "CN6TP6ZEVS58RK7M.JRTCKXETXF.VNJQCFJPS4",
+                "description": "$0.02 per metric-month for over 1,000,000 metrics - US West (Oregon)",
+                "beginRange": "1000000",
+                "endRange": "Inf",
+                "unit": "Metrics",
+                "pricePerUnit": {
+                  "USD": "0.0200000000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        },
+        "SJTFAZNHSW2WVZB2": {
+          "SJTFAZNHSW2WVZB2.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "SJTFAZNHSW2WVZB2",
+            "effectiveDate": "2026-08-01T00:00:00Z",
+            "priceDimensions": {
+              "SJTFAZNHSW2WVZB2.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "SJTFAZNHSW2WVZB2.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$0.10 per alarm metric month (standard resolution) - US West (Oregon)",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "Alarms",
+                "pricePerUnit": {
+                  "USD": "0.1000000000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        },
+        "CWY7X4MZ4F3MP5SD": {
+          "CWY7X4MZ4F3MP5SD.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "CWY7X4MZ4F3MP5SD",
+            "effectiveDate": "2026-08-01T00:00:00Z",
+            "priceDimensions": {
+              "CWY7X4MZ4F3MP5SD.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "CWY7X4MZ4F3MP5SD.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$0.50 per GB custom log data ingested in Standard log class - US West (Oregon)",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "GB",
+                "pricePerUnit": {
+                  "USD": "0.5000000000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        },
+        "MN45SJANDTCPR9QA": {
+          "MN45SJANDTCPR9QA.JRTCKXETXF": {
+            "offerTermCode": "JRTCKXETXF",
+            "sku": "MN45SJANDTCPR9QA",
+            "effectiveDate": "2026-08-01T00:00:00Z",
+            "priceDimensions": {
+              "MN45SJANDTCPR9QA.JRTCKXETXF.6YS6EN2CT7": {
+                "rateCode": "MN45SJANDTCPR9QA.JRTCKXETXF.6YS6EN2CT7",
+                "description": "$0.03 per GB-mo of log storage - US West (Oregon)",
+                "beginRange": "0",
+                "endRange": "Inf",
+                "unit": "GB-Mo",
+                "pricePerUnit": {
+                  "USD": "0.0300000000"
+                },
+                "appliesTo": []
+              }
+            },
+            "termAttributes": {}
+          }
+        }
+      }
+    }
+  ]
+}

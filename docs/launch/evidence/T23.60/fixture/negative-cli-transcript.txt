@@ -1,0 +1,18 @@
+# fixtureprep verify: fail-closed transcript (T23.60)
+# Each row runs the final verify binary on a scratch copy of the reduced smoke fixture (290 memories) and records exit code and failing check ids.
+# exit 0 = pass, 1 = differences found, 2 = refusal or usage error. The control row must pass; every other row must not.
+# The interrupted-preparation row runs against a real interrupted full preparation (marker status "preparing").
+# source c23d068e78f20553196cbe7f1c3ff24439e51864, verify binary sha256 362737b932208e2b19aff9c3a53d40b40054b4df7d40454971242745bb13649f
+control: untouched copy, -expect smoke                     exit=0 failing_checks=- stderr=
+missing directory                                          exit=2 failing_checks=- stderr=fixtureprep: fixtureprep: guardrail refused: neg-does-not-exist has no FIXTURE-ONLY.json: it is not a fixture this tool prepared 
+empty directory (no marker)                                exit=2 failing_checks=- stderr=fixtureprep: fixtureprep: guardrail refused: neg-empty has no FIXTURE-ONLY.json: it is not a fixture this tool prepared 
+interrupted preparation (marker status preparing)          exit=2 failing_checks=- stderr=fixtureprep: fixtureprep: guardrail refused: marker status is "preparing", not "prepared": preparation did not finish 
+smoke fixture verified as full                             exit=1 failing_checks=marker.profile_equals_expectation,total.canonical_memory_facts,total.index_fact_chunks,total.index_vectors_under_pin,brains.every_brain_matches_its_planned_state,accounts.memories_equal_plan_and_full_profile_is_at_the_plan_cap,gateway.remember_limit_rule_at_the_cap stderr=
+no -expect given                                           exit=2 failing_checks=- stderr=fixtureprep: -dir and -expect are required 
+one bit flipped in one canonical fact                      exit=1 failing_checks=total.canonical_memory_facts,total.index_vectors_under_pin,brains.every_brain_matches_its_planned_state,accounts.memories_equal_plan_and_full_profile_is_at_the_plan_cap,gateway.inventory_readable_for_every_account stderr=
+one canonical fact directory removed                       exit=1 failing_checks=total.canonical_memory_facts,total.index_vectors_under_pin,brains.every_brain_matches_its_planned_state,accounts.memories_equal_plan_and_full_profile_is_at_the_plan_cap stderr=
+marker removed                                             exit=2 failing_checks=- stderr=fixtureprep: fixtureprep: guardrail refused: neg-nomarker has no FIXTURE-ONLY.json: it is not a fixture this tool prepared 
+one credential file removed                                exit=1 failing_checks=credential_files.private_and_present stderr=
+control database removed                                   exit=1 failing_checks=control_db.accounts_readable,brains_dir.no_directory_without_a_database_brain,total.canonical_memory_facts,total.index_fact_chunks,total.index_vectors_under_pin,brains.every_brain_matches_its_planned_state,accounts.memories_equal_plan_and_full_profile_is_at_the_plan_cap,gateway.control_db_copy stderr=
+one brain's index database removed                         exit=1 failing_checks=total.index_fact_chunks,total.index_vectors_under_pin,brains.every_brain_matches_its_planned_state stderr=
+one brain's config pin changed                             exit=1 failing_checks=brains.every_brain_matches_its_planned_state stderr=

@@ -1,0 +1,28 @@
+{
+  "source": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-west-2/index.json",
+  "retrieved_at": "2026-09-19T01:25:12.369318+00:00",
+  "publication_date": "2026-09-18T17:47:47Z",
+  "rates": [
+    {
+      "sku": "Z3FQZG73HYSPVABR",
+      "location": "US West (Oregon)",
+      "description": "$0.023 per GB - first 50 TB / month of storage used",
+      "begin_range": "0",
+      "usd": "0.0230000000"
+    },
+    {
+      "sku": "Z3FQZG73HYSPVABR",
+      "location": "US West (Oregon)",
+      "description": "$0.022 per GB - next 450 TB / month of storage used",
+      "begin_range": "51200",
+      "usd": "0.0220000000"
+    },
+    {
+      "sku": "Z3FQZG73HYSPVABR",
+      "location": "US West (Oregon)",
+      "description": "$0.021 per GB - storage used / month over 500 TB",
+      "begin_range": "512000",
+      "usd": "0.0210000000"
+    }
+  ]
+}

@@ -1,0 +1,344 @@
+{
+  "at_the_memory_cap": {
+    "accounts_at_cap": 14,
+    "accounts_whose_gateway_limit_inputs_refuse_a_remember": 14,
+    "consequence": "The gateway refuses every further nonreplay remember on an account at its plan memory cap with limit_exceeded (class quota, outcome tool_error). The refusal is computed from the gateway's own Inventory and Entitlement on this fixture and the rule in internal/hosted/gateway/gateway.go; no request was sent and no service ran. See decision-request-full-cardinality-eligible-traffic.md."
+  },
+  "client_reach": {
+    "facts_on_default_brains": 25002,
+    "facts_on_other_brains": 64998,
+    "note": "The current load client reads one credential per account, bound to the default brain. Facts on other brains count toward the account's memory total and are unreachable by that client."
+  },
+  "fixtureprep_binary_sha256": {
+    "prepare": "fda5750a9a0728c0e82c441324d7555a291b7e8bc0c2c9571eb6978eba0afba2",
+    "verify": "362737b932208e2b19aff9c3a53d40b40054b4df7d40454971242745bb13649f"
+  },
+  "full": {
+    "by_plan": {
+      "builder": {
+        "accounts": 3,
+        "accounts_at_memory_cap": 3,
+        "largest_share_of_storage_quota": 0.076442,
+        "memories": 30000,
+        "memory_cap_each": 10000,
+        "storage_bytes": 228968187,
+        "storage_quota_each": 1000000000
+      },
+      "free": {
+        "accounts": 10,
+        "accounts_at_memory_cap": 10,
+        "largest_share_of_storage_quota": 0.078053,
+        "memories": 10000,
+        "memory_cap_each": 1000,
+        "storage_bytes": 77019072,
+        "storage_quota_each": 100000000
+      },
+      "scale": {
+        "accounts": 1,
+        "accounts_at_memory_cap": 1,
+        "largest_share_of_storage_quota": 0.075923,
+        "memories": 50000,
+        "memory_cap_each": 50000,
+        "storage_bytes": 379616950,
+        "storage_quota_each": 5000000000
+      }
+    },
+    "commit_every": 500,
+    "embedder_dim": 64,
+    "embedder_pin": "fixture-hash-embedder-d64@infrastructure-only-v1",
+    "facts_on_default_brains": 25002,
+    "facts_on_other_brains": 64998,
+    "fixture_identity": {
+      "content_sha256": "6470c220e508a760a706d513ce3c95a8e6a69c587edeaac75c052f89e805acd5",
+      "content_sha256_meaning": "sha256 over each brain's sorted fact SHA-256 list, in plan order. Two preparations of the same profile give the same value; brain ids, credentials, timestamps and Git history do not enter it.",
+      "control_db_sha256": "d6748ead902ec4983cadd3e52f0276c93958995395585035021bc452f0ad889f",
+      "marker_sha256": "15ddbc70bac9c267271d6beb99922e60307bb61f6c4ebc57ae3041191b6d669b",
+      "workload_sha256": "2aa7c9b8e266036c9e28df583e99877fd6936416c3b88723b9c7d367a324d990"
+    },
+    "gateway_cross_check": {
+      "accounts": 14,
+      "entitlement_equals_planned_plan": 14,
+      "inventory_memories_equal_verifier": 14,
+      "inventory_storage_bytes_equal_verifier": 14,
+      "limit_inputs_refuse_a_nonreplay_remember": 14
+    },
+    "profile": "full",
+    "reduced": false,
+    "satisfies_full_cardinality": true,
+    "storage_and_history_gap": {
+      "accounts_at_or_over_storage_quota": 0,
+      "allocated_bytes_all_brains": 1248288768,
+      "component_share_of_storage": {
+        ".git": 0.2088,
+        ".serenity": 0.5079,
+        "brain": 0.2833,
+        "other": 0.0001
+      },
+      "files_all_brains": 181044,
+      "storage_bytes_all_brains": 685604209,
+      "storage_bytes_by_component": {
+        ".git": 143166214,
+        ".serenity": 348184576,
+        "brain": 194207512,
+        "other": 45907
+      }
+    },
+    "totals": {
+      "accounts": 14,
+      "brains": 29,
+      "canonical_memory_facts": 90000,
+      "git_commits_all_brains": 212,
+      "index_fact_chunks": 90000,
+      "index_vectors_under_pin": 90000
+    },
+    "verification_report_sha256": "bcfa01dc415ff7dbb3cd2e1e60f9ebb70fff8f4f6ea208f7ab16f48dd5fdb451"
+  },
+  "independent_recount": {
+    "full": {
+      "content_sha256": "6470c220e508a760a706d513ce3c95a8e6a69c587edeaac75c052f89e805acd5",
+      "content_sha256_equals_verifier": true,
+      "distinct_fact_sha256": 90000,
+      "facts": 90000,
+      "recount_report_sha256": "0c6d87b0ec4976c26241053a0e97f67ee30c44f0802718a4f09dd309ef0ba236"
+    },
+    "full_wide": {
+      "content_sha256": "6470c220e508a760a706d513ce3c95a8e6a69c587edeaac75c052f89e805acd5",
+      "content_sha256_equals_verifier": true,
+      "distinct_fact_sha256": 90000,
+      "facts": 90000,
+      "recount_report_sha256": "0c6d87b0ec4976c26241053a0e97f67ee30c44f0802718a4f09dd309ef0ba236"
+    },
+    "history_batched": {
+      "content_sha256": "30ef42099c33590599518f4dc02a07ab92035241c6ea614733b3b8d1e4df383c",
+      "content_sha256_equals_verifier": true,
+      "distinct_fact_sha256": 2900,
+      "facts": 2900,
+      "recount_report_sha256": "ef6c87e8dcbda7d1a3de7a299c4d9e3adcbbfc6b3f12b2c966bfeee9a8fe7244"
+    },
+    "history_per_write": {
+      "content_sha256": "30ef42099c33590599518f4dc02a07ab92035241c6ea614733b3b8d1e4df383c",
+      "content_sha256_equals_verifier": true,
+      "distinct_fact_sha256": 2900,
+      "facts": 2900,
+      "recount_report_sha256": "ef6c87e8dcbda7d1a3de7a299c4d9e3adcbbfc6b3f12b2c966bfeee9a8fe7244"
+    },
+    "scope": "A second reading of each named fixture by evals/hosted-load/fixture_recount.py, stdlib Python that shares no code with the Go verifier. It recounts accounts, brains and canonical fact files, checks content addressing, and recomputes the content digest. It does not read the index, vectors, Git history, storage or credentials.",
+    "smoke": {
+      "content_sha256": "83c72b0143e05564b135bee759ed19ec07a01d33e2895e5b858f5cee00441fb0",
+      "content_sha256_equals_verifier": true,
+      "distinct_fact_sha256": 290,
+      "facts": 290,
+      "recount_report_sha256": "e9e4d79257dc600582c2223445a0db1f96b16f16aeae47505bb944bdbc306b88"
+    }
+  },
+  "labels": {
+    "kind": "infrastructure-only offline fixture preparation and inventory",
+    "not_a_qualification": "Not a cold-open, load, latency, steady-state or storage-saturation result. No service ran.",
+    "provider_quality": "unqualified: vectors come from a hash embedder (fixture-hash-embedder-d64@infrastructure-only-v1). They say nothing about retrieval or provider quality, and their width is a fixture parameter, not the pinned provider's.",
+    "reduced_smoke_vs_full": "'smoke' is a labeled reduced preparation (29 brains, few facts each) and never satisfies the 90,000-memory, 29-brain cardinalities. 'full' holds exactly 14 accounts, 29 brains and 90,000 memories."
+  },
+  "preparer_timing": {
+    "full_b500": {
+      "build_seconds": 776.31,
+      "commit_every": 500,
+      "per_fact_ms_wall": 8.626,
+      "setup_seconds": 0.02,
+      "total_seconds": 776.333,
+      "workers": 2,
+      "writer_lock_retries": 2
+    },
+    "full_d1536": {
+      "build_seconds": 1210.292,
+      "commit_every": 500,
+      "per_fact_ms_wall": 13.448,
+      "setup_seconds": 0.022,
+      "total_seconds": 1210.329,
+      "workers": 2,
+      "writer_lock_retries": 0
+    },
+    "note": "Wall time from the preparer's own clock, copied from its manifest. The verifier does not read it, and it is not a service latency.",
+    "smoke100_b1": {
+      "build_seconds": 284.08,
+      "commit_every": 1,
+      "per_fact_ms_wall": 97.959,
+      "setup_seconds": 0.067,
+      "total_seconds": 284.154,
+      "workers": 1,
+      "writer_lock_retries": 0
+    },
+    "smoke100_b500": {
+      "build_seconds": 96.999,
+      "commit_every": 500,
+      "per_fact_ms_wall": 33.448,
+      "setup_seconds": 0.042,
+      "total_seconds": 97.047,
+      "workers": 1,
+      "writer_lock_retries": 0
+    },
+    "smoke10_b500": {
+      "build_seconds": 14.527,
+      "commit_every": 500,
+      "per_fact_ms_wall": 50.093,
+      "setup_seconds": 0.089,
+      "total_seconds": 14.625,
+      "workers": 1,
+      "writer_lock_retries": 0
+    }
+  },
+  "schema": "serenity-hosted-load-fixture-receipt",
+  "smoke": {
+    "by_plan": {
+      "builder": {
+        "accounts": 3,
+        "accounts_at_memory_cap": 0,
+        "largest_share_of_storage_quota": 0.000626,
+        "memories": 90,
+        "memory_cap_each": 10000,
+        "storage_bytes": 1867860,
+        "storage_quota_each": 1000000000
+      },
+      "free": {
+        "accounts": 10,
+        "accounts_at_memory_cap": 0,
+        "largest_share_of_storage_quota": 0.002151,
+        "memories": 100,
+        "memory_cap_each": 1000,
+        "storage_bytes": 2011645,
+        "storage_quota_each": 100000000
+      },
+      "scale": {
+        "accounts": 1,
+        "accounts_at_memory_cap": 0,
+        "largest_share_of_storage_quota": 0.000401,
+        "memories": 100,
+        "memory_cap_each": 50000,
+        "storage_bytes": 2003202,
+        "storage_quota_each": 5000000000
+      }
+    },
+    "commit_every": 500,
+    "embedder_dim": 64,
+    "embedder_pin": "fixture-hash-embedder-d64@infrastructure-only-v1",
+    "facts_on_default_brains": 140,
+    "facts_on_other_brains": 150,
+    "fixture_identity": {
+      "content_sha256": "83c72b0143e05564b135bee759ed19ec07a01d33e2895e5b858f5cee00441fb0",
+      "content_sha256_meaning": "sha256 over each brain's sorted fact SHA-256 list, in plan order. Two preparations of the same profile give the same value; brain ids, credentials, timestamps and Git history do not enter it.",
+      "control_db_sha256": "3bf7655e7a8edf4f2972a09f781aaa9a00bf124b3742cfa4c8fa1592a2da34ea",
+      "marker_sha256": "f4d202f2168812301ffb6966f06216ba7a4265480cd89c72e282f1b9aec8760a",
+      "workload_sha256": "2aa7c9b8e266036c9e28df583e99877fd6936416c3b88723b9c7d367a324d990"
+    },
+    "gateway_cross_check": {
+      "accounts": 14,
+      "entitlement_equals_planned_plan": 14,
+      "inventory_memories_equal_verifier": 14,
+      "inventory_storage_bytes_equal_verifier": 14,
+      "limit_inputs_refuse_a_nonreplay_remember": 0
+    },
+    "profile": "smoke",
+    "reduced": true,
+    "satisfies_full_cardinality": false,
+    "storage_and_history_gap": {
+      "accounts_at_or_over_storage_quota": 0,
+      "allocated_bytes_all_brains": 15360000,
+      "component_share_of_storage": {
+        ".git": 0.2129,
+        ".serenity": 0.6754,
+        "brain": 0.1039,
+        "other": 0.0078
+      },
+      "files_all_brains": 2751,
+      "storage_bytes_all_brains": 5882707,
+      "storage_bytes_by_component": {
+        ".git": 1252686,
+        ".serenity": 3973120,
+        "brain": 610994,
+        "other": 45907
+      }
+    },
+    "totals": {
+      "accounts": 14,
+      "brains": 29,
+      "canonical_memory_facts": 290,
+      "git_commits_all_brains": 58,
+      "index_fact_chunks": 290,
+      "index_vectors_under_pin": 290
+    },
+    "verification_report_sha256": "518a7e3ac1452a8fb9ebcc8753f81d0dc910202d99ccef91cb99a1b215365ef6"
+  },
+  "source_sha": "447d7100e67667be9523c21e1d84af6e200a04b8",
+  "storage_and_history_gap": {
+    "fact_text_floor": "At the 4,096-byte fact cap, fact text is at most 4.096% of each plan's storage quota. The envelope, Git objects and derived index add to it.",
+    "history_at_scale": null,
+    "history_is_batched": "The full fixture commits facts in batches (commit_every in the marker). Production commits after every acknowledged remember, so production history is longer and larger. The maximum production history size is unmeasured; history_at_scale, when present, measures this fixture's own per-write history.",
+    "history_partial_at_scale": {
+      "brains_measured": 15,
+      "brains_not_finished": [
+        "builder-1/1",
+        "builder-1/2",
+        "builder-2/1",
+        "builder-2/2",
+        "free-0/0",
+        "free-1/0",
+        "free-2/0",
+        "free-3/0",
+        "free-4/0",
+        "free-5/0",
+        "free-6/0",
+        "free-7/0",
+        "free-8/0",
+        "free-9/0"
+      ],
+      "commits_batched": 150,
+      "commits_per_write": 66683,
+      "extra_git_bytes": 89291119,
+      "extra_git_bytes_per_extra_commit": 1342.1,
+      "facts": 66668,
+      "git_bytes_batched": 105892649,
+      "git_bytes_per_write": 195183768,
+      "measurement_sha256": "b4a70fb4a58a935c47b4efb587b786703ac17b487e0885d7804a34f57cd84986",
+      "scope": "Per-write Git history on the brains that finished in an interrupted full preparation, paired with the same brains (same account label, brain index and facts) in a verified full fixture that batched its commits. Partial: not a whole-fixture number and not a production bound. Measured on this host's Git."
+    },
+    "history_sample": {
+      "allocated_bytes_batched": 76505088,
+      "allocated_bytes_per_write": 97218560,
+      "commits_batched": 58,
+      "commits_per_write": 2929,
+      "extra_git_bytes": 4814393,
+      "extra_git_bytes_per_extra_commit": 1676.9,
+      "facts": 2900,
+      "git_bytes_batched": 5211752,
+      "git_bytes_per_write": 10026145,
+      "scope": "Reduced smoke at 100 facts per brain, the same 2,900 facts, prepared twice: one commit per 500 facts and one commit per fact. It measures the Git size of extra commits at that brain size only. Tree objects grow with brain size, so it is not an estimate for 5,000-fact brains.",
+      "verification_report_sha256": {
+        "batched": "06b7d63d98822d08dacf0b085764d65c393d6f88e016872a65d13ad1468ba346",
+        "per_write": "f93299b7d90f33c7becd87f8728c8f8dc103e931a803748652eeebcc297948ea"
+      }
+    },
+    "memory_count_vs_storage": "The full fixture fills the memory count. It does not fill any storage quota: see full.storage_and_history_gap and full.by_plan[*].largest_share_of_storage_quota.",
+    "vector_width_at_scale": {
+      "accounts_at_or_over_storage_quota_wide": 0,
+      "allocated_bytes_narrow": 1248288768,
+      "allocated_bytes_wide": 1951875072,
+      "extra_index_bytes": 701132800,
+      "extra_index_bytes_per_fact_per_extra_float": 5.292,
+      "facts": 90000,
+      "index_bytes_narrow": 348184576,
+      "index_bytes_wide": 1049317376,
+      "largest_account_share_of_storage_quota_narrow": 0.07805268,
+      "largest_account_share_of_storage_quota_wide": 0.15591664,
+      "narrow_dim": 64,
+      "scope": "The full 90,000-memory fixture prepared twice with the same facts and the same commit density (one commit per 500 facts), with vectors of two widths. The width is a fixture parameter. It is not the pinned provider's width, which is unknown, and the vectors carry no semantic quality.",
+      "storage_bytes_narrow": 685604209,
+      "storage_bytes_wide": 1386736040,
+      "verification_report_sha256": {
+        "narrow": "bcfa01dc415ff7dbb3cd2e1e60f9ebb70fff8f4f6ea208f7ab16f48dd5fdb451",
+        "wide": "4b5f5d80782241e78eeafbe50b6cc86ab39b15a50549f5d63d0c246f5a3c06aa"
+      },
+      "wide_dim": 1536,
+      "wide_pin": "fixture-hash-embedder-d1536@infrastructure-only-v1"
+    }
+  },
+  "task": "T23.60",
+  "version": 1
+}

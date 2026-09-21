@@ -1,0 +1,17 @@
+{
+  "schema": "serenity-hosted-rate-receipt",
+  "subject": "amazon_s3_storage_billing_unit",
+  "url": "https://aws.amazon.com/s3/pricing/",
+  "retrieved_at": "2026-09-19T04:58:40Z",
+  "http_status": 200,
+  "page_sha256": "c103717eedfa124da9200d5d0c90700006de7eb35a2137a5b2d900ce8d174b76",
+  "page_bytes": 539157,
+  "extraction": "visible text of the saved HTML with script and style removed, tags stripped, whitespace collapsed; the superscript exponents lost their markup, so '2 30' reads 2^30 and '2 40' reads 2^40",
+  "excerpt": "Amazon S3 storage usage is calculated in binary gigabytes (GB), where 1 GB is 2 30 bytes. This unit of measurement is also known as a gibibyte (GiB), defined by the International Electrotechnical Commission (IEC). Similarly, 1 TB is 2 40 bytes, i.e. 1024 GBs.",
+  "conclusion": "S3 storage is billed per binary gigabyte: the catalog unit 'GB-Mo' means GiB-month, and 1 GB = 2^30 = 1,073,741,824 bytes.",
+  "corroboration": {
+    "file": "../s3-rate.json",
+    "observation": "The price list's own tier boundaries are begin_range 51200 (50 TB) and 512000 (500 TB), which are 50x1024 and 500x1024 GB, consistent with 1 TB = 1024 GB."
+  },
+  "scope": "S3 storage billed quantity only. The page's unit statement is not applied to EBS volume size, gp3 throughput, request counts or data transfer; each of those keeps its own source."
+}
