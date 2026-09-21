@@ -640,6 +640,7 @@ def run_fixtures(manifest: dict, workload: dict) -> dict:
     main_run = reps[0]
     thresholds = harness.evaluate_thresholds(workload, main_run)
     phases = main_run["outcomes_by_phase"]
+    steady_metrics = main_run["threshold_metrics_by_phase"].get(STEADY_PHASE, {})
 
     def phase_rate_limit_pct(phase: str) -> float | None:
         counts = phases.get(phase)
@@ -663,11 +664,14 @@ def run_fixtures(manifest: dict, workload: dict) -> dict:
             "server_account_limit_per_min": harness.ACCOUNT_RATE_LIMIT_PER_MIN,
             "hot_tenant_offered_per_min_at_baseline": hot_rate_per_min,
             "hot_tenant_steady_rate_limit_rejections": phases.get(STEADY_PHASE, {}).get("rejected_rate_limit", 0),
+            "steady_capacity_rejections": phases.get(STEADY_PHASE, {}).get("rejected_capacity", 0),
             "steady_offered": phases.get(STEADY_PHASE, {}).get("offered", 0),
             "steady_rate_limit_rejection_pct": phase_rate_limit_pct(STEADY_PHASE),
+            "steady_threshold_admission_rejections": steady_metrics.get("admission_rejections"),
+            "steady_threshold_admission_rejection_pct": round(steady_metrics["admission_rejection_pct"], 3) if steady_metrics.get("admission_rejection_pct") is not None else None,
             "burst_rate_limit_rejection_pct": phase_rate_limit_pct("burst"),
             "admission_rejection_limit_pct": workload["thresholds"]["unexpected_admission_rejection_max_pct"],
-            "counted_as": "failure: inside the admission-rejection and completion checks, not excluded as expected saturation",
+            "counted_as": "the threshold-matching rate includes steady account/IP rate-limit and pool-capacity rejections; the rate-limit-only percentage is a component",
             "thresholds_changed": False,
             "simulator_scope": "counts offered arrivals only; the server also counts initialize, notification and close requests against the account window",
         },

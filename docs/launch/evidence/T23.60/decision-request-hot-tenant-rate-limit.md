@@ -4,7 +4,7 @@ Status: **open. T23.60 changed no number.** This request needs a named answer fr
 
 ## The finding
 
-The frozen workload offers one hot tenant exactly the gateway's per-account request limit, so a healthy server fails two published thresholds.
+The frozen workload offers one hot tenant exactly the gateway's per-account request limit. The account rate limit alone refuses 180 of 7,379 steady requests (2.44%); the threshold-matching admission total is 204 of 7,379 (2.76%) after adding 24 pool-capacity refusals. Both exceed the 1% steady admission threshold, and the steady completion rate also remains below its 99% minimum.
 
 | Quantity | Value | Source |
 |---|---|---|
@@ -16,19 +16,19 @@ The frozen workload offers one hot tenant exactly the gateway's per-account requ
 
 With the limiter's real window, the frozen schedule (`BASE_SEED`, identical in all three repetitions) produces, per repetition:
 
-| Phase | Offered | Refused by the account limit | Share |
-|---|---:|---:|---:|
-| warmup | 2,378 | 28 | 1.18% |
-| **steady** | **7,379** | **180** | **2.44%** |
-| burst (2× rate) | 2,430 | 544 | 22.39% |
+| Phase | Offered | Account rate-limit refusals | Pool-capacity refusals | All admission refusals | Threshold-matching share |
+|---|---:|---:|---:|---:|---:|
+| warmup | 2,378 | 28 | 3 | 31 | 1.30% |
+| **steady** | **7,379** | **180** | **24** | **204** | **2.76%** |
+| burst (2× rate) | 2,430 | 544 | 67 | 611 | 25.14% |
 
-Every refusal is the hot tenant (`scale-0`). The steady-phase figure alone is above `unexpected_admission_rejection_max_pct` (1%) and, with the rest of the failures, breaks `min_offered_completion_pct` (99%). The independent load review reached the same 180 of 7,379 with its own code, and `test_the_frozen_hot_tenant_exceeds_the_account_limit_in_the_steady_phase` pins the figures.
+Every account rate-limit refusal is the hot tenant. The threshold-matching admission total also includes pool-capacity refusals; the steady 204/7,379 figure is above `unexpected_admission_rejection_max_pct` (1%) and completion remains below `min_offered_completion_pct` (99%). The independent load review reached the same 180 account-limit refusals, and the tests now pin both the account-limit component and the 204 total.
 
 The share is not an accident of the seed. Poisson arrivals with a mean equal to the limit exceed it in roughly half of the 60 s windows. Seeds 1 to 5 and the frozen seed give 1.89% to 2.79% of the steady phase, and every one is above the 1% limit.
 
 ## What T23.60 did and did not do
 
-- Did: match the simulator's window to `admission.go` (it reset on the wall-clock minute before), add the per-address limit, break outcomes down by phase and account, and record this exposure in `load-fixture.json` (`hot_tenant_rate_limit_exposure`) and in the `qualification_gaps` of every live result.
+- Did: match the simulator's window to `admission.go` (it reset on the wall-clock minute before), add the per-address limit, break outcomes down by phase and account, scope threshold calculations to steady arrivals, and record both account-rate-limit and all-admission totals in `load-fixture.json` (`hot_tenant_rate_limit_exposure`) and in the `qualification_gaps` of every live result.
 - Did: keep counting every 429 as a failure. Nothing is excluded or labeled expected saturation. The separate quota-saturation run is for plan-ceiling refusals, and this refusal is the steady rate of one tenant.
 - Did not: change any threshold, rate, cap, phase length or tenant fraction. A failed result never authorizes a worker to edit the frozen workload (`workload.json`, `status_note`).
 - Limit of the simulator: it counts offered arrivals only. The server also counts setup and cleanup requests, which start each account's window earlier than the first arrival, so live counts can differ by a few requests per window.
@@ -54,4 +54,4 @@ python3 -m unittest discover -s evals/hosted-load -p "test_harness.py" -k hot_te
 python3 scripts/hosted/load.py --fixtures --manifest docs/launch/evidence/T23.60/manifest.json --output /tmp/load-fixture.json
 ```
 
-`hot_tenant_rate_limit_exposure` in the output holds the steady and burst shares.
+`hot_tenant_rate_limit_exposure` in the output holds the account-rate-limit component and the threshold-matching steady admission share. Threshold evaluation excludes warmup and burst phases.

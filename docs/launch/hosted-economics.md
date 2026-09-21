@@ -18,9 +18,12 @@ estimates and local fixture results, not measured capacity or authority to spend
   Its rate limiter reproduces the gateway's fixed window, which starts at an
   account's first request.
 - **The frozen hot tenant offers the gateway's per-account rate limit** (120
-  requests a minute), so a healthy server fails the admission and completion
-  thresholds: 180 of 7,379 steady requests, 2.44%. The client and the simulator
-  count these as failures, not as expected saturation. No number changed. A named
+  requests a minute), so a healthy server fails the steady admission and completion
+  thresholds. The rate-limit component is 180 of 7,379 steady requests (2.44%);
+  the threshold-matching admission total is 204 of 7,379 (2.76%), including 24
+  pool-capacity refusals. Fixture thresholds now use steady arrivals only, and
+  burst results are reported separately. The client and simulator count these
+  as failures, not as expected saturation. No threshold changed. A named
   decision is open in
   [decision-request-hot-tenant-rate-limit.md](evidence/T23.60/decision-request-hot-tenant-rate-limit.md).
 - A candidate MCP client has local tests against a real loopback HTTP server:

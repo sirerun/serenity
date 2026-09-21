@@ -25,6 +25,7 @@ MAX_IN_FLIGHT = 16
 IDLE_TIMEOUT_S = 600
 ACCOUNT_RATE_LIMIT_PER_MIN = 120
 IP_RATE_LIMIT_PER_MIN = 600
+STEADY_PHASE = "steady"
 
 # internal/hosted/plans/plans.go V1; id -> (monthly_cents, brains, memories, writes, recalls, input_tokens, storage_bytes).
 PLAN_ALLOWANCES = {
@@ -268,11 +269,45 @@ def run_repetition(workload: dict, accounts: list[dict], seed: int, saturation: 
         if r["outcome"] == "rejected_rate_limit":
             by_phase = rate_limited_by_account.setdefault(r["account"], {})
             by_phase[r["phase"]] = by_phase.get(r["phase"], 0) + 1
+
+    # The published thresholds are steady-state thresholds. Keep a separately
+    # scoped denominator and successful latency samples so fixtures mode cannot
+    # accidentally evaluate warmup/burst work against them.
+    threshold_metrics_by_phase: dict = {}
+    for phase_name, phase_counts in outcomes_by_phase.items():
+        phase_rows = [r for r in results if r["phase"] == phase_name]
+        offered = phase_counts["offered"]
+        ok_count = phase_counts.get("ok", 0)
+        server_errors = phase_counts.get("unexpected_5xx", 0)
+        admission_rejections = sum(phase_counts.get(name, 0) for name in (
+            "rejected_capacity", "rejected_rate_limit", "rejected_ip_rate_limit"
+        ))
+        by_verb_phase: dict = {}
+        for r in phase_rows:
+            if r["outcome"] == "ok" and r["latency_s"] is not None:
+                by_verb_phase.setdefault(r["verb"], []).append(r["latency_s"])
+        threshold_metrics_by_phase[phase_name] = {
+            "offered": offered,
+            "ok": ok_count,
+            "unexpected_5xx": server_errors,
+            "admission_rejections": admission_rejections,
+            "completion_pct": ok_count / offered * 100.0 if offered else None,
+            "unexpected_5xx_pct": server_errors / offered * 100.0 if offered else None,
+            "admission_rejection_pct": admission_rejections / offered * 100.0 if offered else None,
+            "latency_by_verb_s": {
+                verb: {
+                    "p95": percentile(values, 95),
+                    "samples": len(values),
+                }
+                for verb, values in by_verb_phase.items()
+            },
+        }
     return {
         "saturation": saturation,
         "total_offered": total,
         "outcomes": outcomes,
         "outcomes_by_phase": outcomes_by_phase,
+        "threshold_metrics_by_phase": threshold_metrics_by_phase,
         "rate_limited_by_account_and_phase": rate_limited_by_account,
         "completion_pct": (ok / total * 100.0) if total else 0.0,
         "unexpected_5xx_pct": (unexpected_5xx / total * 100.0) if total else 0.0,
@@ -285,20 +320,54 @@ def run_repetition(workload: dict, accounts: list[dict], seed: int, saturation: 
 
 def evaluate_thresholds(workload: dict, main_run: dict) -> dict:
     t = workload["thresholds"]
-    recall = main_run["latency_by_verb_s"].get("recall", {})
-    remember = main_run["latency_by_verb_s"].get("remember", {})
-    checks = {
-        "cold_ready_max_s": {"limit": t["cold_ready_max_s"], "observed": main_run["cold_open_p95_s"], "pass": main_run["cold_open_p95_s"] <= t["cold_ready_max_s"]},
-        "recall_p95_max_s": {"limit": t["recall_p95_max_s"], "observed": recall.get("p95", 0.0), "pass": recall.get("p95", 0.0) <= t["recall_p95_max_s"]},
-        "remember_p95_max_s": {"limit": t["remember_p95_max_s"], "observed": remember.get("p95", 0.0), "pass": remember.get("p95", 0.0) <= t["remember_p95_max_s"]},
-        "min_offered_completion_pct": {"limit": t["min_offered_completion_pct"], "observed": main_run["completion_pct"], "pass": main_run["completion_pct"] >= t["min_offered_completion_pct"]},
-        "unexpected_5xx_max_pct": {"limit": t["unexpected_5xx_max_pct"], "observed": main_run["unexpected_5xx_pct"], "pass": main_run["unexpected_5xx_pct"] <= t["unexpected_5xx_max_pct"]},
-        "unexpected_admission_rejection_max_pct": {"limit": t["unexpected_admission_rejection_max_pct"], "observed": main_run["admission_rejection_pct"], "pass": main_run["admission_rejection_pct"] <= t["unexpected_admission_rejection_max_pct"]},
+    steady = main_run.get("threshold_metrics_by_phase", {}).get(STEADY_PHASE)
+    checks: dict = {"metric_scope": STEADY_PHASE}
+
+    def unmeasured(name: str, reason: str) -> dict:
+        return {"limit": t[name], "observed": None, "pass": None, "reason": reason, "scope": STEADY_PHASE}
+
+    if not steady or not steady.get("offered"):
+        reason = "no offered requests in the steady phase"
+        for name in ("recall_p95_max_s", "remember_p95_max_s", "min_offered_completion_pct", "unexpected_5xx_max_pct", "unexpected_admission_rejection_max_pct"):
+            checks[name] = unmeasured(name, reason)
+    else:
+        offered = steady["offered"]
+        for verb, name in (("recall", "recall_p95_max_s"), ("remember", "remember_p95_max_s")):
+            stats = steady["latency_by_verb_s"].get(verb, {})
+            if not stats.get("samples"):
+                checks[name] = unmeasured(name, f"no successful steady-state {verb} latency samples")
+            else:
+                observed = stats["p95"]
+                checks[name] = {"limit": t[name], "observed": observed, "pass": observed <= t[name], "samples": stats["samples"], "scope": STEADY_PHASE}
+        completion = steady["completion_pct"]
+        checks["min_offered_completion_pct"] = {
+            "limit": t["min_offered_completion_pct"], "observed": completion,
+            "pass": completion >= t["min_offered_completion_pct"], "numerator": steady["ok"],
+            "denominator": offered, "scope": STEADY_PHASE,
+        }
+        server_errors = steady["unexpected_5xx_pct"]
+        checks["unexpected_5xx_max_pct"] = {
+            "limit": t["unexpected_5xx_max_pct"], "observed": server_errors,
+            "pass": server_errors <= t["unexpected_5xx_max_pct"],
+            "numerator": steady["unexpected_5xx"], "denominator": offered, "scope": STEADY_PHASE,
+        }
+        admission = steady["admission_rejection_pct"]
+        checks["unexpected_admission_rejection_max_pct"] = {
+            "limit": t["unexpected_admission_rejection_max_pct"], "observed": admission,
+            "pass": admission <= t["unexpected_admission_rejection_max_pct"],
+            "numerator": steady["admission_rejections"], "denominator": offered, "scope": STEADY_PHASE,
+        }
+
+    # The fixture's cold flag assigns a simulator delay; it does not exercise
+    # a cold service open. Fixtures likewise have no durable cross-tenant store.
+    checks["cold_ready_max_s"] = {
+        "limit": t["cold_ready_max_s"], "observed": None, "pass": None,
+        "reason": "fixtures mode simulates a cold delay but opens no service brain", "scope": STEADY_PHASE,
     }
     checks["cpu_max_pct"] = {"limit": t["cpu_max_pct"], "observed": None, "pass": None, "reason": "not measured in fixtures mode"}
     checks["rss_max_pct_of_ram"] = {"limit": t["rss_max_pct_of_ram"], "observed": None, "pass": None, "reason": "not measured in fixtures mode"}
     checks["disk_max_pct"] = {"limit": t["disk_max_pct"], "observed": None, "pass": None, "reason": "not measured in fixtures mode"}
-    checks["isolation_durability_errors_max"] = {"limit": t["isolation_durability_errors_max"], "observed": 0, "pass": True, "reason": "fixtures mode has no real storage; zero by construction, not proof"}
+    checks["isolation_durability_errors_max"] = {"limit": t["isolation_durability_errors_max"], "observed": None, "pass": None, "reason": "fixtures mode has no real storage or cross-tenant isolation probe", "scope": STEADY_PHASE}
     return checks
 
 

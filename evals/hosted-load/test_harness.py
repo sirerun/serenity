@@ -247,6 +247,7 @@ class RunRepetitionTests(unittest.TestCase):
         for outcome, count in r["outcomes"].items():
             self.assertEqual(sum(p.get(outcome, 0) for p in r["outcomes_by_phase"].values()), count)
         self.assertEqual(set(r["outcomes_by_phase"]), {p["name"] for p in self.workload["phases"]})
+        self.assertEqual(set(r["threshold_metrics_by_phase"]), set(r["outcomes_by_phase"]))
 
     def test_the_frozen_hot_tenant_exceeds_the_account_limit_in_the_steady_phase(self):
         """W1, reproduced with the limiter's real window. The reviewer computed 180 of 7379
@@ -255,6 +256,9 @@ class RunRepetitionTests(unittest.TestCase):
         r = harness.run_repetition(self.workload, self.accounts, seed=20260918)
         steady, burst = r["outcomes_by_phase"]["steady"], r["outcomes_by_phase"]["burst"]
         self.assertEqual((steady["rejected_rate_limit"], steady["offered"]), (180, 7379))
+        self.assertEqual(steady["rejected_capacity"], 24)
+        self.assertEqual(r["threshold_metrics_by_phase"]["steady"]["admission_rejections"], 204)
+        self.assertAlmostEqual(r["threshold_metrics_by_phase"]["steady"]["admission_rejection_pct"], 204 / 7379 * 100)
         self.assertEqual((burst["rejected_rate_limit"], burst["offered"]), (544, 2430))
         self.assertEqual(r["rate_limited_by_account_and_phase"], {"scale-0": {"warmup": 28, "steady": 180, "burst": 544}})  # only the hot tenant
         self.assertAlmostEqual(steady["rejected_rate_limit"] / steady["offered"] * 100, 2.4393, places=3)
@@ -293,6 +297,7 @@ class RunRepetitionTests(unittest.TestCase):
 class ThresholdEvaluationTests(unittest.TestCase):
     def setUp(self):
         self.workload = harness.load_workload(WORKLOAD_PATH)
+        self.accounts = harness.build_accounts(self.workload["cardinalities"], "paid")
 
     def _run(self, recall_p95, remember_p95, completion_pct, unexpected_5xx_pct, rejection_pct, cold_p95):
         return {
@@ -301,6 +306,21 @@ class ThresholdEvaluationTests(unittest.TestCase):
             "unexpected_5xx_pct": unexpected_5xx_pct,
             "admission_rejection_pct": rejection_pct,
             "cold_open_p95_s": cold_p95,
+            "threshold_metrics_by_phase": {
+                "steady": {
+                    "offered": 100,
+                    "ok": completion_pct,
+                    "unexpected_5xx": unexpected_5xx_pct,
+                    "admission_rejections": rejection_pct,
+                    "completion_pct": completion_pct,
+                    "unexpected_5xx_pct": unexpected_5xx_pct,
+                    "admission_rejection_pct": rejection_pct,
+                    "latency_by_verb_s": {
+                        "recall": {"p95": recall_p95, "samples": 100},
+                        "remember": {"p95": remember_p95, "samples": 100},
+                    },
+                },
+            },
         }
 
     def test_within_thresholds_passes(self):
@@ -320,13 +340,56 @@ class ThresholdEvaluationTests(unittest.TestCase):
         self.assertFalse(checks["min_offered_completion_pct"]["pass"])
         self.assertFalse(checks["unexpected_5xx_max_pct"]["pass"])
         self.assertFalse(checks["unexpected_admission_rejection_max_pct"]["pass"])
-        self.assertFalse(checks["cold_ready_max_s"]["pass"])
+        self.assertIsNone(checks["cold_ready_max_s"]["pass"])
+
+    def test_thresholds_use_only_steady_phase_offered_and_successful_samples(self):
+        run = harness.run_repetition(self.workload, self.accounts, seed=20260918)
+        steady = run["threshold_metrics_by_phase"]["steady"]
+        offered = run["outcomes_by_phase"]["steady"]["offered"]
+        expected_admission = (
+            run["outcomes_by_phase"]["steady"].get("rejected_capacity", 0)
+            + run["outcomes_by_phase"]["steady"].get("rejected_rate_limit", 0)
+            + run["outcomes_by_phase"]["steady"].get("rejected_ip_rate_limit", 0)
+        )
+        checks = harness.evaluate_thresholds(self.workload, run)
+        completion = checks["min_offered_completion_pct"]
+        admission = checks["unexpected_admission_rejection_max_pct"]
+        self.assertEqual(checks["metric_scope"], "steady")
+        self.assertEqual(completion["denominator"], offered)
+        self.assertEqual(completion["numerator"], steady["ok"])
+        self.assertAlmostEqual(completion["observed"], steady["ok"] / offered * 100.0)
+        self.assertEqual(admission["denominator"], offered)
+        self.assertEqual(admission["numerator"], expected_admission)
+        self.assertAlmostEqual(admission["observed"], expected_admission / offered * 100.0)
+        for verb, key in (("recall", "recall_p95_max_s"), ("remember", "remember_p95_max_s")):
+            self.assertEqual(
+                checks[key]["samples"],
+                steady["latency_by_verb_s"].get(verb, {}).get("samples", 0),
+            )
+
+    def test_threshold_evaluator_ignores_all_phase_aggregate_fields(self):
+        run = self._run(1.0, 1.0, 97.0, 0.0, 2.0, 0.0)
+        run.update({
+            "completion_pct": 100.0,
+            "unexpected_5xx_pct": 0.0,
+            "admission_rejection_pct": 0.0,
+            "latency_by_verb_s": {"recall": {"p95": 0.1}, "remember": {"p95": 0.1}},
+        })
+        checks = harness.evaluate_thresholds(self.workload, run)
+        self.assertEqual(checks["min_offered_completion_pct"]["observed"], 97.0)
+        self.assertEqual(checks["unexpected_admission_rejection_max_pct"]["observed"], 2.0)
+        self.assertEqual(checks["recall_p95_max_s"]["observed"], 1.0)
+        self.assertFalse(checks["min_offered_completion_pct"]["pass"])
+        self.assertFalse(checks["unexpected_admission_rejection_max_pct"]["pass"])
 
     def test_resource_thresholds_marked_unmeasured_in_fixtures(self):
         checks = harness.evaluate_thresholds(self.workload, self._run(1, 1, 100, 0, 0, 1))
         self.assertIsNone(checks["cpu_max_pct"]["pass"])
         self.assertIsNone(checks["rss_max_pct_of_ram"]["pass"])
         self.assertIsNone(checks["disk_max_pct"]["pass"])
+        self.assertIsNone(checks["cold_ready_max_s"]["pass"])
+        self.assertIsNone(checks["isolation_durability_errors_max"]["pass"])
+        self.assertIsNone(checks["isolation_durability_errors_max"]["observed"])
 
 
 if __name__ == "__main__":

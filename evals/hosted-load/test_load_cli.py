@@ -2555,6 +2555,12 @@ class RunFixturesTests(unittest.TestCase):
         self.assertTrue(result["replay_determinism_verified"])
         self.assertEqual(len(result["repetitions"]), workload["repetitions"])
         self.assertFalse(result["resource_usage"]["available"])
+        threshold = result["threshold_evaluation"]
+        self.assertEqual(threshold["metric_scope"], "steady")
+        exposure = result["hot_tenant_rate_limit_exposure"]
+        self.assertEqual(exposure["steady_threshold_admission_rejections"], 204)
+        self.assertAlmostEqual(exposure["steady_threshold_admission_rejection_pct"], 204 / 7379 * 100, places=3)
+        self.assertAlmostEqual(exposure["steady_rate_limit_rejection_pct"], 180 / 7379 * 100, places=3)
 
 
 class CLIEndToEndTests(FakeServerTestCase):
