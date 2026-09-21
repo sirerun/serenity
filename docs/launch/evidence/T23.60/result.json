@@ -60,9 +60,9 @@
       "status": "BLOCKED"
     },
     {
-      "criterion": "Keep the advertised full-limit profile within the ratified $60 monthly ceiling",
-      "expected": "The complete conservative monthly exposure fits the approved ceiling, with unknown categories resolved before launch.",
-      "observed": "The model calculates $305.47/month known subtotal for the original full-limit scenario. The conditional 55-set retention sensitivity remains $68.03 at 70% mean CPU and $85.55 at sustained 100% CPU. These are model outputs, not measured bills; unknown categories remain excluded, and no plan limit or architecture was changed.",
+      "criterion": "Compare the full-limit monthly exposure with the founder-selected $450/month planning ceiling",
+      "expected": "The complete conservative monthly exposure, including previously unknown categories, fits the planning ceiling before cost qualification; the planning ceiling grants no AWS spend or deployment authorization.",
+      "observed": "The model calculates a $305.47/month known subtotal and $353.34/month peak sensitivity for the original full-limit scenario, both below the $450/month planning ceiling. These are model outputs, not measured bills; unknown categories remain excluded, so a complete maximum is not established and launch cost remains NOT_QUALIFIED. No spend or deployment authorization, plan limit, or architecture changed.",
       "status": "BLOCKED"
     }
   ],
@@ -317,7 +317,7 @@
     },
     {
       "path": "docs/launch/hosted-economics.md",
-      "sha256": "d3d3210523d8efae73dd9572f01bfefe865d456388e6ea38997f8b84278aa4af"
+      "sha256": "a5cb92c3e32beddf73ed558595e69fe9b259e8b2ed0385542bae35bf1179be37"
     },
     {
       "path": "docs/launch/evidence/T23.60/aws-rates/s3-request-transfer-price-receipt.json",
@@ -347,7 +347,7 @@
     "Fixture threshold verdicts are steady-phase scoped and fixture cold-ready and isolation-durability rows are unmeasured. The simulator still does not measure real cold opens, host resources or cross-tenant durability; no live capacity claim follows from these fixture values.",
     "The AWS capacity inventory checks CloudFormation only. It cannot establish ownership/reuse eligibility or rule out Terraform/other IaC and out-of-band resources; see the sanitized dated receipt.",
     "AWS Budgets metadata is not attributed to Serenity; the unfiltered $60 monthly budget has zero notifications and current spend was not retrieved. See the sanitized dated receipt.",
-    "The current known-cost full-limit scenario exceeds the ratified $60 monthly ceiling, including under the conditional 55-set/70%-mean-CPU sensitivity; these remain estimates and do not resolve the complete maximum."
+    "The known-cost full-limit subtotal ($305.47/month) and peak sensitivity ($353.34/month) are below the founder-selected $450/month planning ceiling, but unknown categories remain excluded, so they do not establish a complete maximum or authorize spend/deployment. The historical $60 AWS budget is not attributed to Serenity."
   ],
   "blockers": [
     {
@@ -400,7 +400,7 @@
     },
     {
       "owner": "budget owner / architecture reviewer",
-      "required_input": "Resolve the modeled full-limit cost conflict with the ratified $60 monthly ceiling through an owner-approved costed proposal or explicit reviewed ruling; preserve published plan limits unless the founder changes them. Unknown categories remain outside the current estimate."
+      "required_input": "Measure or conservatively bound all remaining monthly cost categories and compare the complete maximum with the founder-selected $450/month planning ceiling. The planning ceiling is not AWS spend or deployment authorization; unknown costs remain outside the current estimate. Preserve published plan limits unless a separate reviewed decision changes them."
     }
   ],
   "binary_sha256": null,

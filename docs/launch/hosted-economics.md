@@ -86,13 +86,16 @@ cannot be treated as an alert or as launch spend authority. The other three budg
 are also unattributed to this service. A sanitized receipt is
 [`aws-budget-controls-20260921.json`](evidence/T23.60/aws-budget-controls-20260921.json).
 
-The current full-limit model also conflicts with the ratified `$60` ceiling. Its
-original-retention full-limit known subtotal is `$305.47`. Even the conditional
-55-set retention sensitivity remains `$68.03` at 70% mean CPU and `$85.55` at
-sustained 100% CPU, before unknown cost categories. These are model outputs, not
-measured bills, but the full advertised profile is not currently demonstrated to
-fit the approved ceiling. Resolve this through an owner-approved costed proposal;
-do not silently reduce advertised plan limits or raise the ceiling.
+The founder selected a `$450/month` planning ceiling on 2026-09-21. This is a
+planning input only; it does not authorize AWS spend or deployment. The
+original-retention full-limit known subtotal is `$305.47`, with a `$353.34` peak
+sensitivity. Both are below the planning ceiling, but unknown cost categories are
+excluded, so neither figure establishes a complete monthly maximum or qualifies
+launch cost. The conditional 55-set retention sensitivity is `$68.03` at 70% mean
+CPU and `$85.55` at sustained 100% CPU, also before unknown categories. These are
+model outputs, not measured bills. Preserve advertised plan limits unless a
+separate reviewed decision changes them, and do not treat the planning ceiling as
+spend authority.
 
 The current cost model therefore keeps `actual_usd` unknown and approved live spend
 at `$0`. A measurable Serenity cap still needs an explicitly scoped owner-approved
@@ -134,8 +137,9 @@ revision (full mix $322.00, peak $369.87):
 Unknown provider charges, log volume, custom-metric cardinality, restore/list/GET
 activity, control database growth and account-wide free-tier
 consumption can increase these figures. The 10/100-account mixes and usage fractions are
-assumptions, not product decisions. The historical $60/month ceiling remains a ceiling, not
-new spending permission.
+assumptions, not product decisions. The historical `$60` AWS budget remains
+unattributed and is not a Serenity-specific control; the current `$450/month`
+planning ceiling is not spending permission.
 
 The full mix counts every allowed brain (10 Free, 9 Builder and 10 Scale, 29 in all) in
 each backup. That gives 32 objects a backup (`manifest.json`, `control.db`, `COMPLETE` and
