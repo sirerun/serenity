@@ -14,12 +14,12 @@ import (
 // Operation identity/accounting (interfaces.md "Operation identity/
 // accounting", owner task44, design review owner task41).
 //
-// STATUS: PROPOSED, not frozen. This is task41's proposed answer to the
-// "crash-safe canonical-operation accounting" bounded decision. It is not
-// chief-architect approved; task44 must not begin production implementation
-// against it until the freeze receipt in interfaces.md records an approving
-// reviewer and revision. The executable specification for every rule below
-// is contractstest.RunLedgerSuite.
+// STATUS: design approved by chief-architect on PR236 revision
+// 218d7234d9abea5964f9d4640d1bfffe5c9f8087; task41 reconciled the approved
+// narrow commit-section scope in interfaces.md. Migration version 4 is owned
+// by task41. Production ledger behavior is task44's implementation scope and
+// remains subject to ordinary review. The executable specification for every
+// rule below is contractstest.RunLedgerSuite.
 //
 // One OperationRecord is one durable row representing exactly one logical
 // mutation, however many counters it moves (a "remember" moves both "writes"

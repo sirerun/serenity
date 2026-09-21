@@ -14,10 +14,10 @@ import (
 // Deletion journal (interfaces.md "Deletion journal", owner task48 with
 // infrastructure54).
 //
-// STATUS: PROPOSED, not frozen. This is task41's proposed answer to the
-// "independently durable deletion journal" bounded decision. It is not
-// chief-architect approved. The executable specification of every rule below
-// is contractstest.RunJournalSuite.
+// STATUS: design approved by chief-architect on PR236 revision
+// 218d7234d9abea5964f9d4640d1bfffe5c9f8087, conditional on task48 qualifying
+// the existing S3 bucket, policy and client build. The executable
+// specification of every rule below is contractstest.RunJournalSuite.
 //
 // Design in one paragraph. The journal is a hash-chained, generation-scoped,
 // gapless sequence of immutable objects in an object store the local service

@@ -8,12 +8,13 @@
 // internal/hosted/service assembly once the feature is ready (interfaces.md
 // "File-change handshake").
 //
-// Seams whose design still requires the task41 chief-architect review
-// (physical storage headroom, crash-safe operation accounting, the
-// independent deletion journal and restore eligibility) are marked PROPOSED
-// below: the signature is frozen so dependent code can compile against it,
-// but the freeze receipt in interfaces.md records it as unreviewed. A
-// PROPOSED contract is not authority to treat the design as approved.
+// The chief architect approved the operation-accounting, deletion-journal and
+// restore-fence designs on PR236 revision
+// 218d7234d9abea5964f9d4640d1bfffe5c9f8087; task41 reconciled the narrow
+// commit-fence scope. Storage admission remains conditionally approved and
+// blocked until task44 proves physical allocation accounting and an
+// OS-enforced stage limit. Approved design does not mean production
+// implementation, ordinary review, or launch qualification is complete.
 package contracts
 
 import (

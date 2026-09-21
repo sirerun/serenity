@@ -8,9 +8,10 @@ import (
 // Per-brain commit fence (interfaces.md "Operation identity/accounting",
 // owner task44, review owner task41).
 //
-// STATUS: PROPOSED, not frozen. The reference implementation and its
-// deterministic scenarios are contractstest.MemBrainFence and
-// contractstest.RunLedgerSuite.
+// STATUS: design approved by chief-architect on PR236 revision
+// 218d7234d9abea5964f9d4640d1bfffe5c9f8087. The reference implementation and
+// its deterministic scenarios are contractstest.MemBrainFence and
+// contractstest.RunLedgerSuite; task44 owns the production implementation.
 //
 // Purpose: make "the writer has stopped" a checkable fact instead of an
 // inference from a timestamp. A writer brackets every canonical write in a

@@ -46,6 +46,21 @@ func Open(path string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	s := &Store{db: db}
 	if err = s.Transaction(context.Background(), func(tx *sql.Tx) error {
+		// Reject an unknown future schema before the idempotent base-schema
+		// initializer can issue any DDL or its version-1 INSERT OR IGNORE.
+		var migrationsTable int
+		if e := tx.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='schema_migrations'`).Scan(&migrationsTable); e != nil {
+			return e
+		}
+		if migrationsTable != 0 {
+			var current int
+			if e := tx.QueryRow(`SELECT max(version) FROM schema_migrations`).Scan(&current); e != nil {
+				return e
+			}
+			if current > 4 {
+				return fmt.Errorf("unsupported hosted schema version %d", current)
+			}
+		}
 		if _, e := tx.Exec(schema); e != nil {
 			return e
 		}
@@ -53,7 +68,7 @@ func Open(path string) (*Store, error) {
 		if e := tx.QueryRow(`SELECT max(version) FROM schema_migrations`).Scan(&version); e != nil {
 			return e
 		}
-		if version > 3 {
+		if version > 4 {
 			return fmt.Errorf("unsupported hosted schema version %d", version)
 		}
 		if version < 2 {
@@ -63,6 +78,11 @@ func Open(path string) (*Store, error) {
 		}
 		if version < 3 {
 			if _, e := tx.Exec(migration3); e != nil {
+				return e
+			}
+		}
+		if version < 4 {
+			if _, e := tx.Exec(migration4); e != nil {
 				return e
 			}
 		}

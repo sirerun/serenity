@@ -1,6 +1,6 @@
 # Shared interfaces — task41 freeze gate
 
-**State: specification to freeze, not implemented APIs.** Task41 owns this file and every schema migration/shared assembly edit. Existing main implementation remains authoritative until a reviewed commit changes it. Sonnet workers43/60 may prepare their independent harnesses now; dependent feature tasks do not start until41 supplies exact compile-tested Go types/SQL and the technical review receipt.
+**State: frozen interface packet in the task41 branch; production integration remains incomplete.** Task41 owns this file and every schema migration/shared assembly edit. Existing main implementation remains authoritative until a reviewed commit changes it. Workers43/60 may prepare their independent harnesses; dependent feature tasks do not start until task41 is accepted and its shared commit is integrated.
 
 ## Required invariants and bounded design work
 
@@ -26,25 +26,46 @@
 
 ## Status of every seam
 
-Chief-architect reviewed the four design decisions at PR236 revision `218d7234d9abea5964f9d4640d1bfffe5c9f8087`; see the [ruling comment](https://github.com/sirerun/serenity/pull/236#issuecomment-5746461189) and the per-line receipt in `docs/launch/evidence/T23.41/architecture-review-request.md`. **FROZEN** means the Go signature is compiled and tested and does not depend on an open decision; **PROPOSED** means a concrete mechanism with an executable specification exists but still needs implementation and ordinary review; **BLOCKED** means dependent implementation must not start.
+Chief-architect reviewed the four design decisions at PR236 revision `218d7234d9abea5964f9d4640d1bfffe5c9f8087`; see the [ruling comment](https://github.com/sirerun/serenity/pull/236#issuecomment-5746461189) and the per-line receipt in `docs/launch/evidence/T23.41/architecture-review-request.md`. **FROZEN** means the Go signature is compiled and tested and does not depend on an open design decision; **APPROVED DESIGN** means the architecture is ruled but implementation/ordinary review remains; **PROPOSED** means the design still requires a ruling; **BLOCKED** means dependent implementation must not start.
 
 | Seam | Status | Artifact | Executable specification |
 |---|---|---|---|
 | Billing truth and closure | FROZEN | `contracts/billing.go` | compile-time conformance in `contracts_test.go` |
-| Backup manifest v2 | FROZEN shape, revised this pass (control DB artifact, per-brain bundle heads, `Validate`); `JournalWatermark` PROPOSED (decision 3) | `contracts/backup.go` | `TestManifestV2Validate*`, `TestManifestV2VersionErrorIsDistinct`, `TestManifestV2JSONRoundTrip` |
-| Recovery plan/apply shape | FROZEN except `JournalWatermark`, `Generation`, `Fence` (PROPOSED, decisions 3-4) | `contracts/backup.go` | `TestRecoveryResultConsistency` |
+| Backup manifest v2 | FROZEN shape, revised this pass (control DB artifact, per-brain bundle heads, `Validate`); journal-watermark use depends on task48's live qualification | `contracts/backup.go` | `TestManifestV2Validate*`, `TestManifestV2VersionErrorIsDistinct`, `TestManifestV2JSONRoundTrip` |
+| Recovery plan/apply shape | FROZEN, including architect-approved `JournalWatermark`, `Generation`, and `Fence` fields | `contracts/backup.go` | `TestRecoveryResultConsistency`, compile-time `RecoveryPlanner`/`RecoveryApplier` fixtures |
 | Telemetry, provider pin, accounting units, registration mode | FROZEN | `contracts/{telemetry,provider}.go` | compile-time conformance |
 | Fault-barrier transport and phase names | FROZEN | `testhooks/**` | seven subprocess tests plus `TestPhaseNamesAreDistinctAndWireSafe` |
-| Decision 1 - storage admission | PROPOSED, **BLOCKED** | `contracts/storage.go` | `contractstest.RunStagingSuite` |
-| Decision 2 - operation accounting, quiescence, retry-key binding | PROPOSED | `contracts/operations.go`, `contracts/commitfence.go` | `contractstest.RunLedgerSuite`, `TestValidateTransitionIsExhaustive` |
-| Decision 3 - deletion journal | PROPOSED | `contracts/deletion.go` | `contractstest.RunJournalSuite` |
-| Decision 4 - restore fence | PROPOSED | `contracts/fence.go` | `TestFenceReceiptRequiresEveryFact`, `TestLocalWriterLockCannotFenceAnotherHost` |
+| Decision 1 - storage admission | APPROVED CONDITIONALLY, implementation **BLOCKED** | `contracts/storage.go` | `contractstest.RunStagingSuite` |
+| Decision 2 - operation accounting, quiescence, retry-key binding | APPROVED DESIGN; migration v4 applied in this branch; task44 production implementation pending | `contracts/operations.go`, `contracts/commitfence.go`, `store/migrations.go` | `contractstest.RunLedgerSuite`, `TestValidateTransitionIsExhaustive`, `store.TestLegacySchemasUpgradeTwiceAndPreserveControlData` |
+| Decision 3 - deletion journal | APPROVED DESIGN; task48 implementation and live S3 qualification pending | `contracts/deletion.go` | `contractstest.RunJournalSuite` |
+| Decision 4 - restore fence | APPROVED DESIGN; task50 implementation pending | `contracts/fence.go` | `TestFenceReceiptRequiresEveryFact`, `TestLocalWriterLockCannotFenceAnotherHost` |
 
 Compile-time conformance means a `var _ contracts.X = fakeX{}` assertion in `contracts_test.go`; a signature change that breaks an implementation fails `go vet`.
 
-`internal/hosted/contracts/contractstest` holds reference models and deterministic scenarios for the PROPOSED rows. Each scenario is single-goroutine and sequenced by explicit calls, a fake clock and pre-cancelled contexts, so an interleaving is reproduced exactly. A reference model passing its own suite shows the proposed rules are self-consistent and testable. It is not evidence about production code, which does not exist, and it is not approval. Task44, 48 and 50 run the same `Run...Suite` functions against their real implementations. Nothing under `internal/hosted/service` or `internal/cli` imports it, and no schema migration is applied.
+`internal/hosted/contracts/contractstest` holds reference models and deterministic scenarios for the approved-but-not-yet-integrated designs. Each scenario is single-goroutine and sequenced by explicit calls, a fake clock and pre-cancelled contexts, so an interleaving is reproduced exactly. A reference model passing its own suite shows the rules are self-consistent and testable; it is not production evidence. Tasks44, 48 and 50 run the same `Run...Suite` functions against their real implementations. Nothing under `internal/hosted/service` or `internal/cli` imports these contracts yet. The task41 branch now applies schema v4; ordinary review and integration remain outstanding.
 
-This pass changed three shapes that an earlier draft of this document listed as frozen (`ManifestV2.JournalWatermark`, `RecoveryPlan.JournalWatermark` and `.Generation`, `RecoveryApplyResult.Fence`) because they carry the journal position and fence proof, which are open decisions. It also revised `ManifestV2` because an independent audit (finding D2, `launch-audit-pass2-handoff.md`) showed it could not hold what task49 step 1 and its roundtrip acceptance require. `ManifestV2` now has `ControlDB ArtifactRef` (relative path, length, SHA256), each non-empty brain's `Heads []BundleHead` (ref and object ID, strictly ascending by ref, none for an empty brain), and `Validate`. Every artifact path is a single safe path element, unique across the control database and bundles compared case-insensitively, and never `manifest.json`. `Validate` checks structure and internal consistency only. It does not prove the files exist or match, that the inventory equals the control database's, or that the manifest is authentic: task49 checks those. No field is reserved for an incremental-backup scheme, and the audit's suggestion to reserve `Kind` and `Base` was not taken. No package outside `contracts` imports any of these types, so no dependent receipt reopens. Task49 has not started and rebases on this shape.
+## Callable seam index
+
+`contracts` signatures below use the standard Go `context.Context`; signatures are pinned in the listed source and compile-time fixtures in `contracts_test.go`. “Schema” names the required persistent format or migration; `none` means the seam does not own a control-database migration. The integration paths identify the code that must wire each seam into the service or CLI.
+
+| Seam / implementation owner | Exact callable surface | Semantic contract and schema | Integration file(s) |
+|---|---|---|---|
+| Operation accounting / task44; schema task41 | `Reserve(ctx context.Context, req ReserveRequest) (OperationRecord,error)`; `EnterCanonical(ctx context.Context, operationID string) (OperationRecord,error)`; `Finalize(ctx context.Context, operationID string, outcome OperationPhase, ev Evidence) (OperationRecord,error)`; `ReconcilePending(ctx context.Context, checker CanonicalChecker, fence BrainFence) (ReconcileReport,error)`; `ResolvePendingReview(ctx context.Context, operationID string, outcome OperationPhase, ev Evidence) (OperationRecord,error)` | Atomic multi-counter holds/finalization; fingerprint-bound replay; fenced absence proof; schema v4 `operations` in `store/migrations.go`. Physical staging remains a separate task44 gate. | `internal/hosted/store/operations.go` (task44); `internal/hosted/service/service.go`; `internal/hosted/gateway/gateway.go`; `internal/cli/hosted.go` |
+| Storage admission / task44 | `ReserveStage(ctx context.Context, req StageRequest) (StageTicket,error)`; `AdmitMeasured(ctx context.Context, ticket StageTicket, measuredBytes int64) error`; `Release(ctx context.Context, ticket StageTicket, outcome StageOutcome) error` | Holds physical allocation including pending growth and operator headroom. No new schema version assigned; task44 must request one if persistence is needed. The design is approved conditionally but production admission is blocked on allocated-byte measurement and an OS-enforced limit. | `internal/hosted/store/staging.go` (task44 if persisted); `internal/hosted/service/service.go`; `internal/hosted/gateway/gateway.go` |
+| Billing truth / task47 | `ReconcileCustomer(ctx context.Context, accountID string) (ReconcileResult,error)` | Provider-owned customer truth, atomically replaces stale local state; account eligibility never comes from a client-supplied provider ID. Existing control schema: subscriptions v1, `plan_id` v2, `grace_until` v3. | `internal/hosted/billing/billing.go`; `internal/hosted/service/service.go`; `internal/hosted/store/store.go` |
+| Billing closure / task47 with task48 | `CloseBillingAccount(ctx context.Context, accountID string) (CloseResult,error)` | Resumable checkout lock, expiration and provider reconciliation; ambiguity keeps deletion pending. Uses existing checkout/subscription tables; no new migration assigned. | `internal/hosted/billing/billing.go`; `internal/hosted/service/service.go`; `internal/cli/hosted.go` |
+| Deletion journal / task48 | `PutIfAbsent(ctx context.Context, key string, body []byte) (created bool, err error)`; `Get(ctx context.Context, key string) (body []byte, found bool, err error)`; `ListAfter(ctx context.Context, prefix, startAfter string, limit int) (keys []string, more bool, err error)`; `AppendDeletion(ctx context.Context, entry DeletionEntry) (DeletionEntry,error)`; `ReadThrough(ctx context.Context, from DeletionWatermark) (DeletionRead,error)`; `Seal(ctx context.Context, generation int64) (DeletionWatermark,error)` | Independent immutable, generation-scoped, gapless hash chain; current versions and delete markers protected; live S3 qualification remains required. No control-DB schema migration. | `internal/hosted/deletion/journal.go` (task48); `internal/hosted/service/service.go`; `internal/cli/hosted.go` |
+| Backup manifest v2 / task49 | `Validate() error` on `ManifestV2` | Version-2 JSON manifest binds artifact paths, sizes, SHA256, inventory, bundle heads, source/schema and the qualified journal watermark. No SQL migration; `manifest.json` v2. | `internal/hosted/backup/backup.go`; `internal/hosted/service/service.go` |
+| Restore planning / task50 | `Plan(ctx context.Context, req RecoveryPlanRequest) (RecoveryPlan,error)` | Immutable plan hash pins source snapshot, journal watermark and provider truth; schema restored from the v2 control-DB artifact, currently schema v4. | `internal/hosted/backup/backup.go`; `internal/hosted/service/service.go`; `internal/cli/hosted.go` |
+| Restore apply / task50 | `Apply(ctx context.Context, req RecoveryApplyRequest) (RecoveryApplyResult,error)`; `Fence(ctx context.Context, generation int64) (FenceReceipt,error)` on `WriterFencer` | One account per call. Unfreeze requires sealed journal, provider-verified old-instance stop and revocation of all old credentials/sessions. No new SQL migration. | `internal/hosted/backup/backup.go`; `internal/hosted/service/service.go`; `internal/cli/hosted.go` |
+| Per-brain commit fence / task44 | `EnterCommit(ctx context.Context, brainID string) (leave func(), err error)`; `Fence(ctx context.Context, brainID string) (release func(), err error)` | Shared commit span covers canonical bytes through `writer.Flush`; provider calls precede it. No SQL migration. | `internal/hosted/service/service.go`; `internal/hosted/gateway/gateway.go`; writer implementation in `internal/writer` |
+| Telemetry / task53 | `Emit(ctx context.Context, event TelemetryEvent) error` | Fixed-cardinality events, sanitized upstream errors, bounded nonblocking sink; no SQL migration. | `internal/hosted/service/service.go`; `internal/hosted/telemetry/telemetry.go` (task53) |
+| Provider pin / task42 | `ProviderPin{Provider, BaseURL, Model, Version string; Dimensions int}` | Refuses provider/model/version/dimension mismatch; actual provider response and usage format still requires task42's live verification. Config only; no SQL migration. | `internal/hosted/service/service.go`; `internal/config/config.go` |
+| Accounting units / task44 with task42 | `AccountingUnit`; constants `UnitProductInputToken` and `UnitProviderBilledToken` | Product allowance and provider cost units stay distinct. Config/data contract only; no SQL migration. | `internal/hosted/service/service.go`; `internal/hosted/gateway/gateway.go`; `internal/hosted/meter/meter.go` |
+| Registration mode / task46, config task41 | `RegistrationMode`; constants `RegistrationPublic` and `RegistrationInviteOnly` | Enforced at direct account creation and login, not just UI. Config only; no SQL migration. | `internal/config/config.go`; `internal/hosted/service/service.go`; `internal/cli/hosted.go` |
+| Fault barriers / tasks44/46/47/48/49/50, harness58 | `At(phase string)`; named phase constants in `testhooks/testhooks.go` | Only `hostedtest` build tag plus an inherited private control pipe arms a barrier; production build is a no-op. No SQL migration. | `internal/hosted/testhooks/**`; tagged call sites in each feature implementation |
+
+This pass added the exact `RecoveryPlanner.Plan` and `RecoveryApplier.Apply` signatures. It also revised `ManifestV2` because an independent audit (finding D2, `launch-audit-pass2-handoff.md`) showed it could not hold what task49 step 1 and its roundtrip acceptance require. `ManifestV2` has `ControlDB ArtifactRef` (relative path, length, SHA256), each non-empty brain's `Heads []BundleHead` (ref and object ID, strictly ascending by ref, none for an empty brain), and `Validate`. Every artifact path is a single safe path element, unique across the control database and bundles compared case-insensitively, and never `manifest.json`. `Validate` checks structure and internal consistency only. It does not prove the files exist or match, that the inventory equals the control database's, or that the manifest is authentic: task49 checks those. No field is reserved for an incremental-backup scheme, and the audit's suggestion to reserve `Kind` and `Base` was not taken. No package outside `contracts` imports any of these types, so no dependent receipt reopens. Task49 has not started and rebases on this shape.
 
 ## Architecture-ratified design decisions
 
@@ -52,7 +73,7 @@ Each decision states what to adopt, the rules that make it checkable, what the p
 
 ### 1. Physical storage reservation and headroom (task44) - BLOCKED
 
-**Status: PROPOSED and BLOCKED.** The seam table requires either a proven growth bound or a separately approved staged-write design. This section specifies the staged design far enough to approve or reject. It does not lift the block.
+**Status: APPROVED CONDITIONALLY; production admission remains BLOCKED.** The chief architect approved the staged-write design subject to allocation-based accounting, a measured `MaxMutationStageBytes`, and an OS-enforced stage limit. Those prerequisites remain task44 work; this section does not lift the block.
 
 **What the previous draft got wrong.**
 
@@ -82,7 +103,7 @@ Each decision states what to adopt, the rules that make it checkable, what the p
 
 ### 2. Crash-safe operation accounting, quiescence and retry-key binding (task44)
 
-**Status: PROPOSED.** Files: `contracts/operations.go`, `contracts/commitfence.go`. Migration version 4 is reserved for this feature and stays unwritten until approval; `store/migrations.go` is unchanged.
+**Status: APPROVED DESIGN; migration version 4 is applied in this branch.** Chief-architect ruling: PR236 revision `218d7234d9abea5964f9d4640d1bfffe5c9f8087`; task41 reconciled the one rejected wide-fence recommendation to the approved scope. Contract files: `contracts/operations.go`, `contracts/commitfence.go`. SQL owner: task41, `store/migrations.go`. Runtime ledger owner: task44, pending task41 acceptance and ordinary review.
 
 **What the previous drafts got wrong.**
 
@@ -119,7 +140,7 @@ Each decision states what to adopt, the rules that make it checkable, what the p
 
 **Retry-key binding.** `RequestFingerprint(kind, fields)` is a domain-separated, length-prefixed SHA-256 over every parameter that changes what the canonical writer stores, sorted by name. For `remember`: the exact fact bytes and the brain. Never a derived value such as a token count. A key without a fingerprint is `ErrOperationInvalid`. With an existing non-released row, a different fingerprint or source is `ErrOperationKeyReuse` in every phase, including after commit. Same fingerprint then behaves by phase: committed returns the stored row (a replay, no second charge), reserved is `ErrOperationInProgress`, pending review is `ErrOperationPendingReview`. The stored row's deltas are authoritative for a replay, so a tokenizer change between deploys cannot invalidate a retry. A released row frees its key.
 
-**Proposed table.** `operations(id, account_id, brain_id, client_key, fingerprint, deltas_json, quota_period, phase CHECK(phase IN ('reserved','committed','released','pending_review')), source, evidence_kind, evidence_ref, canonical_entered_at, lease_expires_at, created_at, finalized_at)`, with a partial unique index over `(account_id, brain_id, client_key) WHERE client_key <> '' AND phase <> 'released'`. `deltas_json` is an array of `{metric, units}`.
+**Applied schema v4.** `operations(id, account_id, brain_id, client_key, fingerprint, deltas_json, quota_period, phase CHECK(phase IN ('reserved','committed','released','pending_review')), source, evidence_kind, evidence_ref, canonical_entered_at, lease_expires_at, created_at, finalized_at)`. `brain_id,account_id` references the matching brain; deltas must be a valid JSON array. The partial unique index on `(account_id, brain_id, client_key) WHERE client_key <> '' AND phase <> 'released'` binds live/pending/committed keys, while release frees the key. Lease-expiry and pending-review indexes support the task44 recovery scans. `deltas_json` is an array of `{metric, units}`. The schema does not itself implement counter admission, transitions, or canonical reconciliation; task44 owns that code.
 
 **Questions for the reviewer.**
 
@@ -142,7 +163,7 @@ Mutation-tested: removing the reconciler's fence, dropping the fingerprint compa
 
 ### 3. Independently durable deletion journal (task48, infrastructure54)
 
-**Status: PROPOSED.** Files: `contracts/deletion.go`. No SQL: the journal needs no migration.
+**Status: APPROVED DESIGN; implementation pending task48's live S3 qualification.** Files: `contracts/deletion.go`. No SQL: the journal needs no migration.
 
 **What the previous drafts got wrong.**
 
@@ -181,7 +202,7 @@ The documented semantics add adapter obligations, and `contracts.JournalObjectSt
 
 ### 4. Restore eligibility and external fencing (task50)
 
-**Status: PROPOSED.** Files: `contracts/fence.go`.
+**Status: APPROVED DESIGN.** Files: `contracts/fence.go`; implementation and ordinary review belong to task50.
 
 **What the previous draft got wrong.** It offered a local lock-file check as a fencing option. `writer.AcquireBrain` is a kernel-local `flock`, records no holder, and cannot observe another host. `TestLocalWriterLockCannotFenceAnotherHost` shows a restored copy of the lock file is acquired successfully while the original holder is alive.
 
@@ -235,11 +256,11 @@ Writer path:
 1. `Gateway.Maintenance` (RWMutex; write-locked only by `Service.Backup`, read-locked by every tool call in `callBound` and by `DeleteBrain`; `DeleteAccount` and `RecoverDeletions` take it only through `DeleteBrain`, and `Export` does not take it).
 2. `Gateway.accountLocks[hash(account)]` (per-account mutex; also used by `Export`, `DeleteBrain`, `DeleteAccount`).
 3. `Runtime.Mutations` (per-brain mutex; write and forget calls only).
-4. Brain commit section, shared side of `BrainFence` (PROPOSED). Covers exactly the canonical write, including `writer.Flush`.
+4. Brain commit section, shared side of `BrainFence` (approved design; task44 implementation pending). Covers exactly the canonical write, including `writer.Flush`.
 5. `store.Store.Transaction` for `EnterCanonical`, `Finalize` and the other ledger calls. Short, never held across canonical or provider I/O, never nested inside another lock's wait.
 6. Canonical disk and provider I/O, outside any database transaction.
 
-Reconciler path (PROPOSED): `Gateway.Maintenance` (read), then the brain's exclusive `BrainFence`, then the canonical checker, then a ledger transaction. It never acquires an account lock or `Runtime.Mutations`. Both transitions it makes are single SQL transactions, so a concurrent same-account `Reserve` is safe: a commit converts held capacity to used, a release only frees capacity. Never acquire an account lock while holding a brain fence.
+Reconciler path (task44 implementation pending): `Gateway.Maintenance` (read), then the brain's exclusive `BrainFence`, then the canonical checker, then a ledger transaction. It never acquires an account lock or `Runtime.Mutations`. Both transitions it makes are single SQL transactions, so a concurrent same-account `Reserve` is safe: a commit converts held capacity to used, a release only frees capacity. Never acquire an account lock while holding a brain fence.
 
 Deadlock argument: a writer holds the account lock and `Runtime.Mutations` while it may wait for the fence's shared side. The reconciler holds the fence's exclusive side while it waits for the canonical read and a ledger transaction. Neither of those waits on a lock the writer holds, so there is no cycle. A refused or timed-out `Fence` holds nothing and leaves no waiter behind.
 
@@ -265,9 +286,9 @@ Task41’s reviewer freezes the task43 Hit@5 corpus/scoring and task60 workload/
 This receipt records the design rulings only; it does not mark task41 accepted, approve implementation, or authorize merge.
 
 - **Source and review.** Drafted in worktree branch `hosted/t23.41-20260918` on base `810349ba7c1ed2c05fe34e3892de764a26a4633c`. Chief-architect reviewed revision `218d7234d9abea5964f9d4640d1bfffe5c9f8087`; its rulings are recorded in the architecture-review request. This follow-up reconciles the rejected wide commit-section recommendation. Not merged. An independent code review and a coordinator review found defects in earlier drafts; those were fixed and are listed under their decision above.
-- **Exact Go interface and SQL revision.** `internal/hosted/contracts/**`, `internal/hosted/contracts/contractstest/**` and `internal/hosted/testhooks/**` in this branch. No SQL applied: the `operations` table is design-only pending review and `store/migrations.go` is unchanged.
+- **Exact Go interface and SQL revision.** `internal/hosted/contracts/**`, `internal/hosted/contracts/contractstest/**`, `internal/hosted/testhooks/**` and migration v4 in `internal/hosted/store/migrations.go` in this branch. Upgrade tests cover source schema versions 1, 2 and 3, repeated open, retained control data, future-version refusal without file writes, and schema equivalence. Facts live in each brain's canonical store, outside the control DB; an adjacent fixture proves the migration does not modify that store. Migration does not claim to validate or rewrite its content.
 - **Storage admission design:** approved conditionally by chief-architect. It remains **BLOCKED** until task44 supplies allocation-based accounting, an OS-enforced staging limit, and the `MaxMutationStageBytes` measurement; none is claimed here.
-- **Operation accounting, quiescence and retry-key binding:** approved by chief-architect at PR236 revision `218d7234d9abea5964f9d4640d1bfffe5c9f8087`, with the narrow commit-section extent stated above. Proposed schema/migration remains unapplied until implementation and ordinary review.
+- **Operation accounting, quiescence and retry-key binding:** approved by chief-architect at PR236 revision `218d7234d9abea5964f9d4640d1bfffe5c9f8087`, with the narrow commit-section extent stated above. Migration v4 is applied in this branch and covered by fixture tests; operation-ledger production behavior and ordinary review remain outstanding.
 - **Journal completeness:** approved by chief-architect at PR236 revision `218d7234d9abea5964f9d4640d1bfffe5c9f8087`; the existing versioned-bucket substrate remains conditional on task48's live S3 qualification against our bucket, policy and CLI build. **Restore fencing:** the three-fact receipt is approved. Implementation and ordinary review remain outstanding.
 - **Provider, model and accounting-unit contract.** `AccountingUnit`, `RegistrationMode` and the `ProviderPin` shape are frozen and independent of the four decisions. The actual provider, model and version remain task42's to verify and pin.
 - **Quality and load thresholds.** Not evaluated here. Task43 owns the Hit@5 corpus and task60 owns the workload targets.

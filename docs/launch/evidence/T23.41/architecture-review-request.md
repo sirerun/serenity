@@ -58,7 +58,7 @@ Reply per line: **approve**, **approve with amendment**, or **reject with requir
 
 ## Already concrete and not part of this review
 
-Billing truth and closure, backup manifest v2 (except its journal watermark), the recovery plan/apply shape (except the journal and fence fields), telemetry, provider pin, accounting units, registration mode and the fault-barrier package are frozen, compiled and covered by tests. They can be reviewed as ordinary code.
+Billing truth and closure, backup manifest v2, recovery plan/apply, telemetry, provider pin, accounting units, registration mode and the fault-barrier package have frozen, compiled signatures and contract tests. Architect approval of the journal and restore-fence designs covers their fields; implementation and ordinary review remain open.
 
 Backup manifest v2 changed in this pass: it now carries the control database artifact (relative path, length, SHA256), each non-empty brain's bundle heads, and a `Validate` method, because task49 step 1 and its roundtrip acceptance need them (independent audit D2). Nothing imports the type and task49 has not started. It reserves no incremental-backup fields. `Validate` proves structure and internal consistency only; it does not prove that files exist, that checksums match, that the inventory equals the control database's, or that a manifest is authentic.
 
@@ -70,4 +70,5 @@ The journal write method is `DeletionJournal.AppendDeletion`, not `Append`, so t
 - The worst-case physical growth of one mutation on the real runtime (decision 1, `MaxMutationStageBytes`). No measurement was taken; the packet requires task44 to produce one in allocated bytes.
 - Any OS-enforced size limit for the staging area (decision 1). The reference staging gate and `StageMeter` are accounting only and prove no hard bound.
 - The actual `remember` handler's commit-section timing under provider load (decision 2).
-- Any production code path. No migration is applied and nothing under `internal/hosted/service` or `internal/cli` imports the contracts.
+- Migration v4 and the operation-table constraints are implemented on this branch, with local tests. The migration does not implement the production operation ledger. Nothing under `internal/hosted/service` or `internal/cli` imports the operation contract yet.
+- The latest multi-package race suite passed for store, service, contracts, contractstest, testhooks and the file-first gate. Ordinary code review and PR CI remain pending.

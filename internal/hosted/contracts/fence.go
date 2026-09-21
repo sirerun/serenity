@@ -11,8 +11,9 @@ import (
 // Restore fencing (interfaces.md "Recovery activation barrier", owner task50,
 // review owner task41).
 //
-// STATUS: PROPOSED, not frozen. The chief-architect review must choose this
-// mechanism or a distributed generation barrier; this file freezes nothing.
+// STATUS: design approved by chief-architect on PR236 revision
+// 218d7234d9abea5964f9d4640d1bfffe5c9f8087. Task50 implements the receipt;
+// ordinary implementation review remains pending.
 //
 // A new writer may start only after the old service can no longer mutate
 // shared state. Three independent facts are required, because each defeats a

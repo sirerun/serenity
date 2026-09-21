@@ -9,12 +9,11 @@ import (
 // Storage admission (interfaces.md "Storage admission", owner task44, design
 // review owner task41).
 //
-// STATUS: PROPOSED and BLOCKED on architecture approval. interfaces.md says
-// "if neither a mathematical growth bound nor a separately approved
-// staged-write design is established, task44 stays blocked; schema owner
-// cannot invent a hidden overage allowance." This file specifies the staged
-// design well enough to approve or reject; it does not lift the block. The
-// executable specification is contractstest.RunStagingSuite.
+// STATUS: design approved conditionally by chief-architect on PR236 revision
+// 218d7234d9abea5964f9d4640d1bfffe5c9f8087. Task44 remains blocked on
+// allocation-based accounting, a measured MaxMutationStageBytes and an
+// OS-enforced staging limit; schema owner cannot invent a hidden overage
+// allowance. The executable specification is contractstest.RunStagingSuite.
 //
 // Three points are settled here: two defects of the previous draft, and what
 // the word "bound" does and does not mean.

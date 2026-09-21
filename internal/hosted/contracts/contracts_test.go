@@ -80,6 +80,18 @@ func (fakeWriterFencer) Fence(context.Context, int64) (contracts.FenceReceipt, e
 	return contracts.FenceReceipt{}, nil
 }
 
+type fakeRecoveryPlanner struct{}
+
+func (fakeRecoveryPlanner) Plan(context.Context, contracts.RecoveryPlanRequest) (contracts.RecoveryPlan, error) {
+	return contracts.RecoveryPlan{}, nil
+}
+
+type fakeRecoveryApplier struct{}
+
+func (fakeRecoveryApplier) Apply(context.Context, contracts.RecoveryApplyRequest) (contracts.RecoveryApplyResult, error) {
+	return contracts.RecoveryApplyResult{}, nil
+}
+
 type fakeJournalObjectStore struct{}
 
 func (fakeJournalObjectStore) PutIfAbsent(context.Context, string, []byte) (bool, error) {
@@ -105,6 +117,8 @@ var (
 	_ contracts.CanonicalChecker   = fakeCanonicalChecker{}
 	_ contracts.BrainFence         = fakeBrainFence{}
 	_ contracts.WriterFencer       = fakeWriterFencer{}
+	_ contracts.RecoveryPlanner    = fakeRecoveryPlanner{}
+	_ contracts.RecoveryApplier    = fakeRecoveryApplier{}
 	_ contracts.JournalObjectStore = fakeJournalObjectStore{}
 	_ contracts.Telemetry          = fakeTelemetry{}
 )

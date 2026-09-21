@@ -1,6 +1,7 @@
 package contracts
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,10 +10,10 @@ import (
 )
 
 // Backup manifest v2 (interfaces.md "Backup manifestv2", owner task49).
-// FROZEN shape, except JournalWatermark: that field carries the deletion
-// journal position, whose design is the PROPOSED decision 3 in interfaces.md,
-// so its type (DeletionWatermark, self-verifying) is PROPOSED with it. Every
-// other field is independent of the four bounded decisions.
+// FROZEN shape, except JournalWatermark: it carries the architect-approved
+// deletion-journal position and requires task48's live service qualification
+// before production use. Every other field is independent of the four design
+// decisions.
 //
 // This revision adds what task49 step 1 and acceptance require and the earlier
 // draft could not represent (independent audit D2): the control database
@@ -254,10 +255,10 @@ func isLowerHex(s string, n int) bool {
 }
 
 // Recovery CLI (interfaces.md "Recovery CLI", owner task50, registration
-// owner task41/57). The plan/apply shape is FROZEN except the fields coupled to
-// the PROPOSED decisions 3 and 4 in interfaces.md: RecoveryPlan.JournalWatermark,
-// RecoveryPlan.Generation and RecoveryApplyResult.Fence. The eligibility rule
-// Apply enforces (RecoveryApplyResult.Consistent) is PROPOSED and not approved.
+// owner task41/57). The plan/apply shape is FROZEN, including journal and
+// fence fields from the architect-approved decisions 3 and 4. Live journal
+// qualification and production implementation remain pending. Apply's
+// eligibility rule is checked by RecoveryApplyResult.Consistent.
 //
 // Plan is immutable once produced: PlanHash pins the exact source snapshot,
 // deletion-journal watermark and provider truth the plan was computed
@@ -279,6 +280,12 @@ type RecoveryPlanRequest struct {
 	SnapshotPath string
 }
 
+// RecoveryPlanner computes an immutable, single-source restore plan. It pins
+// the exact snapshot, journal watermark and provider truth in PlanHash.
+type RecoveryPlanner interface {
+	Plan(ctx context.Context, req RecoveryPlanRequest) (RecoveryPlan, error)
+}
+
 type RecoveryApplyRequest struct {
 	PlanHash  string
 	AccountID string // exactly one account per Apply call; never "all"
@@ -291,6 +298,13 @@ type RecoveryApplyResult struct {
 	// Fence is the proof the old writer was fenced. It must be Sufficient
 	// whenever Unfrozen is true.
 	Fence FenceReceipt
+}
+
+// RecoveryApplier applies one account from the exact plan approved by the
+// operator. It rejects stale or mismatched plan hashes and never accepts an
+// apply-all request.
+type RecoveryApplier interface {
+	Apply(ctx context.Context, req RecoveryApplyRequest) (RecoveryApplyResult, error)
 }
 
 // Consistent reports whether the result obeys the activation rule: an account
