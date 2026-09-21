@@ -31,3 +31,35 @@ const migration3 = `
 ALTER TABLE subscriptions ADD COLUMN grace_until TEXT;
 INSERT INTO schema_migrations(version,applied_at) VALUES(3,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 `
+
+// migration4 stores the durable operation journal. Delta and evidence payloads
+// are serialized by the store layer; phase and ownership invariants remain
+// enforced by SQLite so every writer observes the same uniqueness boundary.
+const migration4 = `
+CREATE TABLE operations(
+ id TEXT PRIMARY KEY,
+ account_id TEXT NOT NULL REFERENCES accounts(id),
+ brain_id TEXT NOT NULL,
+ client_key TEXT NOT NULL DEFAULT '',
+ fingerprint TEXT NOT NULL DEFAULT '',
+ deltas_json TEXT NOT NULL CHECK(json_valid(deltas_json) AND json_type(deltas_json)='array'),
+ quota_period TEXT NOT NULL,
+ phase TEXT NOT NULL CHECK(phase IN ('reserved','committed','released','pending_review')),
+ source TEXT NOT NULL,
+ evidence_kind TEXT NOT NULL DEFAULT '',
+ evidence_ref TEXT NOT NULL DEFAULT '',
+ canonical_entered_at TEXT,
+ lease_expires_at TEXT NOT NULL,
+ created_at TEXT NOT NULL,
+ finalized_at TEXT,
+ FOREIGN KEY(brain_id,account_id) REFERENCES brains(id,account_id)
+);
+CREATE UNIQUE INDEX operations_active_client_key
+ ON operations(account_id,brain_id,client_key)
+ WHERE client_key<>'' AND phase<>'released';
+CREATE INDEX operations_expired_reserved
+ ON operations(lease_expires_at,id) WHERE phase='reserved';
+CREATE INDEX operations_pending_review
+ ON operations(account_id,brain_id,created_at) WHERE phase='pending_review';
+INSERT INTO schema_migrations(version,applied_at) VALUES(4,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+`
