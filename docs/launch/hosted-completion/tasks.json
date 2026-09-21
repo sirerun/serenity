@@ -1418,17 +1418,18 @@
       "steps": [
         "Acquire environment lock and use controlled synthetic load window. For paid profile run full1Scale+3Builder+10Free workload; pilot profile measures its explicitly approved cap without implying paid-tier qualification.",
         "Run warm/cold/skewed/churn load and provider failure; measure actual wall time, CPU/RSS/disk, p95 latency, error/admission rates and live-provider token totals within cap.",
-        "Project idle, measured and worst-case monthly costs including backup-history amplification and readiness/recovery calls; reconcile provider receipts with internal accounting.",
+        "Project idle, measured and worst-case monthly costs including backup-history amplification and readiness/recovery calls; reconcile provider receipts with internal accounting. Produce $EVIDENCE_DIR/cost-measurements.json using the serenity-hosted-cost-measurements v1 schema documented in the [T23.60 cost-measurement schema](../../launch/hosted-economics.md#measurement-input), with each measured quantity bound to its scenario, unit, observation time and hash-pinned raw source evidence.",
+        "The cost command below applies only a separate cost-measurements.json document matching the T23.60 schema; load.json is a load result and must never be passed as --measurements. Without measurements, the command produces an assumptions-based baseline, not measured cost qualification. Unsupported quantities remain unknown, and a baseline subtotal cannot satisfy the monthly-maximum acceptance criterion.",
         "If targets fail, record concrete smallest correction with owner/trigger, obtain any needed architecture/plan change review, and rerun affected workload. Never silently reduce published allowances or spend past cap."
       ],
       "acceptance": [
         "Task60 thresholds met for selected profile or explicit FAIL prevents corresponding launch; zero durability/isolation errors.",
-        "Concrete monthly maximum is within approved budget and historical$60 ceiling; unknown line item blocks cost qualification.",
+        "The complete conservative monthly maximum is within the founder-selected $450/month planning ceiling; this planning ceiling is not AWS spend or deployment authorization, and any unknown line item blocks cost qualification.",
         "Configured account/runtime caps match measured capacity, and reaching a cap fails gracefully with recovery operations available."
       ],
       "commands": [
         "python3 scripts/hosted/load.py --live --manifest \"$QUALIFICATION_MANIFEST\" --output \"$EVIDENCE_DIR/load.json\"",
-        "python3 scripts/hosted/cost_model.py --manifest \"$QUALIFICATION_MANIFEST\" --measurements \"$EVIDENCE_DIR/load.json\" --output \"$EVIDENCE_DIR/cost.json\""
+        "python3 scripts/hosted/cost_model.py --manifest \"$QUALIFICATION_MANIFEST\" --measurements \"$EVIDENCE_DIR/cost-measurements.json\" --output \"$EVIDENCE_DIR/cost.json\""
       ],
       "original_requirements": [
         "T23.3",
