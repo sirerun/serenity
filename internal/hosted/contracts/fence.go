@@ -49,12 +49,20 @@ type FenceReceipt struct {
 // fenced. The message lists every missing fact.
 var ErrFenceInsufficient = errors.New("hosted/contracts: old writer is not proven fenced")
 
-// Sufficient returns nil only if all three facts hold for the generation
-// pinned by the immutable recovery plan. A self-consistent receipt for some
-// other generation is not enough to authorize this plan's activation.
-func (f FenceReceipt) Sufficient(expectedGeneration int64) error {
+// SufficientFor returns nil only if all three facts hold for the generation
+// pinned by plan, and the seal is strictly after the plan's journal watermark.
+// A self-consistent receipt for another generation or an older position is
+// not enough to authorize this plan's activation.
+func (f FenceReceipt) SufficientFor(plan RecoveryPlan) error {
 	var missing []string
-	if expectedGeneration <= 0 || f.Generation != expectedGeneration || f.JournalSeal.Generation != f.Generation || f.JournalSeal.SequenceID <= 0 || f.JournalSeal.EntryHash == "" {
+	if err := plan.Validate(); err != nil {
+		return fmt.Errorf("%w: invalid recovery plan: %v", ErrFenceInsufficient, err)
+	}
+	watermark := plan.JournalWatermark
+	sealFollowsWatermark := f.JournalSeal.Generation > watermark.Generation ||
+		(f.JournalSeal.Generation == watermark.Generation && f.JournalSeal.SequenceID > watermark.SequenceID)
+	if f.Generation != plan.Generation || f.JournalSeal.Generation != f.Generation ||
+		f.JournalSeal.SequenceID <= 0 || !validSHA256(f.JournalSeal.EntryHash) || !sealFollowsWatermark {
 		missing = append(missing, "journal seal for the plan generation")
 	}
 	if !f.OldInstanceStopped {

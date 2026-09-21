@@ -140,30 +140,35 @@ func TestReserveRequestValidate(t *testing.T) {
 }
 
 func TestFenceReceiptRequiresEveryFact(t *testing.T) {
-	full := contracts.FenceReceipt{Generation: 2, JournalSeal: contracts.DeletionWatermark{Generation: 2, SequenceID: 7, EntryHash: "h"},
+	plan := validRecoveryPlan()
+	full := contracts.FenceReceipt{Generation: 2, JournalSeal: contracts.DeletionWatermark{Generation: 2, SequenceID: 8, EntryHash: strings.Repeat("c", 64)},
 		OldInstanceStopped: true, OldCredentialsRevoked: true, VerifiedAt: time.Unix(1, 0)}
-	if err := full.Sufficient(2); err != nil {
+	if err := full.SufficientFor(plan); err != nil {
 		t.Fatalf("complete receipt rejected: %v", err)
 	}
 	for name, mutate := range map[string]func(*contracts.FenceReceipt){
-		"no seal":              func(f *contracts.FenceReceipt) { f.JournalSeal = contracts.DeletionWatermark{} },
-		"seal of other gen":    func(f *contracts.FenceReceipt) { f.JournalSeal.Generation = 1 },
-		"seal without hash":    func(f *contracts.FenceReceipt) { f.JournalSeal.EntryHash = "" },
-		"instance not stopped": func(f *contracts.FenceReceipt) { f.OldInstanceStopped = false },
-		"credentials live":     func(f *contracts.FenceReceipt) { f.OldCredentialsRevoked = false },
-		"unverified":           func(f *contracts.FenceReceipt) { f.VerifiedAt = time.Time{} },
+		"no seal":                func(f *contracts.FenceReceipt) { f.JournalSeal = contracts.DeletionWatermark{} },
+		"seal of other gen":      func(f *contracts.FenceReceipt) { f.JournalSeal.Generation = 1 },
+		"seal without hash":      func(f *contracts.FenceReceipt) { f.JournalSeal.EntryHash = "" },
+		"malformed seal hash":    func(f *contracts.FenceReceipt) { f.JournalSeal.EntryHash = "h" },
+		"seal at plan watermark": func(f *contracts.FenceReceipt) { f.JournalSeal.SequenceID = plan.JournalWatermark.SequenceID },
+		"instance not stopped":   func(f *contracts.FenceReceipt) { f.OldInstanceStopped = false },
+		"credentials live":       func(f *contracts.FenceReceipt) { f.OldCredentialsRevoked = false },
+		"unverified":             func(f *contracts.FenceReceipt) { f.VerifiedAt = time.Time{} },
 	} {
 		f := full
 		mutate(&f)
-		if err := f.Sufficient(2); !errors.Is(err, contracts.ErrFenceInsufficient) {
+		if err := f.SufficientFor(plan); !errors.Is(err, contracts.ErrFenceInsufficient) {
 			t.Errorf("%s: err=%v, want ErrFenceInsufficient", name, err)
 		}
 	}
-	if err := full.Sufficient(3); !errors.Is(err, contracts.ErrFenceInsufficient) {
+	wrongGeneration := plan
+	wrongGeneration.Generation = 3
+	if err := full.SufficientFor(wrongGeneration); !errors.Is(err, contracts.ErrFenceInsufficient) {
 		t.Errorf("receipt for generation %d accepted for plan generation 3: %v", full.Generation, err)
 	}
 	// Every missing fact is reported, not just the first.
-	err := contracts.FenceReceipt{}.Sufficient(1)
+	err := (contracts.FenceReceipt{}).SufficientFor(plan)
 	for _, part := range []string{"journal seal", "instance stop", "credential"} {
 		if err == nil || !strings.Contains(err.Error(), part) {
 			t.Errorf("empty receipt error %v does not mention %q", err, part)
@@ -172,25 +177,86 @@ func TestFenceReceiptRequiresEveryFact(t *testing.T) {
 }
 
 func TestRecoveryResultConsistency(t *testing.T) {
-	sealed := contracts.FenceReceipt{Generation: 1, JournalSeal: contracts.DeletionWatermark{Generation: 1, SequenceID: 1, EntryHash: "h"},
+	plan := validRecoveryPlan()
+	req := contracts.RecoveryApplyRequest{PlanHash: plan.PlanHash, AccountID: "account-a"}
+	sealed := contracts.FenceReceipt{Generation: 2, JournalSeal: contracts.DeletionWatermark{Generation: 2, SequenceID: 8, EntryHash: strings.Repeat("c", 64)},
 		OldInstanceStopped: true, OldCredentialsRevoked: true, VerifiedAt: time.Unix(1, 0)}
-	if err := (contracts.RecoveryApplyResult{AccountID: "a", PlanGeneration: 1, Unfrozen: true, Fence: sealed}).Consistent(); err != nil {
+	valid := contracts.RecoveryApplyResult{AccountID: "account-a", PlanGeneration: 2, Unfrozen: true, Fence: sealed}
+	if err := valid.Consistent(plan, req); err != nil {
 		t.Errorf("fenced unfreeze rejected: %v", err)
 	}
-	if err := (contracts.RecoveryApplyResult{AccountID: "a", PlanGeneration: 1, Unfrozen: true}).Consistent(); !errors.Is(err, contracts.ErrFenceInsufficient) {
+	if err := (contracts.RecoveryApplyResult{AccountID: "account-a", PlanGeneration: 2, Unfrozen: true}).Consistent(plan, req); !errors.Is(err, contracts.ErrFenceInsufficient) {
 		t.Errorf("unfreeze without a fence: %v, want ErrFenceInsufficient", err)
 	}
-	stale := sealed
-	stale.Generation = 2
-	stale.JournalSeal.Generation = 2
-	if err := (contracts.RecoveryApplyResult{AccountID: "a", PlanGeneration: 1, Unfrozen: true, Fence: stale}).Consistent(); !errors.Is(err, contracts.ErrFenceInsufficient) {
-		t.Errorf("unfreeze with self-consistent fence for another generation: %v, want ErrFenceInsufficient", err)
+	wrongGeneration := valid
+	wrongGeneration.PlanGeneration = 3
+	if err := wrongGeneration.Consistent(plan, req); err == nil {
+		t.Error("result with self-attested generation different from the approved plan passed")
 	}
-	if err := (contracts.RecoveryApplyResult{AccountID: "a"}).Consistent(); err == nil {
+	wrongPlan := req
+	wrongPlan.PlanHash = strings.Repeat("d", 64)
+	if err := valid.Consistent(plan, wrongPlan); err == nil {
+		t.Error("request for a different plan passed")
+	}
+	wrongAccount := req
+	wrongAccount.AccountID = "account-b"
+	if err := valid.Consistent(plan, wrongAccount); err == nil {
+		t.Error("result for a different account than the request passed")
+	}
+	outOfPlan := contracts.RecoveryApplyRequest{PlanHash: plan.PlanHash, AccountID: "account-b"}
+	if err := (contracts.RecoveryApplyResult{AccountID: "account-b", PlanGeneration: 2, Reason: "refused"}).Consistent(plan, outOfPlan); err == nil {
+		t.Error("account not present in the approved plan passed")
+	}
+	wildcardPlan := plan
+	wildcardPlan.Accounts = []string{"all"}
+	wildcardReq := contracts.RecoveryApplyRequest{PlanHash: wildcardPlan.PlanHash, AccountID: "all"}
+	if err := (contracts.RecoveryApplyResult{AccountID: "all", PlanGeneration: 2, Reason: "refused"}).Consistent(wildcardPlan, wildcardReq); err == nil {
+		t.Error("apply-all account sentinel passed")
+	}
+	withReason := valid
+	withReason.Reason = "also refused"
+	if err := withReason.Consistent(plan, req); err == nil {
+		t.Error("mixed unfrozen and refusal result passed")
+	}
+	if err := (contracts.RecoveryApplyResult{AccountID: "account-a", PlanGeneration: 2}).Consistent(plan, req); err == nil {
 		t.Error("refusal without a reason accepted")
 	}
-	if err := (contracts.RecoveryApplyResult{AccountID: "a", Reason: "journal incomplete"}).Consistent(); err != nil {
+	if err := (contracts.RecoveryApplyResult{AccountID: "account-a", PlanGeneration: 2, Reason: "journal incomplete"}).Consistent(plan, req); err != nil {
 		t.Errorf("reasoned refusal rejected: %v", err)
+	}
+}
+
+func TestRecoveryPlanValidate(t *testing.T) {
+	good := validRecoveryPlan()
+	if err := good.Validate(); err != nil {
+		t.Fatalf("valid plan rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(*contracts.RecoveryPlan){
+		"malformed plan hash":               func(p *contracts.RecoveryPlan) { p.PlanHash = "bad" },
+		"missing source snapshot":           func(p *contracts.RecoveryPlan) { p.SourceSnapshot = "" },
+		"missing provider truth":            func(p *contracts.RecoveryPlan) { p.ProviderTruthAt = time.Time{} },
+		"partial journal watermark":         func(p *contracts.RecoveryPlan) { p.JournalWatermark.EntryHash = "bad" },
+		"fence generation before watermark": func(p *contracts.RecoveryPlan) { p.Generation = 1 },
+		"empty eligible set":                func(p *contracts.RecoveryPlan) { p.Accounts = nil },
+		"duplicate eligible account":        func(p *contracts.RecoveryPlan) { p.Accounts = []string{"account-a", "account-a"} },
+		"apply all sentinel":                func(p *contracts.RecoveryPlan) { p.Accounts = []string{"ALL"} },
+	} {
+		p := good
+		mutate(&p)
+		if err := p.Validate(); !errors.Is(err, contracts.ErrRecoveryPlanInvalid) {
+			t.Errorf("%s: err=%v, want ErrRecoveryPlanInvalid", name, err)
+		}
+	}
+}
+
+func validRecoveryPlan() contracts.RecoveryPlan {
+	return contracts.RecoveryPlan{
+		PlanHash:         strings.Repeat("a", 64),
+		SourceSnapshot:   strings.Repeat("b", 40),
+		JournalWatermark: contracts.DeletionWatermark{Generation: 2, SequenceID: 7, EntryHash: strings.Repeat("c", 64)},
+		Generation:       2,
+		ProviderTruthAt:  time.Unix(1, 0),
+		Accounts:         []string{"account-a"},
 	}
 }
 

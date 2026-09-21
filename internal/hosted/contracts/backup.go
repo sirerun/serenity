@@ -258,7 +258,8 @@ func isLowerHex(s string, n int) bool {
 // owner task41/57). The plan/apply shape is FROZEN, including journal and
 // fence fields from the architect-approved decisions 3 and 4. Live journal
 // qualification and production implementation remain pending. Apply's
-// eligibility rule is checked by RecoveryApplyResult.Consistent.
+// eligibility rule is checked by RecoveryApplyResult.Consistent against the
+// exact RecoveryPlan and RecoveryApplyRequest.
 //
 // Plan is immutable once produced: PlanHash pins the exact source snapshot,
 // deletion-journal watermark and provider truth the plan was computed
@@ -274,6 +275,48 @@ type RecoveryPlan struct {
 	Generation      int64
 	ProviderTruthAt time.Time
 	Accounts        []string // opaque account IDs eligible for this plan
+}
+
+// ErrRecoveryPlanInvalid means a restore plan is malformed or internally
+// inconsistent. Validate checks shape and relationships; the planner and
+// applier remain responsible for authenticating the bytes behind PlanHash.
+var ErrRecoveryPlanInvalid = errors.New("hosted/contracts: invalid recovery plan")
+
+// Validate checks the fields needed to bind an apply result to one immutable
+// plan. A zero watermark means the journal was empty when its first
+// generation began; otherwise the watermark must have a valid durable
+// position, and the generation being fenced cannot precede it.
+func (p RecoveryPlan) Validate() error {
+	if !validSHA256(p.PlanHash) {
+		return fmt.Errorf("%w: plan hash is not a SHA-256 digest", ErrRecoveryPlanInvalid)
+	}
+	if !validObjectID(p.SourceSnapshot) {
+		return fmt.Errorf("%w: source snapshot is not an object ID", ErrRecoveryPlanInvalid)
+	}
+	if p.Generation < 1 || p.ProviderTruthAt.IsZero() {
+		return fmt.Errorf("%w: generation and provider truth time are required", ErrRecoveryPlanInvalid)
+	}
+	w := p.JournalWatermark
+	if !w.IsZero() && (w.Generation < 1 || w.SequenceID < 1 || !validSHA256(w.EntryHash)) {
+		return fmt.Errorf("%w: journal watermark is malformed", ErrRecoveryPlanInvalid)
+	}
+	if p.Generation < w.Generation {
+		return fmt.Errorf("%w: fence generation precedes journal watermark", ErrRecoveryPlanInvalid)
+	}
+	if len(p.Accounts) == 0 {
+		return fmt.Errorf("%w: eligible account set is empty", ErrRecoveryPlanInvalid)
+	}
+	seen := make(map[string]struct{}, len(p.Accounts))
+	for _, id := range p.Accounts {
+		if !validRecoveryAccountID(id) {
+			return fmt.Errorf("%w: eligible account ID is not opaque", ErrRecoveryPlanInvalid)
+		}
+		if _, ok := seen[id]; ok {
+			return fmt.Errorf("%w: eligible account set contains a duplicate", ErrRecoveryPlanInvalid)
+		}
+		seen[id] = struct{}{}
+	}
+	return nil
 }
 
 type RecoveryPlanRequest struct {
@@ -308,18 +351,45 @@ type RecoveryApplier interface {
 	Apply(ctx context.Context, req RecoveryApplyRequest) (RecoveryApplyResult, error)
 }
 
-// Consistent reports whether the result obeys the activation rule: an account
-// is unfrozen only with a sufficient fence receipt, and every refusal names a
-// reason. Task50's Apply must never return a result for which this fails.
-func (r RecoveryApplyResult) Consistent() error {
-	if r.AccountID == "" {
-		return errors.New("hosted/contracts: recovery result has no account")
+// Consistent reports whether the result is bound to the exact approved plan
+// and request: the account must be in that plan, its plan hash must match, and
+// an unfreeze must have a fence for that plan after its recorded watermark.
+// Task50's Apply must never return a result for which this fails.
+func (r RecoveryApplyResult) Consistent(plan RecoveryPlan, req RecoveryApplyRequest) error {
+	if err := plan.Validate(); err != nil {
+		return err
+	}
+	if req.PlanHash != plan.PlanHash {
+		return errors.New("hosted/contracts: apply request does not name the approved plan")
+	}
+	if !validRecoveryAccountID(req.AccountID) || r.AccountID != req.AccountID {
+		return errors.New("hosted/contracts: recovery result account does not match the single-account request")
+	}
+	inPlan := false
+	for _, id := range plan.Accounts {
+		if id == req.AccountID {
+			inPlan = true
+			break
+		}
+	}
+	if !inPlan {
+		return errors.New("hosted/contracts: requested account is not eligible in the approved plan")
+	}
+	if r.PlanGeneration != plan.Generation {
+		return errors.New("hosted/contracts: recovery result generation does not match the approved plan")
 	}
 	if r.Unfrozen {
-		return r.Fence.Sufficient(r.PlanGeneration)
+		if r.Reason != "" {
+			return errors.New("hosted/contracts: unfrozen recovery result must not state a refusal reason")
+		}
+		return r.Fence.SufficientFor(plan)
 	}
 	if r.Reason == "" {
 		return errors.New("hosted/contracts: refused recovery result must state a reason")
 	}
 	return nil
+}
+
+func validRecoveryAccountID(id string) bool {
+	return id != "" && !strings.EqualFold(id, "all") && id != "*" && !strings.ContainsAny(id, "@ \t\r\n/")
 }
