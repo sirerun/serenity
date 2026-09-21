@@ -64,7 +64,7 @@
     },
     {
       "path": "docs/launch/hosted-economics.md",
-      "sha256": "d54bc9f4a5796e6b8b97fd05130b677abab75d9100b595774a7486af8f29f54a"
+      "sha256": "e31a555c2e929b1f5d70f23f9a20c5fb26c6ad819b8bc68eea6fea37df74d9dc"
     },
     {
       "path": "scripts/hosted/cost_model.py",
@@ -84,7 +84,7 @@
     },
     {
       "path": "docs/launch/evidence/T23.60/decision-request-hot-tenant-rate-limit.md",
-      "sha256": "600f47f028f06aee95661b810e3931c68b9433105b3074e5d12851fbf8037142"
+      "sha256": "64867a743be3973e339abe576e084b7ecd2b584640cbe1e33d5307ed1d877427"
     },
     {
       "path": "docs/launch/evidence/T23.60/s3-rate.json",

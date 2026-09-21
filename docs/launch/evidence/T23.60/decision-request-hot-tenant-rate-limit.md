@@ -1,6 +1,10 @@
 # Decision request: hot-tenant load versus the per-account rate limit
 
-Status: **open. T23.60 changed no number.** This request needs a named answer from the task41 (T23.41) reviewer and from the owner of the gateway admission code (T23.45, whose exclusive write scope includes `internal/hosted/gateway/gateway.go` and `admission.go`) before any live run or capacity claim.
+Status: **workload and threshold ruling received; T23.45 admission work remains open.** The chief architect ruled on PR #239 that the frozen workload and `<1%` unexpected-admission threshold stand unchanged. No live run or capacity claim is qualified until T23.45 reconciles the account limiter and the frozen workload is rerun.
+
+## Ruling received
+
+The [chief-architect ruling on PR #239](https://github.com/sirerun/serenity/pull/239#issuecomment-5746461468) keeps the 50%-hot-tenant workload and `<1%` threshold exactly as frozen. Do not lower the offered rate or hot-tenant fraction, and do not raise the rejection threshold. The T23.45 admission owner must reconcile the plan-independent account limit with this valid Scale workload before T23.68; the reviewed options include a higher qualification-window account ceiling or excluding the hot tenant from that per-account bucket. T23.45 owns the implementation and acceptance evidence.
 
 ## The finding
 
@@ -33,19 +37,13 @@ The share is not an accident of the seed. Poisson arrivals with a mean equal to 
 - Did not: change any threshold, rate, cap, phase length or tenant fraction. A failed result never authorizes a worker to edit the frozen workload (`workload.json`, `status_note`).
 - Limit of the simulator: it counts offered arrivals only. The server also counts setup and cleanup requests, which start each account's window earlier than the first arrival, so live counts can differ by a few requests per window.
 
-## Decisions needed
+## Remaining owner action
 
-1. **task41 reviewer (workload owner).** What does the hot tenant represent?
-   - **A.** A tenant at its ceiling, on purpose. Then define what the run should observe (for example, refusals kept apart from failures for that tenant), which is a threshold change only you can make.
-   - **B.** A heavy tenant under its ceiling. Then lower `hot_tenant_traffic_fraction` or the baseline rate so the hot tenant stays below 120 requests/min with margin for Poisson bursts. That changes the frozen workload and needs your signature in `workload.json`.
-   - **C.** Keep the workload and accept that a healthy server fails it. Then the frozen thresholds cannot qualify capacity, and the request should say so in the acceptance criteria.
-2. **T23.45 owner (admission code).** Is a plan-independent 120 requests/min per account intended for paid plans? Scale allows 300,000 recalls and 20,000 writes a month against Free's 10,000 and 500, but shares the same request rate. If a Scale tenant at 2 requests/s is legitimate use, the limiter is the defect, not the workload. Any change needs your acceptance evidence and a new run.
+**T23.45 owner (admission code):** implement and qualify the account admission behavior against the frozen workload. The current plan-independent 120 requests/min bucket is shared by Free, Builder and Scale despite their different monthly allowances. Choose the scoped runtime behavior within T23.45, retain the workload/threshold unchanged, and attach a passing run before T23.68. The architecture ruling does not qualify a live run or authorize a broader production limit change by itself.
 
 ## Recommendation
 
-Answer 1 first, because only the reviewer can change the workload, and it determines whether answer 2 is needed at all. If the reviewer picks B, no runtime change is required. If the reviewer picks A or C, the T23.45 owner must state whether the limit is intended, because that decides whether the fix belongs in the workload or the limiter.
-
-Neither answer is a T23.60 worker's to give. T23.68 and every live run stay blocked on both.
+The workload owner decision is settled: keep the frozen arrivals, tenant mix and `<1%` target. The remaining action belongs to T23.45. T23.68 and every live run stay blocked until that admission implementation is qualified.
 
 ## Reproduce
 

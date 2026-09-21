@@ -23,8 +23,9 @@ estimates and local fixture results, not measured capacity or authority to spend
   the threshold-matching admission total is 204 of 7,379 (2.76%), including 24
   pool-capacity refusals. Fixture thresholds now use steady arrivals only, and
   burst results are reported separately. The client and simulator count these
-  as failures, not as expected saturation. No threshold changed. A named
-  decision is open in
+  as failures, not as expected saturation. No threshold changed. Chief-architect's
+  PR #239 ruling keeps the frozen workload and `<1%` target unchanged; T23.45's
+  admission implementation and a passing rerun remain open in
   [decision-request-hot-tenant-rate-limit.md](evidence/T23.60/decision-request-hot-tenant-rate-limit.md).
 - A candidate MCP client has local tests against a real loopback HTTP server:
   per-request outcomes over all offered requests, one wall-clock deadline on each
@@ -124,9 +125,15 @@ database assumed at snapshot time, which is not a lifetime bound
 ([Control database growth](#control-database-growth)). The baseline is the retention the
 deployed template sets.
 
-The backup/durability and architecture owners must prepare a costed alternative
-(frequency, format, retention implementation) that preserves recovery and deletion
-requirements. This document does not approve reducing plan limits or retention.
+The chief architect approved the PR #239 proposal as a **working design**: hourly full
+captures, 24 hourly recovery points, one daily full retained up to 29 days, and task52's
+scheduled all-version purge/verification. It remains conditional on tasks48/52 proving
+idempotent purge that excludes the independent deletion journal, and on naming an owner
+for control-DB retention/compaction before task52 starts. This T23.60 cost table still
+models only the deployed template's current 30-plus-30-day retention; it does not price
+the proposed schedule using the corrected T23.60 inputs. The proposal is not a budget,
+deployed behavior, or launch-cost qualification, and it does not approve reducing plan
+limits or the customer deletion-retention promise.
 
 ## Peak exposure
 
@@ -162,9 +169,10 @@ either. The known subtotal still applies them and says so.
 
 The peak of the full mix is $353.34 at sustained 100% CPU (305.47 − 1.168 − 1.00 − 0.009 +
 46.72 + 3.00 + 0.069 + 0.258). The transfer term is the average recall-response model, which
-nothing enforces, so it is not an egress bound ([Egress](#egress)). The 55-set backup thinning illustration in PR 239 is an
-unapproved sensitivity. It is not the baseline and is not modeled here: the baseline is the
-deployed template's 30-plus-30-day retention.
+nothing enforces, so it is not an egress bound ([Egress](#egress)). The 55-set backup
+thinning schedule proposed in PR #239 is an architect-approved working design subject to
+the purge and ownership conditions above. It is not the baseline and is not priced by this
+table: the baseline is the deployed template's 30-plus-30-day retention.
 
 ## Control database growth
 
