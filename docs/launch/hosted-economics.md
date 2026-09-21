@@ -65,6 +65,23 @@ peak columns replace four of its lines with their worst case (see
 [Peak exposure](#peak-exposure)) and add nothing else. Neither column is a full maximum:
 [the unknowns](#what-stays-unknown) are outside both.
 
+### Conditional 55-set retention sensitivity
+
+The architect-approved working schedule's 55 retained full sets cost $10.63/month in
+stored snapshots under the PR #239 assumptions. Applying that one storage-line change to
+the current full-limit scenario gives a **$37.68 known subtotal**: $305.47 − $278.42 +
+$10.63. It assumes hourly full uploads continue, so the modeled 824,400 S3 PUT requests
+and the one-KMS-request-per-object assumption remain unchanged. Applying the same storage
+line to the wider T23.60 peak calculations gives **$68.03 at 70% mean CPU** and **$85.55
+at sustained 100% CPU**. These are arithmetic sensitivities, not a separate cost-model CLI
+scenario, measured usage, complete monthly maximum, or spend approval. Unknown categories
+remain excluded and launch cost qualification stays `NOT_QUALIFIED`.
+
+This reconciles PR #239's **$69.61** figure: it sums only the `$12.264` instance base,
+`$46.72` sustained CPU-credit exposure, and `$10.63` snapshot-storage line. It is not a
+complete service subtotal. T23.60's broader 100%-CPU sensitivity is `$85.55` for the same
+55-set storage assumption and still omits the unknown categories listed below.
+
 Two corrections from the independent review change these figures against the previous
 revision (full mix $322.00, peak $369.87):
 

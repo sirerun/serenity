@@ -64,7 +64,7 @@
     },
     {
       "path": "docs/launch/hosted-economics.md",
-      "sha256": "e31a555c2e929b1f5d70f23f9a20c5fb26c6ad819b8bc68eea6fea37df74d9dc"
+      "sha256": "d4ded4415a13b36d18f75b6032c07a035b6a318651fcbeb0f115446a483a003a"
     },
     {
       "path": "scripts/hosted/cost_model.py",
