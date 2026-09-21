@@ -2,8 +2,8 @@
   "task_id": "T23.41",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "5306141849fe6d71268433685c4ef605291f896f",
-  "recorded_at": "2026-09-21T10:23:17Z",
+  "source_sha": "78c356b106a51a74cd073fcb310f0f94e53a6cd3",
+  "recorded_at": "2026-09-21T10:28:42Z",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
@@ -41,13 +41,13 @@
     {
       "criterion": "Migrate schema1/2/3 fixture DBs twice; facts, subscriptions, tokens and usage retained; future schema refused without writes; fresh DB and upgraded DB equivalent.",
       "expected": "A new forward-only migration exists (needed by tasks44/47/48/50) and this round-trip test passes against it.",
-      "observed": "Forward-only migration v4 creates the operations journal. TestLegacySchemasUpgradeTwiceAndPreserveControlData opens schema1/2/3 fixtures twice and retains subscriptions, login tokens and usage; the canonical-fact fixture file hash remains unchanged because facts live outside the control DB. TestFutureSchemaIsRejectedWithoutWriting confirms schema5 is refused with an unchanged DB-file hash. TestFreshAndUpgradedOperationSchemasAreEquivalent compares fresh and upgraded table/index shapes. Operation phase, JSON-array and retry-key uniqueness constraints are tested.",
+      "observed": "Forward-only migration v4 creates the operations journal. TestLegacySchemasUpgradeTwiceAndPreserveControlData opens schema1/2/3 fixtures twice and verifies every subscription field, including plan/grace data where present, preserves login tokens and usage, and leaves the canonical-fact fixture hash unchanged because facts live outside the control DB. TestFutureSchemaIsRejectedWithoutWriting confirms schema5 is refused with an unchanged DB-file hash. TestFreshAndUpgradedOperationSchemasAreEquivalent compares fresh and upgraded table/index shapes. Operation phase, JSON-array and retry-key uniqueness constraints are tested.",
       "status": "PASS"
     },
     {
       "criterion": "Existing hosted tests and file-first gate pass.",
       "expected": "go test -race -count=1 over ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate exits 0 with no skips.",
-      "observed": "Final command passed under R-build-lease f34184ad190d586db973426ef806ffbdccbd29d7: store, service, contracts, contractstest, testhooks and internal/gate all passed with race detection and no skips. Plain/tagged go vet and golangci-lint checks passed; store-package vet, test and lint passed. internal/gate was unchanged. Remote CI was still running after a first lint run identified three unchecked test-resource closes; these are fixed in source 5306141 and the corrected local checks pass.",
+      "observed": "Final command passed under R-build-lease 23a90a0d5358165ec369f393f2d50a3f9a64ae1d: store, service, contracts, contractstest, testhooks and internal/gate all passed with race detection and no skips. Plain/tagged go vet and golangci-lint checks passed; store-package vet, test and lint passed. internal/gate was unchanged. The initial CI errcheck findings in fixture cleanup were fixed and the strengthened migrated-subscription checks pass locally in source 78c356b; remote CI is running on the resulting push.",
       "status": "PASS"
     },
     {
@@ -176,7 +176,7 @@
     },
     {
       "path": "internal/hosted/store/migrations_test.go",
-      "sha256": "9ce2aae491c60b8152657d432e8dbd29c34f83a111398320954a2104ab40965a"
+      "sha256": "905fad97a4a36c89792c36bacf3ba604a52d558fba169e4af4224605b37c29a7"
     },
     {
       "path": "internal/hosted/store/store.go",
