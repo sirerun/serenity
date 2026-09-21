@@ -1,0 +1,27 @@
+{
+  "checked_at": "2026-09-21T14:22:29Z",
+  "region": "us-west-2",
+  "method": "Read-only AWS CLI EC2 and CloudFormation inventory; identifiers, account metadata, IPs, and tag values intentionally excluded.",
+  "resources": {
+    "running_ec2_instances": 7,
+    "running_instance_architectures": {
+      "arm64": 4,
+      "x86_64": 3
+    },
+    "attached_gp3_volumes": 7,
+    "attached_gp3_volumes_encrypted": 6,
+    "elastic_ip_allocations": 7
+  },
+  "cloudformation": {
+    "non_deleted_stacks": 1,
+    "stack_resource_query_errors": 0,
+    "running_instances_mapped_to_any_stack": 0,
+    "serenity_or_hosted_named_stack_mappings": 0
+  },
+  "conclusion": "No existing EC2 host is proven to be owned by an active CloudFormation stack; do not credit this inventory as available or reusable launch capacity.",
+  "limitations": [
+    "Only CloudFormation ownership was queried; Terraform or other IaC state and out-of-band ownership were not inspected.",
+    "This is a point-in-time inventory, not permission to reuse, mutate, or incur spend on any resource."
+  ],
+  "changes_made": false
+}

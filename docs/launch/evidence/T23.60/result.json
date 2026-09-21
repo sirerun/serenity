@@ -3,7 +3,7 @@
   "profile": "paid",
   "status": "PARTIAL",
   "source_sha": "c8707147f1e5d30793a82438305d4ffdfecf7e65",
-  "recorded_at": "2026-09-21T12:46:53Z",
+  "recorded_at": "2026-09-21T14:22:29Z",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
@@ -15,7 +15,8 @@
     "go test -count=1 ./evals/hosted-load/fixtureprep/ (offline; prepares small fixtures in a temporary directory, never contacts a service)",
     "golangci-lint run --timeout=5m ./evals/hosted-load/fixtureprep/ (0 issues)",
     "fixtureprep prepare -local-fixture-only -out <new absolute dir> -profile full|smoke ... then fixtureprep verify -dir <dir> -expect full|smoke -report <report.json> (offline; see fixture-preparation.md)",
-    "python3 evals/hosted-load/fixture_receipt.py --full ... --smoke ... --output docs/launch/evidence/T23.60/fixture-receipt.json (summarizes the verification reports; no fixture is read)"
+    "python3 evals/hosted-load/fixture_receipt.py --full ... --smoke ... --output docs/launch/evidence/T23.60/fixture-receipt.json (summarizes the verification reports; no fixture is read)",
+    "Read-only AWS CLI inventory in us-west-2: ec2 describe-instances; cloudformation list-stacks and list-stack-resources for each non-deleted stack (response identifiers suppressed locally)."
   ],
   "cases": {
     "planned": 418,
@@ -43,6 +44,12 @@
       "expected": "Named T23.41 review before execution; measured capacity supports published limits",
       "observed": "Reviewer/date remain unset. Simulator is mechanics-only and no real provider or deployed-capacity run occurred. With the gateway's real fixed window the frozen hot tenant (120 requests a minute) has 180 account rate-limit refusals and 24 capacity refusals: 204 of 7,379 threshold-matching steady admission rejections (2.76%), above the 1% limit; the rate-limit-only component is 2.44%, on a healthy server; no number was changed and the decision is open with the task41 reviewer and the T23.45 admission owner. The full advertised cardinality (every account at its plan memory cap, 90,000 memories over 29 brains) cannot be eligible steady traffic under the frozen 15%/5% mix: a deterministic inventory replay shows the gateway's memory-count rule alone refusing 726 of 7,379 steady remembers (9.84% of all offered), and the current client refusing 1,130 and skipping 396 forgets. Chief-architect's PR #239 ruling classifies correctly enforced quota refusals as expected boundary outcomes: retain them in total/offered outcomes and exclude them from the unexpected-admission denominator; it does not change the 90,000 cardinality, traffic mix, plan limits or capacity status. No number changed, and the exact eligible-versus-boundary sample decision remains open with the task41 reviewer (decision-request-full-cardinality-eligible-traffic.md).",
       "status": "BLOCKED"
+    },
+    {
+      "criterion": "Compare the minimum feasible configuration with already-authorized existing AWS capacity as a proposal",
+      "expected": "Credit existing capacity only when an exact host maps to an owner-approved IaC stack; otherwise leave reuse unqualified.",
+      "observed": "Seven instances are running in the planned region, but zero map to any non-deleted CloudFormation stack resource. No tag identifies a Serenity/hosted host. No existing capacity is credited; Terraform/other IaC ownership remains unchecked. No infrastructure changes occurred.",
+      "status": "BLOCKED"
     }
   ],
   "artifacts": [
@@ -64,7 +71,7 @@
     },
     {
       "path": "docs/launch/hosted-economics.md",
-      "sha256": "d4ded4415a13b36d18f75b6032c07a035b6a318651fcbeb0f115446a483a003a"
+      "sha256": "558a12f685d37e539a2b7368ea17e35ad94527e08bb383860201c84cf8509bdd"
     },
     {
       "path": "scripts/hosted/cost_model.py",
@@ -289,6 +296,10 @@
     {
       "path": "evals/hosted-load/fixtureprep/verify.go",
       "sha256": "775478b925c5e8a2a99b6e117415783ed0ef61ace6a83d6a3cf297b51bc89f29"
+    },
+    {
+      "path": "docs/launch/evidence/T23.60/aws-capacity-inventory-20260921.json",
+      "sha256": "9126cc29b9a6e5b2090ccbdab02631807ee53c56fbec24bf6a3d2b734936536c"
     }
   ],
   "cost": {
@@ -311,7 +322,8 @@
     "The readiness cadence (60 to 90 s spacing) is derived from the Caddy interval and the service cache, and no call count is measured. The egress line is an assumed average; the plan does not bound the recall response size, and this task implements no cap. Neither an average nor a service-counter total is a bound on provider-billable tokens, because the candidate provider's tokenizer is unqualified.",
     "The cardinality headroom replay models the gateway's memory-count rule only (no limiter, storage rule, monthly cap, faults, cold opens, races or latency) and is not a measured runtime failure. The storage and history gap is separate: the fact text of a full plan is at most 4.096% of its storage quota. The offline fixture measured its own Git history and derived-index sizes (fixture-receipt.json), which is a fixture measurement and not the production maximum: production history, its pinned provider's vector width and real usage are unmeasured.",
     "The offline fixture (fixture-preparation.md) is infrastructure only. Its vectors come from a hash embedder pinned as fixture-hash-embedder-d64@infrastructure-only-v1 (the width is a fixture parameter, not the provider's), paid entitlements are direct SQL in the fixture's own control database, legacy ids are sequential, Git history is batched (one commit per 500 facts) except in a labeled 100-per-brain per-write sample and a partial per-write measurement on the 15 brains that finished in a full preparation that stopped (no whole-fixture per-write history exists), and its subscriptions expire 30 days after preparation. Two hazards were observed and are not root-caused: a writer lock briefly retained by a forked Git child (the preparer retries), and one per-write brain whose HEAD commit object vanished under this host's Git (Apple Git 2.54.0, automatic maintenance suspected, not reproduced in a scratch check); no runtime code changed. Prepare times were measured while other preparations ran on the same host and are indicative only. No service, provider, cloud or network call occurred.",
-    "Fixture threshold verdicts are steady-phase scoped and fixture cold-ready and isolation-durability rows are unmeasured. The simulator still does not measure real cold opens, host resources or cross-tenant durability; no live capacity claim follows from these fixture values."
+    "Fixture threshold verdicts are steady-phase scoped and fixture cold-ready and isolation-durability rows are unmeasured. The simulator still does not measure real cold opens, host resources or cross-tenant durability; no live capacity claim follows from these fixture values.",
+    "The AWS capacity inventory checks CloudFormation only. It cannot establish ownership/reuse eligibility or rule out Terraform/other IaC and out-of-band resources; see the sanitized dated receipt."
   ],
   "blockers": [
     {
@@ -353,6 +365,10 @@
     {
       "owner": "runtime owner (writer, hosted pool) / backup owner",
       "required_input": "Decide whether the per-write Git commit path can lose a commit object under automatic maintenance on the hosted host's Git version and configuration (one brain of 16 in a per-write full preparation lost its HEAD commit object on this host's Git; the cause is unproven and a scratch check did not reproduce it; the runtime sets no gc or maintenance option). Details in fixture-preparation.md. T23.60 changed no runtime file."
+    },
+    {
+      "owner": "AWS/IaC owner",
+      "required_input": "Map an exact candidate EC2 host into its owner-approved IaC stack/state before T23.60 can compare it as authorized existing capacity; current CloudFormation enumeration maps zero running instances."
     }
   ],
   "binary_sha256": null,

@@ -60,6 +60,23 @@ estimates and local fixture results, not measured capacity or authority to spend
 | 100_accounts_light | $108.05 | $83.96 | $156.91 | $139.39 |
 | full_limit_mix | $305.47 | $278.42 | $353.34 | $335.82 |
 
+### Existing AWS capacity: not yet attributable to an approved stack
+
+A read-only inventory in `us-west-2` on 2026-09-21 found 7 running EC2 instances
+(4 ARM64 and 3 x86_64), 7 attached gp3 volumes (6 encrypted), and 7 Elastic IP
+allocations. CloudFormation enumeration covered every non-deleted stack; none of
+the running instances mapped to a stack resource. The instance tags also did not
+identify Serenity or hosted capacity. The sanitized receipt is
+[`aws-capacity-inventory-20260921.json`](evidence/T23.60/aws-capacity-inventory-20260921.json).
+
+Therefore this inventory contributes **zero verified existing capacity** to the
+cost comparison. That does not prove that no reusable host exists: Terraform state
+and other IaC owners were not inspected. The AWS/IaC owner must map an exact host
+to an approved stack before it can be proposed for reuse. The priced `t4g.small`
+remains a scenario estimate under the ratified single-ARM-VM architecture; this
+inventory is not a change to that architecture, an authorization, or a measured
+capacity result. No AWS resource or billing setting changed.
+
 The known subtotal prices the categories that have a rate and an assumed quantity. The
 peak columns replace four of its lines with their worst case (see
 [Peak exposure](#peak-exposure)) and add nothing else. Neither column is a full maximum:
