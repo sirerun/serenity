@@ -1213,10 +1213,11 @@ def _classify_status(status: int) -> str:
 def evaluate_live_thresholds(workload: dict, records: list[dict]) -> dict:
     """Published thresholds over one repetition's offered requests.
 
-    Completion, 5xx and admission rates are over ALL offered steady-state
-    requests: skipped, cancelled and rejected requests stay in the
-    denominator. Anything this client cannot measure is pass=None, never
-    True: unmeasured is not passed.
+    Completion and 5xx rates are over ALL offered steady-state requests.
+    Unexpected-admission rejection is over requests eligible for admission:
+    expected plan-quota refusals (tool_error/limit_exceeded) remain offered
+    outcomes, but are excluded from that metric's denominator. Anything this
+    client cannot measure is pass=None, never True: unmeasured is not passed.
     """
     t = workload["thresholds"]
     checks: dict = {}
@@ -1241,7 +1242,25 @@ def evaluate_live_thresholds(workload: dict, records: list[dict]) -> dict:
         # dispatched had succeeded: False means dispatched requests alone caused the miss.
         checks["min_offered_completion_pct"]["pass_if_undispatched_were_ok"] = (n_ok + n_undispatched) / len(steady) * 100.0 >= t["min_offered_completion_pct"]
         checks["unexpected_5xx_max_pct"] = rate(t["unexpected_5xx_max_pct"], sum(1 for r in steady if r["outcome"] == UNEXPECTED_5XX))
-        checks["unexpected_admission_rejection_max_pct"] = rate(t["unexpected_admission_rejection_max_pct"], sum(1 for r in steady if r["outcome"] == REJECTED_ADMISSION))
+        admission_eligible = [
+            r for r in steady
+            if not (r["outcome"] == TOOL_ERROR and r.get("error_code") == "limit_exceeded")
+        ]
+        if admission_eligible:
+            unexpected_rejections = sum(1 for r in admission_eligible if r["outcome"] == REJECTED_ADMISSION)
+            observed = unexpected_rejections / len(admission_eligible) * 100.0
+            checks["unexpected_admission_rejection_max_pct"] = {
+                "limit": t["unexpected_admission_rejection_max_pct"],
+                "observed": observed,
+                "pass": observed <= t["unexpected_admission_rejection_max_pct"],
+                "denominator": len(admission_eligible),
+                "excluded_expected_quota_refusals": len(steady) - len(admission_eligible),
+            }
+        else:
+            checks["unexpected_admission_rejection_max_pct"] = unmeasured(
+                t["unexpected_admission_rejection_max_pct"],
+                "no admission-eligible steady-state requests after expected plan-quota refusals were excluded",
+            )
         for verb, name in (("recall", "recall_p95_max_s"), ("remember", "remember_p95_max_s")):
             latencies = [r["latency_s"] for r in steady if r["verb"] == verb and r["outcome"] == OK and r.get("latency_s") is not None]
             if latencies:

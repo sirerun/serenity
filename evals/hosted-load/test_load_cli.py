@@ -488,6 +488,28 @@ class FakeMcpServer:
         self.httpd.server_close()
 
 
+class ThresholdEvaluationTests(unittest.TestCase):
+    def test_expected_quota_refusals_are_excluded_only_from_admission_denominator(self):
+        workload = small_workload()
+        records = [
+            {"phase": "steady", "outcome": "ok", "verb": "recall", "latency_s": 0.1}
+            for _ in range(8)
+        ]
+        records.extend([
+            {"phase": "steady", "outcome": load_cli.TOOL_ERROR, "verb": "remember", "error_code": "limit_exceeded"},
+            {"phase": "steady", "outcome": load_cli.REJECTED_ADMISSION, "verb": "recall"},
+        ])
+
+        checks = load_cli.evaluate_live_thresholds(workload, records)
+
+        admission = checks["unexpected_admission_rejection_max_pct"]
+        self.assertEqual(admission["denominator"], 9)
+        self.assertEqual(admission["excluded_expected_quota_refusals"], 1)
+        self.assertAlmostEqual(admission["observed"], 100 / 9)
+        self.assertEqual(checks["min_offered_completion_pct"]["observed"], 80.0)
+        self.assertEqual(checks["unexpected_5xx_max_pct"]["observed"], 0.0)
+
+
 class FakeServerTestCase(unittest.TestCase):
     def setUp(self):
         self.server = FakeMcpServer()
@@ -2053,7 +2075,8 @@ class GatewayErrorClassificationTests(FakeServerTestCase):
         record = self.results(result, "tool_error")[0]
         self.assertEqual((record["error_code"], record["failure_class"]), ("limit_exceeded", "quota"))
         check = result["by_repetition"][0]["threshold_evaluation"]["unexpected_admission_rejection_max_pct"]
-        self.assertEqual((check["observed"], check["pass"]), (0.0, True))  # a quota boundary is not an admission rejection
+        self.assertIsNone(check["observed"])  # all outcomes were expected quota refusals; no eligible denominator exists
+        self.assertIsNone(check["pass"])
         self.assertIs(result["by_repetition"][0]["threshold_evaluation"]["min_offered_completion_pct"]["pass"], False)  # but it is a failure to complete
         self.assertNotIn("2026-10-01", json.dumps(result))  # reset_at and upgrade_url are not recorded
 

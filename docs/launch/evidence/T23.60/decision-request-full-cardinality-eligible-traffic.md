@@ -42,8 +42,8 @@ Both readings miss the completion threshold on this rule alone, before any serve
 
 ## What this is not
 
-- **It is not the unexpected-admission statistic.** The client decodes `limit_exceeded` into the fixed class `quota` (`TOOL_ERROR_CLASSES`), records it as outcome `tool_error`, and keeps it in the offered denominator. It is not `rejected_admission`, so it does not count toward `unexpected_admission_rejection_max_pct`. Its actual class and its place in the total offered stay unchanged. Do not relabel it.
-- **It is not a reason to drop offered rows.** The skipped forgets and refused remembers stay in the denominator. The client's forget seam (it cannot forget a seeded fact) is unfinished work, not a reason to exclude requests.
+- **It is not an unexpected admission.** The client decodes `limit_exceeded` into the fixed class `quota` (`TOOL_ERROR_CLASSES`) and records outcome `tool_error`. It remains in total outcomes and in completion/5xx offered denominators; for the unexpected-admission metric alone, expected quota refusals are excluded from the eligible-request denominator. Do not relabel it.
+- **It is not a reason to drop offered rows.** Skipped forgets and refused remembers stay in total outcomes and the completion denominator. The client's forget seam (it cannot forget a seeded fact) is unfinished work, not a reason to exclude requests from completion accounting.
 - **It is not a defect in the server.** Refusing a remember at the plan ceiling is the intended behavior. The question is what the eligible sample is.
 
 ## How much headroom the frozen mix needs
