@@ -173,7 +173,7 @@
     "authorization_refs": []
   },
   "dependencies": {},
-  "elapsed_seconds": 4.447,
+  "elapsed_seconds": 3.823,
   "evidence_level": "fixture",
   "limitations": [
     "The local lexical control's empty cases run against isolated brains holding one unrelated filler fact (seedbrain refuses an empty brain) and are scored strictly: returning the filler fails. That arm is a control, not the forgotten/expired qualification. The real protocol (remember a target, show it retrievable, then remove it by forget or by a fixed absolute TTL and show it absent) runs only under --seed/--live and has been exercised only against a loopback fake, never a hosted account.",
@@ -3939,8 +3939,8 @@
   },
   "profile": "paid",
   "provider": null,
-  "recorded_at": "2026-09-19T05:35:49Z",
-  "source_sha": "dcf3174d61a6ed4f1d0bbeeab32349916834cd47",
+  "recorded_at": "2026-09-21T11:48:19Z",
+  "source_sha": "a69b2988af6bd1f5a5c72054cd048111cdfa82f1",
   "status": "PARTIAL",
   "task_id": "T23.43",
   "usage": {

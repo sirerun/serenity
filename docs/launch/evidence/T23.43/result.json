@@ -15,7 +15,7 @@
     {
       "criterion": "Budget exhausted/provider unavailable yields BLOCKED with partial results and no further calls",
       "expected": "N/A in --fixtures mode (no external budget/provider involved)",
-      "observed": "fixtures mode never calls a live provider. The --seed and --live paths are exercised by evals/hosted/test_eval_embeddings.py (TestSeeding, TestForgottenFactProtocol, TestExpiryProtocol, TestExpiryReceiptVerification, TestLiveModeBudgetEnforcement, TestCumulativeLedger, TestInitLedgerCommand, TestLexicalControlFailureIsBlocked, TestUnexpectedErrorsKeepEvidence, TestBudgetAcceptanceRowIsTruthful, TestCostReporting, TestNoCredentialOrUpstreamTextEverEscapes), evals/hosted/test_ledger.py and test_mcp_client.py (TestWallClockDeadline, TestResponseClosureAndStallDeadline) against loopback HTTP servers; 294 of 295 tests pass and 1 opt-in test is skipped. That is plumbing evidence, not a run against a hosted provider or account.",
+      "observed": "fixtures mode never calls a live provider. The --seed and --live paths are exercised by evals/hosted/test_eval_embeddings.py (TestSeeding, TestForgottenFactProtocol, TestExpiryProtocol, TestExpiryReceiptVerification, TestLiveModeBudgetEnforcement, TestCumulativeLedger, TestInitLedgerCommand, TestLexicalControlFailureIsBlocked, TestUnexpectedErrorsKeepEvidence, TestBudgetAcceptanceRowIsTruthful, TestCostReporting, TestNoCredentialOrUpstreamTextEverEscapes), evals/hosted/test_ledger.py and test_mcp_client.py (TestWallClockDeadline, TestResponseClosureAndStallDeadline) against loopback HTTP servers; 297 of 299 tests pass and 2 opt-in tests are skipped. That is plumbing evidence, not a run against a hosted provider or account.",
       "status": "NOT_RUN"
     },
     {
@@ -48,7 +48,7 @@
     },
     {
       "path": "docs/launch/evidence/T23.43/eval-fixture.json",
-      "sha256": "3dec2edcd1e43cbada6cddba8d3bd8d803289c4fb946aa2ed4cd30aa9a333043"
+      "sha256": "7146dfa2b67b77defe5d7788b6579d95d20329f0b62b1011ce1d41fc4ba440ef"
     },
     {
       "path": "docs/launch/evidence/T23.43/local-service-verification.json",
@@ -56,7 +56,7 @@
     },
     {
       "path": "docs/launch/hosted-completion/embedding-eval.md",
-      "sha256": "e32b55883ace0f3b8de0839d772c3a72e3510832a365318fb63918225e33dd01"
+      "sha256": "5071b71f86fa5e82ef0a94c3dd5d64c0f6a8a0abd0850f173ddc7929a2c3975b"
     }
   ],
   "binary_sha256": "508161c586d6ea140756af5a448b580463435bbdc652a00a189a8a39d7e65877",
@@ -79,14 +79,15 @@
     }
   ],
   "cases": {
-    "executed": 294,
+    "executed": 297,
     "failed": 0,
-    "passed": 294,
-    "planned": 295,
+    "passed": 297,
+    "planned": 299,
     "skip_reasons": [
-      "test_local_service.TestActualService is opt-in (T2343_LOCAL_SERVICE=1 with SERENITY_BIN): it starts the real hosted service and takes about 3.5 minutes. The same scenario was run separately and is recorded in local-service-verification.json."
+      "test_local_service.TestActualService is opt-in (T2343_LOCAL_SERVICE=1 with SERENITY_BIN); the same scenario has separate evidence in local-service-verification.json.",
+      "TestLexicalControlArm is opt-in (SERENITY_BIN and SEEDBRAIN_BIN); it was separately run against the prebuilt binaries after adding the verbatim-query positive control and passed."
     ],
-    "skipped": 1
+    "skipped": 2
   },
   "commands": [
     "SERENITY_BIN=/Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/serenity SEEDBRAIN_BIN=/Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/seedbrain python3 -X dev -m unittest discover -s evals/hosted -p \"test_*.py\"",
@@ -109,7 +110,7 @@
   },
   "evidence_level": "fixture",
   "limitations": [
-    "'cases' counts the Python suite (python3 -X dev -m unittest discover -s evals/hosted -p \"test_*.py\"): latest rerun at source_sha 22e79598d7a6a8de6698180e198f334c009dda97 on 2026-09-21T09:25:02Z; 295 tests, 294 pass, 1 opt-in skip, no ResourceWarning, no traceback, 191.429 s. The skipped real-service case has separate evidence in local-service-verification.json; no hosted provider/account was contacted. The 100-case corpus mechanics run is in docs/launch/evidence/T23.43/eval-fixture.json (100 planned, 100 executed, configuration_sha256 1434535ba051e9c0eab21ae42fcbf46d1a1401c548b78a60afcd9441bd0ce737).",
+    "'cases' counts the Python suite (python3 -X dev -m unittest discover -s evals/hosted -p \\\"test_*.py\\\"): latest rerun at source_sha a69b2988af6bd1f5a5c72054cd048111cdfa82f1 on 2026-09-21T11:48:54Z; 299 tests, 297 pass, 2 opt-in skips, no ResourceWarning, no traceback, 170.214 s. The skipped real-service case has separate evidence in local-service-verification.json; the lexical-control binary test was run separately and passed. No hosted provider/account was contacted. The 100-case corpus mechanics run is in docs/launch/evidence/T23.43/eval-fixture.json (100 planned, 100 executed, configuration_sha256 1434535ba051e9c0eab21ae42fcbf46d1a1401c548b78a60afcd9441bd0ce737).",
     "cost.actual_usd is null: no billing measurement exists for anything this task has run. cost.operator_ceiling_projection_usd is calls x budget.max_cost_per_call_usd, the worst-case reservation the budget guard enforces, and is 0 here because no hosted call was made. It is not a spend figure or an invoice.",
     "binary_sha256 is the seedbrain helper (evals/hosted/fixtures/seedbrain); the serenity binary used by the lexical control hashes to d738c0243fe32f820d7142490f1f109c76d8cc9afc23652f7bda0abbc7d348c4. Both are the prebuilt binaries from the earlier repair pass (built from cmd/serenity and the seedbrain helper at a8c12df under the R-build-lease with GOFLAGS=-p=2); they were not rebuilt in this pass. No Go source under cmd, internal, go.mod, go.sum or evals/hosted/fixtures changed after a8c12df (git log a8c12df..HEAD over those paths is empty), and the hashes match the ones recorded then.",
     "No live semantic measurement has ever been taken. EMBEDDINGS_API_KEY is not provisioned, T23.42's real provider adapter is not merged, and no hosted account pair is seeded. --seed and --live are implemented and exercised against a loopback fake that mirrors the real hosted MCP wire shapes and, once, against the actual local hosted service behind a synthetic loopback embedding provider (local-service-verification.json). Every Hit@5 number this task has produced is a fixtures-only mechanical rehearsal (hash-bag, fixed-vector, local lexical control), never a quality PASS.",
@@ -132,8 +133,8 @@
   ],
   "profile": "paid",
   "provider": null,
-  "recorded_at": "2026-09-21T09:25:02Z",
-  "source_sha": "22e79598d7a6a8de6698180e198f334c009dda97",
+  "recorded_at": "2026-09-21T11:48:54Z",
+  "source_sha": "a69b2988af6bd1f5a5c72054cd048111cdfa82f1",
   "status": "PARTIAL",
   "task_id": "T23.43"
 }
