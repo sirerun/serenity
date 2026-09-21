@@ -8,7 +8,6 @@
       "price_list_arn": "arn:aws:pricing:::price-list/aws/AmazonS3/USD/20260918174747/us-west-2",
       "version": "20260918174747",
       "publication_date": "2026-09-18T17:47:47Z",
-      "query_response_sha256": "4d0b710fc6efe8e77af646ac6badf482e26489fc08a61daedeb767f84605f710",
       "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/20260918174747/us-west-2/index.json",
       "query": "GetProducts filtered by regionCode=us-west-2 and productFamily=API Request",
       "products": [
@@ -98,7 +97,10 @@
           "version": "20260918174747",
           "publicationDate": "2026-09-18T17:47:47Z"
         }
-      ]
+      ],
+      "selection_method": "AWS Price List Query API GetProducts; filter regionCode=us-west-2 and productFamily=API Request",
+      "name": "AmazonS3 us-west-2 request prices",
+      "retrieved_at": "2026-09-21T15:48:09Z"
     },
     {
       "service_code": "AWSDataTransfer",
@@ -106,7 +108,6 @@
       "price_list_arn": "arn:aws:pricing:::price-list/aws/AWSDataTransfer/USD/20260916132208/us-west-2",
       "version": "20260916132208",
       "publication_date": "2026-09-16T13:22:08Z",
-      "query_response_sha256": "b486b7b72d8f115c13fd3df4542c37bfa065a77dab4ee3fbffe5f6b453eb958f",
       "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/20260916132208/us-west-2/index.json",
       "query": "GetProducts filtered by usagetype=USW2-DataTransfer-Out-Bytes",
       "products": [
@@ -188,7 +189,10 @@
           "version": "20260916132208",
           "publicationDate": "2026-09-16T13:22:08Z"
         }
-      ]
+      ],
+      "selection_method": "AWS Price List Query API GetProducts; filter usagetype=USW2-DataTransfer-Out-Bytes",
+      "name": "AWSDataTransfer us-west-2 internet egress prices",
+      "retrieved_at": "2026-09-21T15:48:09Z"
     }
   ],
   "global_internet_data_transfer_allowance": {

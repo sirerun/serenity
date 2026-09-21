@@ -132,8 +132,28 @@ class RateTableTests(unittest.TestCase):
         receipt = json.loads((EVIDENCE / "aws-rates/s3-request-transfer-price-receipt.json").read_text())
         allowance = receipt["global_internet_data_transfer_allowance"]
         self.assertEqual(allowance["quantity"], 100)
+        self.assertEqual(entry["value"], allowance["quantity"])
         self.assertIn("aggregated across AWS services", allowance["scope"])
         self.assertIn("Actual target-account availability/consumption is unverified", entry["note"])
+
+    def test_s3_request_transfer_receipt_metadata_matches_the_registered_sources(self):
+        path = "aws-rates/s3-request-transfer-price-receipt.json"
+        receipt = json.loads((EVIDENCE / path).read_text())
+        registered = cost_model.RATE_RECEIPTS[path]
+        self.assertEqual(hashlib.sha256((EVIDENCE / path).read_bytes()).hexdigest(), registered["sha256"])
+        self.assertEqual(len(receipt["sources"]), 2)
+        for source, expected in zip(receipt["sources"], registered["sources"][:2]):
+            self.assertEqual(source["name"], expected["name"])
+            self.assertEqual(source["source_url"], expected["url"])
+            self.assertEqual(source["version"], expected["version"])
+            self.assertEqual(source["publication_date"], expected["publication_date"])
+            self.assertEqual(source["retrieved_at"], expected["retrieved_at"])
+            self.assertNotIn("query_response_sha256", source)
+        allowance = receipt["global_internet_data_transfer_allowance"]
+        page = registered["sources"][2]
+        self.assertEqual(allowance["source_url"], page["url"])
+        self.assertEqual(allowance["source_sha256"], page["sha256"])
+        self.assertEqual(allowance["retrieved_at"], page["retrieved_at"])
 
     def test_every_primary_rate_names_a_receipt_and_carries_no_stale_third_party_label(self):
         for name, entry in cost_model.RATE_TABLE.items():

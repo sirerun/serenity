@@ -408,14 +408,13 @@
       ]
     },
     "aws-rates/s3-request-transfer-price-receipt.json": {
-      "sha256": "764ce5e55b949cbd232666e0aad2c4074d238ee93ae0021eacf948f587209e4b",
+      "sha256": "4136f8badd16f401d967ad917057b19c6b85883c274e0dd99984352e3734f3c9",
       "sources": [
         {
           "name": "AmazonS3 us-west-2 request prices",
           "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/20260918174747/us-west-2/index.json",
           "version": "20260918174747",
           "publication_date": "2026-09-18T17:47:47Z",
-          "query_response_sha256": "4d0b710fc6efe8e77af646ac6badf482e26489fc08a61daedeb767f84605f710",
           "retrieved_at": "2026-09-21T15:48:09Z"
         },
         {
@@ -423,7 +422,6 @@
           "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/20260916132208/us-west-2/index.json",
           "version": "20260916132208",
           "publication_date": "2026-09-16T13:22:08Z",
-          "query_response_sha256": "b486b7b72d8f115c13fd3df4542c37bfa065a77dab4ee3fbffe5f6b453eb958f",
           "retrieved_at": "2026-09-21T15:48:09Z"
         },
         {
@@ -459,8 +457,8 @@
       "note": "the only unit this pass re-based"
     },
     "s3_requests": {
-      "unit": "requests; the catalog and page price is per 1,000",
-      "source": "AWS S3 pricing (secondary in this model)"
+      "unit": "requests; the catalog price is per request and converts to per 1,000",
+      "source": "aws-rates/s3-request-transfer-price-receipt.json"
     },
     "kms_and_secrets_requests": {
       "unit": "requests; the catalog price is per request and converts to per 10,000",

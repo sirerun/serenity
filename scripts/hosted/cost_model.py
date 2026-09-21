@@ -22,6 +22,9 @@ Rates. Every rate in RATE_TABLE carries a "verification":
   the catalog unit and price, and the factor that converts the catalog unit to
   the rate's unit. The receipts carry the source's version, publication date
   and SHA-256.
+- aws_published_pricing_primary: sourced from an AWS-published pricing rule
+  or page, but not a regional catalog unit price. The target account's actual
+  eligibility or use may still be unknown.
 - secondary_summary_not_regionally_verified: taken from a summary page of a
   worker's search this session and not confirmed against a regional AWS
   catalog; a reviewer must verify it before any spend decision.
@@ -115,10 +118,10 @@ RATE_RECEIPTS = {
         }],
     },
     _S3_REQUEST_TRANSFER_RECEIPT: {
-        "sha256": "764ce5e55b949cbd232666e0aad2c4074d238ee93ae0021eacf948f587209e4b",
+        "sha256": "4136f8badd16f401d967ad917057b19c6b85883c274e0dd99984352e3734f3c9",
         "sources": [
-            {"name": "AmazonS3 us-west-2 request prices", "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/20260918174747/us-west-2/index.json", "version": "20260918174747", "publication_date": "2026-09-18T17:47:47Z", "query_response_sha256": "4d0b710fc6efe8e77af646ac6badf482e26489fc08a61daedeb767f84605f710", "retrieved_at": "2026-09-21T15:48:09Z"},
-            {"name": "AWSDataTransfer us-west-2 internet egress prices", "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/20260916132208/us-west-2/index.json", "version": "20260916132208", "publication_date": "2026-09-16T13:22:08Z", "query_response_sha256": "b486b7b72d8f115c13fd3df4542c37bfa065a77dab4ee3fbffe5f6b453eb958f", "retrieved_at": "2026-09-21T15:48:09Z"},
+            {"name": "AmazonS3 us-west-2 request prices", "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/20260918174747/us-west-2/index.json", "version": "20260918174747", "publication_date": "2026-09-18T17:47:47Z", "retrieved_at": "2026-09-21T15:48:09Z"},
+            {"name": "AWSDataTransfer us-west-2 internet egress prices", "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/20260916132208/us-west-2/index.json", "version": "20260916132208", "publication_date": "2026-09-16T13:22:08Z", "retrieved_at": "2026-09-21T15:48:09Z"},
             {"name": "AWS S3 pricing page: global internet data-transfer allowance", "url": "https://aws.amazon.com/s3/pricing/", "sha256": "745b9af7954e9d9af2346b29c17b67af8bfcb01f29699fa8ff0fcd2508888d7c", "retrieved_at": "2026-09-21T15:48:09Z"},
         ],
     },
@@ -312,7 +315,7 @@ BYTES_PER_DECIMAL_GB = 10**9
 UNIT_DEFINITIONS = {
     "plan_quotas": {"unit": "counts, cl100k_base tokens and decimal bytes", "source": "internal/hosted/plans/plans.go", "note": "kept in bytes; never converted to GiB for a quota comparison"},
     "s3_storage_billed": {"unit": "GiB-month", "definition": "1 GB = 2^30 bytes", "source": _S3_UNIT_RECEIPT, "note": "the only unit this pass re-based"},
-    "s3_requests": {"unit": "requests; the catalog and page price is per 1,000", "source": "AWS S3 pricing (secondary in this model)"},
+    "s3_requests": {"unit": "requests; the catalog price is per request and converts to per 1,000", "source": _S3_REQUEST_TRANSFER_RECEIPT},
     "kms_and_secrets_requests": {"unit": "requests; the catalog price is per request and converts to per 10,000", "source": _REGIONAL_RECEIPT},
     "ebs_volume_size": {"unit": "configured volume size as written in deploy/hosted/stack.json", "note": "priced as written; not re-based from the S3 statement. The 30 read as decimal GB in the storage-risk check is conservative for a volume configured in GiB"},
     "ebs_gp3_throughput": {"unit": "catalog GiBps-month converted to MiBps-month by 1/1024", "source": _EC2_EBS_RECEIPT},
