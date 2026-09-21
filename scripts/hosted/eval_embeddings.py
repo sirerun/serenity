@@ -1135,7 +1135,7 @@ def plan_requests(corpus: dict, fact_by_id: dict, corpus_sha256: str) -> dict:
 def run_preflight(args: argparse.Namespace) -> tuple[dict, int]:
     """Offline readiness check for a separately authorized real run: makes
     no network call and spends nothing. Validates the manifest for the
-    chosen phase, the corpus pin, the clean tree, credentials present (names
+    chosen phase, the two reviewer freezes, the corpus pin, the clean tree, credentials present (names
     only), receipts (live phase), the lexical-control binaries, and that the
     manifest's caps cover the exact planned calls, bytes and cost."""
     corpus, facts, fact_by_id = load_corpus(args.corpus, args.facts)
@@ -1144,6 +1144,13 @@ def run_preflight(args: argparse.Namespace) -> tuple[dict, int]:
     m = manifest_lib.load_manifest(args.manifest)
     phase = args.phase
     problems = manifest_lib.validate_live_manifest(m, phase)
+    # The same reviewer-freeze gate --seed and --live apply: a preflight that
+    # passed without it would call a run ready that is certain to block.
+    problems += manifest_lib.validate_reviewer_freeze(
+        m, source_sha=source_sha, corpus=corpus,
+        facts_sha256=corpus["meta"]["facts_hash_sha256"],
+        supplemental_sha256=forgotten_targets.targets_sha256(),
+    )
     if m.get("corpus_sha256") != corpus_sha256:
         problems.append(f"manifest corpus_sha256={m.get('corpus_sha256')!r} does not match on-disk corpus={corpus_sha256!r}")
     dirty = dirty_paths(REPO_ROOT)

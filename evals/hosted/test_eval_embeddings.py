@@ -1768,6 +1768,29 @@ class TestPreflight(LiveFixture):
         self.assertEqual(self.fake.calls(), 0)
         self.assertEqual(result["plan"]["total_calls"], sum(r["seed_calls"] + r["live_calls"] for r in result["plan"]["per_role"].values()))
 
+    def test_preflight_blocks_without_two_current_reviewer_freezes(self):
+        for phase, receipts in (("seed", None), ("live", None)):
+            if phase == "live":
+                self.seed()
+                receipts = self.seeded_receipts()
+            for section in ("threshold_freeze", "supplemental_freeze"):
+                for label, mutate in (
+                    ("missing", lambda m, s: m.pop(s)),
+                    ("pending", lambda m, s: m[s].update(status="pending")),
+                    ("stale", lambda m, s: m[s].update(t23_43_sha="b" * 40)),
+                ):
+                    with self.subTest(phase=phase, section=section, case=label):
+                        m = self.manifest_dict(phase, receipts=receipts)
+                        mutate(m, section)
+                        mp = self.write_manifest(m, f"pf-{phase}-{section}-{label}.json")
+                        calls_before = self.fake.calls()
+                        result, code = eval_embeddings.run_preflight(
+                            _mode_args("preflight", self.tmp / "pf.json", mp, "--phase", phase)
+                        )
+                        self.assertEqual((result["status"], code), ("BLOCKED", eval_embeddings.EXIT_BLOCKED))
+                        self.assertTrue(any(section in b["required_input"] for b in result["blockers"]))
+                        self.assertEqual(self.fake.calls(), calls_before)
+
     def test_plan_is_a_true_upper_bound_on_bytes_and_exact_on_calls(self):
         result, _ = self.preflight()
         plan = result["plan"]

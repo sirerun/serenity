@@ -131,11 +131,12 @@ lexical choice as either
 `{"mode":"exact_subset_20","case_ids":[...20 sorted IDs...],"min_hits":18}`
 or `{"mode":"exact_ratio_21","case_ids":[...all 21 sorted IDs...],"min_hits":19}`.
 The supplemental object pins `forgotten_targets_sha256`. Missing, pending,
-malformed or stale fields block both seed and live execution before a request
-is sent. Offline fixture runs and preflight inspection remain available while
-the review is pending; they do not grant permission to seed or measure a live
-endpoint. The example qualification manifest intentionally carries no accepted
-review receipt.
+malformed or stale fields block preflight, seed and live execution before a
+request is sent. Preflight validates both freezes for the selected phase, so it
+cannot report a run as ready when the same manifest would block at seed or live.
+Offline fixture runs remain available while review is pending; they do not grant
+permission to seed or measure a live endpoint. The example qualification
+manifest intentionally carries no accepted review receipt.
 
 Per `docs/launch/hosted-completion/interfaces.md`, a failed live result
 never authorizes a worker to edit these thresholds; only a reviewed
