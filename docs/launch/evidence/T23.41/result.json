@@ -3,7 +3,7 @@
   "profile": "paid",
   "status": "PARTIAL",
   "source_sha": "4ff610addbcc34dd1dff8e9e0bfd4ea7754b1b19",
-  "recorded_at": "2026-09-21T11:54:38Z",
+  "recorded_at": "2026-09-21T11:59:53Z",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
@@ -21,7 +21,9 @@
     "go vet ./internal/hosted/store",
     "go test ./internal/hosted/store",
     "go test ./internal/hosted/contracts",
-    "GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp golangci-lint run ./internal/hosted/store"
+    "GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp golangci-lint run ./internal/hosted/store",
+    "go test -race -count=1 ./internal/hosted/contracts",
+    "go test -race -count=1 ./internal/hosted/store"
   ],
   "cases": {
     "planned": 49,
@@ -47,8 +49,8 @@
     {
       "criterion": "Existing hosted tests and file-first gate pass.",
       "expected": "go test -race -count=1 over ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate exits 0 with no skips.",
-      "observed": "Final scoped race command passed under R-build-lease 23a90a0d5358165ec369f393f2d50a3f9a64ae1d: store, service, contracts, contractstest, testhooks and internal/gate all passed with no skips. Plain/tagged go vet and golangci-lint checks passed; store-package vet, test and lint passed. internal/gate was unchanged. The initial CI errcheck findings in fixture cleanup were fixed and the strengthened subscription-retention assertions pass. The prior 13/13 GitHub checks passed at PR236 head e541844f0a7bb5c420dfee852e6e12872c0dd118. On the current code revision, focused go test runs for internal/hosted/contracts and internal/hosted/store pass (cached); the 13 GitHub checks are running on 4ff610addbcc34dd1dff8e9e0bfd4ea7754b1b19.",
-      "status": "PARTIAL"
+      "observed": "The final scoped race suite passed under the recorded R-build-lease: store, service, contracts, contractstest, testhooks and internal/gate all passed with no skips. Plain/tagged go vet and golangci-lint checks passed; store-package vet, tests and lint passed. On the current code source 4ff610addbcc34dd1dff8e9e0bfd4ea7754b1b19, focused go test -race -count=1 runs for internal/hosted/contracts and internal/hosted/store pass. All 13 GitHub checks, including test, passed on PR #236 receipt head 8259810735a0b159b514d261c345b5d6722de4fb; that head contains the same tested code source plus its evidence receipt. CI success is not ordinary review or merge approval.",
+      "status": "PASS"
     },
     {
       "criterion": "Interface document lists owning task, exact signature, semantic contract, schema version and integration file for every shared seam.",
