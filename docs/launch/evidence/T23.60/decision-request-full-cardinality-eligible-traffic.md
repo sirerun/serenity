@@ -1,6 +1,12 @@
 # Decision request: full advertised cardinality versus eligible steady traffic
 
-Status: **open. T23.60 changed no number.** This request needs a named answer from the task41 (T23.41) reviewer before any seeded fixture is treated as a steady-state qualification. It changes no workload value, entitlement, threshold or acceptance criterion.
+Status: **open; quota-outcome classification ruled. T23.60 changed no number.** This request still needs a named answer from the task41 (T23.41) reviewer before any seeded fixture is treated as a steady-state qualification. It changes no workload value, entitlement, threshold or acceptance criterion.
+
+## Ruling already received
+
+The chief architect's review of [PR #239](https://github.com/sirerun/serenity/pull/239#issuecomment-5746461468) rules that a quota refusal at a correctly enforced plan limit is an expected boundary, not an unexpected admission rejection. Keep it in total outcomes and the offered denominator; exclude it from the unexpected-rejection denominator. Do not alter the 90,000 starting cardinality, traffic mix or plan limits to hide it.
+
+This settles only the outcome classification. It does not choose the eligible steady sample versus boundary sample, starting headroom/reset policy, phases in the eligible statistic, seeded-id forget treatment or a storage-saturation sample. Those choices remain open below; the ruling does not qualify capacity.
 
 ## The finding
 

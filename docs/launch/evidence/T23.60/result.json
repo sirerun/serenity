@@ -3,7 +3,7 @@
   "profile": "paid",
   "status": "PARTIAL",
   "source_sha": "de35a7c1b324eaf691935eb840b0c488894e3c56",
-  "recorded_at": "2026-09-21T08:52:48Z",
+  "recorded_at": "2026-09-21T09:03:20Z",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
@@ -41,7 +41,7 @@
     {
       "criterion": "Reviewer-frozen workload and thresholds",
       "expected": "Named T23.41 review before execution; measured capacity supports published limits",
-      "observed": "Reviewer/date remain unset. Simulator is mechanics-only and no real provider or deployed-capacity run occurred. With the gateway's real fixed window the frozen hot tenant (120 requests a minute) is refused 180 of 7,379 steady requests (2.44%), above the 1% admission limit, on a healthy server; no number was changed and the decision is open with the task41 reviewer and the T23.45 admission owner. The full advertised cardinality (every account at its plan memory cap, 90,000 memories over 29 brains) cannot be eligible steady traffic under the frozen 15%/5% mix: a deterministic inventory replay shows the gateway's memory-count rule alone refusing 726 of 7,379 steady remembers (9.84% of all offered), and the current client refusing 1,130 and skipping 396 forgets. Quota refusals keep their class and their place in the offered denominator and are not unexpected admissions. No number changed, and the eligible-versus-boundary sample decision is open with the task41 reviewer (decision-request-full-cardinality-eligible-traffic.md).",
+      "observed": "Reviewer/date remain unset. Simulator is mechanics-only and no real provider or deployed-capacity run occurred. With the gateway's real fixed window the frozen hot tenant (120 requests a minute) is refused 180 of 7,379 steady requests (2.44%), above the 1% admission limit, on a healthy server; no number was changed and the decision is open with the task41 reviewer and the T23.45 admission owner. The full advertised cardinality (every account at its plan memory cap, 90,000 memories over 29 brains) cannot be eligible steady traffic under the frozen 15%/5% mix: a deterministic inventory replay shows the gateway's memory-count rule alone refusing 726 of 7,379 steady remembers (9.84% of all offered), and the current client refusing 1,130 and skipping 396 forgets. Chief-architect's PR #239 ruling classifies correctly enforced quota refusals as expected boundary outcomes: retain them in total/offered outcomes and exclude them from the unexpected-admission denominator; it does not change the 90,000 cardinality, traffic mix, plan limits or capacity status. No number changed, and the exact eligible-versus-boundary sample decision remains open with the task41 reviewer (decision-request-full-cardinality-eligible-traffic.md).",
       "status": "BLOCKED"
     }
   ],
