@@ -292,11 +292,12 @@ type RecoveryApplyRequest struct {
 }
 
 type RecoveryApplyResult struct {
-	AccountID string
-	Unfrozen  bool
-	Reason    string // set and non-empty whenever Unfrozen is false
+	AccountID      string
+	PlanGeneration int64 // generation from the exact immutable plan named by the apply request's PlanHash
+	Unfrozen       bool
+	Reason         string // set and non-empty whenever Unfrozen is false
 	// Fence is the proof the old writer was fenced. It must be Sufficient
-	// whenever Unfrozen is true.
+	// for PlanGeneration whenever Unfrozen is true.
 	Fence FenceReceipt
 }
 
@@ -315,7 +316,7 @@ func (r RecoveryApplyResult) Consistent() error {
 		return errors.New("hosted/contracts: recovery result has no account")
 	}
 	if r.Unfrozen {
-		return r.Fence.Sufficient()
+		return r.Fence.Sufficient(r.PlanGeneration)
 	}
 	if r.Reason == "" {
 		return errors.New("hosted/contracts: refused recovery result must state a reason")

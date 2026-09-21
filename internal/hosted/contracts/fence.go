@@ -49,13 +49,13 @@ type FenceReceipt struct {
 // fenced. The message lists every missing fact.
 var ErrFenceInsufficient = errors.New("hosted/contracts: old writer is not proven fenced")
 
-// Sufficient returns nil only if all three facts hold. RecoveryApplyResult.
-// Unfrozen may be true only after Sufficient returns nil for the plan's
-// generation.
-func (f FenceReceipt) Sufficient() error {
+// Sufficient returns nil only if all three facts hold for the generation
+// pinned by the immutable recovery plan. A self-consistent receipt for some
+// other generation is not enough to authorize this plan's activation.
+func (f FenceReceipt) Sufficient(expectedGeneration int64) error {
 	var missing []string
-	if f.Generation <= 0 || f.JournalSeal.Generation != f.Generation || f.JournalSeal.SequenceID <= 0 || f.JournalSeal.EntryHash == "" {
-		missing = append(missing, "journal seal for this generation")
+	if expectedGeneration <= 0 || f.Generation != expectedGeneration || f.JournalSeal.Generation != f.Generation || f.JournalSeal.SequenceID <= 0 || f.JournalSeal.EntryHash == "" {
+		missing = append(missing, "journal seal for the plan generation")
 	}
 	if !f.OldInstanceStopped {
 		missing = append(missing, "provider-verified old instance stop")

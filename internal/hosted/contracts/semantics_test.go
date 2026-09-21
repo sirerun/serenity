@@ -142,7 +142,7 @@ func TestReserveRequestValidate(t *testing.T) {
 func TestFenceReceiptRequiresEveryFact(t *testing.T) {
 	full := contracts.FenceReceipt{Generation: 2, JournalSeal: contracts.DeletionWatermark{Generation: 2, SequenceID: 7, EntryHash: "h"},
 		OldInstanceStopped: true, OldCredentialsRevoked: true, VerifiedAt: time.Unix(1, 0)}
-	if err := full.Sufficient(); err != nil {
+	if err := full.Sufficient(2); err != nil {
 		t.Fatalf("complete receipt rejected: %v", err)
 	}
 	for name, mutate := range map[string]func(*contracts.FenceReceipt){
@@ -155,12 +155,15 @@ func TestFenceReceiptRequiresEveryFact(t *testing.T) {
 	} {
 		f := full
 		mutate(&f)
-		if err := f.Sufficient(); !errors.Is(err, contracts.ErrFenceInsufficient) {
+		if err := f.Sufficient(2); !errors.Is(err, contracts.ErrFenceInsufficient) {
 			t.Errorf("%s: err=%v, want ErrFenceInsufficient", name, err)
 		}
 	}
+	if err := full.Sufficient(3); !errors.Is(err, contracts.ErrFenceInsufficient) {
+		t.Errorf("receipt for generation %d accepted for plan generation 3: %v", full.Generation, err)
+	}
 	// Every missing fact is reported, not just the first.
-	err := contracts.FenceReceipt{}.Sufficient()
+	err := contracts.FenceReceipt{}.Sufficient(1)
 	for _, part := range []string{"journal seal", "instance stop", "credential"} {
 		if err == nil || !strings.Contains(err.Error(), part) {
 			t.Errorf("empty receipt error %v does not mention %q", err, part)
@@ -171,11 +174,17 @@ func TestFenceReceiptRequiresEveryFact(t *testing.T) {
 func TestRecoveryResultConsistency(t *testing.T) {
 	sealed := contracts.FenceReceipt{Generation: 1, JournalSeal: contracts.DeletionWatermark{Generation: 1, SequenceID: 1, EntryHash: "h"},
 		OldInstanceStopped: true, OldCredentialsRevoked: true, VerifiedAt: time.Unix(1, 0)}
-	if err := (contracts.RecoveryApplyResult{AccountID: "a", Unfrozen: true, Fence: sealed}).Consistent(); err != nil {
+	if err := (contracts.RecoveryApplyResult{AccountID: "a", PlanGeneration: 1, Unfrozen: true, Fence: sealed}).Consistent(); err != nil {
 		t.Errorf("fenced unfreeze rejected: %v", err)
 	}
-	if err := (contracts.RecoveryApplyResult{AccountID: "a", Unfrozen: true}).Consistent(); !errors.Is(err, contracts.ErrFenceInsufficient) {
+	if err := (contracts.RecoveryApplyResult{AccountID: "a", PlanGeneration: 1, Unfrozen: true}).Consistent(); !errors.Is(err, contracts.ErrFenceInsufficient) {
 		t.Errorf("unfreeze without a fence: %v, want ErrFenceInsufficient", err)
+	}
+	stale := sealed
+	stale.Generation = 2
+	stale.JournalSeal.Generation = 2
+	if err := (contracts.RecoveryApplyResult{AccountID: "a", PlanGeneration: 1, Unfrozen: true, Fence: stale}).Consistent(); !errors.Is(err, contracts.ErrFenceInsufficient) {
+		t.Errorf("unfreeze with self-consistent fence for another generation: %v, want ErrFenceInsufficient", err)
 	}
 	if err := (contracts.RecoveryApplyResult{AccountID: "a"}).Consistent(); err == nil {
 		t.Error("refusal without a reason accepted")
