@@ -3,7 +3,7 @@
   "profile": "paid",
   "status": "PARTIAL",
   "source_sha": "78c356b106a51a74cd073fcb310f0f94e53a6cd3",
-  "recorded_at": "2026-09-21T10:28:42Z",
+  "recorded_at": "2026-09-21T10:33:33Z",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
@@ -47,7 +47,7 @@
     {
       "criterion": "Existing hosted tests and file-first gate pass.",
       "expected": "go test -race -count=1 over ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate exits 0 with no skips.",
-      "observed": "Final command passed under R-build-lease 23a90a0d5358165ec369f393f2d50a3f9a64ae1d: store, service, contracts, contractstest, testhooks and internal/gate all passed with race detection and no skips. Plain/tagged go vet and golangci-lint checks passed; store-package vet, test and lint passed. internal/gate was unchanged. The initial CI errcheck findings in fixture cleanup were fixed and the strengthened migrated-subscription checks pass locally in source 78c356b; remote CI is running on the resulting push.",
+      "observed": "Final scoped race command passed under R-build-lease 23a90a0d5358165ec369f393f2d50a3f9a64ae1d: store, service, contracts, contractstest, testhooks and internal/gate all passed with no skips. Plain/tagged go vet and golangci-lint checks passed; store-package vet, test and lint passed. internal/gate was unchanged. The initial CI errcheck findings in fixture cleanup were fixed and the strengthened subscription-retention assertions pass. GitHub Actions reports 13/13 checks successful on PR236 head e541844f0a7bb5c420dfee852e6e12872c0dd118 (run 35589000206).",
       "status": "PASS"
     },
     {
@@ -221,7 +221,7 @@
     "authorization_refs": []
   },
   "limitations": [
-    "The chief-architect ruling is recorded at exact revision 218d7234d9abea5964f9d4640d1bfffe5c9f8087 and approves the four designs (storage conditionally). This branch reconciles that ruling and adds migration v4, but ordinary PR code review, green CI on the latest head and merge approval remain pending.",
+    "The chief-architect ruling is recorded at exact revision 218d7234d9abea5964f9d4640d1bfffe5c9f8087 and approves the four designs (storage conditionally). This branch reconciles that ruling and adds migration v4. All 13 CI checks pass on the latest head, but ordinary PR code review and coordinator acceptance remain pending.",
     "S3 conditional create is documented (the coordinator's source check, s3-conditional-write-source-check.md) but was not qualified against the real bucket, bucket policy or CLI/SDK build. Task48 live qualification remains required.",
     "No MaxMutationStageBytes measurement exists, and no OS-enforced size limit under the staging area is designed or tested. StageMeter is cooperative accounting, so storage admission remains BLOCKED.",
     "Migration v4 adds the operation journal schema and constraints, but it does not implement the operation ledger, quota admission, transitions, or canonical reconciliation. No operation contract is wired under internal/hosted/service or internal/cli; task44 owns that work.",
@@ -235,7 +235,7 @@
   "blockers": [
     {
       "owner": "PR236 review owner / coordinator",
-      "required_input": "Review exact pushed source and receipt, verify green CI, and accept T23.41. The author will keep the PR unmerged and draft pending that independent gate."
+      "required_input": "Independent ordinary code review of the exact pushed source/receipt and coordinator acceptance of T23.41. The author will keep the PR unmerged and draft pending that gate."
     },
     {
       "owner": "task44 with the writer owner",
@@ -248,6 +248,10 @@
     {
       "owner": "task48 and task52 owners",
       "required_input": "Verify idempotent purge excludes the deletion journal and name the control-database retention owner before retention work."
+    },
+    {
+      "owner": "founder",
+      "required_input": "Choose A (apply the exact updated PR title/description and keep draft) or B (leave the current text) in the founder card."
     }
   ],
   "binary_sha256": null,
