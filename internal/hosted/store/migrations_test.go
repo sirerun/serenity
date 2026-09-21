@@ -25,7 +25,7 @@ func TestLegacySchemasUpgradeTwiceAndPreserveControlData(t *testing.T) {
 				if err != nil {
 					t.Fatalf("open pass %d: %v", pass, err)
 				}
-				assertRetainedControlData(t, s.db)
+				assertRetainedControlData(t, s.db, sourceVersion)
 				if got := databaseFileHash(t, factsPath); got != factsBefore {
 					t.Fatalf("canonical fact store changed during control DB migration: before %x after %x", factsBefore, got)
 				}
@@ -163,14 +163,28 @@ func prepareLegacyFixture(t *testing.T, path string, version int) {
 	}
 }
 
-func assertRetainedControlData(t *testing.T, db *sql.DB) {
+func assertRetainedControlData(t *testing.T, db *sql.DB, sourceVersion int) {
 	t.Helper()
-	var id string
-	if err := db.QueryRow(`SELECT account_id FROM subscriptions WHERE id='sub'`).Scan(&id); err != nil || id != "acct" {
-		t.Fatalf("subscription account=%q err=%v", id, err)
+	var accountID, priceID, status, planID, periodStart, periodEnd string
+	var cancelAtPeriodEnd int
+	var graceUntil sql.NullString
+	if err := db.QueryRow(`SELECT account_id,price_id,status,plan_id,current_period_start,current_period_end,cancel_at_period_end,grace_until FROM subscriptions WHERE id='sub'`).Scan(&accountID, &priceID, &status, &planID, &periodStart, &periodEnd, &cancelAtPeriodEnd, &graceUntil); err != nil {
+		t.Fatalf("read retained subscription: %v", err)
 	}
-	if err := db.QueryRow(`SELECT id FROM login_tokens WHERE token_hash='tokenhash'`).Scan(&id); err != nil || id != "token" {
-		t.Fatalf("login token=%q err=%v", id, err)
+	wantPlanID := "free"
+	if sourceVersion >= 2 {
+		wantPlanID = "pilot"
+	}
+	wantGrace := sql.NullString{}
+	if sourceVersion >= 3 {
+		wantGrace = sql.NullString{String: "grace", Valid: true}
+	}
+	if accountID != "acct" || priceID != "price" || status != "active" || planID != wantPlanID || periodStart != "start" || periodEnd != "end" || cancelAtPeriodEnd != 0 || graceUntil != wantGrace {
+		t.Fatalf("subscription data changed: account=%q price=%q status=%q plan=%q start=%q end=%q cancel=%d grace=%+v", accountID, priceID, status, planID, periodStart, periodEnd, cancelAtPeriodEnd, graceUntil)
+	}
+	var tokenID string
+	if err := db.QueryRow(`SELECT id FROM login_tokens WHERE token_hash='tokenhash'`).Scan(&tokenID); err != nil || tokenID != "token" {
+		t.Fatalf("login token=%q err=%v", tokenID, err)
 	}
 	var committed int
 	if err := db.QueryRow(`SELECT committed FROM usage_windows WHERE account_id='acct' AND metric='writes'`).Scan(&committed); err != nil || committed != 7 {
