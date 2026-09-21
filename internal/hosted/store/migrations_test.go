@@ -55,14 +55,22 @@ func TestFreshAndUpgradedOperationSchemasAreEquivalent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer fresh.Close()
+	t.Cleanup(func() {
+		if err := fresh.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	legacyPath := filepath.Join(t.TempDir(), "legacy.db")
 	prepareLegacyFixture(t, legacyPath, 1)
 	upgraded, err := Open(legacyPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer upgraded.Close()
+	t.Cleanup(func() {
+		if err := upgraded.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	for _, db := range []*sql.DB{fresh.db, upgraded.db} {
 		if err := assertOperationSchema(db); err != nil {
 			t.Fatal(err)
@@ -214,7 +222,6 @@ func operationSchemaShape(db *sql.DB) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
 	for rows.Next() {
 		var name, definition string
 		if err := rows.Scan(&name, &definition); err != nil {
@@ -222,7 +229,14 @@ func operationSchemaShape(db *sql.DB) (string, error) {
 		}
 		fmt.Fprintf(&shape, "index:%s:%s\n", name, definition)
 	}
-	return shape.String(), rows.Err()
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return "", err
+	}
+	if err := rows.Close(); err != nil {
+		return "", err
+	}
+	return shape.String(), nil
 }
 
 func assertOperationConstraints(t *testing.T, db *sql.DB) {
