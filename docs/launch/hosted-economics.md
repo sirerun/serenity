@@ -77,6 +77,29 @@ remains a scenario estimate under the ratified single-ARM-VM architecture; this
 inventory is not a change to that architecture, an authorization, or a measured
 capacity result. No AWS resource or billing setting changed.
 
+### Existing AWS budget signal
+
+A read-only AWS Budgets check found four monthly cost budgets. The unique `$60`
+budget has no cost filters and zero configured notifications. Its name/purpose and
+current spend were not retrieved, so it is not proven to be Serenity-specific and
+cannot be treated as an alert or as launch spend authority. The other three budgets
+are also unattributed to this service. A sanitized receipt is
+[`aws-budget-controls-20260921.json`](evidence/T23.60/aws-budget-controls-20260921.json).
+
+The current full-limit model also conflicts with the ratified `$60` ceiling. Its
+original-retention full-limit known subtotal is `$305.47`. Even the conditional
+55-set retention sensitivity remains `$68.03` at 70% mean CPU and `$85.55` at
+sustained 100% CPU, before unknown cost categories. These are model outputs, not
+measured bills, but the full advertised profile is not currently demonstrated to
+fit the approved ceiling. Resolve this through an owner-approved costed proposal;
+do not silently reduce advertised plan limits or raise the ceiling.
+
+The current cost model therefore keeps `actual_usd` unknown and approved live spend
+at `$0`. A measurable Serenity cap still needs an explicitly scoped owner-approved
+control and a verified notification destination; do not rely on the matching
+account budget to stop or alert on service spend. No budget or billing setting was
+changed.
+
 The known subtotal prices the categories that have a rate and an assumed quantity. The
 peak columns replace four of its lines with their worst case (see
 [Peak exposure](#peak-exposure)) and add nothing else. Neither column is a full maximum:

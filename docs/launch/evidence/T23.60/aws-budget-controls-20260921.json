@@ -1,0 +1,16 @@
+{
+  "checked_at": "2026-09-21T14:59:58Z",
+  "query_region": "us-east-1",
+  "method": "Read-only AWS Budgets describe-budgets and describe-notifications-for-budget; account ID, budget names, and IDs suppressed locally.",
+  "budgets_returned": 4,
+  "relevant_unfiltered_monthly_cost_budget": {
+    "limit_usd": 60.0,
+    "cost_filter_count": 0,
+    "notification_count": 0,
+    "purpose_verified": false
+  },
+  "other_unattributed_budget_count": 3,
+  "actual_spend_retrieved": false,
+  "conclusion": "The $60 monthly budget is not proven to be Serenity-specific and has no notification configured. It is not an operational alert or spend authorization.",
+  "changes_made": false
+}

@@ -3,7 +3,7 @@
   "profile": "paid",
   "status": "PARTIAL",
   "source_sha": "c8707147f1e5d30793a82438305d4ffdfecf7e65",
-  "recorded_at": "2026-09-21T14:22:29Z",
+  "recorded_at": "2026-09-21T15:07:00Z",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
@@ -16,7 +16,9 @@
     "golangci-lint run --timeout=5m ./evals/hosted-load/fixtureprep/ (0 issues)",
     "fixtureprep prepare -local-fixture-only -out <new absolute dir> -profile full|smoke ... then fixtureprep verify -dir <dir> -expect full|smoke -report <report.json> (offline; see fixture-preparation.md)",
     "python3 evals/hosted-load/fixture_receipt.py --full ... --smoke ... --output docs/launch/evidence/T23.60/fixture-receipt.json (summarizes the verification reports; no fixture is read)",
-    "Read-only AWS CLI inventory in us-west-2: ec2 describe-instances; cloudformation list-stacks and list-stack-resources for each non-deleted stack (response identifiers suppressed locally)."
+    "Read-only AWS CLI inventory in us-west-2: ec2 describe-instances; cloudformation list-stacks and list-stack-resources for each non-deleted stack (response identifiers suppressed locally).",
+    "Read-only AWS Budgets inspection: budgets describe-budgets and describe-notifications-for-budget in us-east-1 (account/budget names and identifiers suppressed locally).",
+    "python3 scripts/hosted/cost_model.py --manifest docs/launch/evidence/T23.60/manifest.json --output /tmp/serenity-t2360-cost-budget-check.json (read-only local calculation; prints CALCULATED and NOT_QUALIFIED)."
   ],
   "cases": {
     "planned": 418,
@@ -50,6 +52,18 @@
       "expected": "Credit existing capacity only when an exact host maps to an owner-approved IaC stack; otherwise leave reuse unqualified.",
       "observed": "Seven instances are running in the planned region, but zero map to any non-deleted CloudFormation stack resource. No tag identifies a Serenity/hosted host. No existing capacity is credited; Terraform/other IaC ownership remains unchecked. No infrastructure changes occurred.",
       "status": "BLOCKED"
+    },
+    {
+      "criterion": "Produce a measurable monthly cap recommendation and distinguish monitoring from spend authority",
+      "expected": "An exact Serenity-scoped control, notification destination and approved cap precede live spend.",
+      "observed": "Four monthly cost budgets are present. The unique $60 budget has no cost filters and zero notifications, but its purpose is unverified and actual account spend was not retrieved. It is not counted as a Serenity-specific control or spend authorization; model actual_usd remains null and approved live spend remains $0.",
+      "status": "BLOCKED"
+    },
+    {
+      "criterion": "Keep the advertised full-limit profile within the ratified $60 monthly ceiling",
+      "expected": "The complete conservative monthly exposure fits the approved ceiling, with unknown categories resolved before launch.",
+      "observed": "The model calculates $305.47/month known subtotal for the original full-limit scenario. The conditional 55-set retention sensitivity remains $68.03 at 70% mean CPU and $85.55 at sustained 100% CPU. These are model outputs, not measured bills; unknown categories remain excluded, and no plan limit or architecture was changed.",
+      "status": "BLOCKED"
     }
   ],
   "artifacts": [
@@ -68,10 +82,6 @@
     {
       "path": "docs/launch/evidence/T23.60/cost.json",
       "sha256": "6ae18f97b7fc0ede216cf00333fdcb3825d55900b78ae8c33bd5fa28386e6c80"
-    },
-    {
-      "path": "docs/launch/hosted-economics.md",
-      "sha256": "558a12f685d37e539a2b7368ea17e35ad94527e08bb383860201c84cf8509bdd"
     },
     {
       "path": "scripts/hosted/cost_model.py",
@@ -300,6 +310,14 @@
     {
       "path": "docs/launch/evidence/T23.60/aws-capacity-inventory-20260921.json",
       "sha256": "9126cc29b9a6e5b2090ccbdab02631807ee53c56fbec24bf6a3d2b734936536c"
+    },
+    {
+      "path": "docs/launch/evidence/T23.60/aws-budget-controls-20260921.json",
+      "sha256": "c02326cab4f3b3d46893bbaeeac824ab0794866b9af99af6a1f715d154f58ca3"
+    },
+    {
+      "path": "docs/launch/hosted-economics.md",
+      "sha256": "343105471b01b20927d1ba453a5ae741bb39e2f3644adf2d40ce3b5650251b1d"
     }
   ],
   "cost": {
@@ -323,7 +341,9 @@
     "The cardinality headroom replay models the gateway's memory-count rule only (no limiter, storage rule, monthly cap, faults, cold opens, races or latency) and is not a measured runtime failure. The storage and history gap is separate: the fact text of a full plan is at most 4.096% of its storage quota. The offline fixture measured its own Git history and derived-index sizes (fixture-receipt.json), which is a fixture measurement and not the production maximum: production history, its pinned provider's vector width and real usage are unmeasured.",
     "The offline fixture (fixture-preparation.md) is infrastructure only. Its vectors come from a hash embedder pinned as fixture-hash-embedder-d64@infrastructure-only-v1 (the width is a fixture parameter, not the provider's), paid entitlements are direct SQL in the fixture's own control database, legacy ids are sequential, Git history is batched (one commit per 500 facts) except in a labeled 100-per-brain per-write sample and a partial per-write measurement on the 15 brains that finished in a full preparation that stopped (no whole-fixture per-write history exists), and its subscriptions expire 30 days after preparation. Two hazards were observed and are not root-caused: a writer lock briefly retained by a forked Git child (the preparer retries), and one per-write brain whose HEAD commit object vanished under this host's Git (Apple Git 2.54.0, automatic maintenance suspected, not reproduced in a scratch check); no runtime code changed. Prepare times were measured while other preparations ran on the same host and are indicative only. No service, provider, cloud or network call occurred.",
     "Fixture threshold verdicts are steady-phase scoped and fixture cold-ready and isolation-durability rows are unmeasured. The simulator still does not measure real cold opens, host resources or cross-tenant durability; no live capacity claim follows from these fixture values.",
-    "The AWS capacity inventory checks CloudFormation only. It cannot establish ownership/reuse eligibility or rule out Terraform/other IaC and out-of-band resources; see the sanitized dated receipt."
+    "The AWS capacity inventory checks CloudFormation only. It cannot establish ownership/reuse eligibility or rule out Terraform/other IaC and out-of-band resources; see the sanitized dated receipt.",
+    "AWS Budgets metadata is not attributed to Serenity; the unfiltered $60 monthly budget has zero notifications and current spend was not retrieved. See the sanitized dated receipt.",
+    "The current known-cost full-limit scenario exceeds the ratified $60 monthly ceiling, including under the conditional 55-set/70%-mean-CPU sensitivity; these remain estimates and do not resolve the complete maximum."
   ],
   "blockers": [
     {
@@ -369,6 +389,14 @@
     {
       "owner": "AWS/IaC owner",
       "required_input": "Map an exact candidate EC2 host into its owner-approved IaC stack/state before T23.60 can compare it as authorized existing capacity; current CloudFormation enumeration maps zero running instances."
+    },
+    {
+      "owner": "AWS budget owner / T23.61 operations owner",
+      "required_input": "Provide an explicitly Serenity-scoped, owner-approved monthly cap and verified notification path before live qualification; the existing unfiltered $60 budget has no notifications and cannot authorize or reliably alert on service spend."
+    },
+    {
+      "owner": "budget owner / architecture reviewer",
+      "required_input": "Resolve the modeled full-limit cost conflict with the ratified $60 monthly ceiling through an owner-approved costed proposal or explicit reviewed ruling; preserve published plan limits unless the founder changes them. Unknown categories remain outside the current estimate."
     }
   ],
   "binary_sha256": null,
