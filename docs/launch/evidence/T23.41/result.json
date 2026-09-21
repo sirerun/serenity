@@ -2,8 +2,8 @@
   "task_id": "T23.41",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "4ff610addbcc34dd1dff8e9e0bfd4ea7754b1b19",
-  "recorded_at": "2026-09-21T11:59:53Z",
+  "source_sha": "f4b22589fb4c59f205544db77fb2b9f79300394f",
+  "recorded_at": "2026-09-21T12:10:20Z",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
@@ -49,13 +49,13 @@
     {
       "criterion": "Existing hosted tests and file-first gate pass.",
       "expected": "go test -race -count=1 over ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate exits 0 with no skips.",
-      "observed": "The final scoped race suite passed under the recorded R-build-lease: store, service, contracts, contractstest, testhooks and internal/gate all passed with no skips. Plain/tagged go vet and golangci-lint checks passed; store-package vet, tests and lint passed. On the current code source 4ff610addbcc34dd1dff8e9e0bfd4ea7754b1b19, focused go test -race -count=1 runs for internal/hosted/contracts and internal/hosted/store pass. All 13 GitHub checks, including test, passed on PR #236 receipt head 8259810735a0b159b514d261c345b5d6722de4fb; that head contains the same tested code source plus its evidence receipt. CI success is not ordinary review or merge approval.",
+      "observed": "The final scoped race suite passed under the recorded R-build-lease on current source f4b22589fb4c59f205544db77fb2b9f79300394f: store, service, contracts, contractstest, testhooks and internal/gate all passed with no skips. This rerun includes the plan-generation fence regression tests. Plain/tagged go vet and golangci-lint checks passed on earlier source 4ff610addbcc34dd1dff8e9e0bfd4ea7754b1b19; focused race runs for contracts and store passed on source 4ff610addbcc34dd1dff8e9e0bfd4ea7754b1b19 before this current full scoped run. All 13 GitHub checks passed on PR #236 receipt head 8259810735a0b159b514d261c345b5d6722de4fb; All 13 GitHub checks passed on current PR #236 head f4b22589fb4c59f205544db77fb2b9f79300394f. CI success is not ordinary review or merge approval.",
       "status": "PASS"
     },
     {
       "criterion": "Interface document lists owning task, exact signature, semantic contract, schema version and integration file for every shared seam.",
       "expected": "Every row in interfaces.md's seam table has a frozen Go signature, contract and integration file.",
-      "observed": "interfaces.md now has a callable seam index listing each shared owner, exact Go callable surface, semantic contract, persistence/schema version and integration file. RecoveryPlanner.Plan and RecoveryApplier.Apply were added and are compile-time checked alongside the other interfaces. Migration v4 is named as task41-owned; task44 retains runtime ledger/staging implementation.",
+      "observed": "interfaces.md now has a callable seam index listing each shared owner, exact Go callable surface, semantic contract, persistence/schema version and integration file. RecoveryPlanner.Plan and RecoveryApplier.Apply were added and are compile-time checked alongside the other interfaces. Migration v4 is named as task41-owned; task44 retains runtime ledger/staging implementation. RecoveryApplyResult now carries PlanGeneration from the immutable plan identified by PlanHash; FenceReceipt.Sufficient(expectedGeneration) requires that exact positive generation, and tests reject a self-consistent fence for a different generation.",
       "status": "PASS"
     }
   ],
@@ -66,11 +66,11 @@
     },
     {
       "path": "docs/launch/hosted-completion/interfaces.md",
-      "sha256": "078f07daa99f14f68c460bbfa4ee7fa09ff0586efdc785dc684267bfa93f9241"
+      "sha256": "cfa7e8c98accf7c893406ccf7e2e0ced1866b6ff0bc8ebb61e37fa135e93fdf4"
     },
     {
       "path": "internal/hosted/contracts/backup.go",
-      "sha256": "ba122be183d4cdc91cd1b810f82d7f1577385ac7dd7700b09a2521bb94c0d868"
+      "sha256": "687e29b95eacaa44a7ec2a3f2f6b47ab66a0c029d05b4833dbbdd2f15adbbd1c"
     },
     {
       "path": "internal/hosted/contracts/billing.go",
@@ -146,7 +146,7 @@
     },
     {
       "path": "internal/hosted/contracts/fence.go",
-      "sha256": "7222ce5b6931903728e0b276a5c6a4c4622901da6f9128a55e4227c16ac44ef4"
+      "sha256": "cd315f19f3fd89bd59573e4f585347280c2a83c877d863e69cd662b4723bca23"
     },
     {
       "path": "internal/hosted/contracts/manifest_test.go",
@@ -162,7 +162,7 @@
     },
     {
       "path": "internal/hosted/contracts/semantics_test.go",
-      "sha256": "8c4d9a3e435a38c05855f53cb9f8605d987320ca89953840a07c67c726aff07e"
+      "sha256": "fc140a34462a6664de5766ff336cca671b26ee7bc475572f07f31cc9c5772177"
     },
     {
       "path": "internal/hosted/contracts/storage.go",
@@ -223,7 +223,7 @@
     "authorization_refs": []
   },
   "limitations": [
-    "The chief-architect ruling is recorded at exact revision 218d7234d9abea5964f9d4640d1bfffe5c9f8087 and approves the four designs (storage conditionally). This branch reconciles that ruling and adds migration v4. All 13 CI checks pass on the latest head, but ordinary PR code review and coordinator acceptance remain pending.",
+    "The chief-architect ruling is recorded at exact revision 218d7234d9abea5964f9d4640d1bfffe5c9f8087 and approves the four designs (storage conditionally). This branch reconciles that ruling and adds migration v4. All 13 CI checks pass on latest head f4b22589fb4c59f205544db77fb2b9f79300394f, but ordinary PR code review and coordinator acceptance remain pending.",
     "S3 conditional create is documented (the coordinator's source check, s3-conditional-write-source-check.md) but was not qualified against the real bucket, bucket policy or CLI/SDK build. Task48 live qualification remains required.",
     "No MaxMutationStageBytes measurement exists, and no OS-enforced size limit under the staging area is designed or tested. StageMeter is cooperative accounting, so storage admission remains BLOCKED.",
     "Migration v4 adds the operation journal schema and constraints, but it does not implement the operation ledger, quota admission, transitions, or canonical reconciliation. No operation contract is wired under internal/hosted/service or internal/cli; task44 owns that work.",
