@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -738,7 +739,11 @@ func observeGit(ctx context.Context, root string, obs *BrainObs) {
 		obs.fail("git rev-list: %v", err)
 		return
 	}
-	fmt.Sscanf(strings.TrimSpace(string(out)), "%d", &obs.GitCommits)
+	obs.GitCommits, err = strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		obs.fail("git rev-list count: %v", err)
+		return
+	}
 	if out, err = git("status", "--porcelain", "-z"); err != nil {
 		obs.fail("git status: %v", err)
 		return
