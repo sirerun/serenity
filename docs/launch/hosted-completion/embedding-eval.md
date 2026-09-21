@@ -121,6 +121,22 @@ The frozen queries, 95 positive cases and every threshold are unchanged
 `f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6`). Both
 approvals must be complete before any `--seed` or `--live` run.
 
+The executable guard requires two separate manifest objects,
+`threshold_freeze` and `supplemental_freeze`, each with `status: "accepted"`,
+a named `reviewer`, an ISO-8601 `reviewed_at_utc`, and full `t23_41_sha` /
+`t23_43_sha` values. The T23.43 SHA must equal the clean source revision being
+run. The threshold object also pins the current `corpus_sha256`, `facts_sha256`,
+sets `seeding_protocol_confirmed: true`, and records the reviewer's exact
+lexical choice as either
+`{"mode":"exact_subset_20","case_ids":[...20 sorted IDs...],"min_hits":18}`
+or `{"mode":"exact_ratio_21","case_ids":[...all 21 sorted IDs...],"min_hits":19}`.
+The supplemental object pins `forgotten_targets_sha256`. Missing, pending,
+malformed or stale fields block both seed and live execution before a request
+is sent. Offline fixture runs and preflight inspection remain available while
+the review is pending; they do not grant permission to seed or measure a live
+endpoint. The example qualification manifest intentionally carries no accepted
+review receipt.
+
 Per `docs/launch/hosted-completion/interfaces.md`, a failed live result
 never authorizes a worker to edit these thresholds; only a reviewed
 amendment can.

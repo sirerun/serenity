@@ -134,21 +134,33 @@ class TestSummary(unittest.TestCase):
         summary2 = scoring.summarize([], [], lexical_negative_results=ln_fail)
         self.assertFalse(summary2.lexical_negative_pass)
 
-    def test_lexical_negative_draft_is_an_unapproved_raw_count_not_a_ratio(self):
-        """Pins the draft's behaviour so a silent change fails: a fixed
-        numerator of 18 over the 21 flagged cases is 85.7%, weaker than the
-        contract's 18/20 = 90%. The reviewer must choose a subset or a ratio
-        before acceptance; this test records what the draft does today and
-        does not endorse it."""
+    def test_lexical_negative_freeze_requires_exact_denominator(self):
+        """The raw 18/21 interpretation is not accepted. Reviewed choices
+        are an exact subset of 20 with 18 hits, or all 21 with 19 hits."""
         def run(hits, total):
             ln = [scoring.CaseResult(f"p{i}", "paraphrase", f"fact-{i}", [], hit=(i < hits), rank=None) for i in range(total)]
             return scoring.summarize([], [], lexical_negative_results=ln)
 
         self.assertEqual((scoring.LEXICAL_NEGATIVE_MIN_HITS, scoring.LEXICAL_NEGATIVE_MIN_DENOM), (18, 20))
-        self.assertTrue(run(18, 21).lexical_negative_pass, "draft raw count: 18 of 21 passes")
         self.assertLess(18 / 21, 18 / 20, "the raw count over 21 is weaker than the contract ratio")
+        self.assertFalse(run(18, 21).lexical_negative_pass)
         self.assertFalse(run(17, 21).lexical_negative_pass)
         self.assertFalse(run(18, 19).lexical_negative_pass, "a denominator under 20 never passes")
+
+        ratio_21 = scoring.summarize(
+            [], [], lexical_negative_results=[
+                scoring.CaseResult(f"p{i}", "paraphrase", f"fact-{i}", [], hit=(i < 19), rank=None)
+                for i in range(21)
+            ], lexical_negative_min_hits=19, lexical_negative_min_denom=21,
+        )
+        self.assertTrue(ratio_21.lexical_negative_pass)
+        ratio_21_below = scoring.summarize(
+            [], [], lexical_negative_results=[
+                scoring.CaseResult(f"p{i}", "paraphrase", f"fact-{i}", [], hit=(i < 18), rank=None)
+                for i in range(21)
+            ], lexical_negative_min_hits=19, lexical_negative_min_denom=21,
+        )
+        self.assertFalse(ratio_21_below.lexical_negative_pass)
 
 
 if __name__ == "__main__":

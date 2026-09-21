@@ -77,6 +77,9 @@ def summarize(
     positive_results: list[CaseResult],
     empty_results: list[CaseResult],
     lexical_negative_results: list[CaseResult] | None = None,
+    *,
+    lexical_negative_min_hits: int = LEXICAL_NEGATIVE_MIN_HITS,
+    lexical_negative_min_denom: int = LEXICAL_NEGATIVE_MIN_DENOM,
 ) -> Summary:
     by_category: dict[str, tuple[int, int]] = {}
     for cat in CATEGORY_FLOORS:
@@ -101,7 +104,7 @@ def summarize(
     lexical_negative_results = lexical_negative_results or []
     ln_hits = sum(1 for r in lexical_negative_results if r.hit)
     ln_total = len(lexical_negative_results)
-    ln_pass = ln_total >= LEXICAL_NEGATIVE_MIN_DENOM and ln_hits >= LEXICAL_NEGATIVE_MIN_HITS
+    ln_pass = ln_total == lexical_negative_min_denom and ln_hits >= lexical_negative_min_hits
 
     return Summary(
         overall_hit_rate=overall_rate,

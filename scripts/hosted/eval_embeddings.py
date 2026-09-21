@@ -120,6 +120,17 @@ def run_lexical_arm(serenity_bin: str, seedbrain_bin: str, corpus: dict, fact_by
         brain = lexical_control.build_disposable_brain(serenity_bin, seedbrain_bin, facts_for_brain)
         brains.append(brain)
 
+        # Ensure the lexical control can find a fact when given its exact text.
+        # Otherwise a broken parser/index would manufacture an attractive
+        # lexical-negative score by returning no hits for every paraphrase.
+        control_fact = facts_for_brain[0]
+        control_ids = [
+            chunk_ref_to_fact_id(ref)
+            for ref in brain.search(control_fact["text"], limit=scoring.K)
+        ]
+        if control_fact["id"] not in control_ids:
+            raise lexical_control.LexicalControlFailed("lexical positive control missed its verbatim fact query")
+
         positive_results = []
         for case in pos_cases:
             refs = brain.search(case["query"], limit=scoring.K)
@@ -145,7 +156,7 @@ def run_lexical_arm(serenity_bin: str, seedbrain_bin: str, corpus: dict, fact_by
     return positive_results, empty_results
 
 
-def lexical_negative_check(pos_semantic_results, pos_lexical_results, corpus):
+def lexical_negative_check(pos_semantic_results, pos_lexical_results, corpus, case_ids=None):
     """T23.43.md acceptance: "at least 18/20 lexical-negative paraphrases
     hit semantically and miss in the lexical control." A case counts as a
     pass here when the semantic arm hit (expected id in top 5) AND the
@@ -156,17 +167,24 @@ def lexical_negative_check(pos_semantic_results, pos_lexical_results, corpus):
     flagged_ids = {
         c["id"] for c in corpus["cases"] if c["category"] == "paraphrase" and c.get("lacks_content_word_overlap")
     }
+    selected_ids = sorted(flagged_ids if case_ids is None else case_ids)
+    if not set(selected_ids) <= flagged_ids:
+        raise ValueError("frozen lexical-negative case ids are not a subset of the flagged corpus cases")
     sem_by_id = {r.case_id: r for r in pos_semantic_results}
     lex_by_id = {r.case_id: r for r in pos_lexical_results}
+    case_by_id = {c["id"]: c for c in corpus["cases"]}
     results = []
-    for cid in sorted(flagged_ids):
+    for cid in selected_ids:
         sem = sem_by_id.get(cid)
         lex = lex_by_id.get(cid)
-        if sem is None or lex is None:
-            continue
-        passed = sem.hit and not lex.hit
+        passed = sem is not None and lex is not None and sem.hit and not lex.hit
+        case = case_by_id[cid]
         results.append(
-            scoring.CaseResult(cid, "paraphrase", sem.expected_fact_id, sem.ranked_ids, hit=passed, rank=sem.rank)
+            scoring.CaseResult(
+                cid, "paraphrase", case["expected_fact_id"],
+                sem.ranked_ids if sem is not None else [], hit=passed,
+                rank=sem.rank if sem is not None else None,
+            )
         )
     return results
 
@@ -630,6 +648,11 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
 
     m = manifest_lib.load_manifest(args.manifest)
     problems = manifest_lib.validate_live_manifest(m, manifest_lib.PHASE_LIVE)
+    problems += manifest_lib.validate_reviewer_freeze(
+        m, source_sha=source_sha, corpus=corpus,
+        facts_sha256=corpus["meta"]["facts_hash_sha256"],
+        supplemental_sha256=forgotten_targets.targets_sha256(),
+    )
     if problems:
         return build_blocked_result(args, corpus, source_sha, problems), EXIT_BLOCKED
     if m.get("corpus_sha256") != actual_hash:
@@ -731,8 +754,13 @@ def run_live(args: argparse.Namespace, *, lexical_provider=None) -> tuple[dict, 
         n_empty = len(empty_cases(corpus))
         empty_results, sentinel_results = both[:n_empty], both[n_empty:]
 
-    ln_results = lexical_negative_check(positive_results, lexical_pos, corpus) if blocked_reason is None else []
-    summary = scoring.summarize(positive_results, empty_results, ln_results)
+    freeze = m["threshold_freeze"]["lexical_negative"]
+    ln_results = lexical_negative_check(positive_results, lexical_pos, corpus, freeze["case_ids"]) if blocked_reason is None else []
+    summary = scoring.summarize(
+        positive_results, empty_results, ln_results,
+        lexical_negative_min_hits=freeze["min_hits"],
+        lexical_negative_min_denom=len(freeze["case_ids"]),
+    )
 
     result = base_result(args.task_id, args.profile, source_sha, cls["evidence_level"])
     result["corpus_sha256"] = actual_hash
@@ -885,6 +913,11 @@ def run_seed(args: argparse.Namespace, *, clock=time.time, sleep=time.sleep) -> 
 
     m = manifest_lib.load_manifest(args.manifest)
     problems = manifest_lib.validate_live_manifest(m, manifest_lib.PHASE_SEED)
+    problems += manifest_lib.validate_reviewer_freeze(
+        m, source_sha=source_sha, corpus=corpus,
+        facts_sha256=corpus["meta"]["facts_hash_sha256"],
+        supplemental_sha256=forgotten_targets.targets_sha256(),
+    )
     if m.get("corpus_sha256") != corpus_sha256:
         problems.append(f"manifest corpus_sha256={m.get('corpus_sha256')!r} does not match on-disk corpus={corpus_sha256!r}")
     if not args.receipt_dir:

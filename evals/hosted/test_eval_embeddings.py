@@ -34,7 +34,7 @@ sys.path.insert(0, str(SCRIPTS_HOSTED))
 
 import eval_embeddings  # noqa: E402
 from fake_hosted_mcp import FakeClock, FakeHostedMCP, RealClock  # noqa: E402
-from lib import ledger as ledger_lib, manifest as manifest_lib, mcp_client, scoring, seeding  # noqa: E402
+from lib import forgotten_targets, ledger as ledger_lib, manifest as manifest_lib, mcp_client, scoring, seeding  # noqa: E402
 from lib.fixture_embedder import HashBagEmbedder  # noqa: E402
 
 CORPUS_PATH = HERE / "corpus.json"
@@ -144,6 +144,25 @@ def _all_lexical_hits():
     )
 
 
+class LexicalNegativeSelectionTests(unittest.TestCase):
+    def test_missing_semantic_or_lexical_rows_fail_closed_without_shrinking_frozen_subset(self):
+        corpus = json.loads(CORPUS_PATH.read_text())
+        flagged = sorted(
+            c["id"] for c in corpus["cases"]
+            if c["category"] == "paraphrase" and c.get("lacks_content_word_overlap")
+        )
+
+        rows = eval_embeddings.lexical_negative_check([], [], corpus, flagged[:20])
+
+        self.assertEqual(len(rows), 20)
+        self.assertTrue(all(not row.hit for row in rows))
+
+    def test_frozen_lexical_subset_cannot_name_an_unflagged_case(self):
+        corpus = json.loads(CORPUS_PATH.read_text())
+        with self.assertRaisesRegex(ValueError, "not a subset"):
+            eval_embeddings.lexical_negative_check([], [], corpus, ["empty-01"])
+
+
 class LiveFixture(unittest.TestCase):
     """A FakeHostedMCP with two isolated accounts, a real --seed run against
     it (producing real receipts), and helpers to build live manifests on top.
@@ -250,6 +269,26 @@ class LiveFixture(unittest.TestCase):
         for key, env in (("hosted_mcp", POS_ENV), ("empty_case_hosted_mcp", EMPTY_ENV)):
             m[key] = {"endpoint_url": f"{self.origin}/mcp", "credential_secret_ref": env, "allowed_origins": [self.origin]}
         m["corpus_sha256"] = _corpus_hash()
+        flagged = sorted(
+            c["id"] for c in self.corpus["cases"]
+            if c["category"] == "paraphrase" and c.get("lacks_content_word_overlap")
+        )
+        reviewed_sha = eval_embeddings.git_source_sha(REPO_ROOT)
+        common_review = {
+            "status": "accepted", "reviewer": "test-reviewer", "reviewed_at_utc": "2026-09-21T00:00:00Z",
+            "t23_41_sha": "a" * 40, "t23_43_sha": reviewed_sha,
+        }
+        m["threshold_freeze"] = {
+            **common_review,
+            "corpus_sha256": _corpus_hash(),
+            "facts_sha256": self.corpus["meta"]["facts_hash_sha256"],
+            "seeding_protocol_confirmed": True,
+            "lexical_negative": {"mode": "exact_subset_20", "case_ids": flagged[:20], "min_hits": 18},
+        }
+        m["supplemental_freeze"] = {
+            **common_review,
+            "forgotten_targets_sha256": forgotten_targets.targets_sha256(),
+        }
         if phase == "seed":
             m["seeding"] = {"authorized": True, "authorization_ref": "test-seeding-authorization"}
         else:
@@ -357,6 +396,26 @@ class TestSeeding(LiveFixture):
         result, code = eval_embeddings.run_seed(args)
         self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
         self.assertEqual(self.fake.calls(), 0)
+
+    def test_seed_blocks_without_two_current_reviewer_freezes_before_any_request(self):
+        m = self.manifest_dict("seed")
+        m["threshold_freeze"]["status"] = "pending"
+        mp = self.write_manifest(m)
+        args = _mode_args("seed", self.tmp / "pending-freeze.json", mp, "--receipt-dir", str(self.tmp / "pending-rc"))
+        result, code = eval_embeddings.run_seed(args)
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(self.fake.calls(), 0)
+        self.assertTrue(any("threshold_freeze.status" in row["required_input"] for row in result["blockers"]))
+
+    def test_seed_blocks_if_freeze_names_a_different_code_revision_before_any_request(self):
+        m = self.manifest_dict("seed")
+        m["threshold_freeze"]["t23_43_sha"] = "b" * 40
+        mp = self.write_manifest(m)
+        args = _mode_args("seed", self.tmp / "stale-freeze.json", mp, "--receipt-dir", str(self.tmp / "stale-rc"))
+        result, code = eval_embeddings.run_seed(args)
+        self.assertEqual(code, eval_embeddings.EXIT_BLOCKED)
+        self.assertEqual(self.fake.calls(), 0)
+        self.assertTrue(any("does not match the code revision" in row["required_input"] for row in result["blockers"]))
 
     def test_seed_never_overwrites_an_existing_receipt(self):
         self.seed()

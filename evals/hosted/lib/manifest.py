@@ -22,6 +22,7 @@ import ipaddress
 import json
 import math
 import re
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -95,6 +96,81 @@ def _positive_finite_number(value, name: str, problems: list[str]) -> None:
 
 _CONFIRMATION = re.compile(r"^sha256:[0-9a-f]{64}$")
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+_SHA1 = re.compile(r"^[0-9a-f]{40}$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def validate_reviewer_freeze(
+    manifest: dict, *, source_sha: str, corpus: dict, facts_sha256: str, supplemental_sha256: str
+) -> list[str]:
+    """Require the two independent T23.41 reviews before spending on seed/live.
+
+    The receipt is bound to exact code, corpus, facts and supplemental plan
+    hashes. A pending, stale or malformed receipt blocks; this task cannot
+    choose the lexical interpretation for its reviewer.
+    """
+    problems: list[str] = []
+    threshold = manifest.get("threshold_freeze") or {}
+    supplemental = manifest.get("supplemental_freeze") or {}
+    threshold_fields = threshold if isinstance(threshold, dict) else {}
+    supplemental_fields = supplemental if isinstance(supplemental, dict) else {}
+
+    def reviewed(section: dict, label: str) -> None:
+        if not isinstance(section, dict):
+            problems.append(f"{label} must be an object")
+            return
+        if section.get("status") != "accepted":
+            problems.append(f"{label}.status must be 'accepted' by the named T23.41 reviewer")
+        if not isinstance(section.get("reviewer"), str) or not section["reviewer"].strip():
+            problems.append(f"{label}.reviewer is missing")
+        timestamp = section.get("reviewed_at_utc")
+        try:
+            parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00")) if isinstance(timestamp, str) else None
+            if parsed is None or parsed.utcoffset() is None or parsed.utcoffset().total_seconds() != 0:
+                raise ValueError
+        except ValueError:
+            problems.append(f"{label}.reviewed_at_utc must be an ISO-8601 timestamp with a UTC offset")
+        for field in ("t23_41_sha", "t23_43_sha"):
+            if not isinstance(section.get(field), str) or not _SHA1.fullmatch(section[field]):
+                problems.append(f"{label}.{field} must be the full reviewed commit SHA")
+        if section.get("t23_43_sha") != source_sha:
+            problems.append(f"{label}.t23_43_sha does not match the code revision that will run")
+
+    reviewed(threshold, "threshold_freeze")
+    if threshold_fields.get("corpus_sha256") != corpus.get("meta", {}).get("corpus_hash_sha256"):
+        problems.append("threshold_freeze.corpus_sha256 does not match the current corpus")
+    if threshold_fields.get("facts_sha256") != facts_sha256 or not _SHA256.fullmatch(str(threshold_fields.get("facts_sha256", ""))):
+        problems.append("threshold_freeze.facts_sha256 does not match the current facts")
+    if threshold_fields.get("seeding_protocol_confirmed") is not True:
+        problems.append("threshold_freeze.seeding_protocol_confirmed must be true")
+    rule = threshold_fields.get("lexical_negative") or {}
+    if not isinstance(rule, dict):
+        problems.append("threshold_freeze.lexical_negative must be an object")
+        rule = {}
+    mode = rule.get("mode")
+    flagged = sorted(
+        c["id"] for c in corpus.get("cases", [])
+        if c.get("category") == "paraphrase" and c.get("lacks_content_word_overlap")
+    )
+    if mode == "exact_subset_20":
+        ids = rule.get("case_ids")
+        valid_ids = isinstance(ids, list) and all(isinstance(cid, str) for cid in ids)
+        if not valid_ids or len(ids) != 20 or len(set(ids)) != 20 or ids != sorted(ids) or not set(ids) <= set(flagged):
+            problems.append("threshold_freeze.lexical_negative.case_ids must name exactly 20 distinct flagged cases")
+        if rule.get("min_hits") != 18:
+            problems.append("threshold_freeze.lexical_negative.min_hits must be 18 for exact_subset_20")
+    elif mode == "exact_ratio_21":
+        if rule.get("case_ids") != flagged:
+            problems.append("threshold_freeze.lexical_negative.case_ids must name all 21 flagged cases in sorted order")
+        if rule.get("min_hits") != 19:
+            problems.append("threshold_freeze.lexical_negative.min_hits must be 19 for exact_ratio_21")
+    else:
+        problems.append("threshold_freeze.lexical_negative.mode must be exact_subset_20 or exact_ratio_21")
+
+    reviewed(supplemental, "supplemental_freeze")
+    if supplemental_fields.get("forgotten_targets_sha256") != supplemental_sha256 or not _SHA256.fullmatch(str(supplemental_fields.get("forgotten_targets_sha256", ""))):
+        problems.append("supplemental_freeze.forgotten_targets_sha256 does not match the current removal plan")
+    return problems
 
 
 def _validate_hosted_mcp_target(prefix: str, target: dict, problems: list[str], phase: str) -> None:
