@@ -113,10 +113,27 @@ class RateTableTests(unittest.TestCase):
         self.assertIn("2026-09-18T20:33:44Z", entry["source"])
 
     def test_unverified_rates_stay_labeled_as_such(self):
-        for name in ("s3_put_usd_per_1000_requests", "s3_get_usd_per_1000_requests", "data_transfer_out_usd_per_gb", "data_transfer_out_free_gb_per_month"):
-            self.assertEqual(cost_model.RATE_TABLE[name]["verification"], cost_model.SECONDARY, name)
+        self.assertEqual(cost_model.RATE_TABLE["kms_rotation_billed_versions_max"]["verification"], cost_model.SECONDARY)
         for name in ("resend_free_emails_per_month", "resend_free_emails_per_day_cap", "resend_pro_usd_per_month_low"):
             self.assertEqual(cost_model.RATE_TABLE[name]["verification"], cost_model.VENDOR, name)
+
+    def test_aws_s3_request_and_egress_rates_use_the_regional_price_list(self):
+        for name in ("s3_put_usd_per_1000_requests", "s3_get_usd_per_1000_requests", "data_transfer_out_usd_per_gb"):
+            entry = cost_model.RATE_TABLE[name]
+            self.assertEqual(entry["verification"], cost_model.PRIMARY, name)
+            self.assertEqual(entry["receipt"]["file"], "aws-rates/s3-request-transfer-price-receipt.json")
+        self.assertEqual(cost_model.RATE_TABLE["s3_put_usd_per_1000_requests"]["receipt"]["catalog_to_rate_factor"], 1000)
+        self.assertEqual(cost_model.RATE_TABLE["s3_get_usd_per_1000_requests"]["receipt"]["catalog_to_rate_factor"], 1000)
+        self.assertEqual(cost_model.rate("data_transfer_out_usd_per_gb"), 0.09)
+
+    def test_shared_egress_allowance_is_from_the_official_pricing_page_but_not_assumed_unused(self):
+        entry = cost_model.RATE_TABLE["data_transfer_out_free_gb_per_month"]
+        self.assertEqual(entry["verification"], cost_model.PUBLISHED_PRIMARY)
+        receipt = json.loads((EVIDENCE / "aws-rates/s3-request-transfer-price-receipt.json").read_text())
+        allowance = receipt["global_internet_data_transfer_allowance"]
+        self.assertEqual(allowance["quantity"], 100)
+        self.assertIn("aggregated across AWS services", allowance["scope"])
+        self.assertIn("Actual target-account availability/consumption is unverified", entry["note"])
 
     def test_every_primary_rate_names_a_receipt_and_carries_no_stale_third_party_label(self):
         for name, entry in cost_model.RATE_TABLE.items():
@@ -155,7 +172,7 @@ class RateReceiptTests(unittest.TestCase):
                 continue  # a free tier: the catalog price is 0 and the value is the range end, checked below.
             self.assertAlmostEqual(float(prices[0]) * receipt["catalog_to_rate_factor"], entry["value"], places=9, msg=name)
             checked += 1
-        self.assertEqual(checked, 15)
+        self.assertEqual(checked, 18)
 
     def test_the_global_kms_free_tier_is_the_receipt_range_end_and_priced_at_zero(self):
         doc = json.loads((EVIDENCE / cost_model.RATE_TABLE["kms_free_requests_per_month"]["receipt"]["file"]).read_text())

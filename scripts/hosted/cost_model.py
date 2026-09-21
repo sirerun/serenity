@@ -58,6 +58,7 @@ _EC2_EBS_RECEIPT = "aws-rates/ec2-ebs-oregon-rate-extract.json"
 _REGIONAL_RECEIPT = "aws-rates/aws-regional-rates-selected.json"
 _S3_RECEIPT = "s3-rate.json"
 _S3_UNIT_RECEIPT = "aws-rates/s3-storage-unit-receipt.json"
+_S3_REQUEST_TRANSFER_RECEIPT = "aws-rates/s3-request-transfer-price-receipt.json"
 _CLI_RECEIPT = "aws-rates/aws-cli-s3-config-receipt.json"
 
 # Receipt files, relative to EVIDENCE_DIR_NAME, with the SHA-256 of each file as committed and the
@@ -113,6 +114,14 @@ RATE_RECEIPTS = {
             "retrieved_at": "2026-09-19T04:58:40Z",
         }],
     },
+    _S3_REQUEST_TRANSFER_RECEIPT: {
+        "sha256": "764ce5e55b949cbd232666e0aad2c4074d238ee93ae0021eacf948f587209e4b",
+        "sources": [
+            {"name": "AmazonS3 us-west-2 request prices", "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/20260918174747/us-west-2/index.json", "version": "20260918174747", "publication_date": "2026-09-18T17:47:47Z", "query_response_sha256": "4d0b710fc6efe8e77af646ac6badf482e26489fc08a61daedeb767f84605f710", "retrieved_at": "2026-09-21T15:48:09Z"},
+            {"name": "AWSDataTransfer us-west-2 internet egress prices", "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/20260916132208/us-west-2/index.json", "version": "20260916132208", "publication_date": "2026-09-16T13:22:08Z", "query_response_sha256": "b486b7b72d8f115c13fd3df4542c37bfa065a77dab4ee3fbffe5f6b453eb958f", "retrieved_at": "2026-09-21T15:48:09Z"},
+            {"name": "AWS S3 pricing page: global internet data-transfer allowance", "url": "https://aws.amazon.com/s3/pricing/", "sha256": "745b9af7954e9d9af2346b29c17b67af8bfcb01f29699fa8ff0fcd2508888d7c", "retrieved_at": "2026-09-21T15:48:09Z"},
+        ],
+    },
     _CLI_RECEIPT: {
         "sha256": "e6329d8de6c62954d54b68630904203ec5aa3d89988492ac27f7a28ca9ff8be6",
         "sources": [{
@@ -125,9 +134,10 @@ RATE_RECEIPTS = {
 }
 
 PRIMARY = "aws_regional_catalog_primary"
+PUBLISHED_PRIMARY = "aws_published_pricing_primary"
 SECONDARY = "secondary_summary_not_regionally_verified"
 VENDOR = "vendor_page_secondary"
-VERIFICATIONS = (PRIMARY, SECONDARY, VENDOR)
+VERIFICATIONS = (PRIMARY, PUBLISHED_PRIMARY, SECONDARY, VENDOR)
 
 
 def _primary(value, receipt, rate_code, catalog_unit, catalog_usd, *, factor=1.0, source, note=None, unit_receipt=None):
@@ -179,14 +189,16 @@ RATE_TABLE = {
         note="First 50 TB tier. The earlier claim of 0.0265 for Oregon was incorrect. The catalog unit GB-Mo is a binary gigabyte: S3 bills storage in units of 2^30 bytes (aws-rates/s3-storage-unit-receipt.json), so this rate applies to GiB-months and the billed quantity is bytes / 2^30, never bytes / 10^9.",
         unit_receipt=_S3_UNIT_RECEIPT,
     ),
-    "s3_put_usd_per_1000_requests": {
-        "value": 0.005, "kind": "published", "verification": SECONDARY, "source": "https://aws.amazon.com/s3/pricing/ (worker search summary, fetched 2026-09-19)",
-        "note": "Not confirmed against the us-west-2 catalog. Needs a regional primary receipt before any spend decision.",
-    },
-    "s3_get_usd_per_1000_requests": {
-        "value": 0.0004, "kind": "published", "verification": SECONDARY, "source": "https://aws.amazon.com/s3/pricing/ (worker search summary, fetched 2026-09-19)",
-        "note": "Not confirmed against the us-west-2 catalog. No routine GET is modeled.",
-    },
+    "s3_put_usd_per_1000_requests": _primary(
+        0.005, _S3_REQUEST_TRANSFER_RECEIPT, "D4PMUVH6F64HK2D6.JRTCKXETXF.6YS6EN2CT7", "Requests", "0.0000050000", factor=1000,
+        source="AmazonS3 us-west-2 Price List version 20260918174747, USW2-Requests-Tier1",
+        note="PUT/COPY/POST/LIST request rate; the catalog charges per request and the model shows per 1,000. No request count is proven by this rate receipt.",
+    ),
+    "s3_get_usd_per_1000_requests": _primary(
+        0.0004, _S3_REQUEST_TRANSFER_RECEIPT, "E77AQEM2DC4VV3FC.JRTCKXETXF.6YS6EN2CT7", "Requests", "0.0000004000", factor=1000,
+        source="AmazonS3 us-west-2 Price List version 20260918174747, USW2-Requests-Tier2",
+        note="GET/other request rate; no routine GET count is modeled.",
+    ),
     "kms_key_usd_per_month": _primary(
         1.00, _REGIONAL_RECEIPT, "S8HBXBVJKWKDP9AS.JRTCKXETXF.6YS6EN2CT7", "Keys", "1.0000000000", source=_KMS_SRC,
         note="One customer managed key version. The template sets EnableKeyRotation, and AWS adds 1 USD per month for each of the first two rotations (prorated hourly), capped after the second (https://aws.amazon.com/kms/pricing/), so storage can rise from 1 to 3 USD per month. 1 USD is the figure before any rotation.",
@@ -230,14 +242,15 @@ RATE_TABLE = {
         0.005, _REGIONAL_RECEIPT, "NBHXEKTE88TJDDQF.JRTCKXETXF.6YS6EN2CT7", "Hrs", "0.0050000000", source=_VPC_SRC,
         note="In-use public IPv4 address. An idle address is priced the same (rate code 4KKZ7RH6GMEH6Q4Q.JRTCKXETXF.6YS6EN2CT7).",
     ),
-    "data_transfer_out_usd_per_gb": {
-        "value": 0.09, "kind": "published", "verification": SECONDARY,
-        "source": "AWS data transfer pricing summary via worker search (fetched 2026-09-19), first 10 TB tier, US regions including us-west-2",
-        "note": "Not confirmed against the us-west-2 catalog.",
-    },
+    "data_transfer_out_usd_per_gb": _primary(
+        0.09, _S3_REQUEST_TRANSFER_RECEIPT, "5M4327XEUKBBTWAT.JRTCKXETXF.Q3Z75P77EN", "GB", "0.0900000000",
+        source="AWSDataTransfer us-west-2 Price List version 20260916132208, first 10 TB egress tier beyond global free tier",
+        note="Price List unit is GB. The model's bytes-to-GB conversion remains an explicit decimal-GB assumption and is not a measured egress quantity.",
+    ),
     "data_transfer_out_free_gb_per_month": {
-        "value": 100, "kind": "published", "verification": SECONDARY, "source": "same as data_transfer_out_usd_per_gb",
-        "note": "An account-wide free allowance across services and regions. The model cannot assume it is unused; the peak exposure uses none of it.",
+        "value": 100, "kind": "published", "verification": PUBLISHED_PRIMARY,
+        "source": "AWS S3 pricing page (hashed in aws-rates/s3-request-transfer-price-receipt.json)",
+        "note": "The published first-100-GB monthly internet-egress allowance is aggregated across AWS services and Regions except China and GovCloud. Actual target-account availability/consumption is unverified; the known subtotal applies it and the peak exposure uses none.",
     },
     "resend_free_emails_per_month": {"value": 3000, "kind": "published", "verification": VENDOR, "source": "https://resend.com/pricing (worker search summary, fetched 2026-09-19)"},
     "resend_free_emails_per_day_cap": {"value": 100, "kind": "published", "verification": VENDOR, "source": "same as resend_free_emails_per_month"},
@@ -1102,7 +1115,7 @@ def main() -> int:
         "scenarios": scenarios,
         "historical_ceiling_usd": 60.0,
         "ceiling_note": "The historical USD 60/month figure is a ceiling, not a budget target or new spend authorization (docs/launch/hosted-plan.md).",
-        "citation_note": "Rates marked aws_regional_catalog_primary are read from AWS's own US West (Oregon) price lists, with a receipt file, rate code, source hash and publication date each (docs/launch/evidence/T23.60/aws-rates/, s3-rate.json). Rates marked secondary_summary_not_regionally_verified (S3 request prices, data transfer) and vendor_page_secondary (Resend) still need a regional primary or vendor receipt. Receipts imply no account, credit, free-tier or spend authority. The retention baseline is the deployed template's; any thinning proposal is unapproved and not modeled.",
+        "citation_note": "Rates marked aws_regional_catalog_primary are read from AWS's own US West (Oregon) price lists, with a receipt file, rate code, price-list version, source hash and publication date each (docs/launch/evidence/T23.60/aws-rates/, s3-rate.json). S3 request and egress prices now use the regional Price List; the 100-GB shared internet-egress allowance is sourced from AWS's published pricing page, but target-account consumption is unknown. Resend prices remain vendor_page_secondary. Receipts imply no account, credit, free-tier availability or spend authority. The retention baseline is the deployed template's; any thinning proposal is unapproved and not modeled.",
     }
     try:
         args.output.parent.mkdir(parents=True, exist_ok=True)

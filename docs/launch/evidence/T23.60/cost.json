@@ -113,16 +113,30 @@
     "s3_put_usd_per_1000_requests": {
       "value": 0.005,
       "kind": "published",
-      "verification": "secondary_summary_not_regionally_verified",
-      "source": "https://aws.amazon.com/s3/pricing/ (worker search summary, fetched 2026-09-19)",
-      "note": "Not confirmed against the us-west-2 catalog. Needs a regional primary receipt before any spend decision."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AmazonS3 us-west-2 Price List version 20260918174747, USW2-Requests-Tier1",
+      "receipt": {
+        "file": "aws-rates/s3-request-transfer-price-receipt.json",
+        "rate_code": "D4PMUVH6F64HK2D6.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Requests",
+        "catalog_usd": "0.0000050000",
+        "catalog_to_rate_factor": 1000
+      },
+      "note": "PUT/COPY/POST/LIST request rate; the catalog charges per request and the model shows per 1,000. No request count is proven by this rate receipt."
     },
     "s3_get_usd_per_1000_requests": {
       "value": 0.0004,
       "kind": "published",
-      "verification": "secondary_summary_not_regionally_verified",
-      "source": "https://aws.amazon.com/s3/pricing/ (worker search summary, fetched 2026-09-19)",
-      "note": "Not confirmed against the us-west-2 catalog. No routine GET is modeled."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AmazonS3 us-west-2 Price List version 20260918174747, USW2-Requests-Tier2",
+      "receipt": {
+        "file": "aws-rates/s3-request-transfer-price-receipt.json",
+        "rate_code": "E77AQEM2DC4VV3FC.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Requests",
+        "catalog_usd": "0.0000004000",
+        "catalog_to_rate_factor": 1000
+      },
+      "note": "GET/other request rate; no routine GET count is modeled."
     },
     "kms_key_usd_per_month": {
       "value": 1.0,
@@ -272,16 +286,23 @@
     "data_transfer_out_usd_per_gb": {
       "value": 0.09,
       "kind": "published",
-      "verification": "secondary_summary_not_regionally_verified",
-      "source": "AWS data transfer pricing summary via worker search (fetched 2026-09-19), first 10 TB tier, US regions including us-west-2",
-      "note": "Not confirmed against the us-west-2 catalog."
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWSDataTransfer us-west-2 Price List version 20260916132208, first 10 TB egress tier beyond global free tier",
+      "receipt": {
+        "file": "aws-rates/s3-request-transfer-price-receipt.json",
+        "rate_code": "5M4327XEUKBBTWAT.JRTCKXETXF.Q3Z75P77EN",
+        "catalog_unit": "GB",
+        "catalog_usd": "0.0900000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "Price List unit is GB. The model's bytes-to-GB conversion remains an explicit decimal-GB assumption and is not a measured egress quantity."
     },
     "data_transfer_out_free_gb_per_month": {
       "value": 100,
       "kind": "published",
-      "verification": "secondary_summary_not_regionally_verified",
-      "source": "same as data_transfer_out_usd_per_gb",
-      "note": "An account-wide free allowance across services and regions. The model cannot assume it is unused; the peak exposure uses none of it."
+      "verification": "aws_published_pricing_primary",
+      "source": "AWS S3 pricing page (hashed in aws-rates/s3-request-transfer-price-receipt.json)",
+      "note": "The published first-100-GB monthly internet-egress allowance is aggregated across AWS services and Regions except China and GovCloud. Actual target-account availability/consumption is unverified; the known subtotal applies it and the peak exposure uses none."
     },
     "resend_free_emails_per_month": {
       "value": 3000,
@@ -383,6 +404,33 @@
           "url": "https://aws.amazon.com/s3/pricing/",
           "sha256": "c103717eedfa124da9200d5d0c90700006de7eb35a2137a5b2d900ce8d174b76",
           "retrieved_at": "2026-09-19T04:58:40Z"
+        }
+      ]
+    },
+    "aws-rates/s3-request-transfer-price-receipt.json": {
+      "sha256": "764ce5e55b949cbd232666e0aad2c4074d238ee93ae0021eacf948f587209e4b",
+      "sources": [
+        {
+          "name": "AmazonS3 us-west-2 request prices",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/20260918174747/us-west-2/index.json",
+          "version": "20260918174747",
+          "publication_date": "2026-09-18T17:47:47Z",
+          "query_response_sha256": "4d0b710fc6efe8e77af646ac6badf482e26489fc08a61daedeb767f84605f710",
+          "retrieved_at": "2026-09-21T15:48:09Z"
+        },
+        {
+          "name": "AWSDataTransfer us-west-2 internet egress prices",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/20260916132208/us-west-2/index.json",
+          "version": "20260916132208",
+          "publication_date": "2026-09-16T13:22:08Z",
+          "query_response_sha256": "b486b7b72d8f115c13fd3df4542c37bfa065a77dab4ee3fbffe5f6b453eb958f",
+          "retrieved_at": "2026-09-21T15:48:09Z"
+        },
+        {
+          "name": "AWS S3 pricing page: global internet data-transfer allowance",
+          "url": "https://aws.amazon.com/s3/pricing/",
+          "sha256": "745b9af7954e9d9af2346b29c17b67af8bfcb01f29699fa8ff0fcd2508888d7c",
+          "retrieved_at": "2026-09-21T15:48:09Z"
         }
       ]
     },
@@ -2352,5 +2400,5 @@
   },
   "historical_ceiling_usd": 60.0,
   "ceiling_note": "The historical USD 60/month figure is a ceiling, not a budget target or new spend authorization (docs/launch/hosted-plan.md).",
-  "citation_note": "Rates marked aws_regional_catalog_primary are read from AWS's own US West (Oregon) price lists, with a receipt file, rate code, source hash and publication date each (docs/launch/evidence/T23.60/aws-rates/, s3-rate.json). Rates marked secondary_summary_not_regionally_verified (S3 request prices, data transfer) and vendor_page_secondary (Resend) still need a regional primary or vendor receipt. Receipts imply no account, credit, free-tier or spend authority. The retention baseline is the deployed template's; any thinning proposal is unapproved and not modeled."
+  "citation_note": "Rates marked aws_regional_catalog_primary are read from AWS's own US West (Oregon) price lists, with a receipt file, rate code, price-list version, source hash and publication date each (docs/launch/evidence/T23.60/aws-rates/, s3-rate.json). S3 request and egress prices now use the regional Price List; the 100-GB shared internet-egress allowance is sourced from AWS's published pricing page, but target-account consumption is unknown. Resend prices remain vendor_page_secondary. Receipts imply no account, credit, free-tier availability or spend authority. The retention baseline is the deployed template's; any thinning proposal is unapproved and not modeled."
 }

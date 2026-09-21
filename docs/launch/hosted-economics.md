@@ -456,12 +456,11 @@ capacity acceptance, and the ceiling comparison is against the known subtotal on
 ## Rates, units and assumptions
 
 Every rate in `cost.json` carries a `verification`. **`aws_regional_catalog_primary`** means
-the rate was read from AWS's own US West (Oregon) price list. The entry names a receipt file
-kept in [evidence/T23.60/aws-rates/](evidence/T23.60/aws-rates/) (and
-[s3-rate.json](evidence/T23.60/s3-rate.json) for S3 storage), the rate code, the catalog unit
-and price, and the factor that converts the catalog unit to the model's unit. Each receipt
-records the upstream source's version, publication date and SHA-256. The test suite checks
-every primary rate against its receipt, so a rate cannot drift from its source.
+the rate was read from AWS's own US West (Oregon) price list; **`aws_published_pricing_primary`**
+is an AWS-published rule that is not a regional unit price. Each entry names its receipt file,
+source/version or page hash, rate code where applicable, catalog unit and price, and the factor
+that converts the catalog unit to the model's unit. The test suite checks every regional
+primary rate against its receipt, so a rate cannot drift from its source.
 
 | Rate | Value | Unit conversion |
 |---|---:|---|
@@ -470,6 +469,8 @@ every primary rate against its receipt, so a rate cannot drift from its source.
 | gp3 storage, IOPS | $0.08/GB-month, $0.005/IOPS-month | none |
 | gp3 throughput | $0.04/MiBps-month | The catalog states $40.96 per GiBps-month; divide by 1,024. |
 | S3 Standard, first 50 TB | $0.023/GiB-month | The catalog unit `GB-Mo` is a binary gigabyte (2^30 bytes); the billed quantity is bytes / 2^30. |
+| S3 Standard requests | $0.005/1,000 PUT/COPY/POST/LIST; $0.0004/1,000 GET/other | us-west-2 request SKUs, receipt `aws-rates/s3-request-transfer-price-receipt.json`. |
+| Internet data transfer out | $0.09/GB, first 10 TB beyond the global allowance | us-west-2 `AWSDataTransfer` price list, same receipt; model conversion still assumes decimal GB. |
 | KMS key, requests | $1.00/key, $0.03/10,000 requests | The catalog states $0.000003 per request. |
 | Secrets Manager | $0.40/secret, $0.05/10,000 calls | The catalog states $0.000005 per call. |
 | CloudWatch | $0.10 alarm, $0.30 custom metric (first 10,000), $0.50/GB logs ingested, $0.03/GB-month logs stored | none |
@@ -479,10 +480,11 @@ The earlier $0.0265 Oregon S3 figure and $0.05 T4g credit figure were wrong and 
 The full AWS EC2 price list (474,950,676 bytes) was streamed and hashed, not stored. The
 receipts hold the extracted rows and the source hash.
 
-Still **not** regionally verified, and labeled `secondary_summary_not_regionally_verified`:
-S3 PUT and GET request prices, and data transfer out with its 100 GB allowance. The Resend
-prices are `vendor_page_secondary`. A receipt implies no account, credit, free-tier or spend
-authority.
+AWS's pricing page publishes the first 100 GB/month of internet egress free when aggregated
+across services and Regions (except China and GovCloud). The actual target account's use of
+that shared allowance is unverified, so the known subtotal applies it as an assumption and
+the peak exposure applies none. The Resend prices remain `vendor_page_secondary`. A receipt
+implies no account, credit, free-tier availability or spend authority.
 
 The model includes EC2 baseline/burst credits, root/data gp3 storage, IPv4, KMS, Secrets
 Manager storage/calls, alarms, full backups plus manifest/COMPLETE objects, email and recall
