@@ -82,7 +82,15 @@ section; this file does not introduce new numbers, only implements them
 
 ## Freeze receipt (task41 reviewer fills this in)
 
-- Reviewer / date: **not yet executed**.
+The corpus/threshold choice and the supplemental forgotten/expired plan are
+separate approvals. Record the exact source revisions and reviewer for each;
+neither approval may be inferred from the other.
+
+### A. Corpus, thresholds and seeding protocol
+
+- Status: **PENDING REVIEW**.
+- Reviewer / date (UTC): **not yet executed**.
+- Reviewed T23.41 revision / reviewed T23.43 revision: **not yet executed**.
 - Corpus hash reviewed and accepted: **not yet executed** (current value:
   see `evals/hosted/corpus.json`'s `meta.corpus_hash_sha256`).
 - Lexical-negative criterion: the reviewer's choice of an exact subset of 20
@@ -91,17 +99,27 @@ section; this file does not introduce new numbers, only implements them
   interpretation described above: **not yet executed**.
 - Live-phase seeding protocol (see "Seeding and the real-run recipe")
   confirmed: **not yet executed**.
-- Supplemental plan confirmed as a proposed addition outside `corpus.json`:
-  **not yet executed**. It is `evals/hosted/lib/forgotten_targets.py`, whose
-  `targets_sha256()` is
-  `4a1b4822937f57c947ab2ef4c8d44462e3c7879d2280b32de5a07198827aa193`. That one
+- Decision and rationale: **not yet executed**.
+
+### B. Supplemental forgotten/expired plan
+
+- Status: **PENDING REVIEW**.
+- Reviewer / date (UTC): **not yet executed**.
+- Reviewed T23.41 revision / reviewed T23.43 revision: **not yet executed**.
+- Exact `evals/hosted/lib/forgotten_targets.py` hash accepted:
+  **not yet executed**. The current `targets_sha256()` is
+  `4a1b4822937f57c947ab2ef4c8d44462e3c7879d2280b32de5a07198827aa193`. That
   hash covers the five synthetic target texts, which removal mode each uses
   (`empty-01`, `empty-02`, `empty-05` forgotten; `empty-03`, `empty-04`
-  expired by TTL), the expiry timing (TTL 60 s, margin 5 s, tail 30 s) and the
-  cross-account sentinel. Any change to any of them changes the hash, and a
-  test fails if this document does not name the current one. The frozen
-  queries, the 95 positive cases and every threshold are unchanged (pinned by
-  test: corpus hash `f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6`).
+  expired by TTL), the expiry timing (TTL 60 s, margin 5 s, tail 30 s), and
+  the cross-account sentinel. Any change to any of them changes the hash, and
+  a test requires this receipt to name the current value.
+- Decision and rationale: **not yet executed**.
+
+The frozen queries, 95 positive cases and every threshold are unchanged
+(pinned by test: corpus hash
+`f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6`). Both
+approvals must be complete before any `--seed` or `--live` run.
 
 Per `docs/launch/hosted-completion/interfaces.md`, a failed live result
 never authorizes a worker to edit these thresholds; only a reviewed
