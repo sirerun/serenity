@@ -3,12 +3,14 @@ package store
 import (
 	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/sirerun/serenity/internal/hosted/contracts"
 	_ "modernc.org/sqlite"
 )
 
@@ -255,6 +257,19 @@ func operationSchemaShape(db *sql.DB) (string, error) {
 
 func assertOperationConstraints(t *testing.T, db *sql.DB) {
 	t.Helper()
+	encoded, err := json.Marshal([]contracts.OperationDelta{{Metric: "writes", Units: 7}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metric string
+	var units int64
+	if err := db.QueryRow(`SELECT json_extract(?, '$[0].metric'), json_extract(?, '$[0].units')`, encoded, encoded).Scan(&metric, &units); err != nil {
+		t.Fatalf("read persisted operation delta: %v", err)
+	}
+	if metric != "writes" || units != 7 {
+		t.Fatalf("persisted operation delta = (%q, %d), want (writes, 7); JSON=%s", metric, units, encoded)
+	}
+
 	const brainID = "brainfixture123456"
 	if _, err := db.Exec(`INSERT INTO brains(id,account_id,state,path_key,created_at) VALUES(?,'acct','ready',?,'created')`, brainID, brainID); err != nil {
 		t.Fatal(err)

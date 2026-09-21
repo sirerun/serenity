@@ -236,8 +236,8 @@ func ValidateTransition(from, to OperationPhase, actor ResolutionActor, ev Evide
 
 // OperationDelta is one named counter an operation moves, as persisted.
 type OperationDelta struct {
-	Metric string
-	Units  int64
+	Metric string `json:"metric"`
+	Units  int64  `json:"units"`
 }
 
 // OperationRecord is one durable journal row. ClientKey is the optional
