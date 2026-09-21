@@ -2,8 +2,8 @@
   "task_id": "T23.41",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "78c356b106a51a74cd073fcb310f0f94e53a6cd3",
-  "recorded_at": "2026-09-21T10:33:33Z",
+  "source_sha": "4ff610addbcc34dd1dff8e9e0bfd4ea7754b1b19",
+  "recorded_at": "2026-09-21T11:54:38Z",
   "evidence_level": "local-process",
   "dependencies": {},
   "commands": [
@@ -41,14 +41,14 @@
     {
       "criterion": "Migrate schema1/2/3 fixture DBs twice; facts, subscriptions, tokens and usage retained; future schema refused without writes; fresh DB and upgraded DB equivalent.",
       "expected": "A new forward-only migration exists (needed by tasks44/47/48/50) and this round-trip test passes against it.",
-      "observed": "Forward-only migration v4 creates the operations journal. TestLegacySchemasUpgradeTwiceAndPreserveControlData opens schema1/2/3 fixtures twice and verifies every subscription field, including plan/grace data where present, preserves login tokens and usage, and leaves the canonical-fact fixture hash unchanged because facts live outside the control DB. TestFutureSchemaIsRejectedWithoutWriting confirms schema5 is refused with an unchanged DB-file hash. TestFreshAndUpgradedOperationSchemasAreEquivalent compares fresh and upgraded table/index shapes. Operation phase, JSON-array and retry-key uniqueness constraints are tested.",
+      "observed": "Forward-only migration v4 creates the operations journal. TestLegacySchemasUpgradeTwiceAndPreserveControlData opens schema1/2/3 fixtures twice and verifies every subscription field, including plan/grace data where present, preserves login tokens and usage, and leaves the canonical-fact fixture hash unchanged because facts live outside the control DB. TestFutureSchemaIsRejectedWithoutWriting confirms schema5 is refused with an unchanged DB-file hash. TestFreshAndUpgradedOperationSchemasAreEquivalent compares fresh and upgraded table/index shapes. Operation phase, JSON-array and retry-key uniqueness constraints are tested. Regression coverage now marshals OperationDelta and queries the stored JSON at $.metric and $.units, proving the persisted names match the schema contract.",
       "status": "PASS"
     },
     {
       "criterion": "Existing hosted tests and file-first gate pass.",
       "expected": "go test -race -count=1 over ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate exits 0 with no skips.",
-      "observed": "Final scoped race command passed under R-build-lease 23a90a0d5358165ec369f393f2d50a3f9a64ae1d: store, service, contracts, contractstest, testhooks and internal/gate all passed with no skips. Plain/tagged go vet and golangci-lint checks passed; store-package vet, test and lint passed. internal/gate was unchanged. The initial CI errcheck findings in fixture cleanup were fixed and the strengthened subscription-retention assertions pass. GitHub Actions reports 13/13 checks successful on PR236 head e541844f0a7bb5c420dfee852e6e12872c0dd118 (run 35589000206).",
-      "status": "PASS"
+      "observed": "Final scoped race command passed under R-build-lease 23a90a0d5358165ec369f393f2d50a3f9a64ae1d: store, service, contracts, contractstest, testhooks and internal/gate all passed with no skips. Plain/tagged go vet and golangci-lint checks passed; store-package vet, test and lint passed. internal/gate was unchanged. The initial CI errcheck findings in fixture cleanup were fixed and the strengthened subscription-retention assertions pass. The prior 13/13 GitHub checks passed at PR236 head e541844f0a7bb5c420dfee852e6e12872c0dd118. On the current code revision, focused go test runs for internal/hosted/contracts and internal/hosted/store pass (cached); the 13 GitHub checks are running on 4ff610addbcc34dd1dff8e9e0bfd4ea7754b1b19.",
+      "status": "PARTIAL"
     },
     {
       "criterion": "Interface document lists owning task, exact signature, semantic contract, schema version and integration file for every shared seam.",
@@ -152,7 +152,7 @@
     },
     {
       "path": "internal/hosted/contracts/operations.go",
-      "sha256": "d44ab8137ef5b734b735a32e55f02f141a664e07a298b108935976a157b1a42d"
+      "sha256": "03aaa4a8222e5afeb45ed17955ab0f823a7d7d161e9358bf77078f0225e1741b"
     },
     {
       "path": "internal/hosted/contracts/provider.go",
@@ -176,7 +176,7 @@
     },
     {
       "path": "internal/hosted/store/migrations_test.go",
-      "sha256": "905fad97a4a36c89792c36bacf3ba604a52d558fba169e4af4224605b37c29a7"
+      "sha256": "99cec146bd02cc4ddc6162955ce17694421cf18f2c11407ed58e97eb1384a425"
     },
     {
       "path": "internal/hosted/store/store.go",
@@ -230,7 +230,8 @@
     "Ajent inbox and search were used at session start; inbox cursor 144 contained no new posts and the focused search found no relevant prior finding. No Ajent publication has been made yet for this work.",
     "Gateway.ServeHTTP holds Gateway.mu across Pool.Acquire; documented in interfaces.md, not fixed (task45 scope).",
     "Storage headroom, retention window and other numeric values remain unset where they require task44 measurement or an operator decision.",
-    "An earlier coordinator verification of the baseline tree recorded 165 race-detected tests including subtests, zero failures/skips; its raw JSON is retained outside the repo. This branch adds three store tests and reruns the required package set successfully."
+    "An earlier coordinator verification of the baseline tree recorded 165 race-detected tests including subtests, zero failures/skips; its raw JSON is retained outside the repo. This branch adds three store tests and reruns the required package set successfully.",
+    "OperationDelta previously serialized as uppercase Metric/Units and did not match the v4 JSON contract; its struct now names lower-case fields, with a migration-store regression proving SQLite json_extract sees metric/units. No task44 ledger/runtime implementation is included by this fix."
   ],
   "blockers": [
     {
