@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"strings"
 )
 
 // defaultOpenAIEmbeddingsBaseURL is the production OpenAI API host. The
@@ -32,8 +34,26 @@ type OpenAIEmbeddingsProvider struct {
 	Model string
 	// Version is the pinned-model-set version tag (RFC section 7.5);
 	// ModelVersion() composes "<Model>@<Version>".
-	Version    string
-	HTTPClient *http.Client
+	Version        string
+	HTTPClient     *http.Client
+	Dimensions     int
+	MaxInputBytes  int
+	ProviderOnly   []string
+	ZDR            bool
+	DataCollection string
+}
+
+// EmbeddingProviderError is sanitized so upstream bodies cannot echo input or credentials.
+type EmbeddingProviderError struct {
+	Status    int
+	Retryable bool
+}
+
+func (e *EmbeddingProviderError) Error() string {
+	if e.Status == 0 {
+		return "embedding provider request failed"
+	}
+	return fmt.Sprintf("embedding provider returned status %d", e.Status)
 }
 
 var _ Provider = (*OpenAIEmbeddingsProvider)(nil)
@@ -45,8 +65,16 @@ func (p *OpenAIEmbeddingsProvider) ModelVersion() string {
 }
 
 type openAIEmbeddingsRequest struct {
-	Model string `json:"model"`
-	Input string `json:"input"`
+	Model    string                  `json:"model"`
+	Input    string                  `json:"input"`
+	Provider *openRouterProviderRule `json:"provider,omitempty"`
+}
+
+type openRouterProviderRule struct {
+	Only           []string `json:"only,omitempty"`
+	AllowFallbacks *bool    `json:"allow_fallbacks,omitempty"`
+	ZDR            bool     `json:"zdr,omitempty"`
+	DataCollection string   `json:"data_collection,omitempty"`
 }
 
 type openAIEmbeddingsDatum struct {
@@ -70,18 +98,29 @@ type openAIEmbeddingsResponse struct {
 // AnthropicProvider/OpenAICompatibleProvider: this package has no pricing
 // table yet (RFC section 9's T4.10 spend ceiling is later work).
 func (p *OpenAIEmbeddingsProvider) Send(ctx context.Context, prompt string) (Response, error) {
+	if strings.TrimSpace(p.Model) == "" {
+		return Response{}, fmt.Errorf("openai_embeddings: model is required")
+	}
+	if p.MaxInputBytes > 0 && len([]byte(prompt)) > p.MaxInputBytes {
+		return Response{}, fmt.Errorf("openai_embeddings: input exceeds configured limit")
+	}
 	baseURL := p.BaseURL
 	if baseURL == "" {
 		baseURL = defaultOpenAIEmbeddingsBaseURL
 	}
 	client := httpClientOrDefault(p.HTTPClient)
 
-	reqBody, err := json.Marshal(openAIEmbeddingsRequest{Model: p.Model, Input: prompt})
+	var routing *openRouterProviderRule
+	if len(p.ProviderOnly) > 0 || p.ZDR || p.DataCollection != "" {
+		fallbacks := false
+		routing = &openRouterProviderRule{Only: append([]string(nil), p.ProviderOnly...), AllowFallbacks: &fallbacks, ZDR: p.ZDR, DataCollection: p.DataCollection}
+	}
+	reqBody, err := json.Marshal(openAIEmbeddingsRequest{Model: p.Model, Input: prompt, Provider: routing})
 	if err != nil {
 		return Response{}, fmt.Errorf("openai_embeddings: encode request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/embeddings", bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(baseURL, "/")+"/embeddings", bytes.NewReader(reqBody))
 	if err != nil {
 		return Response{}, fmt.Errorf("openai_embeddings: build request: %w", err)
 	}
@@ -96,12 +135,12 @@ func (p *OpenAIEmbeddingsProvider) Send(ctx context.Context, prompt string) (Res
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
 		return Response{}, fmt.Errorf("openai_embeddings: read response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return Response{}, fmt.Errorf("openai_embeddings: status %d: %s", resp.StatusCode, string(body))
+		return Response{}, &EmbeddingProviderError{Status: resp.StatusCode, Retryable: resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500}
 	}
 
 	var parsed openAIEmbeddingsResponse
@@ -111,8 +150,20 @@ func (p *OpenAIEmbeddingsProvider) Send(ctx context.Context, prompt string) (Res
 	if len(parsed.Data) == 0 {
 		return Response{}, fmt.Errorf("openai_embeddings: response carried no embedding data")
 	}
+	vec := parsed.Data[0].Embedding
+	if len(vec) == 0 {
+		return Response{}, fmt.Errorf("openai_embeddings: response carried an empty embedding")
+	}
+	if p.Dimensions > 0 && len(vec) != p.Dimensions {
+		return Response{}, fmt.Errorf("openai_embeddings: dimension mismatch: got %d want %d", len(vec), p.Dimensions)
+	}
+	for _, value := range vec {
+		if math.IsNaN(float64(value)) || math.IsInf(float64(value), 0) {
+			return Response{}, fmt.Errorf("openai_embeddings: response carried a non-finite value")
+		}
+	}
 
-	vecJSON, err := json.Marshal(parsed.Data[0].Embedding)
+	vecJSON, err := json.Marshal(vec)
 	if err != nil {
 		return Response{}, fmt.Errorf("openai_embeddings: encode vector: %w", err)
 	}
