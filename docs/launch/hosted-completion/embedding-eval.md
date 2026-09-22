@@ -115,15 +115,24 @@ neither approval may be inferred from the other.
   `privacy_review_ref`) has no concrete values to pin yet — freezing it now
   would fabricate a configuration that does not exist. Re-review once T23.42
   lands and a real pin exists.
-- Lexical-negative criterion: the reviewer's choice of an exact subset of 20
-  of the 21 flagged cases (scored 18 of 20) or an exact ratio (19 of 21),
-  replacing the draft's unapproved raw-count 18-over-21 interpretation
-  described above: **OPEN — routed to the reviewer as a named decision,
-  not decided here.** The 21 flagged case IDs are: `para-02a`, `para-02b`,
-  `para-02c`, `para-04a`, `para-04b`, `para-04c`, `para-05a`, `para-05b`,
-  `para-05c`, `para-06a`, `para-06b`, `para-06c`, `para-07a`, `para-07b`,
-  `para-07c`, `para-10a`, `para-10b`, `para-10c`, `para-12a`, `para-12b`,
-  `para-12c`.
+- Lexical-negative criterion: **`exact_ratio_21`** — score all 21 flagged
+  cases, require 19 hits (~90.5%), replacing the draft's unapproved
+  raw-count 18-over-21 interpretation described above. The 21 flagged case
+  IDs are: `para-02a`, `para-02b`, `para-02c`, `para-04a`, `para-04b`,
+  `para-04c`, `para-05a`, `para-05b`, `para-05c`, `para-06a`, `para-06b`,
+  `para-06c`, `para-07a`, `para-07b`, `para-07c`, `para-10a`, `para-10b`,
+  `para-10c`, `para-12a`, `para-12b`, `para-12c`.
+  **Provisional, not yet the reviewer's own confirmation**: this document's
+  named reviewer (David Ndungu) was asked to choose between this and
+  `exact_subset_20` (2026-09-21) and did not respond within the session's
+  standing wait window; per the fleet's standing policy that an unanswered
+  question defaults to the recommended option with the default explicitly
+  flagged, `exact_ratio_21` (the recommended option — no case exclusion
+  needed, marginally stricter than the contract's literal 90%) is entered
+  here as a default, not a personally confirmed choice. **Treat this field
+  as open until David Ndungu explicitly confirms or overrides it** via a
+  reviewed amendment; do not treat the presence of a value here as proof a
+  human reviewed and chose it.
 - Live-phase seeding protocol (see "Seeding and the real-run recipe")
   confirmed: yes, David Ndungu, 2026-09-21 — the documented recipe (fresh
   empty-case account, absolute TTL, ledger discipline, rate-limit pacing)
@@ -133,10 +142,12 @@ neither approval may be inferred from the other.
   acceptance and T23.43's merged PR (#237) already establish, with no
   proposed change. Model/provider configuration deferred, not frozen,
   because no real adapter exists yet (T23.42 status). Lexical-negative
-  criterion deferred to the reviewer's explicit choice rather than defaulted,
-  per this document's own instruction that neither interpretation may be
-  assumed. **No `--seed` or `--live` run starts until the lexical-negative
-  criterion is also recorded here.**
+  criterion entered as the recommended default (`exact_ratio_21`) after the
+  named reviewer did not respond to an explicit choice within the standing
+  wait window, per fleet policy — provisional, not confirmed; treat as open
+  until David Ndungu explicitly confirms or overrides via a reviewed
+  amendment. **No `--seed` or `--live` run starts until a human reviewer has
+  actually confirmed this field, not merely until it holds a value.**
 
 ### B. Supplemental forgotten/expired plan
 
