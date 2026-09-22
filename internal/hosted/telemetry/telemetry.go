@@ -82,6 +82,7 @@ type Logger struct {
 	closed  chan struct{}
 	done    chan struct{}
 	closing sync.Once
+	mu      sync.RWMutex
 	dropped atomic.Uint64
 }
 
@@ -104,6 +105,9 @@ func (l *Logger) run() {
 func (l *Logger) Dropped() uint64 { return l.dropped.Load() }
 
 func (l *Logger) Emit(ctx context.Context, e Event) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if err := ValidateEvent(e); err != nil {
 		return err
 	}
@@ -115,6 +119,8 @@ func (l *Logger) Emit(ctx context.Context, e Event) error {
 		return fmt.Errorf("%w: encode", ErrInvalid)
 	}
 	line = append(line, '\n')
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	select {
 	case <-l.closed:
 		return ErrClosed
@@ -134,7 +140,12 @@ func (l *Logger) Emit(ctx context.Context, e Event) error {
 // Close drains queued lines unless ctx expires. A sink that blocks cannot hold
 // a request; the caller gets the context error and can continue shutdown.
 func (l *Logger) Close(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	l.mu.Lock()
 	l.closing.Do(func() { close(l.closed); close(l.queue) })
+	l.mu.Unlock()
 	select {
 	case <-l.done:
 		return nil
@@ -185,12 +196,17 @@ func Redact(v any) any {
 // Log writes a single bounded JSON record. It intentionally has no tenant or
 // request-id argument, so labels cannot accidentally become high-cardinality.
 func (l *Logger) Log(ctx context.Context, level, message string, fields map[string]any) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	record := map[string]any{"at": time.Now().UTC(), "level": sanitizeText(level), "message": sanitizeText(message), "fields": Redact(fields)}
 	line, err := json.Marshal(record)
 	if err != nil {
 		return fmt.Errorf("%w: log encode", ErrInvalid)
 	}
 	line = append(line, '\n')
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	select {
 	case <-l.closed:
 		return ErrClosed

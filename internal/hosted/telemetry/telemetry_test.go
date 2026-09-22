@@ -79,3 +79,22 @@ func TestMetricContractRejectsUnboundedFields(t *testing.T) {
 		t.Fatal("accepted unbounded operation")
 	}
 }
+
+func TestCloseAndEmitDoNotRaceQueueClose(t *testing.T) {
+	var out bytes.Buffer
+	l, err := NewLogger(&out, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 200; i++ {
+			_ = l.Emit(context.Background(), validEvent())
+		}
+	}()
+	closeCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	_ = l.Close(closeCtx)
+	<-done
+}

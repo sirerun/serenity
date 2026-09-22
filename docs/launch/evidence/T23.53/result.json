@@ -10,12 +10,13 @@
     "T23.42": "f8f16b7"
   },
   "commands": [
-    "go test ./internal/hosted/telemetry"
+    "go test ./internal/hosted/telemetry",
+    "go test -race -count=1 ./internal/hosted/telemetry"
   ],
   "cases": {
-    "planned": 3,
-    "executed": 3,
-    "passed": 3,
+    "planned": 4,
+    "executed": 4,
+    "passed": 4,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
@@ -30,7 +31,7 @@
     {
       "criterion": "Telemetry queue remains bounded and cannot block memory requests",
       "expected": "Blocked sink yields ErrQueueFull promptly and records dropped count",
-      "observed": "TestQueueIsBoundedAndNonBlocking passed with a permanently blocked sink",
+      "observed": "TestQueueIsBoundedAndNonBlocking and TestCloseAndEmitDoNotRaceQueueClose passed with permanently blocked and concurrently closed sinks",
       "status": "PASS"
     },
     {
@@ -43,11 +44,11 @@
   "artifacts": [
     {
       "path": "internal/hosted/telemetry/telemetry.go",
-      "sha256": "57b093de1190c74cf2115fdb956eeb2ddad49c7bc6c454f1e52c0513670a0056"
+      "sha256": "594492e870026c3817061dba4bbbbadd250bde437f259a1062d3e54753b97624"
     },
     {
       "path": "internal/hosted/telemetry/telemetry_test.go",
-      "sha256": "fb648bf0273adc229430d7e1a71c56e5e940330d5c1227eb3291f206ed8ba9b1"
+      "sha256": "b0dd669536320248694c037e41250b6907ca7a621e8fff017f34b11c490efbf9"
     },
     {
       "path": "deploy/hosted/telemetry/README.md",
