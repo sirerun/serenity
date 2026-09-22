@@ -1,44 +1,95 @@
 {
   "task_id": "T23.44",
-  "profile": "pilot",
+  "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "4c98269ddfe8fd2c29d0b93a4d9bfa2c9fbfb4f6",
-  "recorded_at": "2026-09-22T02:52:00Z",
+  "source_sha": "ec2d37d2f1b20ee6cdc6485d1d56a18ad95ad2c4",
+  "recorded_at": "2026-09-22T22:29:51Z",
   "evidence_level": "local-process",
-  "dependencies": {"T23.41": "c61ab91bb48099dfbfcfec2ee86ea2cd590439c4"},
+  "dependencies": {
+    "T23.41": "9aa5ebdaa1769af3905beef92130614839cc72b8"
+  },
   "commands": [
-    "go test ./internal/hosted/operation",
-    "go test ./internal/hosted/..."
+    "go test ./internal/hosted/meter ./internal/hosted/operation ./internal/hosted/gateway",
+    "go test ./internal/hosted/service -run Test -count=1",
+    "go test -race -count=1 ./internal/hosted/meter ./internal/hosted/operation ./internal/hosted/gateway"
   ],
   "cases": {
-    "planned": 8,
-    "executed": 8,
-    "passed": 8,
+    "planned": 4,
+    "executed": 4,
+    "passed": 4,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
   },
   "acceptance": [
-    {"criterion": "Operation reservations and all metric deltas commit atomically; explicit-key replay does not double charge", "expected": "One durable operation row and one committed usage increment per logical mutation", "observed": "SQLite ledger tests pass for replay, key reuse, held capacity, commit and release", "status": "PASS"},
-    {"criterion": "Expired reserved operations reconcile only under a brain fence and preserve unknown outcomes", "expected": "Landed commits, absent releases, unknown pending review; deferred checks remain reserved", "observed": "Ledger implements the reviewed BrainFence/CanonicalChecker state machine; production canonical checker integration remains pending", "status": "PARTIAL"},
-    {"criterion": "Physical staging admission has a fixed ceiling, global headroom, and account quota", "expected": "Admission rejects ceiling, global capacity, and account quota violations before publication", "observed": "Staging gate tests pass for ceiling, global budget, headroom, per-account quota, and idempotent release", "status": "PASS"},
-    {"criterion": "Storage bound is physically enforced for the hosted runtime", "expected": "OS-enforced staging filesystem sized to the measured MaxMutationStageBytes", "observed": "No OS quota/filesystem deployment or allocated-byte measurement has been performed", "status": "BLOCKED"},
-    {"criterion": "Gateway uses the operation ledger for hosted remember mutations", "expected": "Production gateway routes reservations, canonical markers, finalization, and reconciliation through this ledger", "observed": "Ledger seam is implemented but gateway wiring and canonical operation markers are a follow-up integration", "status": "BLOCKED"}
+    {
+      "criterion": "Durable operation replay does not rerun a committed mutation",
+      "expected": "Committed operation returns stored fact identity and does not invoke provider/index writer again",
+      "observed": "Gateway now returns a duplicate response from the committed evidence ref (`fact:<id>`); malformed committed evidence fails closed. Focused gateway/service tests and race tests pass",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Atomic multi-counter holds/finalization and concurrent allowance admission",
+      "expected": "Writes/input units remain bounded and replay is idempotent",
+      "observed": "Existing operation/meter suites plus race run pass; service quota/brain tests pass",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Physical storage is a proven hard bound before canonical mutation",
+      "expected": "Allocation-based stage measurement plus OS-enforced stage limit",
+      "observed": "In-process StagingGate is implemented and tested, but no OS-enforced staging filesystem or measured production envelope exists",
+      "status": "BLOCKED"
+    },
+    {
+      "criterion": "Hosted fault barriers are exercised at canonical phases",
+      "expected": "hostedtest phase barriers integrated into production mutation path",
+      "observed": "Contract/testhook phases exist; task44 runtime call-site integration remains open",
+      "status": "NOT_RUN"
+    }
   ],
   "artifacts": [
-    {"path": "internal/hosted/operation/ledger.go", "sha256": "fe318d9adc16882dbd90fc5428292ccfa9821509ac5145fd351f1535386a4a4a"},
-    {"path": "internal/hosted/operation/staging.go", "sha256": "7177213511df02f1454cc0ad460e41d2f71b8912f360c5507e839ff5e5850444"},
-    {"path": "internal/hosted/operation/ledger_test.go", "sha256": "f21150c8644d3113d4337302a4598c26f91ea5c7553ab55473e19f62388ac9de"},
-    {"path": "internal/hosted/operation/staging_test.go", "sha256": "3886af40a03dbeecfef87fed1cea9936c95c1e7b2705a98e0a39067bf8fa3f1d"}
+    {
+      "path": "internal/hosted/gateway/gateway.go",
+      "sha256": "1a99990107a6e50b38f215c9c638f6e62621a8d9be3d5a35d4f84ebfdbaa4c6c"
+    },
+    {
+      "path": "internal/hosted/operation/ledger.go",
+      "sha256": "fe318d9adc16882dbd90fc5428292ccfa9821509ac5145fd351f1535386a4a4a"
+    },
+    {
+      "path": "internal/hosted/operation/ledger_test.go",
+      "sha256": "f21150c8644d3113d4337302a4598c26f91ea5c7553ab55473e19f62388ac9de"
+    },
+    {
+      "path": "internal/hosted/operation/staging.go",
+      "sha256": "7177213511df02f1454cc0ad460e41d2f71b8912f360c5507e839ff5e5850444"
+    },
+    {
+      "path": "internal/hosted/operation/staging_test.go",
+      "sha256": "3886af40a03dbeecfef87fed1cea9936c95c1e7b2705a98e0a39067bf8fa3f1d"
+    }
   ],
-  "cost": {"actual_usd": null, "approved_max_usd": null, "authorization_refs": []},
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": null,
+    "authorization_refs": []
+  },
   "limitations": [
-    "The in-process staging gate is accounting and early-abort logic; it cannot prove a physical bound without an OS-enforced staging filesystem.",
-    "The operation ledger is not yet wired into gateway canonical writes; no hosted customer operation was run.",
-    "No AWS, provider, customer, or billing call was made."
+    "Storage admission remains conditionally approved and blocked until a measured allocation envelope and OS-enforced staging boundary exist.",
+    "No deployed or provider qualification was performed."
   ],
   "blockers": [
-    {"owner": "runtime/infrastructure coordinator", "required_input": "Approve and implement the canonical-writer seam, measured allocated-byte MaxMutationStageBytes, and OS-enforced staging filesystem before storage admission can qualify."},
-    {"owner": "task44 integration owner", "required_input": "Wire the ledger into gateway remember mutations and add production canonical operation markers before task44 acceptance."}
+    {
+      "owner": "integrator/core-writer owner",
+      "required_input": "Provide quarantine/staged writer seam or approved fallback and measured allocation-based MaxMutationStageBytes."
+    },
+    {
+      "owner": "infrastructure owner",
+      "required_input": "Provide an OS-enforced staging filesystem/quota and wire its limits into the hosted configuration."
+    },
+    {
+      "owner": "integrator",
+      "required_input": "Wire hostedtest phase barriers and any final service/CLI operation reconciliation paths."
+    }
   ]
 }
