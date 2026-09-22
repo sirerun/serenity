@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/sirerun/serenity/internal/hosted/backup"
+	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/hosted/credential"
 	"github.com/sirerun/serenity/internal/hosted/provision"
 	"github.com/sirerun/serenity/internal/hosted/service"
@@ -272,6 +273,49 @@ func TestHostedJourneyAndIsolation(t *testing.T) {
 	}
 	if strings.Contains(string(body), tokenA) {
 		t.Fatal("old secret exposed")
+	}
+}
+
+func TestInviteOnlyRegistrationConfigWiresThroughAssembly(t *testing.T) {
+	dir := t.TempDir()
+	mail := &sender{}
+	db, err := store.Open(filepath.Join(dir, "control.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc, err := service.Assemble(service.Config{
+		DataDir:          dir,
+		PublicOrigin:     "http://127.0.0.1",
+		MaxOpen:          2,
+		MaxInFlight:      4,
+		AccountCap:       10,
+		RegistrationMode: contracts.RegistrationInviteOnly,
+		InviteAllowlist:  []string{"allowed@example.com"},
+	}, true, db, mail, embedding{})
+	if err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	defer func() { _ = svc.Close() }()
+	request := func(email string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("email="+url.QueryEscape(email)))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		r.RemoteAddr = "127.0.0.1:1234"
+		w := httptest.NewRecorder()
+		svc.Handler.ServeHTTP(w, r)
+		return w
+	}
+	if got := request("blocked@example.com"); got.Code != http.StatusBadRequest {
+		t.Fatalf("blocked status=%d, want 400", got.Code)
+	}
+	if mail.link != "" {
+		t.Fatal("blocked invite unexpectedly sent a link")
+	}
+	if got := request("allowed@example.com"); got.Code != http.StatusOK {
+		t.Fatalf("allowed status=%d, want 200", got.Code)
+	}
+	if mail.link == "" {
+		t.Fatal("allowed invite did not send a link")
 	}
 }
 

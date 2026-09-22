@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"github.com/sirerun/serenity/internal/embed"
 	"github.com/sirerun/serenity/internal/hosted/backup"
 	"github.com/sirerun/serenity/internal/hosted/billing"
+	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/hosted/credential"
 	"github.com/sirerun/serenity/internal/hosted/dashboard"
 	"github.com/sirerun/serenity/internal/hosted/gateway"
@@ -37,17 +39,19 @@ type Config struct {
 	BuilderPrice     string `json:"builder_price"`
 	ScalePrice       string `json:"scale_price"`
 	billingConfig    *billing.Config
-	Bind             string `json:"bind"`
-	DataDir          string `json:"data_dir"`
-	SecretsDir       string `json:"secrets_dir"`
-	PublicOrigin     string `json:"public_origin"`
-	EmbeddingModel   string `json:"embedding_model"`
-	EmbeddingVersion string `json:"embedding_version"`
-	EmbeddingBaseURL string `json:"embedding_base_url"`
-	Sender           string `json:"sender"`
-	MaxOpen          int    `json:"max_open"`
-	MaxInFlight      int    `json:"max_in_flight"`
-	AccountCap       int    `json:"account_cap"`
+	Bind             string                     `json:"bind"`
+	DataDir          string                     `json:"data_dir"`
+	SecretsDir       string                     `json:"secrets_dir"`
+	PublicOrigin     string                     `json:"public_origin"`
+	EmbeddingModel   string                     `json:"embedding_model"`
+	EmbeddingVersion string                     `json:"embedding_version"`
+	EmbeddingBaseURL string                     `json:"embedding_base_url"`
+	Sender           string                     `json:"sender"`
+	MaxOpen          int                        `json:"max_open"`
+	MaxInFlight      int                        `json:"max_in_flight"`
+	AccountCap       int                        `json:"account_cap"`
+	RegistrationMode contracts.RegistrationMode `json:"registration_mode"`
+	InviteAllowlist  []string                   `json:"invite_allowlist"`
 }
 
 func Load(path string) (Config, error) {
@@ -67,6 +71,23 @@ func Load(path string) (Config, error) {
 	return c, nil
 }
 func (c *Config) Validate(dev bool) error {
+	if c.RegistrationMode == "" {
+		c.RegistrationMode = contracts.RegistrationPublic
+	}
+	if c.RegistrationMode != contracts.RegistrationPublic && c.RegistrationMode != contracts.RegistrationInviteOnly {
+		return errors.New("registration_mode must be public or invite_only")
+	}
+	for i, raw := range c.InviteAllowlist {
+		email := strings.ToLower(strings.TrimSpace(raw))
+		address, e := mail.ParseAddress(email)
+		if e != nil || address.Address != email || len(email) > 254 {
+			return fmt.Errorf("invite_allowlist[%d] must be an exact email address", i)
+		}
+		c.InviteAllowlist[i] = email
+	}
+	if c.RegistrationMode == contracts.RegistrationInviteOnly && len(c.InviteAllowlist) == 0 {
+		return errors.New("invite_only registration requires invite_allowlist")
+	}
 	host, _, err := net.SplitHostPort(c.Bind)
 	if err != nil {
 		return errors.New("bind must be a loopback IP and port")
@@ -225,7 +246,11 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 	if err = g.RecoverDeletions(context.Background(), filepath.Join(cfg.DataDir, "brains")); err != nil {
 		return nil, errors.Join(err, p.Close())
 	}
-	id := &identity.Service{Store: db, Sender: sender, Origin: cfg.PublicOrigin, AccountCap: cfg.AccountCap}
+	allowlist := make(map[string]struct{}, len(cfg.InviteAllowlist))
+	for _, email := range cfg.InviteAllowlist {
+		allowlist[email] = struct{}{}
+	}
+	id := &identity.Service{Store: db, Sender: sender, Origin: cfg.PublicOrigin, AccountCap: cfg.AccountCap, RegistrationMode: cfg.RegistrationMode, InviteAllowlist: allowlist}
 	provisioner := &provision.Provisioner{Store: db, BrainsRoot: filepath.Join(cfg.DataDir, "brains")}
 	if err = provisioner.Recover(context.Background()); err != nil {
 		return nil, errors.Join(err, p.Close())
