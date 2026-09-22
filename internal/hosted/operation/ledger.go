@@ -218,7 +218,7 @@ func (l *Ledger) ReconcilePending(ctx context.Context, checker contracts.Canonic
 	if e != nil {
 		return report, e
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ids []struct{ id, brain string }
 	for rows.Next() {
 		r, e := scanRecord(rows)

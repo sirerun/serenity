@@ -32,7 +32,7 @@ func fixture(t *testing.T) (*store.Store, string, string) {
 func TestLedgerReserveFinalizeAndReplay(t *testing.T) {
 	ctx := context.Background()
 	s, account, brain := fixture(t)
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	l := &operation.Ledger{Store: s, Clock: func() time.Time { return time.Unix(100, 0).UTC() }}
 	req := contracts.ReserveRequest{AccountID: account, BrainID: brain, ClientKey: "k1", Fingerprint: "fp", QuotaPeriod: "2026-09", Source: "gateway.remember", LeaseFor: time.Minute, Deltas: []contracts.ReserveDelta{{Metric: "writes", Units: 1, Limit: 2}, {Metric: "input_tokens", Units: 7, Limit: 10}}}
 	r, err := l.Reserve(ctx, req)
@@ -67,7 +67,7 @@ func TestLedgerReserveFinalizeAndReplay(t *testing.T) {
 func TestLedgerHoldsCapacityAndRejectsKeyReuse(t *testing.T) {
 	ctx := context.Background()
 	s, account, brain := fixture(t)
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 	l := &operation.Ledger{Store: s}
 	req := contracts.ReserveRequest{AccountID: account, BrainID: brain, ClientKey: "k1", Fingerprint: "fp", QuotaPeriod: "2026-09", Source: "gateway.remember", LeaseFor: time.Minute, Deltas: []contracts.ReserveDelta{{Metric: "writes", Units: 2, Limit: 2}}}
 	r, err := l.Reserve(ctx, req)
