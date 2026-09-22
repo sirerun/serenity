@@ -108,13 +108,13 @@ neither approval may be inferred from the other.
   expected-empty and cross-account leakage = 0) reviewed and accepted as
   specified in `T23.43.md` and implemented in `evals/hosted/lib/scoring.py`.
 - **Model/provider configuration: cannot be frozen — BLOCKED, not a review
-  decision.** T23.42 (the real OpenRouter-compatible provider adapter) is
-  `planned`, not merged; no live-provider measurement has ever been taken
-  and `EMBEDDINGS_API_KEY` is not provisioned. The manifest's `provider`
-  object (`model`, `version_pin`, `dimensions`, `serving_provider`,
-  `privacy_review_ref`) has no concrete values to pin yet — freezing it now
-  would fabricate a configuration that does not exist. Re-review once T23.42
-  lands and a real pin exists.
+  decision.** T23.42's real OpenRouter-compatible provider adapter is merged
+  at `639a1abd6a38fdb34d528562470f0e85726ab5f9`, but no live-provider
+  measurement has been taken and the qualification manifest has not yet been
+  provisioned with its credential reference. The manifest's `provider` object
+  (`model`, `version_pin`, `dimensions`, `serving_provider`,
+  `privacy_review_ref`) still needs a reviewed concrete pin; freezing it now
+  would fabricate a measurement-backed configuration that does not exist.
 - Lexical-negative criterion: **`exact_ratio_21`** — score all 21 flagged
   cases, require 19 hits (~90.5%), replacing the draft's unapproved
   raw-count 18-over-21 interpretation described above. The 21 flagged case
@@ -141,8 +141,9 @@ neither approval may be inferred from the other.
   numeric thresholds accepted as committed — they match what T23.41's
   acceptance and T23.43's merged PR (#237) already establish, with no
   proposed change. Model/provider configuration deferred, not frozen,
-  because no real adapter exists yet (T23.42 status). Lexical-negative
-  criterion entered as the recommended default (`exact_ratio_21`) after the
+  because the adapter has landed but no live measurement-backed provider pin
+  exists yet. Lexical-negative criterion entered as the recommended default
+  (`exact_ratio_21`) after the
   named reviewer did not respond to an explicit choice within the standing
   wait window, per fleet policy — provisional, not confirmed; treat as open
   until David Ndungu explicitly confirms or overrides via a reviewed
@@ -701,10 +702,11 @@ need no binary are in `evals/hosted/test_local_service.py`.
 
 ## Known limits
 
-- **No live-provider measurement has ever been taken.** `EMBEDDINGS_API_KEY` is
-  not provisioned, T23.42's real provider adapter is not merged, and no hosted
-  account is seeded. Every number here is a fixtures-only mechanical rehearsal, a
-  loopback test against `evals/hosted/fake_hosted_mcp.py` (a protocol stand-in
+- **No live-provider measurement has ever been taken.** The qualification
+  manifest has no provisioned credential reference, no hosted account is
+  seeded, and no live request has been made. Every number here is a
+  fixtures-only mechanical rehearsal, a loopback test against
+  `evals/hosted/fake_hosted_mcp.py` (a protocol stand-in
   that embeds nothing), or the local run against the actual service described
   above, behind a synthetic provider. Provider and semantic qualification stay
   BLOCKED.
