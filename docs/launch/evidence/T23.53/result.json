@@ -1,0 +1,81 @@
+{
+  "task_id": "T23.53",
+  "profile": "paid",
+  "status": "PARTIAL",
+  "source_sha": "ec93997497e0b0c72b051672822bc5087d60abc8",
+  "recorded_at": "2026-09-22T22:25:39Z",
+  "evidence_level": "local-process",
+  "dependencies": {
+    "T23.41": "9aa5ebdaa1769af3905beef92130614839cc72b8",
+    "T23.42": "f8f16b7"
+  },
+  "commands": [
+    "go test ./internal/hosted/telemetry",
+    "go test -race -count=1 ./internal/hosted/telemetry"
+  ],
+  "cases": {
+    "planned": 4,
+    "executed": 4,
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "skip_reasons": []
+  },
+  "acceptance": [
+    {
+      "criterion": "Sentinel credentials, emails and magic-link values never appear in structured logs",
+      "expected": "Recursive redaction removes sentinels in success/failure nested fields",
+      "observed": "TestRedactRecursiveSentinels passed for query tokens, Authorization, email and API-key-shaped values",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Telemetry queue remains bounded and cannot block memory requests",
+      "expected": "Blocked sink yields ErrQueueFull promptly and records dropped count",
+      "observed": "TestQueueIsBoundedAndNonBlocking and TestCloseAndEmitDoNotRaceQueueClose passed with permanently blocked and concurrently closed sinks",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Production integration and alarm delivery are qualified",
+      "expected": "Service/CLI/Caddy wiring, delivered alarms and deployed retention evidence",
+      "observed": "Package and operator contract are prepared; no deployed host or delivered sink exists",
+      "status": "NOT_RUN"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "internal/hosted/telemetry/telemetry.go",
+      "sha256": "594492e870026c3817061dba4bbbbadd250bde437f259a1062d3e54753b97624"
+    },
+    {
+      "path": "internal/hosted/telemetry/telemetry_test.go",
+      "sha256": "b0dd669536320248694c037e41250b6907ca7a621e8fff017f34b11c490efbf9"
+    },
+    {
+      "path": "deploy/hosted/telemetry/README.md",
+      "sha256": "3cb4fbc06c654edf43a325161ffbe59a9ba2296b3ee1ba94681025e323225ed6"
+    },
+    {
+      "path": "deploy/hosted/telemetry/Caddyfile.logging",
+      "sha256": "ecf7d2ac9cc424070fa3f98de88aabbd8bca2a7d06008b9be4d96925f660d066"
+    }
+  ],
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": null,
+    "authorization_refs": []
+  },
+  "limitations": [
+    "Telemetry is not wired into service assembly or deployment units yet; integrator T23.57/T23.54 must connect the frozen interface.",
+    "Caddy access logs remain disabled rather than claiming redacted proxy capture."
+  ],
+  "blockers": [
+    {
+      "owner": "integrator",
+      "required_input": "Wire the telemetry sink into service/CLI and connect the bounded redaction contract without changing shared assembly outside the review."
+    },
+    {
+      "owner": "operations",
+      "required_input": "Deploy and verify retention, disk/backup gauges and delivered alert destination on the qualification host."
+    }
+  ]
+}
