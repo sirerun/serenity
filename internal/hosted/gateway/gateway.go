@@ -393,8 +393,10 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 				operationEntered = true
 			}
 		}
-		if !reservation.Replay && !operationReplay && (inventory.Memories >= entitlement.Plan.Memories || inventory.StorageBytes >= entitlement.Plan.StorageBytes) {
-			return failure("limit_exceeded", entitlement.ResetAt), nil
+		if !reservation.Replay && (inventory.Memories >= entitlement.Plan.Memories || inventory.StorageBytes >= entitlement.Plan.StorageBytes) {
+			if !operationReplay {
+				return failure("limit_exceeded", entitlement.ResetAt), nil
+			}
 		}
 	}
 	for _, tool := range runtime.Tools {
