@@ -4,18 +4,30 @@
 
 [Website](https://serenity.sire.run) · [Get started](https://serenity.sire.run/get-started/) · [Documentation](https://serenity.sire.run/docs/) · [Ask about Serenity](https://serenity.sire.run/chat/)
 
-Serenity turns your notes, repository documentation, and email into searchable
-personal memory. It extracts claims from your sources, answers questions with
-citations, and checks structured plans against your recorded constraints.
+Serenity is a personal memory layer for agents and the systems they run in. It
+turns your notes, repository documentation, and email into searchable memory,
+then preserves the source context behind answers and decisions.
 
 Your memory lives in a Git repository you own. Serenity builds on
 [gbrain](https://github.com/dndungu/gbrain)'s approach to personal memory and uses
 [Dira](https://github.com/kazi-org/dira) for the ledger of standing judgments,
 called *precepts*.
 
-Serenity is under active development. The CLI workflows below are implemented;
-the full reconciliation and agent-protocol workflows are still being built.
-“Serenity” remains a working title.
+The local CLI is available today. Hosted Serenity is being qualified as a
+private, account-isolated HTTP/MCP service; hosted semantic quality,
+infrastructure, billing, and the public launch decision remain separate gates.
+
+## Hosted Serenity
+
+Hosted Serenity gives an agent a private memory endpoint with account-scoped
+`remember`, `recall`, `forget`, and supporting memory tools. The hosted path
+uses durable operation accounting, bounded storage admission, and explicit
+provider controls. Its launch packet and qualification evidence live under
+[`docs/launch/hosted-completion/`](docs/launch/hosted-completion/).
+
+The hosted service is not a generally available public product yet. Do not send
+customer data to a qualification endpoint; current semantic measurements use
+synthetic corpus inputs only.
 
 ## Install
 
@@ -145,10 +157,10 @@ for details.
 - `serenity search` currently uses full-text search, even with an embedding model
   pinned. Answer composition can use query embeddings when configured.
 - `serenity serve --stdio` starts the [MCP transport](docs/operator/mcp.md), with
-  initialization, tool discovery, and protocol error handling. Its tool registry
-  is currently empty; memory and direction tools are not exposed yet.
-  `serenity connect` reports token status; automatic MCP configuration and hook
-  installation are not implemented. Token rotation is available through
+  initialization, tool discovery, and protocol error handling. The memory
+  transport exposes the documented memory verbs; automatic MCP configuration
+  and hook installation are not implemented. `serenity connect` reports token
+  status, and token rotation is available through
   `serenity connect --rotate-token`.
 - `serenity migrate --models` handles model-pin changes; it does not import a
   gbrain repository. Re-extraction through reconciliation remains unfinished.
