@@ -366,6 +366,12 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 				return result, e
 			}
 			operationReplay = operationRecord.Phase == contracts.OperationCommitted
+			if operationReplay {
+				// A committed operation is authoritative. Re-running the tool would
+				// re-enter provider/index work and could diverge from the original
+				// outcome. Return the stored canonical fact identity instead.
+				return replayRememberResult(operationRecord), nil
+			}
 			if operationRecord.Phase == contracts.OperationReserved {
 				defer func() {
 					finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -419,6 +425,23 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		}
 	}
 	return failure("invalid_params", time.Time{}), nil
+}
+
+func replayRememberResult(record contracts.OperationRecord) mcp.Result {
+	id := strings.TrimPrefix(record.Evidence.Ref, "fact:")
+	if id == "" || id == record.Evidence.Ref {
+		return failure("operation_replay_unavailable", time.Time{})
+	}
+	body, _ := json.Marshal(map[string]any{
+		"protocol_version": 1,
+		"id":               id,
+		"status":           "duplicate",
+		"status_text":      "already committed this operation",
+		"search_state":     "unchanged",
+		"entity_slug":      nil,
+		"valid_until":      nil,
+	})
+	return mcp.Result{Content: []mcp.Content{{Type: "text", Text: string(body)}}}
 }
 
 func canonicalEvidenceRef(result mcp.Result, operationID string) string {
