@@ -1,0 +1,95 @@
+{
+  "task_id": "T23.47",
+  "profile": "paid",
+  "status": "PARTIAL",
+  "source_sha": "ba1999c",
+  "recorded_at": "2026-09-22T23:34:00Z",
+  "evidence_level": "local-process",
+  "dependencies": {
+    "T23.41": "ab39dd0"
+  },
+  "commands": [
+    "go test ./internal/hosted/billing ./internal/hosted/contracts ./internal/hosted/service",
+    "go test -tags hostedtest ./internal/hosted/billing ./internal/hosted/testhooks",
+    "go test -race -count=1 ./internal/hosted/billing ./internal/hosted/meter"
+  ],
+  "cases": {
+    "planned": 8,
+    "executed": 8,
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0,
+    "skip_reasons": []
+  },
+  "acceptance": [
+    {
+      "criterion": "Checkout return alone never grants access and duplicate provider subscriptions are rejected",
+      "expected": "Provider snapshot is authoritative; duplicate nonterminal subscriptions fail closed",
+      "observed": "ReconcileCustomer validates server-owned customer, known prices, single nonterminal subscription and atomically updates entitlements; fixture tests pass",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Deletion closes open checkout sessions and all provider subscriptions, including unobserved subscriptions",
+      "expected": "CloseBillingAccount expires sessions, cancels all listed subscriptions and rechecks provider truth",
+      "observed": "Stateful provider fixture covers expiry, cancellation and final empty recheck; race suite passes",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Stale checkout attempts are repaired account-scoped and auditable; late webhooks are idempotently acknowledged",
+      "expected": "Old attempts are resolved or fail closed with audit entry; deleting/deleted customer events do not retry forever",
+      "observed": "ReconcileCustomer repairs attempts older than 23h, writes audit_log, and webhook acknowledges absent/frozen accounts",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Fixed payment-failure grace remains stable under replay",
+      "expected": "First past_due observation starts 72h; replay preserves deadline",
+      "observed": "Existing webhook grace test and reconciliation projection preserve the stored deadline",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Hostedtest phase barrier is present and production build cannot activate it",
+      "expected": "Reconciliation calls PhaseReconcileFenced; tagged/untagged testhook behavior is proven",
+      "observed": "Call site added; hostedtest and ordinary testhook suites pass",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Live Stripe lifecycle qualification",
+      "expected": "Test products, webhooks, test clocks and provider receipts",
+      "observed": "No Stripe test objects or live provider calls were made; Composio Stripe toolkit remains unavailable",
+      "status": "NOT_RUN"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "internal/hosted/billing/billing.go"
+    },
+    {
+      "path": "internal/hosted/billing/billing_test.go"
+    },
+    {
+      "path": "docs/launch/evidence/T23.47/result.json"
+    }
+  ],
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": 0,
+    "authorization_refs": [
+      "fixture-only; no provider mutation"
+    ]
+  },
+  "limitations": [
+    "Live Stripe test-object lifecycle, test-clock renewal and webhook delivery remain unqualified.",
+    "Service assembly does not yet invoke ReconcileCustomer/CloseBillingAccount; integrator task T23.57 must wire the frozen interfaces.",
+    "No production deployment or external provider mutation occurred."
+  ],
+  "blockers": [
+    {
+      "owner": "integrator",
+      "required_input": "Wire the billing reconciler and closer into service/deletion assembly under the frozen contracts."
+    },
+    {
+      "owner": "billing/coordinator",
+      "required_input": "Connect Stripe test toolkit and run isolated test lifecycle qualification after T23.63 setup."
+    }
+  ]
+}
