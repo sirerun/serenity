@@ -696,9 +696,12 @@ need no binary are in `evals/hosted/test_local_service.py`.
 
 ## Known limits
 
-- **No live semantic qualification has been completed.** One synthetic probe
-  established the provider response shape and 1024 dimensions; the qualification
-  manifest has no hosted endpoint or seeded account yet. Every number here is a
+- **No hosted semantic qualification has been completed.** A model-only probe
+  embedded all 105 synthetic facts and 95 positive queries and achieved 95/95
+  Hit@5 at a provider cost of $0.00000948; the sanitized receipt is
+  `docs/launch/evidence/T23.43/semantic-model-probe.json`. This establishes
+  model-level retrieval signal, not the hosted service contract. The
+  qualification manifest has no hosted endpoint or seeded account yet. Every number here is a
   fixtures-only mechanical rehearsal, a loopback test against
   `evals/hosted/fake_hosted_mcp.py` (a protocol stand-in
   that embeds nothing), or the local run against the actual service described
