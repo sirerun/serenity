@@ -25,6 +25,7 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/gateway"
 	"github.com/sirerun/serenity/internal/hosted/identity"
 	"github.com/sirerun/serenity/internal/hosted/meter"
+	"github.com/sirerun/serenity/internal/hosted/operation"
 	"github.com/sirerun/serenity/internal/hosted/pool"
 	"github.com/sirerun/serenity/internal/hosted/provision"
 	"github.com/sirerun/serenity/internal/hosted/store"
@@ -220,7 +221,7 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 	}
 	issuer := &credential.Issuer{Store: db}
 	metering := &meter.Meter{Store: db}
-	g := &gateway.Gateway{Issuer: issuer, Pool: p, Meter: metering}
+	g := &gateway.Gateway{Issuer: issuer, Pool: p, Meter: metering, Operations: &operation.Ledger{Store: db}}
 	if err = g.RecoverDeletions(context.Background(), filepath.Join(cfg.DataDir, "brains")); err != nil {
 		return nil, errors.Join(err, p.Close())
 	}

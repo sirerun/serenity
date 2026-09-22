@@ -16,12 +16,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sirerun/serenity/internal/hosted/contracts"
 	hoststore "github.com/sirerun/serenity/internal/hosted/store"
 	brainstore "github.com/sirerun/serenity/internal/store"
 	"github.com/tiktoken-go/tokenizer"
 
 	"github.com/sirerun/serenity/internal/hosted/credential"
 	"github.com/sirerun/serenity/internal/hosted/meter"
+	"github.com/sirerun/serenity/internal/hosted/operation"
 	"github.com/sirerun/serenity/internal/hosted/pool"
 	"github.com/sirerun/serenity/internal/server/mcp"
 )
@@ -42,6 +44,7 @@ type Gateway struct {
 	Issuer       *credential.Issuer
 	Pool         *pool.Pool
 	Meter        *meter.Meter
+	Operations   *operation.Ledger
 	mu           sync.Mutex
 	handlers     map[string]*entry
 	sessions     map[string]sessionBinding
@@ -283,7 +286,7 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		defer runtime.Mutations.Unlock()
 	}
 	var reservation meter.Reservation
-	metered := name == "recall" || name == "read_memory_fact" || name == "remember"
+	metered := name == "recall" || name == "read_memory_fact" || (name == "remember" && g.Operations == nil)
 	if metered {
 		entitlement, e := g.Meter.Entitlement(ctx, binding.AccountID)
 		if e != nil {
@@ -310,6 +313,9 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 			err = errors.Join(err, g.Meter.Finish(finishCtx, reservation, err == nil && !result.IsError))
 		}()
 	}
+	var operationRecord contracts.OperationRecord
+	operationEntered := false
+	operationReplay := false
 	if name == "remember" {
 		entitlement, e := g.Meter.Entitlement(ctx, binding.AccountID)
 		if e != nil {
@@ -319,9 +325,6 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		if e != nil {
 			return result, e
 		}
-		if !reservation.Replay && (inventory.Memories >= entitlement.Plan.Memories || inventory.StorageBytes >= entitlement.Plan.StorageBytes) {
-			return failure("limit_exceeded", entitlement.ResetAt), nil
-		}
 		codec, e := tokenizer.Get(tokenizer.Cl100kBase)
 		if e != nil {
 			return result, e
@@ -330,19 +333,68 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		if e != nil {
 			return result, e
 		}
-		tokens, e := g.Meter.Reserve(ctx, binding.AccountID, "input_tokens", int64(count), entitlement.Plan.InputTokens, entitlement.Window, entitlement.ResetAt, operationKey(binding.BrainID, name, input.OperationKey))
-		if e != nil {
-			var limitErr *meter.LimitError
-			if errors.As(e, &limitErr) {
-				return failure("limit_exceeded", limitErr.ResetAt), nil
+		if g.Operations != nil {
+			clientKey := input.OperationKey
+			if clientKey == "" {
+				clientKey = "hosted:" + hoststore.ID()
+				var fields map[string]json.RawMessage
+				if e = json.Unmarshal(args, &fields); e != nil {
+					return failure("invalid_params", time.Time{}), nil
+				}
+				fields["operation_key"], e = json.Marshal(clientKey)
+				if e != nil {
+					return result, e
+				}
+				args, e = json.Marshal(fields)
+				if e != nil {
+					return result, e
+				}
 			}
-			return result, e
+			fingerprint, e := contracts.RequestFingerprint("remember", []contracts.FingerprintField{{Name: "brain", Value: []byte(binding.BrainID)}, {Name: "fact", Value: []byte(input.Fact)}})
+			if e != nil {
+				return result, e
+			}
+			operationRecord, e = g.Operations.Reserve(ctx, contracts.ReserveRequest{AccountID: binding.AccountID, BrainID: binding.BrainID, ClientKey: clientKey, Fingerprint: fingerprint, QuotaPeriod: entitlement.Window, Source: "gateway.remember", LeaseFor: 5 * time.Minute, Deltas: []contracts.ReserveDelta{{Metric: "writes", Units: 1, Limit: entitlement.Plan.Writes}, {Metric: "input_tokens", Units: int64(count), Limit: entitlement.Plan.InputTokens}}})
+			if e != nil {
+				if errors.Is(e, contracts.ErrOperationLimitExceeded) {
+					return failure("limit_exceeded", entitlement.ResetAt), nil
+				}
+				if errors.Is(e, contracts.ErrOperationInProgress) || errors.Is(e, contracts.ErrOperationPendingReview) {
+					return failure("operation_in_progress", time.Time{}), nil
+				}
+				return result, e
+			}
+			operationReplay = operationRecord.Phase == contracts.OperationCommitted
+			if operationRecord.Phase == contracts.OperationReserved {
+				defer func() {
+					finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+					defer cancel()
+					var final contracts.OperationPhase
+					var evidence contracts.Evidence
+					if operationEntered {
+						if err == nil && !result.IsError {
+							final = contracts.OperationCommitted
+							evidence = contracts.Evidence{Kind: contracts.EvidenceCommitted, Ref: canonicalEvidenceRef(result, operationRecord.ID)}
+						} else {
+							final = contracts.OperationPendingReview
+							evidence = contracts.Evidence{Kind: contracts.EvidenceUnknown, Ref: "gateway_outcome_unknown"}
+						}
+					} else {
+						final = contracts.OperationReleased
+						evidence = contracts.Evidence{Kind: contracts.EvidenceNoCanonicalAttempt}
+					}
+					_, finishErr := g.Operations.Finalize(finishCtx, operationRecord.ID, final, evidence)
+					err = errors.Join(err, finishErr)
+				}()
+				if _, e = g.Operations.EnterCanonical(ctx, operationRecord.ID); e != nil {
+					return result, e
+				}
+				operationEntered = true
+			}
 		}
-		defer func() {
-			finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			defer cancel()
-			err = errors.Join(err, g.Meter.Finish(finishCtx, tokens, err == nil && !result.IsError))
-		}()
+		if !reservation.Replay && !operationReplay && (inventory.Memories >= entitlement.Plan.Memories || inventory.StorageBytes >= entitlement.Plan.StorageBytes) {
+			return failure("limit_exceeded", entitlement.ResetAt), nil
+		}
 	}
 	for _, tool := range runtime.Tools {
 		if tool.Name == name {
@@ -361,6 +413,21 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		}
 	}
 	return failure("invalid_params", time.Time{}), nil
+}
+
+func canonicalEvidenceRef(result mcp.Result, operationID string) string {
+	for _, content := range result.Content {
+		if content.Type != "text" {
+			continue
+		}
+		var body struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal([]byte(content.Text), &body) == nil && body.ID != "" {
+			return "fact:" + body.ID
+		}
+	}
+	return "gateway:" + operationID
 }
 
 // Call uses the same authorization and quota path for dashboard memory actions.
