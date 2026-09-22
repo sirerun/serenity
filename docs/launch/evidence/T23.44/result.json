@@ -1,0 +1,44 @@
+{
+  "task_id": "T23.44",
+  "profile": "pilot",
+  "status": "PARTIAL",
+  "source_sha": "a48dc154cd73c3503787ef1a97221089bb0b81bd",
+  "recorded_at": "2026-09-22T02:52:00Z",
+  "evidence_level": "local-process",
+  "dependencies": {"T23.41": "c61ab91bb48099dfbfcfec2ee86ea2cd590439c4"},
+  "commands": [
+    "go test ./internal/hosted/operation",
+    "go test ./internal/hosted/..."
+  ],
+  "cases": {
+    "planned": 8,
+    "executed": 8,
+    "passed": 8,
+    "failed": 0,
+    "skipped": 0,
+    "skip_reasons": []
+  },
+  "acceptance": [
+    {"criterion": "Operation reservations and all metric deltas commit atomically; explicit-key replay does not double charge", "expected": "One durable operation row and one committed usage increment per logical mutation", "observed": "SQLite ledger tests pass for replay, key reuse, held capacity, commit and release", "status": "PASS"},
+    {"criterion": "Expired reserved operations reconcile only under a brain fence and preserve unknown outcomes", "expected": "Landed commits, absent releases, unknown pending review; deferred checks remain reserved", "observed": "Ledger implements the reviewed BrainFence/CanonicalChecker state machine; production canonical checker integration remains pending", "status": "PARTIAL"},
+    {"criterion": "Physical staging admission has a fixed ceiling, global headroom, and account quota", "expected": "Admission rejects ceiling, global capacity, and account quota violations before publication", "observed": "Staging gate tests pass for ceiling, global budget, headroom, per-account quota, and idempotent release", "status": "PASS"},
+    {"criterion": "Storage bound is physically enforced for the hosted runtime", "expected": "OS-enforced staging filesystem sized to the measured MaxMutationStageBytes", "observed": "No OS quota/filesystem deployment or allocated-byte measurement has been performed", "status": "BLOCKED"},
+    {"criterion": "Gateway uses the operation ledger for hosted remember mutations", "expected": "Production gateway routes reservations, canonical markers, finalization, and reconciliation through this ledger", "observed": "Ledger seam is implemented but gateway wiring and canonical operation markers are a follow-up integration", "status": "BLOCKED"}
+  ],
+  "artifacts": [
+    {"path": "internal/hosted/operation/ledger.go", "sha256": "fe318d9adc16882dbd90fc5428292ccfa9821509ac5145fd351f1535386a4a4a"},
+    {"path": "internal/hosted/operation/staging.go", "sha256": "7177213511df02f1454cc0ad460e41d2f71b8912f360c5507e839ff5e5850444"},
+    {"path": "internal/hosted/operation/ledger_test.go", "sha256": "f21150c8644d3113d4337302a4598c26f91ea5c7553ab55473e19f62388ac9de"},
+    {"path": "internal/hosted/operation/staging_test.go", "sha256": "3886af40a03dbeecfef87fed1cea9936c95c1e7b2705a98e0a39067bf8fa3f1d"}
+  ],
+  "cost": {"actual_usd": null, "approved_max_usd": null, "authorization_refs": []},
+  "limitations": [
+    "The in-process staging gate is accounting and early-abort logic; it cannot prove a physical bound without an OS-enforced staging filesystem.",
+    "The operation ledger is not yet wired into gateway canonical writes; no hosted customer operation was run.",
+    "No AWS, provider, customer, or billing call was made."
+  ],
+  "blockers": [
+    {"owner": "runtime/infrastructure coordinator", "required_input": "Approve and implement the canonical-writer seam, measured allocated-byte MaxMutationStageBytes, and OS-enforced staging filesystem before storage admission can qualify."},
+    {"owner": "task44 integration owner", "required_input": "Wire the ledger into gateway remember mutations and add production canonical operation markers before task44 acceptance."}
+  ]
+}
