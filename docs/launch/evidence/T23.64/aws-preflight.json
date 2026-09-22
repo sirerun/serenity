@@ -1,0 +1,16 @@
+{
+  "schema": "serenity.hosted.t23.64.aws-preflight",
+  "schema_version": 1,
+  "reviewed_at_utc": "2026-09-22T06:45:00Z",
+  "region": "us-west-2",
+  "credential_identity": "configured AWS CLI identity verified; account identifier intentionally omitted",
+  "template": "deploy/hosted/stack.json",
+  "cloudformation_validation": "PASS",
+  "resources_not_created": true,
+  "execution": "NOT RUN",
+  "blockers": [
+    "stack creates UNCONFIGURED secrets until secret injection is implemented",
+    "EC2 stack has no bootstrap UserData; deploy.sh requires a released ARM64 artifact and SSM execution",
+    "DNS authority is Google Cloud DNS, not the connected Cloudflare account"
+  ]
+}
