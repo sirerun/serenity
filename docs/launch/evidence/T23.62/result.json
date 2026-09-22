@@ -1,0 +1,86 @@
+{
+  "task_id": "T23.62",
+  "profile": "paid",
+  "status": "BLOCKED",
+  "source_sha": "9aa5ebdaa1769af3905beef92130614839cc72b8",
+  "recorded_at": "2026-09-22T22:21:53Z",
+  "evidence_level": "static",
+  "dependencies": {
+    "T23.51": "d28ef17d06955ebfc7f2c7c7ce03ff14d5f0a9a8",
+    "T23.61": "9aa5ebdaa1769af3905beef92130614839cc72b8",
+    "T23.64": "not-run"
+  },
+  "commands": [
+    "python3 -m unittest discover -s docs/launch/evidence/T23.62 -p 'test_*.py'",
+    "python3 docs/launch/evidence/T23.62/verify_dns_mail.py --expected docs/launch/evidence/T23.62/expected.json --output docs/launch/evidence/T23.62/read-only.json"
+  ],
+  "cases": {
+    "planned": 2,
+    "executed": 2,
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "skip_reasons": []
+  },
+  "acceptance": [
+    {
+      "criterion": "DNS resolves to the reviewed qualification stack and HTTPS health endpoint responds",
+      "expected": "Expected A/CNAME and public health response after T23.64 deployment",
+      "observed": "No A/CNAME answer matched and HTTPS request failed with URLError; app currently has no qualification origin",
+      "status": "BLOCKED"
+    },
+    {
+      "criterion": "Verified sender delivers a single-use link to the controlled mailbox",
+      "expected": "Scoped Resend key, verified sender/domain, redacted delivery receipt",
+      "observed": "Mail delivery NOT_RUN; no verified sender or deployed origin exists",
+      "status": "NOT_RUN"
+    },
+    {
+      "criterion": "Verifier does not mutate DNS or send mail",
+      "expected": "Read-only checks with zero mutations",
+      "observed": "2 fixture tests passed; live receipt records network_mutations=0",
+      "status": "PASS"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/launch/evidence/T23.62/verify_dns_mail.py",
+      "sha256": "f3f516eeb42d9ad9dced8f6a16a52640f80f068bb67fcd89bb4a93a9ada5af34"
+    },
+    {
+      "path": "docs/launch/evidence/T23.62/expected.json",
+      "sha256": "6cfc7f35415755cc81f6b6b6742d4273cbfa6f994a4377fc95ec9e3e801fbf23"
+    },
+    {
+      "path": "docs/launch/evidence/T23.62/read-only.json",
+      "sha256": "3d4cba6f658cf17daff8bf9ca2ff9ebdb132e941c6a22b5b5ef1ae1ece1a91a9"
+    },
+    {
+      "path": "docs/launch/evidence/T23.62/test_verify_dns_mail.py",
+      "sha256": "0450083015540834ffab73bf879e58cec5117fdb88b4f1da8c8afde92e9484f0"
+    }
+  ],
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": null,
+    "authorization_refs": []
+  },
+  "limitations": [
+    "The current public hostname is not a deployed Hosted Serenity origin.",
+    "No DNS record was applied and no email was sent."
+  ],
+  "blockers": [
+    {
+      "owner": "coordinator/operations",
+      "required_input": "Provision the private qualification stack and record its EIP before applying DNS."
+    },
+    {
+      "owner": "foundation owner",
+      "required_input": "Review/apply the exact Google Cloud DNS A/TLS/mail records after the stack address exists."
+    },
+    {
+      "owner": "mail/account owner",
+      "required_input": "Verify sender permission and send one controlled magic-link test to david+alerts@sire.run."
+    }
+  ]
+}

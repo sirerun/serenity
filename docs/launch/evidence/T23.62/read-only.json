@@ -1,0 +1,25 @@
+{
+  "status": "BLOCKED",
+  "app_host": "app.serenity.sire.run",
+  "a_records": [],
+  "cname_records": [],
+  "expected_a": null,
+  "expected_cname": null,
+  "https": {
+    "status": null,
+    "url": "https://app.serenity.sire.run/healthz",
+    "ok": false,
+    "error": "URLError"
+  },
+  "mail": {
+    "sender_domain": "serenity.sire.run",
+    "controlled_recipient_ref": "david+alerts@sire.run",
+    "delivery_status": "NOT_RUN"
+  },
+  "network_mutations": 0,
+  "limitations": [
+    "DNS/TLS checks are read-only and do not prove authority to change the zone.",
+    "Mail delivery is NOT_RUN until a scoped Resend key, verified sender and private qualification origin exist."
+  ],
+  "recorded_at": "2026-09-22T22:21:35Z"
+}
