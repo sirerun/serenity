@@ -1,0 +1,3 @@
+# Keep proxy access logging disabled until a reviewed redacting sink is deployed.
+# Caddy's default behavior emits no access log, which prevents bearer tokens,
+# cookies and magic-link query values from entering host logs.
