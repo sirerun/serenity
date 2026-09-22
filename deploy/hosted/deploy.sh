@@ -8,11 +8,13 @@ backup_bucket=${3:?usage: deploy.sh VERSION ARCHIVE_SHA256 BACKUP_BUCKET}
 [[ "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][a-zA-Z0-9.-]+)?$ ]] || { echo 'Invalid version' >&2; exit 1; }
 [[ "$checksum" =~ ^[a-f0-9]{64}$ ]] || { echo 'Invalid SHA256' >&2; exit 1; }
 [[ $(id -u) == 0 ]] || { echo 'Run through SSM as root' >&2; exit 1; }
+script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
+"$script_dir/bootstrap.sh"
 command -v caddy >/dev/null
 command -v aws >/dev/null
 command -v git >/dev/null
+command -v curl >/dev/null
 mountpoint -q /var/lib/serenity || { echo 'Persistent data volume is not mounted' >&2; exit 1; }
-script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 number=${version#v}
