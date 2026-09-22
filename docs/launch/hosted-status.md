@@ -12,9 +12,13 @@ Updated2026-09-18 for the requested parallel Sonnet completion plan. Source-of-t
 
 ## Next dispatch
 
-First batch: **T23.41** integration/schema contracts, **T23.43** synthetic semantic harness, **T23.60** cost/load model. After41 review/acceptance, six disjoint tasks42/44/46/47/49/51 can run on already-authorized capacity. Mini builds remain serialized by the shared lease.
+First batch: **T23.41** integration/schema contracts, **T23.43** synthetic semantic harness, **T23.60** cost/load model.
 
-All completion tasks are planned, not accepted. No implementation worker was launched by this planning deliverable. Read-only audit agents helped check the plan; their recommendations are incorporated with explicit dependencies.
+**T23.41 accepted** by the coordinator 2026-09-21 at revision `c61ab91bb48099dfbfcfec2ee86ea2cd590439c4` — see `docs/launch/evidence/T23.41/coordinator-acceptance.md`. This unblocks downstream implementation dispatch of the six disjoint tasks42/44/46/47/49/51 on already-authorized capacity. Storage admission stays conditional on task44's OS-enforced staging limit and allocation-based accounting per ADR 017; the acceptance does not qualify live S3 or storage admission. Mini builds remain serialized by the shared lease.
+
+**T23.43's corpus and thresholds are partially frozen** as of 2026-09-21 — see the freeze receipt in `docs/launch/hosted-completion/embedding-eval.md`. Corpus hash, expected case IDs and the numeric thresholds are reviewed and accepted at revision `b1049482a1f1ffbd42f960a2b68341bb51691116`. The lexical-negative criterion choice is still open (named case-subset vs. exact ratio); no `--live` run may start until that choice is recorded. Model/provider configuration cannot be frozen yet: T23.42 (the real provider adapter) is still `planned`, not merged, so the manifest's `provider` fields have no concrete pin to freeze.
+
+All completion tasks other than T23.41 are planned, not accepted. No implementation worker was launched by this planning deliverable. Read-only audit agents helped check the plan; their recommendations are incorporated with explicit dependencies.
 
 ## External prerequisites
 
