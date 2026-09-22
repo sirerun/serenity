@@ -2,7 +2,7 @@
   "task_id": "T23.47",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "ba1999c",
+  "source_sha": "ba1999caedbf1ea6e2175f23c09c1ce9b685e3b2",
   "recorded_at": "2026-09-22T23:34:00Z",
   "evidence_level": "local-process",
   "dependencies": {
