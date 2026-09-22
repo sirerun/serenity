@@ -1,0 +1,89 @@
+{
+  "task_id": "T23.46",
+  "profile": "paid",
+  "status": "PARTIAL",
+  "source_sha": "220eaf8164a184735a502e8e062174b2635cbb9f",
+  "recorded_at": "2026-09-22T22:33:02Z",
+  "evidence_level": "local-process",
+  "dependencies": {
+    "T23.41": "9aa5ebdaa1769af3905beef92130614839cc72b8"
+  },
+  "commands": [
+    "go test ./internal/hosted/identity",
+    "go test ./internal/hosted/provision ./internal/hosted/credential",
+    "go test -race -count=1 ./internal/hosted/identity ./internal/hosted/provision ./internal/hosted/credential"
+  ],
+  "cases": {
+    "planned": 6,
+    "executed": 6,
+    "passed": 6,
+    "failed": 0,
+    "skipped": 0,
+    "skip_reasons": []
+  },
+  "acceptance": [
+    {
+      "criterion": "Forged, expired, reused links and sessions are denied; logout and deletion-state rules hold",
+      "expected": "Single-use/expiry/CSRF/logout and deleting-session restrictions",
+      "observed": "Existing identity suite passes; new restore_pending consume test prevents session/account reactivation",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Invite-only direct login creates no account or token for an uninvited identity",
+      "expected": "ErrInviteRequired with zero login_tokens/accounts",
+      "observed": "New TestInviteOnlyRejectsUninvitedWithoutCreatingToken passes",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Existing active identities can sign in under invite-only mode",
+      "expected": "Allow active account regardless of allowlist membership",
+      "observed": "New TestInviteOnlyAllowsExistingActiveAccount passes",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Production registration mode is wired and private allowlist is operator-managed",
+      "expected": "Service/config assembly enforces selected mode at direct account creation",
+      "observed": "Identity service contract now supports mode/allowlist, but service Config/assembly wiring remains an integrator task",
+      "status": "NOT_RUN"
+    },
+    {
+      "criterion": "Provisioning crash/capacity recovery is qualified",
+      "expected": "Fresh and additional brain allocation under fault injection",
+      "observed": "Existing provision/credential tests and race suite pass; no real host fault injection",
+      "status": "PARTIAL"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "internal/hosted/identity/identity.go",
+      "sha256": "c00d3f162da2b198c5b4ca6f2208be74ce5784790dbb255625e3ce25ab058d08"
+    },
+    {
+      "path": "internal/hosted/identity/identity_test.go",
+      "sha256": "837f0a053a3ef46bd0a3c2890ec82f65411f2efccc069e43ebbd22db846fc608"
+    },
+    {
+      "path": "internal/hosted/provision/provision.go",
+      "sha256": "5fb5002ba20a7519d11a3e4a59257acf11e7380acb153c029c13fc2110fd85b4"
+    }
+  ],
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": null,
+    "authorization_refs": []
+  },
+  "limitations": [
+    "RegistrationMode is not yet exposed through service JSON config or assembly; default behavior remains public until integrator wiring selects a mode.",
+    "No external mail, DNS, AWS or provider calls were made."
+  ],
+  "blockers": [
+    {
+      "owner": "integrator",
+      "required_input": "Add RegistrationMode/config wiring and ensure paid qualification uses the reviewed mode without logging allowlist contents."
+    },
+    {
+      "owner": "qualification",
+      "required_input": "Run real-process account/provisioning crash and multi-account browser checks after service wiring."
+    }
+  ]
+}
