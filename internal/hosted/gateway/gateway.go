@@ -316,6 +316,7 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 	var operationRecord contracts.OperationRecord
 	operationEntered := false
 	operationReplay := false
+	canonicalCommitted := false
 	if name == "remember" {
 		entitlement, e := g.Meter.Entitlement(ctx, binding.AccountID)
 		if e != nil {
@@ -372,7 +373,7 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 					var final contracts.OperationPhase
 					var evidence contracts.Evidence
 					if operationEntered {
-						if err == nil && !result.IsError {
+						if canonicalCommitted && !result.IsError {
 							final = contracts.OperationCommitted
 							evidence = contracts.Evidence{Kind: contracts.EvidenceCommitted, Ref: canonicalEvidenceRef(result, operationRecord.ID)}
 						} else {
@@ -405,6 +406,9 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 				// Acknowledged writes must already be in the canonical bundle,
 				// even if the process dies before its next backup or shutdown.
 				err = runtime.Flush()
+				if err == nil && name == "remember" {
+					canonicalCommitted = true
+				}
 			}
 			if name == "remember" && err == nil && !result.IsError {
 				err = g.record(ctx, binding, "memory_saved")
