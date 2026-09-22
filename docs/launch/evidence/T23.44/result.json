@@ -2,7 +2,7 @@
   "task_id": "T23.44",
   "profile": "pilot",
   "status": "PARTIAL",
-  "source_sha": "a48dc154cd73c3503787ef1a97221089bb0b81bd",
+  "source_sha": "4c98269ddfe8fd2c29d0b93a4d9bfa2c9fbfb4f6",
   "recorded_at": "2026-09-22T02:52:00Z",
   "evidence_level": "local-process",
   "dependencies": {"T23.41": "c61ab91bb48099dfbfcfec2ee86ea2cd590439c4"},
