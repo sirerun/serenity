@@ -1,0 +1,34 @@
+{
+  "schema": "serenity.hosted.t23.43.semantic-model-probe",
+  "schema_version": 1,
+  "reviewer": "David Ndungu",
+  "reviewed_at_utc": "2026-09-22T06:35:00Z",
+  "evidence_level": "model-only",
+  "provider": "Perplexity",
+  "model": "perplexity/pplx-embed-v1-0.6b",
+  "dimensions": 1024,
+  "corpus_sha256": "f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6",
+  "facts_sha256": "35f54860e48070db927b5ad072fee65386829695998022eb0274c80fc1cdb1bc",
+  "facts_embedded": 105,
+  "positive_queries_embedded": 95,
+  "hit_at_5": {"hits": 95, "total": 95, "ratio": 1.0},
+  "category_hits": {
+    "paraphrase": {"hits": 40, "total": 40},
+    "name_entity": {"hits": 20, "total": 20},
+    "preference": {"hits": 20, "total": 20},
+    "multilingual": {"hits": 10, "total": 10},
+    "temporal": {"hits": 5, "total": 5}
+  },
+  "usage": {"total_tokens": 2370, "provider_cost_usd": 0.00000948},
+  "controls": {
+    "allow_fallbacks": false,
+    "zdr": true,
+    "data_collection": "deny",
+    "inputs": "synthetic corpus and facts only"
+  },
+  "limits": [
+    "This embeds corpus facts and queries directly and ranks vectors locally.",
+    "It does not exercise the hosted remember/recall service, lexical control, TTL protocol, or account isolation.",
+    "Hosted semantic qualification remains pending until the guarded seed/live run against the deployed service."
+  ]
+}
