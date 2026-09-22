@@ -107,14 +107,18 @@ neither approval may be inferred from the other.
   19/20; preference >= 19/20; multilingual >= 9/10; temporal = 5/5;
   expected-empty and cross-account leakage = 0) reviewed and accepted as
   specified in `T23.43.md` and implemented in `evals/hosted/lib/scoring.py`.
-- **Model/provider configuration: cannot be frozen — BLOCKED, not a review
-  decision.** T23.42's real OpenRouter-compatible provider adapter is merged
-  at `639a1abd6a38fdb34d528562470f0e85726ab5f9`, but no live-provider
-  measurement has been taken and the qualification manifest has not yet been
-  provisioned with its credential reference. The manifest's `provider` object
-  (`model`, `version_pin`, `dimensions`, `serving_provider`,
-  `privacy_review_ref`) still needs a reviewed concrete pin; freezing it now
-  would fabricate a measurement-backed configuration that does not exist.
+- **Model/provider configuration: pinned for qualification; semantic quality
+  remains BLOCKED pending the corpus run.** T23.42's real OpenRouter-compatible
+  provider adapter is merged at `639a1abd6a38fdb34d528562470f0e85726ab5f9`.
+  A synthetic-only probe against OpenRouter on 2026-09-21 returned a 1024-
+  dimensional vector from Perplexity with the requested no-fallback,
+  zero-data-retention controls; the sanitized receipt is
+  `docs/launch/evidence/T23.43/provider-qualification.json`. The reviewed
+  manifest pin is model `perplexity/pplx-embed-v1-0.6b`, version pin
+  `openrouter-model-catalog-2026-09-21`, dimensions `1024`, serving provider
+  `Perplexity`, privacy reference `openrouter-zdr-deny-2026-09-21`, and
+  credential reference `EMBEDDINGS_API_KEY`. This probe establishes the
+  adapter/provider contract only; it does not establish retrieval quality.
 - Lexical-negative criterion: **`exact_ratio_21`** — score all 21 flagged
   cases, require 19 hits (~90.5%), replacing the draft's unapproved
   raw-count 18-over-21 interpretation described above. The 21 flagged case
@@ -122,17 +126,10 @@ neither approval may be inferred from the other.
   `para-04c`, `para-05a`, `para-05b`, `para-05c`, `para-06a`, `para-06b`,
   `para-06c`, `para-07a`, `para-07b`, `para-07c`, `para-10a`, `para-10b`,
   `para-10c`, `para-12a`, `para-12b`, `para-12c`.
-  **Provisional, not yet the reviewer's own confirmation**: this document's
-  named reviewer (David Ndungu) was asked to choose between this and
-  `exact_subset_20` (2026-09-21) and did not respond within the session's
-  standing wait window; per the fleet's standing policy that an unanswered
-  question defaults to the recommended option with the default explicitly
-  flagged, `exact_ratio_21` (the recommended option — no case exclusion
-  needed, marginally stricter than the contract's literal 90%) is entered
-  here as a default, not a personally confirmed choice. **Treat this field
-  as open until David Ndungu explicitly confirms or overrides it** via a
-  reviewed amendment; do not treat the presence of a value here as proof a
-  human reviewed and chose it.
+  **Reviewer confirmation:** David Ndungu, 2026-09-21, explicitly selected
+  `exact_ratio_21` in the launch decision record; this is a reviewed choice,
+  not a default. No case is excluded, and the threshold is marginally stricter
+  than the contract's literal 90%.
 - Live-phase seeding protocol (see "Seeding and the real-run recipe")
   confirmed: yes, David Ndungu, 2026-09-21 — the documented recipe (fresh
   empty-case account, absolute TTL, ledger discipline, rate-limit pacing)
@@ -141,14 +138,11 @@ neither approval may be inferred from the other.
   numeric thresholds accepted as committed — they match what T23.41's
   acceptance and T23.43's merged PR (#237) already establish, with no
   proposed change. Model/provider configuration deferred, not frozen,
-  because the adapter has landed but no live measurement-backed provider pin
-  exists yet. Lexical-negative criterion entered as the recommended default
-  (`exact_ratio_21`) after the
-  named reviewer did not respond to an explicit choice within the standing
-  wait window, per fleet policy — provisional, not confirmed; treat as open
-  until David Ndungu explicitly confirms or overrides via a reviewed
-  amendment. **No `--seed` or `--live` run starts until a human reviewer has
-  actually confirmed this field, not merely until it holds a value.**
+  because the adapter pin and synthetic provider probe are now recorded;
+  semantic quality still requires the guarded `--seed`/`--live` run. The
+  lexical-negative criterion is reviewer-confirmed as `exact_ratio_21`.
+  **No `--seed` or `--live` run starts until the manifest's endpoint,
+  credential reference, budget ledger and hosted test accounts are prepared.**
 
 ### B. Supplemental forgotten/expired plan
 
@@ -702,9 +696,9 @@ need no binary are in `evals/hosted/test_local_service.py`.
 
 ## Known limits
 
-- **No live-provider measurement has ever been taken.** The qualification
-  manifest has no provisioned credential reference, no hosted account is
-  seeded, and no live request has been made. Every number here is a
+- **No live semantic qualification has been completed.** One synthetic probe
+  established the provider response shape and 1024 dimensions; the qualification
+  manifest has no hosted endpoint or seeded account yet. Every number here is a
   fixtures-only mechanical rehearsal, a loopback test against
   `evals/hosted/fake_hosted_mcp.py` (a protocol stand-in
   that embeds nothing), or the local run against the actual service described
