@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
@@ -21,18 +22,24 @@ var ErrExpiredOrUsed = errors.New("link expired or already used")
 var ErrRateLimited = errors.New("too many login requests")
 var ErrInvalidEmail = errors.New("invalid email address")
 var ErrCapacity = errors.New("registration capacity reached")
+var ErrInviteRequired = errors.New("registration requires an invitation")
+var ErrAccountUnavailable = errors.New("account is not available")
 
 type Sender interface {
 	Send(context.Context, string, string) error
 }
 type Service struct {
-	Store      *store.Store
-	Sender     Sender
-	Origin     string
-	Clock      func() time.Time
-	AccountCap int
-	mu         sync.Mutex
-	attempts   map[string][]time.Time
+	Store            *store.Store
+	Sender           Sender
+	Origin           string
+	Clock            func() time.Time
+	AccountCap       int
+	RegistrationMode contracts.RegistrationMode
+	// InviteAllowlist is process-local operator state. It is never logged or
+	// returned to callers; production wiring may replace it without a schema.
+	InviteAllowlist map[string]struct{}
+	mu              sync.Mutex
+	attempts        map[string][]time.Time
 }
 type Session struct{ ID, AccountID, CSRF string }
 
@@ -83,6 +90,24 @@ func (s *Service) admit(email, ip string) bool {
 	}
 	return true
 }
+func (s *Service) registrationAllows(ctx context.Context, email string) (bool, error) {
+	if s.RegistrationMode != contracts.RegistrationInviteOnly {
+		return true, nil
+	}
+	var status string
+	err := s.Store.DB().QueryRowContext(ctx, `SELECT status FROM accounts WHERE email_hash=?`, store.Hash(email)).Scan(&status)
+	if err == nil {
+		return status == "active", nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	s.mu.Lock()
+	_, allowed := s.InviteAllowlist[email]
+	s.mu.Unlock()
+	return allowed, nil
+}
+
 func (s *Service) RequestLink(ctx context.Context, email, ip string) error {
 	email = strings.ToLower(strings.TrimSpace(email))
 	address, err := mail.ParseAddress(email)
@@ -91,6 +116,13 @@ func (s *Service) RequestLink(ctx context.Context, email, ip string) error {
 	}
 	if !s.admit(email, ip) {
 		return ErrRateLimited
+	}
+	allowed, err := s.registrationAllows(ctx, email)
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return ErrInviteRequired
 	}
 	raw := token()
 	now := s.now()
@@ -134,8 +166,8 @@ func (s *Service) Consume(ctx context.Context, raw string) (sessionToken string,
 		if consumed.Valid || !expiry.After(now) {
 			return ErrExpiredOrUsed
 		}
-		var accountID string
-		e = tx.QueryRowContext(ctx, `SELECT id FROM accounts WHERE email_hash=? AND status='active'`, store.Hash(email)).Scan(&accountID)
+		var accountID, accountStatus string
+		e = tx.QueryRowContext(ctx, `SELECT id,status FROM accounts WHERE email_hash=?`, store.Hash(email)).Scan(&accountID, &accountStatus)
 		if errors.Is(e, sql.ErrNoRows) {
 			var count int
 			if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM accounts WHERE status='active'`).Scan(&count); e != nil {
@@ -150,6 +182,8 @@ func (s *Service) Consume(ctx context.Context, raw string) (sessionToken string,
 			}
 			accountID = store.ID()
 			_, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,email_hash,email,created_at,status,plan_id,plan_version) VALUES(?,?,?,?,'active','free',1)`, accountID, store.Hash(email), email, store.Stamp(now))
+		} else if e == nil && accountStatus != "active" {
+			return ErrAccountUnavailable
 		}
 		if e != nil {
 			return e
