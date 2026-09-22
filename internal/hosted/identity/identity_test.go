@@ -129,7 +129,7 @@ func TestInviteOnlyRejectsUninvitedWithoutCreatingToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	mail := &sender{}
 	s := &identity.Service{Store: db, Sender: mail, Origin: "https://example.test", RegistrationMode: contracts.RegistrationInviteOnly, InviteAllowlist: map[string]struct{}{"allowed@example.com": {}}}
 	if err = s.RequestLink(ctx, "blocked@example.com", "127.0.0.1"); !errors.Is(err, identity.ErrInviteRequired) {
@@ -153,7 +153,7 @@ func TestInviteOnlyAllowsExistingActiveAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	account, err := db.CreateAccount(ctx, "existing@example.com")
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +185,7 @@ func TestConsumeDoesNotReanimateUnavailableAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	account, err := db.CreateAccount(ctx, "restore@example.com")
 	if err != nil {
 		t.Fatal(err)
