@@ -4,15 +4,15 @@ Messages: 10000. Claims: 10000. Vectors: 20050. Cache hits: 10000. Live model ca
 
 | Stage | Items | Seconds |
 | --- | ---: | ---: |
-| poll | 10000 | 0.358 |
-| store_sources | 10000 | 33.420 |
-| chunk_extract | 10000 | 1.021 |
-| reconcile | 10000 | 7.564 |
-| write_claims | 10000 | 0.991 |
-| index | 10000 | 14.430 |
-| embed | 20050 | 8.245 |
-| **Measured total** | | **66.030** |
+| poll | 10000 | 0.346 |
+| store_sources | 10000 | 32.329 |
+| chunk_extract | 10000 | 0.979 |
+| reconcile | 10000 | 7.217 |
+| write_claims | 10000 | 0.951 |
+| index | 10000 | 13.946 |
+| embed | 20050 | 8.005 |
+| **Measured total** | | **63.772** |
 
-Previous run: 56.280 seconds. Change: +17.32%.
+Previous run: 66.030 seconds. Change: -3.42%.
 
 Corpus generation, synthetic mailbox loading, and cache preparation are excluded. These fixture outputs measure pipeline overhead; they do not measure live-model quality or network latency.
