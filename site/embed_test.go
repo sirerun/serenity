@@ -15,6 +15,13 @@ func TestPublicFilesOnly(t *testing.T) {
 	}{
 		{"/", 200, "keep your context"},
 		{"/docs/", 200, "<!doctype html>"},
+		{"/docs/connections/", 200, "Connect your agent"},
+		{"/docs/connections/claude-code/", 200, "Claude Code"},
+		{"/docs/connections/codex/", 200, "Codex"},
+		{"/docs/connections/other-mcp/", 200, "Other MCP clients"},
+		{"/docs/connections/rakazo/", 200, "Rakazo"},
+		{"/docs/connections/claude-web/", 200, "Claude on the web"},
+		{"/docs/connections/chatgpt/", 200, "Not ready to connect yet"},
 		{"/assets/hosted.css", 200, ".hosted-main"},
 		{"/assets/", 404, "404"},
 		{"/embed.go", 404, "404"},
