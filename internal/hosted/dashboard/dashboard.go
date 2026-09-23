@@ -5,8 +5,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"html/template"
-
-	website "github.com/sirerun/serenity/site"
 	"net"
 	"net/http"
 	"strings"
@@ -20,6 +18,7 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/meter"
 	"github.com/sirerun/serenity/internal/hosted/provision"
 	"github.com/sirerun/serenity/internal/hosted/store"
+	website "github.com/sirerun/serenity/site"
 )
 
 type Dashboard struct {

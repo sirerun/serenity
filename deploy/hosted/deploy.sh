@@ -55,7 +55,11 @@ install -m 0755 "$work/serenity" "/usr/local/lib/serenity/serenity-${number}"
 ln -sfn "/usr/local/lib/serenity/serenity-${number}" /usr/local/bin/serenity
 chown serenity:serenity /var/lib/serenity
 install -m 0644 "$script_dir/serenity-hosted.service" /etc/systemd/system/serenity-hosted.service
-install -m 0644 "$script_dir/Caddyfile" /etc/caddy/Caddyfile
+caddy_config="$script_dir/Caddyfile"
+if [[ "${SERENITY_DOMAIN_CUTOVER:-0}" == 1 ]]; then
+    caddy_config="$script_dir/Caddyfile.cutover"
+fi
+install -m 0644 "$caddy_config" /etc/caddy/Caddyfile
 caddy validate --config /etc/caddy/Caddyfile
 install -d -m 0755 /opt/serenity-hosted
 install -m 0755 "$script_dir/backup.sh" /opt/serenity-hosted/backup.sh
