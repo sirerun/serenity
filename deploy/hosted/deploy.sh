@@ -39,7 +39,7 @@ import json, os
 path = "/etc/serenity/hosted.json"
 with open(path) as f:
     config = json.load(f)
-if config.get("public_origin") == "https://app.serenity.sire.run":
+if os.environ.get("SERENITY_DOMAIN_CUTOVER") != "1" and config.get("public_origin") == "https://app.serenity.sire.run":
     config["public_origin"] = "https://serenity.sire.run"
     temporary = path + ".new"
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
