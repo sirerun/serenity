@@ -4,6 +4,10 @@ set -euo pipefail
 version=${1:?usage: deploy.sh VERSION ARCHIVE_SHA256}
 checksum=${2:?usage: deploy.sh VERSION ARCHIVE_SHA256 BACKUP_BUCKET}
 backup_bucket=${3:?usage: deploy.sh VERSION ARCHIVE_SHA256 BACKUP_BUCKET}
+mode=${4:-final}
+[[ "$mode" == cutover || "$mode" == final ]] || { echo 'Mode must be cutover or final' >&2; exit 1; }
+export SERENITY_DOMAIN_CUTOVER=0
+[[ "$mode" != cutover ]] || export SERENITY_DOMAIN_CUTOVER=1
 [[ "$backup_bucket" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || { echo "Invalid backup bucket" >&2; exit 1; }
 [[ "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+([.-][a-zA-Z0-9.-]+)?$ ]] || { echo 'Invalid version' >&2; exit 1; }
 [[ "$checksum" =~ ^[a-f0-9]{64}$ ]] || { echo 'Invalid SHA256' >&2; exit 1; }
@@ -33,6 +37,25 @@ done
 if [[ ! -e /etc/serenity/hosted.json ]]; then
     install -m 0600 -o serenity -g serenity "$script_dir/config.example.json" /etc/serenity/hosted.json
 fi
+
+caddy_config="$script_dir/Caddyfile"
+if [[ "${SERENITY_DOMAIN_CUTOVER:-0}" == 1 ]]; then
+    caddy_config="$script_dir/Caddyfile.cutover"
+fi
+caddy validate --config "$caddy_config" --adapter caddyfile
+# Keep one pre-cutover rollback snapshot; final activation must not replace it.
+rollback=/root/serenity-domain-rollback
+if [[ ! -d "$rollback" && -f /etc/caddy/Caddyfile && -L /usr/local/bin/serenity ]]; then
+    install -d -m 0700 "$rollback"
+    cp -p /etc/serenity/hosted.json "$rollback/hosted.json"
+    cp -p /etc/caddy/Caddyfile "$rollback/Caddyfile"
+    readlink /usr/local/bin/serenity > "$rollback/binary-path"
+fi
+install -d -m 0755 /usr/local/lib/serenity
+install -m 0755 "$work/serenity" "/usr/local/lib/serenity/serenity-${number}"
+ln -sfn "/usr/local/lib/serenity/serenity-${number}" /usr/local/bin/serenity
+chown serenity:serenity /var/lib/serenity
+install -m 0644 "$script_dir/serenity-hosted.service" /etc/systemd/system/serenity-hosted.service
 # Migrate the old default origin and sender; preserve custom operator settings.
 python3 - <<'PYCONFIG'
 import json, os
@@ -56,17 +79,7 @@ if changed:
     os.chown(temporary, metadata.st_uid, metadata.st_gid)
     os.replace(temporary, path)
 PYCONFIG
-install -d -m 0755 /usr/local/lib/serenity
-install -m 0755 "$work/serenity" "/usr/local/lib/serenity/serenity-${number}"
-ln -sfn "/usr/local/lib/serenity/serenity-${number}" /usr/local/bin/serenity
-chown serenity:serenity /var/lib/serenity
-install -m 0644 "$script_dir/serenity-hosted.service" /etc/systemd/system/serenity-hosted.service
-caddy_config="$script_dir/Caddyfile"
-if [[ "${SERENITY_DOMAIN_CUTOVER:-0}" == 1 ]]; then
-    caddy_config="$script_dir/Caddyfile.cutover"
-fi
 install -m 0644 "$caddy_config" /etc/caddy/Caddyfile
-caddy validate --config /etc/caddy/Caddyfile
 install -d -m 0755 /opt/serenity-hosted
 install -m 0755 "$script_dir/backup.sh" /opt/serenity-hosted/backup.sh
 printf 'SERENITY_BACKUP_BUCKET=%s\n' "$backup_bucket" > "$work/backup.env"

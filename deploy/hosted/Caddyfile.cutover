@@ -1,13 +1,12 @@
-# Temporary dual-host proxy while the canonical DNS record propagates.
-serenity.sire.run, app.serenity.sire.run {
+# Temporary redirect keeps forms on the configured origin until DNS settles.
+serenity.sire.run {
+    redir https://app.serenity.sire.run{uri} 307
+}
+
+app.serenity.sire.run {
     encode zstd gzip
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        Referrer-Policy "same-origin"
-    }
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
     reverse_proxy 127.0.0.1:8090 {
-        # Replace any caller-supplied header with the actual client address.
         header_up X-Serenity-Client-IP {remote_host}
     }
 }

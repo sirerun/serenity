@@ -52,7 +52,12 @@ test.afterAll(async () => {
 });
 
 test('signup, one-time credential, save, export, revoke, logout and expired link', async ({ page }, testInfo) => {
+  const violations = [];
+  await page.exposeFunction('recordCSPViolation', directive => violations.push(directive));
+  await page.addInitScript(() => document.addEventListener('securitypolicyviolation', event => window.recordCSPViolation(event.violatedDirective)));
   await page.goto(origin);
+  await expect(page.locator('.dot-svg').first()).toBeAttached();
+  expect(violations).toEqual([]);
   await page.getByRole('link', { name: 'Sign in ↗', exact: true }).click();
   await expect(page).toHaveURL(`${origin}/login`);
   await expect(page.locator('.brand img')).toBeVisible();
