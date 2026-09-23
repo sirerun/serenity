@@ -135,7 +135,7 @@ func (c *Config) Validate(dev bool) error {
 		return errors.New("capacity values must be positive")
 	}
 	if c.Sender == "" {
-		c.Sender = "login@serenity.sire.run"
+		c.Sender = "login@mail.sire.run"
 	}
 	return nil
 }

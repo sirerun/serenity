@@ -230,7 +230,7 @@ func TestHostedJourneyAndIsolation(t *testing.T) {
 		t.Fatalf("restart recall %s", body)
 	}
 	// Cookie jars are host-scoped and survive a changed local port.
-	resp, e = a.Get(server.URL + "/")
+	resp, e = a.Get(server.URL + "/dashboard")
 	if e != nil {
 		t.Fatal(e)
 	}
