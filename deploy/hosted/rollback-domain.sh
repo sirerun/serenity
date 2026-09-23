@@ -10,6 +10,18 @@ binary=$(cat "$backup/binary-path")
 [[ -x "$binary" ]] || { echo 'Previous binary is unavailable' >&2; exit 1; }
 caddy validate --config "$backup/Caddyfile" --adapter caddyfile
 cp -p "$backup/hosted.json" /etc/serenity/hosted.json
+# Retain the approved sender correction even when restoring the old origin.
+python3 - <<'PYCONFIG'
+import json
+path = "/etc/serenity/hosted.json"
+with open(path) as f:
+    config = json.load(f)
+if config.get("sender") == "login@serenity.sire.run":
+    config["sender"] = "login@mail.sire.run"
+    with open(path, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+PYCONFIG
 cp -p "$backup/Caddyfile" /etc/caddy/Caddyfile
 ln -sfn "$binary" /usr/local/bin/serenity
 systemctl restart serenity-hosted

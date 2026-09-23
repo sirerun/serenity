@@ -6,3 +6,5 @@ body{min-height:100svh;background:linear-gradient(#ececebba,#ececebf5),url("http
 body{background-color:var(--paper)}
 
 .danger-zone{border-color:var(--accent)!important}.danger-zone button{color:var(--accent);border-color:var(--accent)}@media(max-width:767px){body{background-attachment:scroll}.site-nav{flex-wrap:wrap;height:auto;min-height:76px;padding-top:14px;padding-bottom:14px}}
+
+.danger-zone button:hover{color:#fff}

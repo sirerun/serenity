@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Run via SSM on the reviewed hosted instance. Never prints secret values.
 set -euo pipefail
-version=${1:?usage: deploy.sh VERSION ARCHIVE_SHA256}
-checksum=${2:?usage: deploy.sh VERSION ARCHIVE_SHA256 BACKUP_BUCKET}
-backup_bucket=${3:?usage: deploy.sh VERSION ARCHIVE_SHA256 BACKUP_BUCKET}
-mode=${4:-final}
+version=${1:?usage: deploy.sh VERSION ARCHIVE_SHA256 BACKUP_BUCKET cutover|final}
+checksum=${2:?usage: deploy.sh VERSION ARCHIVE_SHA256 BACKUP_BUCKET cutover|final}
+backup_bucket=${3:?usage: deploy.sh VERSION ARCHIVE_SHA256 BACKUP_BUCKET cutover|final}
+mode=${4:?usage: deploy.sh VERSION ARCHIVE_SHA256 BACKUP_BUCKET cutover|final}
 [[ "$mode" == cutover || "$mode" == final ]] || { echo 'Mode must be cutover or final' >&2; exit 1; }
 export SERENITY_DOMAIN_CUTOVER=0
 [[ "$mode" != cutover ]] || export SERENITY_DOMAIN_CUTOVER=1
@@ -46,10 +46,11 @@ caddy validate --config "$caddy_config" --adapter caddyfile
 # Keep one pre-cutover rollback snapshot; final activation must not replace it.
 rollback=/root/serenity-domain-rollback
 if [[ ! -d "$rollback" && -f /etc/caddy/Caddyfile && -L /usr/local/bin/serenity ]]; then
-    install -d -m 0700 "$rollback"
-    cp -p /etc/serenity/hosted.json "$rollback/hosted.json"
-    cp -p /etc/caddy/Caddyfile "$rollback/Caddyfile"
-    readlink /usr/local/bin/serenity > "$rollback/binary-path"
+    snapshot=$(mktemp -d /root/serenity-domain-rollback.XXXXXX)
+    cp -p /etc/serenity/hosted.json "$snapshot/hosted.json"
+    cp -p /etc/caddy/Caddyfile "$snapshot/Caddyfile"
+    readlink /usr/local/bin/serenity > "$snapshot/binary-path"
+    mv "$snapshot" "$rollback"
 fi
 install -d -m 0755 /usr/local/lib/serenity
 install -m 0755 "$work/serenity" "/usr/local/lib/serenity/serenity-${number}"
@@ -92,7 +93,7 @@ systemctl enable --now caddy
 systemctl enable --now serenity-hosted
 systemctl restart serenity-hosted
 systemctl reload caddy
-curl --fail --max-time 10 http://127.0.0.1:8090/readyz
+curl --fail --retry 5 --retry-connrefused --max-time 10 http://127.0.0.1:8090/readyz
 systemctl start serenity-backup.service
 systemctl enable --now serenity-backup.timer
 echo "Hosted Serenity ${number} is locally ready. Public smoke and release acceptance are separate."

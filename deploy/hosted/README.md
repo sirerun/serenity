@@ -25,7 +25,7 @@ reviewed release commit. DNS changes use foundation's isolated
    redirects. Verify canonical landing, docs, login, dashboard and readiness.
 
 The mode is an explicit fourth argument, so sudo cannot discard it. Subsequent
-normal releases default to `final`. The migration preserves custom origins and
+normal releases also require the explicit `final` argument. The migration preserves custom origins and
 senders and moves only the obsolete default sender to `login@mail.sire.run`,
 which was verified in Resend. Config ownership and private permissions persist.
 
@@ -37,7 +37,8 @@ new dashboard connections advertise `https://serenity.sire.run/mcp`.
 ## Rollback
 
 Run the pinned `rollback-domain.sh` through SSM. It restores the saved public
-origin, Caddyfile and binary together, then checks readiness. Revert the CNAME
+origin, Caddyfile and binary together, retains the verified sender correction,
+and then checks readiness. Revert the CNAME
 to `sirerun.github.io.` through foundation's isolated workflow. Keep the Pages
 site and its custom-domain TLS certificate available throughout the cutover;
 verify HTTPS on that target before reverting DNS. Do not overwrite the saved

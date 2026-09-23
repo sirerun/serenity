@@ -52,12 +52,16 @@ test.afterAll(async () => {
 });
 
 test('signup, one-time credential, save, export, revoke, logout and expired link', async ({ page }, testInfo) => {
-  const violations = [];
-  await page.exposeFunction('recordCSPViolation', directive => violations.push(directive));
-  await page.addInitScript(() => document.addEventListener('securitypolicyviolation', event => window.recordCSPViolation(event.violatedDirective)));
-  await page.goto(origin);
+  await page.addInitScript(() => {
+    window.cspViolations = [];
+    document.addEventListener('securitypolicyviolation', event => window.cspViolations.push(event.violatedDirective));
+  });
+  for (const route of ['/docs/', '/chat/', '/get-started/', '/product/', '/']) {
+    await page.goto(origin + route);
+    await page.evaluate(() => document.fonts.ready);
+    expect(await page.evaluate(() => window.cspViolations)).toEqual([]);
+  }
   await expect(page.locator('.dot-svg').first()).toBeAttached();
-  expect(violations).toEqual([]);
   await page.getByRole('link', { name: 'Sign in ↗', exact: true }).click();
   await expect(page).toHaveURL(`${origin}/login`);
   await expect(page.locator('.brand img')).toBeVisible();
@@ -72,6 +76,10 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
   await expect(page.getByRole('heading', { name: 'Your private memory' })).toBeVisible();
   await expect(page).toHaveURL(`${origin}/dashboard`);
   await page.screenshot({ path: testInfo.outputPath('dashboard.png'), fullPage: true });
+  const deletion = page.getByRole('button', { name: 'Delete my account', exact: true });
+  await deletion.hover();
+  const dangerColors = await deletion.evaluate(el => ({ color: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor }));
+  expect(dangerColors.color).not.toBe(dangerColors.background);
   await page.getByRole('button', { name: 'Create connection token' }).click();
   const token = await page.getByLabel('Bearer token — shown once').inputValue();
   expect(token).toMatch(/^sk_live_[a-f0-9]{8}_[A-Za-z0-9_-]{43}$/);
