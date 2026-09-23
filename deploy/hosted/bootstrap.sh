@@ -40,7 +40,8 @@ mountpoint -q /var/lib/serenity || mount /var/lib/serenity
 mountpoint -q /var/lib/serenity || { echo 'Persistent data volume is not mounted' >&2; exit 1; }
 
 # Install only host prerequisites; no application release or provider call occurs here.
-dnf install -y awscli-2 curl git gzip jq tar util-linux shadow-utils
+dnf install -y awscli-2 git gzip jq tar util-linux shadow-utils
+command -v curl >/dev/null || { echo 'curl is required (curl-minimal is acceptable)' >&2; exit 1; }
 
 # Install a pinned Caddy release for the HTTPS reverse proxy.
 if ! command -v caddy >/dev/null || [[ "$(caddy version 2>/dev/null | awk 'NR==1 {print $1}' | sed 's/^v//')" != "$CADDY_VERSION" ]]; then
