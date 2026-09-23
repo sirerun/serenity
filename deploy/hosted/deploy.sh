@@ -46,7 +46,9 @@ printf 'SERENITY_BACKUP_BUCKET=%s\n' "$backup_bucket" > "$work/backup.env"
 install -m 0600 -o serenity -g serenity "$work/backup.env" /etc/serenity/backup.env
 install -m 0644 "$script_dir/serenity-backup.service" /etc/systemd/system/serenity-backup.service
 install -m 0644 "$script_dir/serenity-backup.timer" /etc/systemd/system/serenity-backup.timer
+install -m 0644 "$script_dir/caddy.service" /etc/systemd/system/caddy.service
 systemctl daemon-reload
+systemctl enable --now caddy
 systemctl enable --now serenity-hosted
 systemctl restart serenity-hosted
 systemctl reload caddy
