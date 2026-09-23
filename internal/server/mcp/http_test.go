@@ -21,6 +21,7 @@ import (
 type httpClient struct {
 	t         *testing.T
 	srv       *httptest.Server
+	client    *http.Client
 	sessionID string
 }
 
@@ -34,7 +35,7 @@ func newHTTPTestServer(t *testing.T, tools ...mcp.Tool) (*httpClient, *mcp.HTTPH
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	t.Cleanup(h.Close)
-	return &httpClient{t: t, srv: ts}, h
+	return &httpClient{t: t, srv: ts, client: ts.Client()}, h
 }
 
 type postResult struct {
@@ -64,7 +65,7 @@ func (c *httpClient) postRaw(body string, headers map[string]string, contentType
 			req.Header.Set(k, v)
 		}
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		c.t.Fatal(err)
 	}
@@ -357,7 +358,7 @@ func TestHTTPDeleteEndsSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set(mcp.SessionIDHeader, c.sessionID)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,7 +421,7 @@ func TestHTTPDisconnectDoesNotCancelToolWork(t *testing.T) {
 
 	respCh := make(chan error, 1)
 	go func() {
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := c.client.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
 		}
@@ -472,7 +473,7 @@ func TestHTTPCloseJoinsInFlightWork(t *testing.T) {
 	h := mcp.NewHTTPHandler(srv)
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
-	c := &httpClient{t: t, srv: ts}
+	c := &httpClient{t: t, srv: ts, client: ts.Client()}
 	c.initialize()
 
 	reqCtx, cancelReq := context.WithCancel(context.Background())
@@ -485,7 +486,7 @@ func TestHTTPCloseJoinsInFlightWork(t *testing.T) {
 	req.Header.Set(mcp.SessionIDHeader, c.sessionID)
 	req.Header.Set(mcp.ProtocolVersionHeader, mcp.ProtocolVersion)
 	go func() {
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := c.client.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
 		}
@@ -522,7 +523,7 @@ func TestHTTPMetricsTrackCallLifecycle(t *testing.T) {
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	t.Cleanup(h.Close)
-	c := &httpClient{t: t, srv: ts}
+	c := &httpClient{t: t, srv: ts, client: ts.Client()}
 	c.initialize()
 	req, err := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"block"}}`))
 	if err != nil {
@@ -534,7 +535,7 @@ func TestHTTPMetricsTrackCallLifecycle(t *testing.T) {
 	respCh := make(chan *http.Response, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		resp, requestErr := http.DefaultClient.Do(req)
+		resp, requestErr := c.client.Do(req)
 		if requestErr != nil {
 			errCh <- requestErr
 			return
@@ -578,7 +579,7 @@ func TestHTTPMetricsTrackCancellation(t *testing.T) {
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	t.Cleanup(h.Close)
-	c := &httpClient{t: t, srv: ts}
+	c := &httpClient{t: t, srv: ts, client: ts.Client()}
 	c.initialize()
 	req, err := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"cancel"}}`))
 	if err != nil {
@@ -588,7 +589,7 @@ func TestHTTPMetricsTrackCancellation(t *testing.T) {
 	req.Header.Set(mcp.SessionIDHeader, c.sessionID)
 	req.Header.Set(mcp.ProtocolVersionHeader, mcp.ProtocolVersion)
 	go func() {
-		resp, requestErr := http.DefaultClient.Do(req)
+		resp, requestErr := c.client.Do(req)
 		if requestErr == nil {
 			_ = resp.Body.Close()
 		}
@@ -629,7 +630,7 @@ func TestHTTPMetricsTrackRejectedSessions(t *testing.T) {
 			t.Fatal(err)
 		}
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := c.client.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -670,8 +671,8 @@ func TestHTTPAdmissionRejectsAndReleasesOnCancellation(t *testing.T) {
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	t.Cleanup(h.Close)
-	first := &httpClient{t: t, srv: ts}
-	second := &httpClient{t: t, srv: ts}
+	first := &httpClient{t: t, srv: ts, client: ts.Client()}
+	second := &httpClient{t: t, srv: ts, client: ts.Client()}
 	first.initialize()
 	second.initialize()
 
@@ -732,8 +733,8 @@ func TestHTTPAdmissionDoesNotReleaseBeforeWorkerReturns(t *testing.T) {
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	t.Cleanup(h.Close)
-	first := &httpClient{t: t, srv: ts}
-	second := &httpClient{t: t, srv: ts}
+	first := &httpClient{t: t, srv: ts, client: ts.Client()}
+	second := &httpClient{t: t, srv: ts, client: ts.Client()}
 	first.initialize()
 	second.initialize()
 	firstCall := make(chan postResult, 1)
