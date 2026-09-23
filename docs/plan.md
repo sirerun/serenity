@@ -75,6 +75,10 @@ Task lines mirror the epic files (ids resolve there). Shipped waves are trimmed.
 ### Wave 22: import timing (1 open)
 - [ ] T22.1 Diagnose and resolve the final import timing failure
 
+### Wave 24: client fit (1 open)
+- [ ] T24.1 Rank `recall` facts by the query. Today `facts` is the newest-first entity page (`internal/server/memory/recall.go`), and the query drives only the brain-wide `results` search, which the Rakazo adapter ignores. So recall for a bot returns its latest N facts, not the relevant ones, and hosted still pays for an embedding per call. Order entity-scoped facts by query relevance when `query` is set, keeping recency as the tiebreak and as the order when `query` is empty. Keep the response shape and MEMORY_VERBS v1 compatibility.
+  acc: `go test ./internal/server/memory/... -run Recall` passes with a new case where an older fact that matches the query ranks above newer non-matching facts in the same entity, and an empty query keeps newest-first order.
+
 ### E23 waves (40 open; full rows, acc lines, deps and steps in docs/launch/hosted-plan.md)
 - Wave 0, reconcile and measure: T23.1 merge the PR stack; T23.2 land `1dfecc8`; T23.3 topology and cost spike; T23.4 control DB and hosted store.
 - Wave 1, vertical slice local: T23.5 provisioning state machine; T23.6 client credentials; T23.7 hosted MCP gateway; T23.8 brain runtime pool; T23.9 magic-link identity and sessions; T23.10 dashboard Connect Rakazo; T23.11 `serenity hosted serve` and readiness; T23.12 slice proof harness.
