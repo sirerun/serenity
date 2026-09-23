@@ -59,7 +59,7 @@ fi
 id serenity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/serenity --shell /sbin/nologin serenity
 install -d -m 0700 -o serenity -g serenity /etc/serenity /etc/serenity/secrets
 install -d -m 0755 /etc/caddy
-install -d -m 0700 -o serenity -g serenity /var/lib/serenity
+install -d -m 0700 -o serenity -g serenity /var/lib/serenity /var/lib/serenity/brains
 systemctl enable --now amazon-ssm-agent.service
 printf 'architecture=%s\ndata_device=%s\ndata_uuid=%s\ncaddy_version=%s\n' \
   "$(uname -m)" "$DATA_DEVICE" "$uuid" "$CADDY_VERSION" > /etc/serenity/bootstrap.state
