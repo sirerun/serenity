@@ -56,8 +56,9 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
     window.cspViolations = [];
     document.addEventListener('securitypolicyviolation', event => window.cspViolations.push(event.violatedDirective));
   });
-  for (const route of ['/docs/', '/chat/', '/get-started/', '/product/', '/']) {
-    await page.goto(origin + route);
+  for (const route of ['/docs/', '/chat/', '/get-started/', '/product/', '/docs/connections/', '/docs/connections/claude-code/', '/docs/connections/codex/', '/docs/connections/other-mcp/', '/docs/connections/rakazo/', '/docs/connections/claude-web/', '/docs/connections/chatgpt/', '/']) {
+    const response = await page.goto(origin + route);
+    expect(response.status(), route).toBe(200);
     await page.evaluate(() => document.fonts.ready);
     expect(await page.evaluate(() => window.cspViolations)).toEqual([]);
   }
@@ -74,6 +75,13 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
   const link = log.match(/Development login: (http:\/\/\S+)/)[1];
   await page.goto(link);
   await expect(page.getByRole('heading', { name: 'Your private memory' })).toBeVisible();
+  await expect(page).toHaveURL(`${origin}/dashboard`);
+  await expect(page.getByRole('heading', { name: 'Connect your agent', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Connect Rakazo', exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: 'Choose your agent harness' }).click();
+  await page.getByRole('link', { name: /ChatGPT/ }).click();
+  await expect(page.getByRole('heading', { name: 'Not ready to connect yet' })).toBeVisible();
+  await page.getByRole('link', { name: 'Your memory', exact: true }).click();
   await expect(page).toHaveURL(`${origin}/dashboard`);
   await page.screenshot({ path: testInfo.outputPath('dashboard.png'), fullPage: true });
   const deletion = page.getByRole('button', { name: 'Delete my account', exact: true });
