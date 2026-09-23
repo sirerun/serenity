@@ -2,7 +2,7 @@
   "bind": "127.0.0.1:8090",
   "data_dir": "/var/lib/serenity",
   "secrets_dir": "/etc/serenity/secrets",
-  "public_origin": "https://app.serenity.sire.run",
+  "public_origin": "https://serenity.sire.run",
   "embedding_model": "perplexity/pplx-embed-v1-0.6b",
   "embedding_version": "openrouter-pplx-embed-v1-0.6b",
   "sender": "login@serenity.sire.run",

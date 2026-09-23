@@ -2,8 +2,11 @@
 package dashboard
 
 import (
+	_ "embed"
 	"encoding/json"
 	"html/template"
+
+	website "github.com/sirerun/serenity/site"
 	"net"
 	"net/http"
 	"strings"
@@ -63,7 +66,8 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("GET /login", d.login)
 	mux.HandleFunc("POST /login", d.requestLink)
 	mux.HandleFunc("GET /login/consume", d.consume)
-	mux.HandleFunc("GET /{$}", d.home)
+	mux.Handle("GET /", website.Handler())
+	mux.HandleFunc("GET /dashboard", d.home)
 	mux.HandleFunc("GET /billing", d.home)
 	mux.HandleFunc("POST /credentials", d.issue)
 	mux.HandleFunc("POST /brains", d.addBrain)
@@ -75,10 +79,14 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("POST /credentials/revoke", d.revoke)
 	mux.HandleFunc("POST /logout", d.logout)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if handler, pattern := mux.Handler(r); pattern == "GET /" {
+			handler.ServeHTTP(w, r)
+			return
+		}
 		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https://d2ol7oe51mr4n9.cloudfront.net; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 		if r.Method == http.MethodPost {
 			r.Body = http.MaxBytesReader(w, r.Body, 8192)
 			if r.Header.Get("Sec-Fetch-Site") == "cross-site" || (r.Header.Get("Origin") != "" && r.Header.Get("Origin") != d.Origin) {
@@ -133,7 +141,7 @@ func (d *Dashboard) consume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "serenity_session", Value: raw, Path: "/", HttpOnly: true, Secure: !d.Dev, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 3600})
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
 func (d *Dashboard) session(w http.ResponseWriter, r *http.Request, mutation bool) (identity.Session, bool) {
 	cookie, err := r.Cookie("serenity_session")
@@ -247,7 +255,7 @@ func (d *Dashboard) revoke(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Connection not found", http.StatusNotFound)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
 func (d *Dashboard) logout(w http.ResponseWriter, r *http.Request) {
 	_, ok := d.session(w, r, true)
@@ -267,9 +275,10 @@ func (d *Dashboard) logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
-var page = template.Must(template.New("page").Parse(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{.Title}} · Serenity</title><style>
-:root{color-scheme:light;font-family:system-ui,sans-serif;color:#223b32;background:#f4f3ed}*{box-sizing:border-box}body{margin:0}header,main,footer{max-width:760px;margin:auto;padding:24px}header{border-bottom:1px solid #d5ddd4;display:flex;justify-content:space-between;align-items:center}header a{font-family:Georgia,serif;font-size:24px;color:inherit;text-decoration:none}main{padding-top:64px;min-height:65vh}h1{font-family:Georgia,serif;font-weight:400;font-size:clamp(32px,6vw,48px);letter-spacing:-.035em;line-height:1.1}p,li{line-height:1.6}section{background:white;border:1px solid #d5ddd4;padding:24px;margin:24px 0;border-radius:12px}label{display:block;margin:18px 0 8px}input,textarea{font:inherit;width:100%;padding:12px;border:1px solid #80968a;border-radius:6px;background:#fff}textarea{resize:vertical;min-height:84px;overflow-wrap:anywhere}button{font:inherit;background:#244a3a;color:white;border:0;border-radius:6px;padding:12px 18px;cursor:pointer;margin:12px 0}button.secondary{background:#edf0e8;color:#244a3a}a{color:#244a3a}form.inline{display:inline-block;margin-right:12px}.hint,footer{color:#53655a;font-size:14px}code{overflow-wrap:anywhere}ol{padding-left:22px}:focus-visible{outline:3px solid #9b610e;outline-offset:3px}@media(max-width:450px){main{padding-top:28px}section{padding:16px}}
-table{width:100%;border-collapse:collapse;font-size:.82rem}th,td{text-align:right;padding:.6rem .2rem;overflow-wrap:anywhere}th:first-child,td:first-child{text-align:left}tbody tr+tr{border-top:1px solid #dde4df}</style><script src="/assets/app.js" defer></script></head><body><header><a href="/">Serenity</a>{{if .SignedIn}}<form method="post" action="/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="secondary">Sign out</button></form>{{end}}</header><main><h1>{{.Title}}</h1>{{if .Message}}<p role="status">{{.Message}}</p>{{end}}{{if .SignedIn}}<p>Give your agent memory that stays with you across conversations.</p><section><h2>Connect Rakazo</h2>{{if .Plan}}<p>{{.Plan}} plan · Private brain ready</p>{{end}}<label for="endpoint">MCP endpoint</label><input id="endpoint" readonly value="{{.Endpoint}}"><button type="button" class="secondary" data-copy="endpoint">Copy endpoint</button>{{if .Token}}<label for="token">Bearer token — shown once</label><textarea id="token" readonly spellcheck="false">{{.Token}}</textarea><button type="button" class="secondary" data-copy="token">Copy token</button>{{else}}<form method="post" action="/credentials"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>Create connection token</button></form>{{end}}<ol><li>Open Rakazo settings and choose Serenity as your memory provider.</li><li>Paste the MCP endpoint and bearer token above.</li><li>Leave Brain label empty for your default memory.</li><li>Choose “Recall and write” to save memories, then save your settings.</li></ol><p class="hint">{{if .Connected}}Connected: your agent has discovered its memory tools.{{else}}Waiting for your agent to connect.{{end}} {{if .MemorySaved}}First memory saved.{{end}}</p></section>{{if .OperationKey}}<section><h2>Save your first memory</h2><form method="post" action="/memories"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="brain_id" value="{{.BrainID}}"><input type="hidden" name="operation_key" value="{{.OperationKey}}"><label for="fact">What should your agent remember?</label><textarea id="fact" name="fact" required maxlength="4096" placeholder="I prefer concise answers with source links."></textarea><button>Save memory</button></form><p class="hint">Your text is sent to the configured embedding provider for semantic retrieval. It is not shared with other accounts.</p></section>{{end}}{{if .Usage}}<section><h2>Usage this period</h2><table><thead><tr><th>Allowance</th><th>Used</th><th>Limit</th><th>Remaining</th></tr></thead><tbody>{{range .Usage}}<tr><td>{{.Name}}</td><td>{{.Used}}</td><td>{{.Limit}}</td><td>{{.Remaining}}</td></tr>{{end}}</tbody></table><p>Resets {{.Reset}}. Limits are shared across your brains.</p></section>{{end}}{{if .Billing}}<section><h2>Your plan</h2><p>Free: 1 brain, 1,000 memories, 500 new writes and 10,000 recalls per month. No card required.</p><form class="inline" method="post" action="/billing/checkout"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="plan" value="builder"><button>Builder · $19/month</button></form><form class="inline" method="post" action="/billing/checkout"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="plan" value="scale"><button>Scale · $49/month</button></form><form method="post" action="/billing/portal"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="secondary">Manage billing</button></form></section>{{end}}{{if .Brains}}<section><h2>Your brains</h2>{{range .Brains}}<p><code>{{.ID}}</code> · {{.State}}</p><form method="post" action="/credentials"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="brain_id" value="{{.ID}}"><button class="secondary">Connect this brain</button></form><a href="/brains/{{.ID}}/export">Export memory</a><form method="post" action="/brains/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$.CSRF}}"><label><input type="checkbox" name="confirm" value="delete" required> Delete this brain and revoke its connections</label><button class="secondary">Delete brain</button></form>{{end}}{{if .CanAddBrain}}<form method="post" action="/brains"><input type="hidden" name="csrf" value="{{.CSRF}}"><button>Add private brain</button></form>{{end}}</section>{{end}}<section><h2>Manage access</h2><p>Replace credentials to invalidate existing connections, or revoke all access to this brain.</p><form class="inline" method="post" action="/credentials/rotate"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="brain_id" value="{{.BrainID}}"><button class="secondary">Replace credentials</button></form><form class="inline" method="post" action="/credentials/revoke"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="brain_id" value="{{.BrainID}}"><button class="secondary">Revoke access</button></form></section>{{else}}<p>Sign in with your email. No password or server setup needed.</p><form method="post" action="/login"><label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="email" required maxlength="254"><button>Send sign-in link</button></form>{{end}}{{if .SignedIn}}<section><h2>Delete account</h2><p>This cancels your subscription, revokes connections and deletes your current memory. Backups have a separate retention window.</p><form method="post" action="/account/delete"><input type="hidden" name="csrf" value="{{.CSRF}}"><label for="delete-confirm">Type DELETE to confirm</label><input id="delete-confirm" name="confirm" required pattern="DELETE" autocomplete="off"><button class="secondary">Delete my account</button></form></section>{{end}}</main><footer>Private memory, on your terms. Forget withdraws a fact from current memory; Git history can retain earlier content. Account deletion has a separate backup retention window.</footer></body></html>`))
+//go:embed page.html
+var pageHTML string
+
+var page = template.Must(template.New("page").Parse(pageHTML))
 
 func (d *Dashboard) addBrain(w http.ResponseWriter, r *http.Request) {
 	s, ok := d.session(w, r, true)
@@ -285,7 +294,7 @@ func (d *Dashboard) addBrain(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to add a brain. Check your plan limit.", http.StatusConflict)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
 
 func (d *Dashboard) remember(w http.ResponseWriter, r *http.Request) {
@@ -303,7 +312,7 @@ func (d *Dashboard) remember(w http.ResponseWriter, r *http.Request) {
 		render(w, 409, view{Title: "Memory was not saved", Message: "Check your memory size and plan limits, then try again."})
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
 
 func (d *Dashboard) export(w http.ResponseWriter, r *http.Request) {
@@ -334,7 +343,7 @@ func (d *Dashboard) deleteBrain(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to delete brain", http.StatusConflict)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
 
 func (d *Dashboard) deleteAccount(w http.ResponseWriter, r *http.Request) {

@@ -52,7 +52,12 @@ test.afterAll(async () => {
 });
 
 test('signup, one-time credential, save, export, revoke, logout and expired link', async ({ page }, testInfo) => {
-  await page.goto(`${origin}/login`);
+  await page.goto(origin);
+  await page.getByRole('link', { name: 'Sign in ↗', exact: true }).click();
+  await expect(page).toHaveURL(`${origin}/login`);
+  await expect(page.locator('.brand img')).toBeVisible();
+  expect(await page.locator('body').evaluate(el => getComputedStyle(el).margin)).toBe('0px');
+  await page.screenshot({ path: testInfo.outputPath('login.png'), fullPage: true });
   await page.getByLabel('Email address').fill(`${testInfo.project.name}@example.test`);
   await page.getByRole('button', { name: 'Send sign-in link' }).click();
   await expect(page.getByRole('heading', { name: 'Check your inbox' })).toBeVisible();
@@ -60,12 +65,14 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
   const link = log.match(/Development login: (http:\/\/\S+)/)[1];
   await page.goto(link);
   await expect(page.getByRole('heading', { name: 'Your private memory' })).toBeVisible();
+  await expect(page).toHaveURL(`${origin}/dashboard`);
+  await page.screenshot({ path: testInfo.outputPath('dashboard.png'), fullPage: true });
   await page.getByRole('button', { name: 'Create connection token' }).click();
   const token = await page.getByLabel('Bearer token — shown once').inputValue();
   expect(token).toMatch(/^sk_live_[a-f0-9]{8}_[A-Za-z0-9_-]{43}$/);
   await page.getByRole('button', { name: 'Copy token', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
-  await page.goto(origin);
+  await page.goto(`${origin}/dashboard`);
   await expect(page.getByLabel('Bearer token — shown once')).toHaveCount(0);
   const marker = 'My browser verification marker is amber heron.';
   await page.getByLabel('What should your agent remember?').fill(marker);

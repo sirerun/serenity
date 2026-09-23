@@ -33,6 +33,23 @@ done
 if [[ ! -e /etc/serenity/hosted.json ]]; then
     install -m 0600 -o serenity -g serenity "$script_dir/config.example.json" /etc/serenity/hosted.json
 fi
+# Preserve every operator setting while migrating the old public origin.
+python3 - <<'PYCONFIG'
+import json, os
+path = "/etc/serenity/hosted.json"
+with open(path) as f:
+    config = json.load(f)
+if config.get("public_origin") == "https://app.serenity.sire.run":
+    config["public_origin"] = "https://serenity.sire.run"
+    temporary = path + ".new"
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(config, f, indent=2)
+        f.write("\n")
+    metadata = os.stat(path)
+    os.chown(temporary, metadata.st_uid, metadata.st_gid)
+    os.replace(temporary, path)
+PYCONFIG
 install -d -m 0755 /usr/local/lib/serenity
 install -m 0755 "$work/serenity" "/usr/local/lib/serenity/serenity-${number}"
 ln -sfn "/usr/local/lib/serenity/serenity-${number}" /usr/local/bin/serenity
