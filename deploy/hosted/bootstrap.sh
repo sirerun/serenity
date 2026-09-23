@@ -4,7 +4,7 @@
 set -euo pipefail
 
 CADDY_VERSION=${CADDY_VERSION:-2.8.4}
-CADDY_SHA256=${CADDY_SHA256:-5466234be3e988071cef937aedbdd94c15b6f75cf7307397e67c2641219ac9bfe2c2bb3b31fc05bc68d3b6398bbe50abfa16ccf3b127318ccac31115ad26507c}
+CADDY_SHA256=${CADDY_SHA256:-93a3eb31883d678c6590c6d823eb6bb9f7a3af66dcd9d53df3eb2c7528b2af05}
 DATA_DEVICE=${SERENITY_DATA_DEVICE:-/dev/sdf}
 DATA_LABEL=serenity-data
 
@@ -58,6 +58,7 @@ fi
 
 id serenity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/serenity --shell /sbin/nologin serenity
 install -d -m 0700 -o serenity -g serenity /etc/serenity /etc/serenity/secrets
+install -d -m 0755 /etc/caddy
 install -d -m 0700 -o serenity -g serenity /var/lib/serenity
 systemctl enable --now amazon-ssm-agent.service
 printf 'architecture=%s\ndata_device=%s\ndata_uuid=%s\ncaddy_version=%s\n' \
