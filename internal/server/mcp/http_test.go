@@ -602,7 +602,18 @@ func TestHTTPMetricsTrackCancellation(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("cancelled tool did not finish")
 	}
-	metrics := h.Metrics()
+	var metrics mcp.HTTPMetrics
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		metrics = h.Metrics()
+		if metrics.CallsFinished == 1 && metrics.ActiveCalls == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
 	if metrics.ActiveCalls != 0 || metrics.CallsStarted != 1 || metrics.CallsFinished != 1 || metrics.CallsCanceled != 1 || metrics.CallLatencyNanos == 0 {
 		t.Fatalf("cancelled metrics = %+v, want one finished cancellation", metrics)
 	}
