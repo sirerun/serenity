@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -183,5 +184,109 @@ func TestCheckoutSurvivesRestartAndPreventsSecondPlan(t *testing.T) {
 	again, err := s.Checkout(ctx, a.ID, "builder")
 	if err != nil || first != again || creates.Load() != 1 {
 		t.Fatalf("retry=%q creates=%d err=%v", again, creates.Load(), err)
+	}
+}
+
+func TestReconcileCustomerAndCloseBillingAccount(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	a, err := db.CreateAccount(ctx, "reconcile@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_reconcile' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `INSERT INTO checkout_attempts(account_id,id,price_id,created_at) VALUES(?,?,?,?)`, a.ID, "attempt", "price_builder", store.Stamp(time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	state := struct {
+		subscription string
+		session      string
+	}{subscription: "active", session: "open"}
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/subscriptions":
+			if state.subscription == "" {
+				_, _ = w.Write([]byte(`{"data":[],"has_more":false}`))
+				return
+			}
+			_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_reconcile","customer":"cus_reconcile","status":%q,"items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]} }],"has_more":false}`, state.subscription, time.Now().Add(-time.Hour).Unix(), time.Now().Add(23*time.Hour).Unix())
+		case r.Method == "GET" && r.URL.Path == "/checkout/sessions/cs_reconcile":
+			_, _ = fmt.Fprintf(w, `{"id":"cs_reconcile","status":%q}`, state.session)
+		case r.Method == "POST" && r.URL.Path == "/checkout/sessions/cs_reconcile/expire":
+			state.session = "expired"
+			_, _ = w.Write([]byte(`{"id":"cs_reconcile","status":"expired"}`))
+		case r.Method == "DELETE" && r.URL.Path == "/subscriptions/sub_reconcile":
+			state.subscription = "canceled"
+			_, _ = w.Write([]byte(`{"id":"sub_reconcile","customer":"cus_reconcile","status":"canceled"}`))
+		default:
+			t.Errorf("unexpected provider request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}}
+	got, err := s.ReconcileCustomer(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Eligible || got.PlanID != "builder" || got.Source != "stripe_subscription" {
+		t.Fatalf("unexpected reconciliation result: %+v", got)
+	}
+	var plan string
+	if err = db.DB().QueryRowContext(ctx, `SELECT plan_id FROM accounts WHERE id=?`, a.ID).Scan(&plan); err != nil || plan != "builder" {
+		t.Fatalf("plan=%q err=%v", plan, err)
+	}
+	var attempts int
+	if err = db.DB().QueryRowContext(ctx, `SELECT count(*) FROM checkout_attempts WHERE account_id=?`, a.ID).Scan(&attempts); err != nil || attempts != 0 {
+		t.Fatalf("stale checkout attempts=%d err=%v", attempts, err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET status='deleting' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `INSERT INTO checkout_attempts(account_id,id,price_id,session_id,created_at) VALUES(?,?,?,?,?)`, a.ID, "attempt-2", "price_builder", "cs_reconcile", store.Stamp(time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	closed, err := s.CloseBillingAccount(ctx, a.ID)
+	if err != nil || closed.Status != 1 {
+		t.Fatalf("close result=%+v err=%v", closed, err)
+	}
+	if strings.TrimSpace(state.subscription) != "canceled" || state.session != "expired" {
+		t.Fatalf("provider state subscription=%q session=%q", state.subscription, state.session)
+	}
+}
+
+func TestReconcileRejectsUnknownPriceWithoutGrantingAccess(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	a, err := db.CreateAccount(ctx, "unknown-price@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_unknown' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"sub_unknown","customer":"cus_unknown","status":"active","items":{"data":[{"price":{"id":"price_other"}}]}}],"has_more":false}`))
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}}
+	if _, err = s.ReconcileCustomer(ctx, a.ID); err == nil || !strings.Contains(err.Error(), "unknown provider price") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var plan string
+	if err = db.DB().QueryRowContext(ctx, `SELECT plan_id FROM accounts WHERE id=?`, a.ID).Scan(&plan); err != nil || plan != "free" {
+		t.Fatalf("unknown price changed plan=%q err=%v", plan, err)
 	}
 }
