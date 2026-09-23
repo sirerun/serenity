@@ -5,7 +5,7 @@
   "public_origin": "https://serenity.sire.run",
   "embedding_model": "perplexity/pplx-embed-v1-0.6b",
   "embedding_version": "openrouter-pplx-embed-v1-0.6b",
-  "sender": "login@serenity.sire.run",
+  "sender": "login@mail.sire.run",
   "max_open": 8,
   "max_in_flight": 16,
   "account_cap": 100,

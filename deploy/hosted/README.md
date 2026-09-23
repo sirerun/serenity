@@ -10,7 +10,7 @@ release; the Pages workflow remains a mirror and rollback target.
 For the first cutover, set `SERENITY_DOMAIN_CUTOVER=1` when deploying to keep
 both hosts serving requests while DNS propagates. Deploy the unified release before applying
 foundation's isolated `serenity-site-dns` workflow. `deploy.sh` migrates only
-an existing `https://app.serenity.sire.run` public origin; it preserves all other
+an existing `https://app.serenity.sire.run` public origin and the obsolete default sender to `login@mail.sire.run`; it preserves other
 operator configuration. Then update the website CNAME through foundation IaC
 and verify HTTPS landing, docs, login, dashboard and readiness. Caddy obtains
 the canonical certificate after DNS reaches the host. Once canonical HTTPS

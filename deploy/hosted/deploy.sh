@@ -33,14 +33,20 @@ done
 if [[ ! -e /etc/serenity/hosted.json ]]; then
     install -m 0600 -o serenity -g serenity "$script_dir/config.example.json" /etc/serenity/hosted.json
 fi
-# Preserve every operator setting while migrating the old public origin.
+# Migrate the old default origin and sender; preserve custom operator settings.
 python3 - <<'PYCONFIG'
 import json, os
 path = "/etc/serenity/hosted.json"
 with open(path) as f:
     config = json.load(f)
+changed = False
+if config.get("sender") == "login@serenity.sire.run":
+    config["sender"] = "login@mail.sire.run"
+    changed = True
 if os.environ.get("SERENITY_DOMAIN_CUTOVER") != "1" and config.get("public_origin") == "https://app.serenity.sire.run":
     config["public_origin"] = "https://serenity.sire.run"
+    changed = True
+if changed:
     temporary = path + ".new"
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
