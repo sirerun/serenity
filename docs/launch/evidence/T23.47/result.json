@@ -2,14 +2,14 @@
   "task_id": "T23.47",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "874dd90ddd210ba1cb120f04af16b88e637fa3c8",
-  "recorded_at": "2026-09-24T15:15:04.500939+00:00",
+  "source_sha": "5f8a9940fa5c5509e97694e2c6002f178f8fc424",
+  "recorded_at": "2026-09-24T15:19:16.888516+00:00",
   "evidence_level": "local-process",
   "dependencies": {
     "T23.41": "ab39dd0"
   },
   "commands": [
-    "go test -race -count=1 -json ./internal/hosted/billing ./internal/hosted/meter",
+    "go test -race -count=1 ./internal/hosted/billing",
     "golangci-lint run ./internal/hosted/billing"
   ],
   "cases": {
@@ -73,11 +73,15 @@
   "artifacts": [
     {
       "path": "internal/hosted/billing/billing.go",
-      "sha256": "74fa654314640bda5e778383f158fc67d72f8919955a3c3cde48d0a424b6ee89"
+      "sha256": "74051f086ad3fa606d450e2ae43dbd6d47ecf961e1928842b1d3cf84602a293e"
     },
     {
       "path": "internal/hosted/billing/billing_test.go",
       "sha256": "a5cadc8dd1c02c86633e585cd6fad116503c164778f77b2f1bc3ad485dedd9d9"
+    },
+    {
+      "path": "internal/hosted/billing/checkout_reconcile_test.go",
+      "sha256": "19b570f5d8681f51720355ddf7eb3686d897c38f31a5e1a801accd4d3b9cce78"
     }
   ],
   "cost": {

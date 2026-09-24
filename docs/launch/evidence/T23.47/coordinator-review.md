@@ -28,3 +28,7 @@ Required combined verification after checkout fix: `go test -race -count=1 -json
 ## Checkout expiration response validation
 
 TestOldCheckoutRequiresConfirmedExpiration reproduced cleanup success for three unconfirmed responses: still-open status, completed status, and a different session ID. The corrected code requires the requested session identity on retrieval and matching expired identity/status after expiration, clearing the response fields before decoding to prevent reuse of omitted values. All19 default billing tests pass under race detection; final scoped lint zero issues after test-output handling cleanup. Successful expiration removes one attempt and adds one repair audit; rejected responses retain the attempt without a successful repair audit. Local HTTP fixtures only. Grace qualification remains FAIL; no launch acceptance is claimed.
+
+## Deletion closure expiration proof
+
+TestClosureRequiresConfirmedExpiration reproduced a closed result for open/completed/wrong-session expiration replies. Closure now requires matching session ID and expired status after the expiration request, or returns pending while retaining the attempt. Shared fixture helper verifies both reconciliation and deletion paths. The default billing suite now has20 passing top-level tests under race detection; scoped lint zero issues. These20 billing tests differ from the earlier18 billing plus2 metering run. Grace-order qualification remains FAIL. No live provider calls or deployment.
