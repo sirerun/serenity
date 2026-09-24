@@ -54,3 +54,7 @@ Independent correctness fallback confirmed f339f03 closes the reported reconcili
 ## Legacy dashboard closure adapter
 
 Dashboard DeleteAccount calls CancelAccount and proceeds to Gateway.DeleteAccount when it returns nil. The adapter discarded CloseResult, so incomplete cancellation or a final recheck still finding an active subscription returned nil. TestLegacyCancelAccountRejectsPendingClosure reproduced both paths. The adapter now accepts only CloseStatusClosed and maps pending status to ErrBillingProviderAmbiguous, activating the existing dashboard retry response. Both fixture cases retain the paid plan and return an error.23 billing tests pass under race detection; scoped lint zero issues. Dashboard routing was inspected, not executed in these package tests; full lifecycle/durable deletion assembly remains open.
+
+## Dashboard route exercised
+
+The legacy closure regression now invokes the real dashboard handler with a valid stored session and CSRF-protected POST /account/delete. Both pending-provider cases produce503 with the cancellation-pending response; account status remains active, paid plan unchanged, and the session remains valid. The fixture uses no brain and does not claim memory-file retention or full deletion recovery. Targeted test passes with race detection; scoped lint zero issues. Initial fixture token length was invalid and produced a login redirect; it was corrected to the identity API43-character format before obtaining the passing route result. No production changes in this test-only update.
