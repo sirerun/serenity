@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -23,6 +24,56 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/meter"
 	"github.com/sirerun/serenity/internal/hosted/store"
 )
+
+type failureFixture struct {
+	InvoiceCreated time.Time
+	Events         []time.Time
+}
+
+func serveFailureHistory(t *testing.T, w http.ResponseWriter, r *http.Request, customer, subscription string, failures map[string]failureFixture) bool {
+	t.Helper()
+	if strings.HasPrefix(r.URL.Path, "/invoices/") {
+		id := strings.TrimPrefix(r.URL.Path, "/invoices/")
+		fixture, ok := failures[id]
+		if !ok {
+			http.NotFound(w, r)
+			return true
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"id":%q,"customer":%q,"subscription":%q,"created":%d}`, id, customer, subscription, fixture.InvoiceCreated.Unix())
+		return true
+	}
+	if r.URL.Path == "/events" {
+		if r.URL.Query().Get("type") != "invoice.payment_failed" || r.URL.Query().Get("created[gte]") == "" {
+			t.Errorf("unexpected failure history query: %s", r.URL.RawQuery)
+		}
+		type event struct {
+			ID      string `json:"id"`
+			Type    string `json:"type"`
+			Created int64  `json:"created"`
+			Data    struct {
+				Object struct {
+					ID           string `json:"id"`
+					Subscription string `json:"subscription"`
+				} `json:"object"`
+			} `json:"data"`
+		}
+		var events []event
+		for invoiceID, fixture := range failures {
+			for index, at := range fixture.Events {
+				item := event{ID: fmt.Sprintf("evt_%s_%03d", invoiceID, index), Type: "invoice.payment_failed", Created: at.Unix()}
+				item.Data.Object.ID = invoiceID
+				item.Data.Object.Subscription = subscription
+				events = append(events, item)
+			}
+		}
+		sort.Slice(events, func(i, j int) bool { return events[i].Created > events[j].Created })
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": events, "has_more": false})
+		return true
+	}
+	return false
+}
 
 func signature(body []byte, secret string, at time.Time) string {
 	stamp := strconv.FormatInt(at.Unix(), 10)
@@ -66,16 +117,22 @@ func TestWebhookReconcilesCurrentStateAndDeduplicates(t *testing.T) {
 	state := "active"
 	var requests atomic.Int32
 	now := time.Now()
+	failureAt := now.Add(-time.Minute)
+	failures := map[string]failureFixture{"in_test": {InvoiceCreated: now.Add(-time.Hour), Events: []time.Time{failureAt}}}
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 		if r.Header.Get("Stripe-Version") != billing.APIVersion {
 			t.Error("unpinned API")
 		}
-		if r.URL.Path != "/subscriptions/sub_test" {
-			t.Error(r.URL.Path)
-		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"id":"sub_test","customer":"cus_test","status":%q,"items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}`, state, now.Unix(), now.Add(24*time.Hour).Unix())
+		if r.URL.Path == "/subscriptions/sub_test" {
+			_, _ = fmt.Fprintf(w, `{"id":"sub_test","customer":"cus_test","status":%q,"latest_invoice":"in_test","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}`, state, now.Unix(), now.Add(24*time.Hour).Unix())
+			return
+		}
+		if !serveFailureHistory(t, w, r, "cus_test", "sub_test", failures) {
+			t.Errorf("unexpected request: %s", r.URL)
+			http.NotFound(w, r)
+		}
 	}))
 	defer provider.Close()
 	s := &billing.Service{Store: db, Config: billing.Config{SecretKey: "test", WebhookSecret: "secret", BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}
@@ -154,6 +211,7 @@ func TestCheckoutSurvivesRestartAndPreventsSecondPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	var creates atomic.Int32
+	attemptID := ""
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -163,10 +221,14 @@ func TestCheckoutSurvivesRestartAndPreventsSecondPlan(t *testing.T) {
 			if r.Header.Get("Idempotency-Key") == "" {
 				t.Error("missing stable idempotency key")
 			}
+			if err := r.ParseForm(); err != nil {
+				t.Error(err)
+			}
+			attemptID = r.Form.Get("metadata[serenity_attempt]")
 			creates.Add(1)
 			_, _ = w.Write([]byte(`{"id":"cs_test","url":"https://checkout.stripe.com/test","status":"open"}`))
 		case r.Method == "GET" && r.URL.Path == "/checkout/sessions/cs_test":
-			_, _ = w.Write([]byte(`{"id":"cs_test","url":"https://checkout.stripe.com/test","status":"open"}`))
+			_, _ = fmt.Fprintf(w, `{"id":"cs_test","url":"https://checkout.stripe.com/test","status":"open","mode":"subscription","customer":"cus_test","client_reference_id":%q,"metadata":{"serenity_account":%q,"serenity_attempt":%q}}`, a.ID, a.ID, attemptID)
 		default:
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(500)
@@ -321,10 +383,19 @@ func TestReconcileCustomerAnchorsGraceToAuthoritativePeriodNotProcessingTime(t *
 		t.Fatal(err)
 	}
 	periodStart := time.Now().UTC().Add(-10 * 24 * time.Hour).Truncate(time.Second)
+	failureAt := periodStart.Add(12 * time.Hour)
+	failures := map[string]failureFixture{"in_missed": {InvoiceCreated: periodStart, Events: []time.Time{failureAt}}}
 	periodEnd := periodStart.Add(30 * 24 * time.Hour)
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_missed","customer":"cus_missed","status":"past_due","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}],"has_more":false}`, periodStart.Unix(), periodEnd.Unix())
+		if r.URL.Path == "/subscriptions" {
+			_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_missed","customer":"cus_missed","status":"past_due","latest_invoice":"in_missed","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}],"has_more":false}`, periodStart.Unix(), periodEnd.Unix())
+			return
+		}
+		if !serveFailureHistory(t, w, r, "cus_missed", "sub_missed", failures) {
+			t.Errorf("unexpected request: %s", r.URL)
+			http.NotFound(w, r)
+		}
 	}))
 	defer provider.Close()
 	s := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}}
@@ -332,9 +403,9 @@ func TestReconcileCustomerAnchorsGraceToAuthoritativePeriodNotProcessingTime(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := periodStart.Add(72 * time.Hour)
+	want := failureAt.Add(72 * time.Hour)
 	if !got.GraceUntil.Equal(want) {
-		t.Fatalf("grace = %v, want %v (anchored to period start, not processing time)", got.GraceUntil, want)
+		t.Fatalf("grace = %v, want %v (anchored to first invoice failure, not period start)", got.GraceUntil, want)
 	}
 	if got.GraceUntil.After(time.Now()) {
 		t.Fatalf("grace %v should already be past for a period this old; processing-time anchoring would wrongly grant a fresh window", got.GraceUntil)
@@ -365,9 +436,22 @@ func TestReconcileCustomerRenewalOpensFreshGraceAndRetainsOldWindow(t *testing.T
 	p1Start, p1End := base.Add(-100*time.Hour), base.Add(-50*time.Hour)
 	p2Start, p2End := p1End, base.Add(20*time.Hour)
 	period := struct{ start, end time.Time }{p1Start, p1End}
+	invoice := "in_renewal_one"
+	failureOne, failureTwo := p1Start.Add(time.Hour), p2Start.Add(time.Hour)
+	failures := map[string]failureFixture{
+		"in_renewal_one": {InvoiceCreated: p1Start, Events: []time.Time{failureOne}},
+		"in_renewal_two": {InvoiceCreated: p2Start, Events: []time.Time{failureTwo}},
+	}
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_renewal","customer":"cus_renewal","status":"past_due","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}],"has_more":false}`, period.start.Unix(), period.end.Unix())
+		if r.URL.Path == "/subscriptions" {
+			_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_renewal","customer":"cus_renewal","status":"past_due","latest_invoice":%q,"items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}],"has_more":false}`, invoice, period.start.Unix(), period.end.Unix())
+			return
+		}
+		if !serveFailureHistory(t, w, r, "cus_renewal", "sub_renewal", failures) {
+			t.Errorf("unexpected request: %s", r.URL)
+			http.NotFound(w, r)
+		}
 	}))
 	defer provider.Close()
 	s := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}}
@@ -376,16 +460,17 @@ func TestReconcileCustomerRenewalOpensFreshGraceAndRetainsOldWindow(t *testing.T
 		t.Fatal(err)
 	}
 	grace1 := got.GraceUntil
-	if want := p1Start.Add(72 * time.Hour); !grace1.Equal(want) {
+	if want := failureOne.Add(72 * time.Hour); !grace1.Equal(want) {
 		t.Fatalf("first grace = %v, want %v", grace1, want)
 	}
 	period.start, period.end = p2Start, p2End
+	invoice = "in_renewal_two"
 	got, err = s.ReconcileCustomer(ctx, a.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	grace2 := got.GraceUntil
-	want2 := p2Start.Add(72 * time.Hour)
+	want2 := failureTwo.Add(72 * time.Hour)
 	if !grace2.Equal(want2) {
 		t.Fatalf("renewed grace = %v, want %v", grace2, want2)
 	}
@@ -417,9 +502,18 @@ func TestWebhookGraceAnchoredToEventCreatedNotProcessingTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	periodStart := time.Now().Add(-time.Hour)
+	failureAt := time.Now().Add(-6 * time.Hour).Truncate(time.Second)
+	failures := map[string]failureFixture{"in_delayed": {InvoiceCreated: failureAt.Add(-time.Hour), Events: []time.Time{failureAt}}}
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"id":"sub_delayed","customer":"cus_delayed","status":"past_due","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}`, periodStart.Unix(), periodStart.Add(24*time.Hour).Unix())
+		if r.URL.Path == "/subscriptions/sub_delayed" {
+			_, _ = fmt.Fprintf(w, `{"id":"sub_delayed","customer":"cus_delayed","status":"past_due","latest_invoice":"in_delayed","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}`, periodStart.Unix(), periodStart.Add(24*time.Hour).Unix())
+			return
+		}
+		if !serveFailureHistory(t, w, r, "cus_delayed", "sub_delayed", failures) {
+			t.Errorf("unexpected request: %s", r.URL)
+			http.NotFound(w, r)
+		}
 	}))
 	defer provider.Close()
 	s := &billing.Service{Store: db, Config: billing.Config{SecretKey: "test", WebhookSecret: "secret", BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}
@@ -436,9 +530,73 @@ func TestWebhookGraceAnchoredToEventCreatedNotProcessingTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := eventCreated.Add(72 * time.Hour)
+	want := failureAt.Add(72 * time.Hour)
 	if !got.Equal(want) {
-		t.Fatalf("grace = %v, want %v (anchored to event.Created, not processing time)", got, want)
+		t.Fatalf("grace = %v, want %v (resolved from invoice failure history, not delivery time)", got, want)
+	}
+}
+
+func TestGraceDeadlineIndependentOfWebhookAndReconciliationOrder(t *testing.T) {
+	failureAt := time.Now().UTC().Add(-3 * time.Hour).Truncate(time.Second)
+	deadlineFor := func(t *testing.T, webhookFirst bool) time.Time {
+		t.Helper()
+		ctx := context.Background()
+		db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = db.Close() }()
+		a, err := db.CreateAccount(ctx, "delivery-order@example.com")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_order' WHERE id=?`, a.ID); err != nil {
+			t.Fatal(err)
+		}
+		periodStart := failureAt.Add(-2 * time.Hour)
+		provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if r.URL.Path == "/subscriptions/sub_order" {
+				_, _ = fmt.Fprintf(w, `{"id":"sub_order","customer":"cus_order","status":"past_due","latest_invoice":"in_order","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}`, periodStart.Unix(), periodStart.Add(30*24*time.Hour).Unix())
+				return
+			}
+			if r.URL.Path == "/subscriptions" {
+				_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_order","customer":"cus_order","status":"past_due","latest_invoice":"in_order","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}],"has_more":false}`, periodStart.Unix(), periodStart.Add(30*24*time.Hour).Unix())
+				return
+			}
+			if !serveFailureHistory(t, w, r, "cus_order", "sub_order", map[string]failureFixture{"in_order": {InvoiceCreated: failureAt.Add(-time.Hour), Events: []time.Time{failureAt}}}) {
+				t.Errorf("unexpected request: %s", r.URL)
+				http.NotFound(w, r)
+			}
+		}))
+		defer provider.Close()
+		s := &billing.Service{Store: db, Config: billing.Config{SecretKey: "test", WebhookSecret: "secret", BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}
+		if webhookFirst {
+			body, _ := json.Marshal(map[string]any{"id": "evt_delivery_order", "type": "customer.subscription.updated", "created": time.Now().Add(-24 * time.Hour).Unix(), "data": map[string]any{"object": map[string]any{"id": "sub_order"}}})
+			if err = s.Webhook(ctx, body, signature(body, "secret", time.Now())); err != nil {
+				t.Fatal(err)
+			}
+		} else if _, err = s.ReconcileCustomer(ctx, a.ID); err != nil {
+			t.Fatal(err)
+		}
+		var raw, storedPeriodStart string
+		if err = db.DB().QueryRowContext(ctx, `SELECT grace_until,current_period_start FROM subscriptions WHERE id='sub_order'`).Scan(&raw, &storedPeriodStart); err != nil {
+			t.Fatal(err)
+		}
+		if storedPeriodStart != store.Stamp(periodStart) {
+			t.Fatalf("stored period start=%q, want provider period start %q", storedPeriodStart, store.Stamp(periodStart))
+		}
+		at, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return at
+	}
+	webhookDeadline := deadlineFor(t, true)
+	reconcileDeadline := deadlineFor(t, false)
+	want := failureAt.Add(72 * time.Hour)
+	if !webhookDeadline.Equal(want) || !reconcileDeadline.Equal(want) {
+		t.Fatalf("webhook deadline=%v, reconcile deadline=%v, want both %v", webhookDeadline, reconcileDeadline, want)
 	}
 }
 
@@ -462,9 +620,18 @@ func TestWebhookLateFailureAfterPaymentDoesNotReopenGrace(t *testing.T) {
 	}
 	state := "active"
 	now := time.Now()
+	failureAt := now.Add(-2 * time.Hour).Truncate(time.Second)
+	failures := map[string]failureFixture{"in_recovered": {InvoiceCreated: now.Add(-3 * time.Hour), Events: []time.Time{failureAt}}}
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"id":"sub_recovered","customer":"cus_recovered","status":%q,"items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}`, state, now.Unix(), now.Add(24*time.Hour).Unix())
+		if r.URL.Path == "/subscriptions/sub_recovered" {
+			_, _ = fmt.Fprintf(w, `{"id":"sub_recovered","customer":"cus_recovered","status":%q,"latest_invoice":"in_recovered","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}`, state, now.Unix(), now.Add(24*time.Hour).Unix())
+			return
+		}
+		if !serveFailureHistory(t, w, r, "cus_recovered", "sub_recovered", failures) {
+			t.Errorf("unexpected request: %s", r.URL)
+			http.NotFound(w, r)
+		}
 	}))
 	defer provider.Close()
 	s := &billing.Service{Store: db, Config: billing.Config{SecretKey: "test", WebhookSecret: "secret", BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}

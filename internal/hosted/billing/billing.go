@@ -107,8 +107,9 @@ func (s *Service) listSubscriptions(ctx context.Context, customer string) (subsc
 }
 
 func (s *Service) reconcileOldCheckoutAttempt(ctx context.Context, accountID string, hasSubscription bool) error {
-	var attemptID, sessionID, created string
-	err := s.Store.DB().QueryRowContext(ctx, `SELECT id,COALESCE(session_id,''),created_at FROM checkout_attempts WHERE account_id=?`, accountID).Scan(&attemptID, &sessionID, &created)
+	var attemptID, sessionID, created, requestBody, customer string
+	var requestVersion int
+	err := s.Store.DB().QueryRowContext(ctx, `SELECT c.id,COALESCE(c.session_id,''),c.created_at,c.request_version,COALESCE(c.request_body,''),COALESCE(a.stripe_customer_id,'') FROM checkout_attempts c JOIN accounts a ON a.id=c.account_id WHERE c.account_id=?`, accountID).Scan(&attemptID, &sessionID, &created, &requestVersion, &requestBody, &customer)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -116,7 +117,20 @@ func (s *Service) reconcileOldCheckoutAttempt(ctx context.Context, accountID str
 		return err
 	}
 	if sessionID == "" {
-		return fmt.Errorf("%w: checkout creation outcome unresolved", contracts.ErrBillingProviderAmbiguous)
+		if requestVersion != 1 || requestBody == "" || customer == "" {
+			return fmt.Errorf("%w: legacy checkout creation outcome unresolved", contracts.ErrBillingProviderAmbiguous)
+		}
+		recovered, ok, e := s.discoverCheckoutAttempt(ctx, accountID, customer, attemptID)
+		if e != nil {
+			return e
+		}
+		if !ok {
+			return fmt.Errorf("%w: checkout session not yet discoverable", contracts.ErrBillingProviderAmbiguous)
+		}
+		if e = s.saveRecoveredCheckoutID(ctx, accountID, attemptID, recovered.ID); e != nil {
+			return e
+		}
+		sessionID = recovered.ID
 	}
 	at, err := time.Parse(time.RFC3339Nano, created)
 	if err != nil || time.Since(at) <= 23*time.Hour {
@@ -189,24 +203,14 @@ func subscriptionEntitled(status string) bool {
 	return status == "active" || status == "trialing" || status == "past_due"
 }
 
-// graceDeadline decides the stored grace_until for a subscription's fresh
-// provider snapshot. Stripe's Subscription and Invoice objects carry no
-// "became past_due at" field (verified against the pinned API's primary
-// reference), so the only authoritative anchors available are the event that
-// reported the transition (webhooks: Event.created) and the subscription's
-// own current period start (reconciliation snapshots). Using local
-// processing time here would let delayed delivery or a delayed reconcile
-// pass silently extend the grace window past what the provider actually
-// granted. A replay or delayed re-observation of the same unpaid period
-// keeps its existing deadline; a genuinely new past_due state -- first
-// observation or a renewal into a new unpaid period -- starts a fresh 72h
-// window anchored to the authoritative timestamp.
-func graceDeadline(oldStatus, oldGrace string, periodChanged bool, newStatus string, anchor time.Time) string {
+// graceDeadline derives a past-due deadline from the first failure event for
+// the latest invoice. Reconciliation and webhook delivery use the same
+// persisted provider timestamp, so event order and local processing delays
+// cannot shift access. Recomputing also repairs deadlines previously stored
+// by versions that used delivery time or period start.
+func graceDeadline(newStatus string, anchor time.Time) string {
 	if newStatus != "past_due" {
 		return ""
-	}
-	if oldStatus == "past_due" && oldGrace != "" && !periodChanged {
-		return oldGrace
 	}
 	return store.Stamp(anchor.Add(72 * time.Hour))
 }
@@ -267,6 +271,17 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 		return result, err
 	}
 	testhooks.At(testhooks.PhaseReconcileFenced)
+	failureAnchors := make(map[string]time.Time, len(list.Data))
+	for _, sub := range list.Data {
+		if sub.Status != "past_due" {
+			continue
+		}
+		anchor, e := s.failureEvidence(ctx, accountID, sub)
+		if e != nil {
+			return result, e
+		}
+		failureAnchors[sub.ID] = anchor
+	}
 
 	now := time.Now().UTC()
 	err = s.Store.Transaction(ctx, func(tx *sql.Tx) error {
@@ -293,12 +308,12 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 			seen[sub.ID] = true
 			var oldStatus, oldGrace, oldPeriodStart, oldPeriodEnd string
 			_ = tx.QueryRowContext(ctx, `SELECT status,COALESCE(grace_until,''),COALESCE(current_period_start,''),COALESCE(current_period_end,'') FROM subscriptions WHERE id=? AND account_id=?`, sub.ID, accountID).Scan(&oldStatus, &oldGrace, &oldPeriodStart, &oldPeriodEnd)
-			// The subscription's own current period start is the only
-			// authoritative provider timestamp available from a snapshot
-			// fetch; it anchors a fresh grace window without drifting with
-			// reconciliation delay (see graceDeadline).
-			anchor := time.Unix(item.CurrentPeriodStart, 0).UTC()
-			newPeriodStart := store.Stamp(anchor)
+			periodStart := time.Unix(item.CurrentPeriodStart, 0).UTC()
+			anchor := periodStart
+			if sub.Status == "past_due" {
+				anchor = failureAnchors[sub.ID]
+			}
+			newPeriodStart := store.Stamp(periodStart)
 			newPeriodEnd := store.Stamp(time.Unix(item.CurrentPeriodEnd, 0))
 			periodChanged := oldPeriodStart != "" && oldPeriodStart != newPeriodStart
 			if periodChanged {
@@ -306,7 +321,7 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 					return e
 				}
 			}
-			grace := graceDeadline(oldStatus, oldGrace, periodChanged, sub.Status, anchor)
+			grace := graceDeadline(sub.Status, anchor)
 			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_until) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end,grace_until=excluded.grace_until`, sub.ID, accountID, item.Price.ID, plan, sub.Status, newPeriodStart, newPeriodEnd, sub.CancelAtPeriodEnd, nullableString(grace))
 			if e != nil {
 				return e
@@ -428,17 +443,14 @@ func (s *Service) Checkout(ctx context.Context, account, plan string) (string, e
 			return "", errors.New("manage your existing subscription through billing")
 		}
 	}
-	var attempt, pendingPrice, sessionID, created string
-	err = s.Store.DB().QueryRowContext(ctx, `SELECT id,price_id,COALESCE(session_id,''),created_at FROM checkout_attempts WHERE account_id=?`, account).Scan(&attempt, &pendingPrice, &sessionID, &created)
+	var attempt, pendingPrice, sessionID, created, requestBody string
+	var requestVersion int
+	err = s.Store.DB().QueryRowContext(ctx, `SELECT id,price_id,COALESCE(session_id,''),created_at,request_version,COALESCE(request_body,'') FROM checkout_attempts WHERE account_id=?`, account).Scan(&attempt, &pendingPrice, &sessionID, &created, &requestVersion, &requestBody)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err
 	}
-	type checkout struct {
-		ID     string `json:"id"`
-		URL    string `json:"url"`
-		Status string `json:"status"`
-	}
-	var result checkout
+	var result checkoutSession
+	var previousAttempt string
 	if sessionID != "" {
 		if err = s.request(ctx, "GET", "/checkout/sessions/"+url.PathEscape(sessionID), nil, "", &result); err != nil {
 			return "", err
@@ -446,6 +458,58 @@ func (s *Service) Checkout(ctx context.Context, account, plan string) (string, e
 		if result.ID != sessionID {
 			return "", fmt.Errorf("%w: checkout session identity mismatch", contracts.ErrBillingProviderAmbiguous)
 		}
+		if requestVersion == 1 {
+			if err = validateCheckoutIdentity(result, account, customer, attempt); err != nil {
+				return "", err
+			}
+		}
+		if result.Status == "open" {
+			at, parseErr := time.Parse(time.RFC3339Nano, created)
+			if parseErr != nil || time.Since(at) > 23*time.Hour {
+				return "", errors.New("unresolved checkout requires billing reconciliation")
+			}
+			if pendingPrice != price {
+				return "", errors.New("retry your existing checkout plan first")
+			}
+			if !strings.HasPrefix(result.URL, "https://checkout.stripe.com/") {
+				return "", errors.New("invalid checkout URL")
+			}
+			return result.URL, nil
+		}
+		if result.Status != "expired" && result.Status != "complete" {
+			return "", fmt.Errorf("%w: checkout status unresolved", contracts.ErrBillingProviderAmbiguous)
+		}
+		if result.Status == "complete" {
+			if err = s.request(ctx, "GET", "/subscriptions?"+url.Values{"customer": {customer}, "status": {"all"}, "limit": {"100"}}.Encode(), nil, "", &subscriptions); err != nil {
+				return "", err
+			}
+			if subscriptions.HasMore || len(subscriptions.Data) == 0 {
+				return "", errors.New("checkout reconciliation required")
+			}
+			for _, sub := range subscriptions.Data {
+				if sub.Status != "canceled" && sub.Status != "incomplete_expired" {
+					return "", errors.New("manage your existing subscription through billing")
+				}
+			}
+		}
+		previousAttempt = attempt
+		attempt = ""
+	} else if attempt != "" {
+		if requestVersion != 1 || requestBody == "" {
+			return "", fmt.Errorf("%w: legacy checkout creation outcome unresolved", contracts.ErrBillingProviderAmbiguous)
+		}
+		var found bool
+		result, found, err = s.discoverCheckoutAttempt(ctx, account, customer, attempt)
+		if err != nil {
+			return "", err
+		}
+		if !found {
+			return "", fmt.Errorf("%w: checkout session not yet discoverable", contracts.ErrBillingProviderAmbiguous)
+		}
+		if err = s.saveRecoveredCheckoutID(ctx, account, attempt, result.ID); err != nil {
+			return "", err
+		}
+		sessionID = result.ID
 		if result.Status == "open" {
 			if pendingPrice != price {
 				return "", errors.New("finish or let your existing checkout expire before choosing another plan")
@@ -473,11 +537,30 @@ func (s *Service) Checkout(ctx context.Context, account, plan string) (string, e
 				}
 			}
 		}
+		previousAttempt = attempt
 		attempt = ""
 	}
 	if attempt == "" {
 		attempt, pendingPrice, created = store.ID(), price, store.Stamp(time.Now())
-		_, err = s.Store.DB().ExecContext(ctx, `INSERT INTO checkout_attempts(account_id,id,price_id,created_at) VALUES(?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET id=excluded.id,price_id=excluded.price_id,created_at=excluded.created_at,session_id=NULL`, account, attempt, price, created)
+		form := url.Values{"mode": {"subscription"}, "customer": {customer}, "client_reference_id": {account}, "line_items[0][price]": {price}, "line_items[0][quantity]": {"1"}, "subscription_data[metadata][serenity_account]": {account}, "subscription_data[metadata][serenity_attempt]": {attempt}, "metadata[serenity_account]": {account}, "metadata[serenity_attempt]": {attempt}, "success_url": {s.Config.Origin + "/billing?checkout=returned"}, "cancel_url": {s.Config.Origin + "/billing"}}
+		requestBody = form.Encode()
+		err = s.Store.Transaction(ctx, func(tx *sql.Tx) error {
+			if previousAttempt != "" {
+				result, e := tx.ExecContext(ctx, `DELETE FROM checkout_attempts WHERE account_id=? AND id=?`, account, previousAttempt)
+				if e != nil {
+					return e
+				}
+				changed, e := result.RowsAffected()
+				if e != nil {
+					return e
+				}
+				if changed != 1 {
+					return fmt.Errorf("%w: prior checkout attempt changed", contracts.ErrBillingProviderAmbiguous)
+				}
+			}
+			_, e := tx.ExecContext(ctx, `INSERT INTO checkout_attempts(account_id,id,price_id,created_at,request_version,request_body) VALUES(?,?,?,?,1,?)`, account, attempt, price, created, requestBody)
+			return e
+		})
 		if err != nil {
 			return "", err
 		}
@@ -490,7 +573,11 @@ func (s *Service) Checkout(ctx context.Context, account, plan string) (string, e
 			return "", errors.New("retry your existing checkout plan first")
 		}
 	}
-	err = s.request(ctx, "POST", "/checkout/sessions", url.Values{"mode": {"subscription"}, "customer": {customer}, "client_reference_id": {account}, "line_items[0][price]": {price}, "line_items[0][quantity]": {"1"}, "subscription_data[metadata][serenity_account]": {account}, "success_url": {s.Config.Origin + "/billing?checkout=returned"}, "cancel_url": {s.Config.Origin + "/billing"}}, "serenity-checkout-"+attempt, &result)
+	form, err := url.ParseQuery(requestBody)
+	if err != nil {
+		return "", fmt.Errorf("%w: stored checkout request is invalid", contracts.ErrBillingProviderAmbiguous)
+	}
+	err = s.request(ctx, "POST", "/checkout/sessions", form, "serenity-checkout-"+attempt, &result)
 	if err != nil {
 		return "", err
 	}
@@ -570,10 +657,11 @@ func VerifySignature(body []byte, header, secret string, now time.Time) bool {
 }
 
 type subscription struct {
-	ID                string `json:"id"`
-	Customer          string `json:"customer"`
-	Status            string `json:"status"`
-	CancelAtPeriodEnd bool   `json:"cancel_at_period_end"`
+	ID                string          `json:"id"`
+	Customer          string          `json:"customer"`
+	Status            string          `json:"status"`
+	LatestInvoice     json.RawMessage `json:"latest_invoice"`
+	CancelAtPeriodEnd bool            `json:"cancel_at_period_end"`
 	Items             struct {
 		Data []struct {
 			CurrentPeriodStart int64 `json:"current_period_start"`
@@ -583,6 +671,252 @@ type subscription struct {
 			} `json:"price"`
 		} `json:"data"`
 	} `json:"items"`
+}
+
+type invoiceFailureEvent struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Created int64  `json:"created"`
+	Data    struct {
+		Object struct {
+			ID           string `json:"id"`
+			Subscription string `json:"subscription"`
+			Parent       struct {
+				SubscriptionDetails struct {
+					Subscription string `json:"subscription"`
+				} `json:"subscription_details"`
+			} `json:"parent"`
+		} `json:"object"`
+	} `json:"data"`
+}
+
+type invoiceFailureEventList struct {
+	Data    []invoiceFailureEvent `json:"data"`
+	HasMore bool                  `json:"has_more"`
+}
+
+type checkoutSession struct {
+	ID                string            `json:"id"`
+	URL               string            `json:"url"`
+	Status            string            `json:"status"`
+	Mode              string            `json:"mode"`
+	Customer          string            `json:"customer"`
+	ClientReferenceID string            `json:"client_reference_id"`
+	Metadata          map[string]string `json:"metadata"`
+}
+
+type checkoutSessionList struct {
+	Data    []checkoutSession `json:"data"`
+	HasMore bool              `json:"has_more"`
+}
+
+func validateCheckoutIdentity(session checkoutSession, account, customer, attempt string) error {
+	if !strings.HasPrefix(session.ID, "cs_") || strings.ContainsAny(session.ID, "/?#") ||
+		session.Customer != customer || session.ClientReferenceID != account || session.Mode != "subscription" ||
+		session.Metadata["serenity_account"] != account || session.Metadata["serenity_attempt"] != attempt {
+		return fmt.Errorf("%w: checkout session identity mismatch", contracts.ErrBillingProviderAmbiguous)
+	}
+	return nil
+}
+
+func (s *Service) discoverCheckoutAttempt(ctx context.Context, account, customer, attempt string) (checkoutSession, bool, error) {
+	var found checkoutSession
+	query := url.Values{"customer": {customer}, "limit": {"100"}}
+	var cursor string
+	for page := 0; page < 100; page++ {
+		if cursor != "" {
+			query.Set("starting_after", cursor)
+		}
+		var sessions checkoutSessionList
+		if err := s.providerRequest(ctx, "GET", "/checkout/sessions?"+query.Encode(), nil, "", &sessions); err != nil {
+			return checkoutSession{}, false, err
+		}
+		if len(sessions.Data) == 0 && sessions.HasMore {
+			return checkoutSession{}, false, fmt.Errorf("%w: malformed checkout pagination", contracts.ErrBillingProviderAmbiguous)
+		}
+		for _, session := range sessions.Data {
+			if session.ID == "" || !strings.HasPrefix(session.ID, "cs_") {
+				return checkoutSession{}, false, fmt.Errorf("%w: malformed checkout session list", contracts.ErrBillingProviderAmbiguous)
+			}
+			if session.Metadata["serenity_attempt"] != attempt {
+				continue
+			}
+			if err := validateCheckoutIdentity(session, account, customer, attempt); err != nil {
+				return checkoutSession{}, false, err
+			}
+			if found.ID != "" && found.ID != session.ID {
+				return checkoutSession{}, false, fmt.Errorf("%w: duplicate checkout sessions for one attempt", contracts.ErrBillingProviderAmbiguous)
+			}
+			found = session
+		}
+		if !sessions.HasMore {
+			return found, found.ID != "", nil
+		}
+		last := sessions.Data[len(sessions.Data)-1].ID
+		if last == "" || last == cursor {
+			return checkoutSession{}, false, fmt.Errorf("%w: malformed checkout cursor", contracts.ErrBillingProviderAmbiguous)
+		}
+		cursor = last
+		if page == 99 {
+			return checkoutSession{}, false, fmt.Errorf("%w: checkout history exceeds page limit", contracts.ErrBillingProviderAmbiguous)
+		}
+	}
+	return checkoutSession{}, false, fmt.Errorf("%w: incomplete checkout history", contracts.ErrBillingProviderAmbiguous)
+}
+
+func (s *Service) saveRecoveredCheckoutID(ctx context.Context, account, attempt, session string) error {
+	result, err := s.Store.DB().ExecContext(ctx, `UPDATE checkout_attempts SET session_id=? WHERE account_id=? AND id=? AND (session_id IS NULL OR session_id='')`, session, account, attempt)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed == 1 {
+		return nil
+	}
+	var current string
+	if err = s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(session_id,'') FROM checkout_attempts WHERE account_id=? AND id=?`, account, attempt).Scan(&current); err != nil || current != session {
+		return fmt.Errorf("%w: checkout attempt changed during recovery", contracts.ErrBillingProviderAmbiguous)
+	}
+	return nil
+}
+
+func invoiceID(raw json.RawMessage) (string, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return "", fmt.Errorf("%w: past_due subscription has no latest invoice", contracts.ErrBillingProviderAmbiguous)
+	}
+	var id string
+	if json.Unmarshal(raw, &id) == nil && id != "" {
+		return id, nil
+	}
+	var expanded struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &expanded); err != nil || expanded.ID == "" {
+		return "", fmt.Errorf("%w: invalid latest invoice", contracts.ErrBillingProviderAmbiguous)
+	}
+	return expanded.ID, nil
+}
+
+func invoiceSubscription(raw json.RawMessage) string {
+	var invoice struct {
+		Subscription string `json:"subscription"`
+		Parent       struct {
+			SubscriptionDetails struct {
+				Subscription string `json:"subscription"`
+			} `json:"subscription_details"`
+		} `json:"parent"`
+	}
+	if json.Unmarshal(raw, &invoice) != nil {
+		return ""
+	}
+	if invoice.Subscription != "" {
+		return invoice.Subscription
+	}
+	return invoice.Parent.SubscriptionDetails.Subscription
+}
+
+// failureEvidence resolves the first payment-failure event for the exact
+// latest invoice. Both webhook and reconciliation paths use this provider
+// identity and persist it before calculating grace; event delivery time and
+// local processing time never become competing anchors.
+func (s *Service) failureEvidence(ctx context.Context, accountID string, sub subscription) (time.Time, error) {
+	id, err := invoiceID(sub.LatestInvoice)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !strings.HasPrefix(id, "in_") || strings.ContainsAny(id, "/?#") {
+		return time.Time{}, fmt.Errorf("%w: invalid invoice reference", contracts.ErrBillingProviderAmbiguous)
+	}
+	var eventID, firstFailed string
+	err = s.Store.DB().QueryRowContext(ctx, `SELECT event_id,first_failed_at FROM billing_failures WHERE account_id=? AND subscription_id=? AND invoice_id=?`, accountID, sub.ID, id).Scan(&eventID, &firstFailed)
+	if err == nil {
+		at, parseErr := time.Parse(time.RFC3339Nano, firstFailed)
+		if parseErr != nil || !strings.HasPrefix(eventID, "evt_") {
+			return time.Time{}, fmt.Errorf("%w: invalid stored payment-failure evidence", contracts.ErrBillingProviderAmbiguous)
+		}
+		return at.UTC(), nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, err
+	}
+	var invoice struct {
+		ID       string `json:"id"`
+		Customer string `json:"customer"`
+		Created  int64  `json:"created"`
+	}
+	var raw json.RawMessage
+	if err = s.providerRequest(ctx, "GET", "/invoices/"+url.PathEscape(id), nil, "", &raw); err != nil {
+		return time.Time{}, err
+	}
+	if err = json.Unmarshal(raw, &invoice); err != nil || invoice.ID != id || invoice.Customer != sub.Customer || invoiceSubscription(raw) != sub.ID || invoice.Created <= 0 {
+		return time.Time{}, fmt.Errorf("%w: invoice identity mismatch", contracts.ErrBillingProviderAmbiguous)
+	}
+	// Stripe only retains listable events for 30 days. If this invoice is older
+	// and its exact failure was not already persisted locally, its first-failure
+	// time can no longer be proved, so reconciliation fails closed.
+	if time.Unix(invoice.Created, 0).Before(time.Now().UTC().Add(-30 * 24 * time.Hour)) {
+		return time.Time{}, fmt.Errorf("%w: invoice failure history is outside provider retention", contracts.ErrBillingProviderAmbiguous)
+	}
+	first := time.Time{}
+	firstID := ""
+	var cursor string
+	for page := 0; page < 100; page++ {
+		query := url.Values{"type": {"invoice.payment_failed"}, "created[gte]": {strconv.FormatInt(invoice.Created, 10)}, "limit": {"100"}}
+		if cursor != "" {
+			query.Set("starting_after", cursor)
+		}
+		var events invoiceFailureEventList
+		if err = s.providerRequest(ctx, "GET", "/events?"+query.Encode(), nil, "", &events); err != nil {
+			return time.Time{}, err
+		}
+		if len(events.Data) == 0 && events.HasMore {
+			return time.Time{}, fmt.Errorf("%w: malformed invoice event pagination", contracts.ErrBillingProviderAmbiguous)
+		}
+		for _, event := range events.Data {
+			if event.ID == "" || !strings.HasPrefix(event.ID, "evt_") || event.Type != "invoice.payment_failed" || event.Created <= 0 {
+				return time.Time{}, fmt.Errorf("%w: malformed invoice failure event", contracts.ErrBillingProviderAmbiguous)
+			}
+			if event.Data.Object.ID != id {
+				continue
+			}
+			failureSub := event.Data.Object.Subscription
+			if failureSub == "" {
+				failureSub = event.Data.Object.Parent.SubscriptionDetails.Subscription
+			}
+			if failureSub != sub.ID {
+				return time.Time{}, fmt.Errorf("%w: invoice failure subscription mismatch", contracts.ErrBillingProviderAmbiguous)
+			}
+			at := time.Unix(event.Created, 0).UTC()
+			if first.IsZero() || at.Before(first) || at.Equal(first) && event.ID < firstID {
+				first, firstID = at, event.ID
+			}
+		}
+		if !events.HasMore {
+			break
+		}
+		last := events.Data[len(events.Data)-1].ID
+		if last == cursor || last == "" {
+			return time.Time{}, fmt.Errorf("%w: malformed invoice event cursor", contracts.ErrBillingProviderAmbiguous)
+		}
+		cursor = last
+		if page == 99 {
+			return time.Time{}, fmt.Errorf("%w: invoice failure history exceeds page limit", contracts.ErrBillingProviderAmbiguous)
+		}
+	}
+	if first.IsZero() {
+		return time.Time{}, fmt.Errorf("%w: no failure event found for latest invoice", contracts.ErrBillingProviderAmbiguous)
+	}
+	err = s.Store.Transaction(ctx, func(tx *sql.Tx) error {
+		_, e := tx.ExecContext(ctx, `INSERT INTO billing_failures(account_id,subscription_id,invoice_id,event_id,first_failed_at) VALUES(?,?,?,?,?) ON CONFLICT(subscription_id,invoice_id) DO UPDATE SET event_id=CASE WHEN excluded.first_failed_at<first_failed_at OR (excluded.first_failed_at=first_failed_at AND excluded.event_id<event_id) THEN excluded.event_id ELSE event_id END,first_failed_at=MIN(first_failed_at,excluded.first_failed_at)`, accountID, sub.ID, id, firstID, store.Stamp(first))
+		return e
+	})
+	if err != nil {
+		return time.Time{}, err
+	}
+	return first.UTC(), nil
 }
 
 func (s *Service) Webhook(ctx context.Context, body []byte, signature string) error {
@@ -661,24 +995,29 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 		if plan == "" {
 			return errors.New("subscription price is not a Serenity price")
 		}
+		var account, accountStatus string
+		e := s.Store.DB().QueryRowContext(ctx, `SELECT id,status FROM accounts WHERE stripe_customer_id=?`, sub.Customer).Scan(&account, &accountStatus)
+		if errors.Is(e, sql.ErrNoRows) {
+			// The account may have completed deletion after the provider emitted
+			// this event. Acknowledge it without creating an entitlement.
+			return s.Store.Transaction(ctx, func(tx *sql.Tx) error {
+				_, e := tx.ExecContext(ctx, `UPDATE stripe_events SET processed_at=? WHERE id=?`, store.Stamp(time.Now()), event.ID)
+				return e
+			})
+		}
+		if e != nil {
+			return e
+		}
+		anchor := time.Unix(item.CurrentPeriodStart, 0).UTC()
+		if sub.Status == "past_due" {
+			anchor, err = s.failureEvidence(ctx, account, sub)
+			if err != nil {
+				return err
+			}
+		}
 		err = s.Store.Transaction(ctx, func(tx *sql.Tx) error {
-			var account, accountStatus string
-			e := tx.QueryRowContext(ctx, `SELECT id,status FROM accounts WHERE stripe_customer_id=?`, sub.Customer).Scan(&account, &accountStatus)
-			if errors.Is(e, sql.ErrNoRows) {
-				// The account may have completed deletion after the provider emitted
-				// this event. Acknowledge the event without creating an entitlement.
-				_, e = tx.ExecContext(ctx, `UPDATE stripe_events SET processed_at=? WHERE id=?`, store.Stamp(time.Now()), event.ID)
-				return e
-			}
-			if e != nil {
-				return e
-			}
 			var oldStatus, oldGrace, oldPeriodStart, oldPeriodEnd string
 			_ = tx.QueryRowContext(ctx, `SELECT status,COALESCE(grace_until,''),COALESCE(current_period_start,''),COALESCE(current_period_end,'') FROM subscriptions WHERE id=?`, sub.ID).Scan(&oldStatus, &oldGrace, &oldPeriodStart, &oldPeriodEnd)
-			// The event's own creation time is the authoritative provider
-			// timestamp for this transition; local processing time would let
-			// delayed webhook delivery silently extend the grace window.
-			anchor := time.Unix(event.Created, 0).UTC()
 			newPeriodStart := store.Stamp(time.Unix(item.CurrentPeriodStart, 0))
 			newPeriodEnd := store.Stamp(time.Unix(item.CurrentPeriodEnd, 0))
 			periodChanged := oldPeriodStart != "" && oldPeriodStart != newPeriodStart
@@ -687,7 +1026,7 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 					return e
 				}
 			}
-			grace := graceDeadline(oldStatus, oldGrace, periodChanged, sub.Status, anchor)
+			grace := graceDeadline(sub.Status, anchor)
 			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_until) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end,grace_until=excluded.grace_until`, sub.ID, account, item.Price.ID, plan, sub.Status, newPeriodStart, newPeriodEnd, sub.CancelAtPeriodEnd, nullableString(grace))
 			if e != nil {
 				return e
@@ -832,28 +1171,49 @@ func (s *Service) closeBilling(ctx context.Context, account string, requireDelet
 	if err != nil {
 		return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "provider subscription truth unavailable"}, err
 	}
-	var attempts []string
-	rows, err := s.Store.DB().QueryContext(ctx, `SELECT COALESCE(session_id,'') FROM checkout_attempts WHERE account_id=?`, account)
+	type pendingCheckout struct {
+		attemptID, sessionID string
+		requestVersion       int
+		requestBody          string
+	}
+	var attempts []pendingCheckout
+	rows, err := s.Store.DB().QueryContext(ctx, `SELECT id,COALESCE(session_id,''),request_version,COALESCE(request_body,'') FROM checkout_attempts WHERE account_id=?`, account)
 	if err != nil {
 		return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "checkout lookup failed"}, err
 	}
 	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
+		var pending pendingCheckout
+		if err = rows.Scan(&pending.attemptID, &pending.sessionID, &pending.requestVersion, &pending.requestBody); err != nil {
 			_ = rows.Close()
 			return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "checkout lookup failed"}, err
 		}
-		if id == "" {
-			_ = rows.Close()
-			return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "checkout creation outcome unresolved"}, contracts.ErrBillingProviderAmbiguous
-		}
-		attempts = append(attempts, id)
+		attempts = append(attempts, pending)
 	}
 	if err = errors.Join(rows.Err(), rows.Close()); err != nil {
 		return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "checkout lookup failed"}, err
 	}
-	for _, id := range attempts {
-		if err = s.expireCheckout(ctx, id); err != nil {
+	for index := range attempts {
+		if attempts[index].sessionID != "" {
+			continue
+		}
+		pending := attempts[index]
+		if pending.requestVersion != 1 || pending.requestBody == "" {
+			return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "legacy checkout creation outcome unresolved"}, contracts.ErrBillingProviderAmbiguous
+		}
+		recovered, found, e := s.discoverCheckoutAttempt(ctx, account, customer, pending.attemptID)
+		if e != nil {
+			return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "checkout discovery failed"}, e
+		}
+		if !found {
+			return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "checkout creation outcome unresolved"}, contracts.ErrBillingProviderAmbiguous
+		}
+		if e = s.saveRecoveredCheckoutID(ctx, account, pending.attemptID, recovered.ID); e != nil {
+			return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "checkout recovery persistence failed"}, e
+		}
+		attempts[index].sessionID = recovered.ID
+	}
+	for _, attempt := range attempts {
+		if err = s.expireCheckout(ctx, attempt.sessionID); err != nil {
 			return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "checkout session unresolved"}, err
 		}
 	}
