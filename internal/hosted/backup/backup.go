@@ -923,6 +923,13 @@ func restoreBrain(ctx context.Context, root *os.Root, scratch, staging string, b
 	if !equalHeads(restored, b.Heads) {
 		return fmt.Errorf("hosted/backup: brain %s restored repository heads do not match the manifest", b.ID)
 	}
+	// Bundles preserve commits and refs, but not repository-local configuration.
+	// Restore the hosted writer identity before publishing a writable brain.
+	for _, setting := range [][2]string{{"user.name", "Serenity Hosted"}, {"user.email", "hosted@serenity.sire.run"}} {
+		if output, e := exec.CommandContext(ctx, "git", "-C", dest, "config", "--local", setting[0], setting[1]).CombinedOutput(); e != nil {
+			return fmt.Errorf("hosted/backup: brain %s: configure writer identity: %w: %s", b.ID, e, output)
+		}
+	}
 	if err := syncTree(dest); err != nil {
 		return fmt.Errorf("hosted/backup: brain %s: sync restored repository: %w", b.ID, err)
 	}

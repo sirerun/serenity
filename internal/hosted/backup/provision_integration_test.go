@@ -2,9 +2,11 @@ package backup
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sirerun/serenity/internal/hosted/pool"
@@ -12,14 +14,19 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
-type initializationEmbedder struct{}
+type initializationEmbedder struct{ allowWrites bool }
 
 func (initializationEmbedder) ModelVersion() string { return "initialization-fixture@v1" }
-func (initializationEmbedder) Embed(context.Context, string) ([]float32, error) {
-	panic("empty initialization must not call embeddings")
+func (e initializationEmbedder) Embed(context.Context, string) ([]float32, error) {
+	if !e.allowWrites {
+		panic("empty initialization must not call embeddings")
+	}
+	return []float32{1, 2, 3}, nil
 }
 
 func TestProvisionedBrainVersion2BackupRestore(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	for _, openRuntime := range []bool{false, true} {
 		name := "untouched"
 		if openRuntime {
@@ -83,6 +90,43 @@ func TestProvisionedBrainVersion2BackupRestore(t *testing.T) {
 			if err != nil || len(out) != 0 {
 				t.Fatalf("restored tree dirty: %s %v", out, err)
 			}
+			// Exercise storage only; restored account eligibility remains frozen.
+			recoveredPool, err := pool.New(pool.Config{BrainsRoot: filepath.Join(restored, "brains"), MaxOpen: 1, MaxInFlight: 1, Embedder: initializationEmbedder{allowWrites: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := recoveredPool.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			runtime, release, err := recoveredPool.Acquire(ctx, b.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+			remembered := false
+			for _, tool := range runtime.Tools {
+				if tool.Name == "remember" {
+					result, e := tool.Handler(ctx, json.RawMessage(`{"fact":"Restored write marker is cobalt","provenance":"restore fixture"}`))
+					if e != nil || result.IsError {
+						t.Fatalf("remember after restore: %+v %v", result, e)
+					}
+					remembered = true
+				}
+			}
+			if !remembered {
+				t.Fatal("remember tool missing")
+			}
+			release()
+			if err := recoveredPool.FlushAll(); err != nil {
+				t.Fatalf("flush after restore: %v", err)
+			}
+			author, err := exec.CommandContext(ctx, "git", "-C", filepath.Join(restored, "brains", b.ID), "log", "-1", "--format=%an <%ae>").Output()
+			if err != nil || strings.TrimSpace(string(author)) != "Serenity Hosted <hosted@serenity.sire.run>" {
+				t.Fatalf("restored writer identity: %q %v", author, err)
+			}
+
 		})
 	}
 }
