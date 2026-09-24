@@ -317,9 +317,10 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 		if e != nil {
 			return e
 		}
-		// A provider snapshot is authoritative. A stale local attempt must not
-		// cause a duplicate checkout after the snapshot has been recorded.
-		if chosen != nil || len(list.Data) == 0 {
+		// An existing subscription supersedes the checkout attempt. An empty
+		// subscription list does not: an open checkout has no subscription yet.
+		// Older attempts are resolved explicitly by reconcileOldCheckoutAttempt.
+		if chosen != nil {
 			if _, e = tx.ExecContext(ctx, `DELETE FROM checkout_attempts WHERE account_id=?`, accountID); e != nil {
 				return e
 			}

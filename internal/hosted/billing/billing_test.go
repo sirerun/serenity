@@ -179,6 +179,11 @@ func TestCheckoutSurvivesRestartAndPreventsSecondPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// An open checkout has no subscription yet. Reconciliation must retain
+	// its durable attempt so retries cannot create another payment session.
+	if _, err = s.ReconcileCustomer(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
 	s = &billing.Service{Store: db, Config: cfg}
 	if _, err = s.Checkout(ctx, a.ID, "scale"); err == nil {
 		t.Fatal("second plan checkout allowed")
