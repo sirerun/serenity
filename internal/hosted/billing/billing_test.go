@@ -847,3 +847,80 @@ func TestWebhookProviderOutageLeavesEventRetryable(t *testing.T) {
 		t.Fatalf("successful retry not recorded: %v %v", processed, err)
 	}
 }
+
+// Fail the actual local transaction after the provider has accepted cancellation.
+// Retry uses a new Service instance to avoid relying on process-local state.
+func TestCloseBillingRetriesAfterProviderSuccessAndLocalCommitFailure(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	a, err := db.CreateAccount(ctx, "commit-failure@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET status='deleting',stripe_customer_id='cus_commit',plan_id='builder' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status) VALUES('sub_commit',?,'price_builder','builder','active')`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `CREATE TRIGGER fail_closure BEFORE UPDATE ON subscriptions BEGIN SELECT RAISE(ABORT,'injected local closure failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	var canceled atomic.Bool
+	var cancellations atomic.Int32
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodDelete && r.URL.Path == "/subscriptions/sub_commit":
+			cancellations.Add(1)
+			canceled.Store(true)
+			_, _ = w.Write([]byte(`{"id":"sub_commit","status":"canceled"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/subscriptions":
+			status := "active"
+			if canceled.Load() {
+				status = "canceled"
+			}
+			_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_commit","customer":"cus_commit","status":%q,"items":{"data":[{"price":{"id":"price_builder"}}]}}],"has_more":false}`, status)
+		default:
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(provider.Close)
+	config := billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder"}
+	got, err := (&billing.Service{Store: db, Config: config}).CloseBillingAccount(ctx, a.ID)
+	if err == nil || got.Status != contracts.CloseStatusPending || !canceled.Load() {
+		t.Fatalf("closure=%+v err=%v provider canceled=%v", got, err, canceled.Load())
+	}
+	var status, plan string
+	if err = db.DB().QueryRowContext(ctx, `SELECT status FROM subscriptions WHERE id='sub_commit'`).Scan(&status); err != nil || status != "active" {
+		t.Fatalf("local transaction did not roll back: %q %v", status, err)
+	}
+	if err = db.DB().QueryRowContext(ctx, `SELECT status,plan_id FROM accounts WHERE id=?`, a.ID).Scan(&status, &plan); err != nil || status != "deleting" || plan != "builder" {
+		t.Fatalf("account state=%s/%s err=%v", status, plan, err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `DROP TRIGGER fail_closure`); err != nil {
+		t.Fatal(err)
+	}
+	got, err = (&billing.Service{Store: db, Config: config}).CloseBillingAccount(ctx, a.ID)
+	if err != nil || got.Status != contracts.CloseStatusClosed {
+		t.Fatalf("retry=%+v err=%v", got, err)
+	}
+	if cancellations.Load() != 1 {
+		t.Fatalf("canceled %d times", cancellations.Load())
+	}
+	if err = db.DB().QueryRowContext(ctx, `SELECT status FROM subscriptions WHERE id='sub_commit'`).Scan(&status); err != nil || status != "canceled" {
+		t.Fatalf("local closure missing: %q %v", status, err)
+	}
+	if err = db.DB().QueryRowContext(ctx, `SELECT status,plan_id FROM accounts WHERE id=?`, a.ID).Scan(&status, &plan); err != nil || status != "deleting" || plan != "free" {
+		t.Fatalf("closed account=%s/%s err=%v", status, plan, err)
+	}
+}
