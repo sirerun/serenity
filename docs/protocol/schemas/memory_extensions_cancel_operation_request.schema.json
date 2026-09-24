@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_cancel_operation_request.schema.json",
+  "title": "Memory operation cancellation request",
+  "protocol_version": 1,
+  "type": "object",
+  "properties": {
+    "operation_key": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation_key"
+  ],
+  "additionalProperties": false
+}

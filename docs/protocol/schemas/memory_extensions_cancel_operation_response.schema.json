@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_cancel_operation_response.schema.json",
+  "title": "Memory operation cancellation response",
+  "protocol_version": 1,
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "operation_key": {
+      "type": "string"
+    },
+    "canceled": {
+      "type": "boolean"
+    },
+    "id": {
+      "type": "string",
+      "description": "Empty if no fact exists."
+    },
+    "expired": {
+      "type": "boolean",
+      "description": "True only when this call expired a live fact; false if already expired or absent."
+    }
+  },
+  "required": [
+    "protocol_version",
+    "operation_key",
+    "canceled",
+    "id",
+    "expired"
+  ],
+  "additionalProperties": false
+}

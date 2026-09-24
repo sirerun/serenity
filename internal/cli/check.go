@@ -15,7 +15,6 @@ import (
 	"github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/direction/check"
 	"github.com/sirerun/serenity/internal/router"
-	"github.com/sirerun/serenity/internal/writer"
 )
 
 // newCheckCmd wires `serenity check`, the CLI surface over DIRECTION v1's
@@ -156,9 +155,8 @@ func runCheck(ctx context.Context, root, planText, actionsJSON string, jsonOut b
 		return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
 	}
 
-	queue := writer.NewQueue(nil)
-	defer queue.Close()
-	store := direction.NewStore(root, queue)
+	// Matching has no canonical write authority and can coexist with serve.
+	store := direction.NewStore(root, nil)
 	// No provider-from-config wiring exists yet to build a live classification
 	// model for the local-cheap tier (serenity.yml carries no
 	// models.classification pin today) -- mirrors runSearch's identical

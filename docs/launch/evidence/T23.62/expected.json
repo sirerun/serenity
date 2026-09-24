@@ -1,0 +1,7 @@
+{
+  "app_origin": "https://app.serenity.sire.run",
+  "expected_a": null,
+  "expected_cname": null,
+  "sender_domain": "serenity.sire.run",
+  "controlled_recipient_ref": "david+alerts@sire.run"
+}

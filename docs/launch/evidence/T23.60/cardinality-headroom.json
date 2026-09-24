@@ -1,0 +1,718 @@
+{
+  "scope": "Deterministic inventory-only replay of the frozen workload's first repetition against the plan memory caps. No API call, provider, credential or cloud resource. Models only the gateway's memory-count rule; the limiter, the storage rule, the monthly write cap, provider faults, cold opens, races and latency are not modeled. Not a measured runtime failure.",
+  "workload_sha256": "2aa7c9b8e266036c9e28df583e99877fd6936416c3b88723b9c7d367a324d990",
+  "base_seed": 20260918,
+  "frozen_mix": {
+    "recall": 0.8,
+    "remember": 0.15,
+    "forget": 0.05
+  },
+  "cap_total": 90000,
+  "offered_by_phase": {
+    "warmup": 2378,
+    "steady": 7379,
+    "burst": 2430
+  },
+  "starting_at_cap": {
+    "forget_removes_any_fact": {
+      "starting_memories": 90000,
+      "ending_memories": 89993,
+      "by_phase": {
+        "warmup": {
+          "offered": 2378,
+          "remember_offered": 352,
+          "remember_refused_at_cap": 246,
+          "remember_accepted": 106,
+          "forget_offered": 117,
+          "forget_dispatched": 117,
+          "forget_skipped_no_id": 0,
+          "refused_pct_of_all_offered": 10.3448,
+          "completion_ceiling_pct": 89.6552
+        },
+        "steady": {
+          "offered": 7379,
+          "remember_offered": 1130,
+          "remember_refused_at_cap": 726,
+          "remember_accepted": 404,
+          "forget_offered": 396,
+          "forget_dispatched": 396,
+          "forget_skipped_no_id": 0,
+          "refused_pct_of_all_offered": 9.8387,
+          "completion_ceiling_pct": 90.1613
+        },
+        "burst": {
+          "offered": 2430,
+          "remember_offered": 380,
+          "remember_refused_at_cap": 256,
+          "remember_accepted": 124,
+          "forget_offered": 128,
+          "forget_dispatched": 128,
+          "forget_skipped_no_id": 0,
+          "refused_pct_of_all_offered": 10.535,
+          "completion_ceiling_pct": 89.465
+        }
+      }
+    },
+    "current_client": {
+      "starting_memories": 90000,
+      "ending_memories": 90000,
+      "by_phase": {
+        "warmup": {
+          "offered": 2378,
+          "remember_offered": 352,
+          "remember_refused_at_cap": 352,
+          "remember_accepted": 0,
+          "forget_offered": 117,
+          "forget_dispatched": 0,
+          "forget_skipped_no_id": 117,
+          "refused_pct_of_all_offered": 14.8024,
+          "completion_ceiling_pct": 80.2775
+        },
+        "steady": {
+          "offered": 7379,
+          "remember_offered": 1130,
+          "remember_refused_at_cap": 1130,
+          "remember_accepted": 0,
+          "forget_offered": 396,
+          "forget_dispatched": 0,
+          "forget_skipped_no_id": 396,
+          "refused_pct_of_all_offered": 15.3137,
+          "completion_ceiling_pct": 79.3197
+        },
+        "burst": {
+          "offered": 2430,
+          "remember_offered": 380,
+          "remember_refused_at_cap": 380,
+          "remember_accepted": 0,
+          "forget_offered": 128,
+          "forget_dispatched": 0,
+          "forget_skipped_no_id": 128,
+          "refused_pct_of_all_offered": 15.6379,
+          "completion_ceiling_pct": 79.0947
+        }
+      }
+    }
+  },
+  "headroom_needed_to_avoid_every_memory_count_refusal": {
+    "forget_removes_any_fact": {
+      "steady_only": {
+        "total_headroom": 737,
+        "starting_memories_if_each_account_starts_at_cap_minus_headroom": 89263,
+        "ending_memories_after_the_scope": 89997,
+        "by_account": {
+          "scale-0": {
+            "plan": "scale",
+            "cap": 50000,
+            "headroom": 387
+          },
+          "builder-0": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 38
+          },
+          "builder-1": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 19
+          },
+          "builder-2": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 41
+          },
+          "free-0": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 22
+          },
+          "free-1": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 22
+          },
+          "free-2": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 28
+          },
+          "free-3": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 23
+          },
+          "free-4": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 42
+          },
+          "free-5": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 26
+          },
+          "free-6": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 26
+          },
+          "free-7": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 19
+          },
+          "free-8": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 27
+          },
+          "free-9": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 17
+          }
+        }
+      },
+      "through_steady": {
+        "total_headroom": 972,
+        "starting_memories_if_each_account_starts_at_cap_minus_headroom": 89028,
+        "ending_memories_after_the_scope": 89997,
+        "by_account": {
+          "scale-0": {
+            "plan": "scale",
+            "cap": 50000,
+            "headroom": 500
+          },
+          "builder-0": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 47
+          },
+          "builder-1": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 21
+          },
+          "builder-2": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 48
+          },
+          "free-0": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 27
+          },
+          "free-1": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 38
+          },
+          "free-2": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 38
+          },
+          "free-3": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 28
+          },
+          "free-4": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 53
+          },
+          "free-5": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 34
+          },
+          "free-6": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 36
+          },
+          "free-7": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 29
+          },
+          "free-8": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 45
+          },
+          "free-9": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 28
+          }
+        }
+      },
+      "one_repetition": {
+        "total_headroom": 1228,
+        "starting_memories_if_each_account_starts_at_cap_minus_headroom": 88772,
+        "ending_memories_after_the_scope": 89993,
+        "by_account": {
+          "scale-0": {
+            "plan": "scale",
+            "cap": 50000,
+            "headroom": 626
+          },
+          "builder-0": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 59
+          },
+          "builder-1": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 33
+          },
+          "builder-2": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 62
+          },
+          "free-0": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 36
+          },
+          "free-1": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 53
+          },
+          "free-2": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 46
+          },
+          "free-3": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 41
+          },
+          "free-4": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 61
+          },
+          "free-5": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 44
+          },
+          "free-6": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 43
+          },
+          "free-7": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 34
+          },
+          "free-8": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 52
+          },
+          "free-9": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 38
+          }
+        }
+      },
+      "three_repetitions_cumulative": {
+        "total_headroom": 3670,
+        "starting_memories_if_each_account_starts_at_cap_minus_headroom": 86330,
+        "ending_memories_after_the_scope": 89993,
+        "by_account": {
+          "scale-0": {
+            "plan": "scale",
+            "cap": 50000,
+            "headroom": 1878
+          },
+          "builder-0": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 173
+          },
+          "builder-1": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 99
+          },
+          "builder-2": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 186
+          },
+          "free-0": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 108
+          },
+          "free-1": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 157
+          },
+          "free-2": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 138
+          },
+          "free-3": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 121
+          },
+          "free-4": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 183
+          },
+          "free-5": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 132
+          },
+          "free-6": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 125
+          },
+          "free-7": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 102
+          },
+          "free-8": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 154
+          },
+          "free-9": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 114
+          }
+        }
+      }
+    },
+    "current_client": {
+      "steady_only": {
+        "total_headroom": 739,
+        "starting_memories_if_each_account_starts_at_cap_minus_headroom": 89261,
+        "ending_memories_after_the_scope": 89997,
+        "by_account": {
+          "scale-0": {
+            "plan": "scale",
+            "cap": 50000,
+            "headroom": 387
+          },
+          "builder-0": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 38
+          },
+          "builder-1": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 20
+          },
+          "builder-2": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 41
+          },
+          "free-0": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 22
+          },
+          "free-1": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 23
+          },
+          "free-2": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 28
+          },
+          "free-3": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 23
+          },
+          "free-4": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 42
+          },
+          "free-5": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 26
+          },
+          "free-6": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 26
+          },
+          "free-7": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 19
+          },
+          "free-8": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 27
+          },
+          "free-9": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 17
+          }
+        }
+      },
+      "through_steady": {
+        "total_headroom": 977,
+        "starting_memories_if_each_account_starts_at_cap_minus_headroom": 89023,
+        "ending_memories_after_the_scope": 89997,
+        "by_account": {
+          "scale-0": {
+            "plan": "scale",
+            "cap": 50000,
+            "headroom": 500
+          },
+          "builder-0": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 47
+          },
+          "builder-1": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 22
+          },
+          "builder-2": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 48
+          },
+          "free-0": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 27
+          },
+          "free-1": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 38
+          },
+          "free-2": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 39
+          },
+          "free-3": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 29
+          },
+          "free-4": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 53
+          },
+          "free-5": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 36
+          },
+          "free-6": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 36
+          },
+          "free-7": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 29
+          },
+          "free-8": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 45
+          },
+          "free-9": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 28
+          }
+        }
+      },
+      "one_repetition": {
+        "total_headroom": 1233,
+        "starting_memories_if_each_account_starts_at_cap_minus_headroom": 88767,
+        "ending_memories_after_the_scope": 89993,
+        "by_account": {
+          "scale-0": {
+            "plan": "scale",
+            "cap": 50000,
+            "headroom": 626
+          },
+          "builder-0": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 59
+          },
+          "builder-1": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 34
+          },
+          "builder-2": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 62
+          },
+          "free-0": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 36
+          },
+          "free-1": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 53
+          },
+          "free-2": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 47
+          },
+          "free-3": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 42
+          },
+          "free-4": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 61
+          },
+          "free-5": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 46
+          },
+          "free-6": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 43
+          },
+          "free-7": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 34
+          },
+          "free-8": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 52
+          },
+          "free-9": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 38
+          }
+        }
+      },
+      "three_repetitions_cumulative": {
+        "total_headroom": 3675,
+        "starting_memories_if_each_account_starts_at_cap_minus_headroom": 86325,
+        "ending_memories_after_the_scope": 89993,
+        "by_account": {
+          "scale-0": {
+            "plan": "scale",
+            "cap": 50000,
+            "headroom": 1878
+          },
+          "builder-0": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 173
+          },
+          "builder-1": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 100
+          },
+          "builder-2": {
+            "plan": "builder",
+            "cap": 10000,
+            "headroom": 186
+          },
+          "free-0": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 108
+          },
+          "free-1": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 157
+          },
+          "free-2": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 139
+          },
+          "free-3": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 122
+          },
+          "free-4": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 183
+          },
+          "free-5": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 134
+          },
+          "free-6": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 125
+          },
+          "free-7": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 102
+          },
+          "free-8": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 154
+          },
+          "free-9": {
+            "plan": "free",
+            "cap": 1000,
+            "headroom": 114
+          }
+        }
+      }
+    }
+  }
+}

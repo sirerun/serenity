@@ -131,3 +131,19 @@ func TestLoadLegacyConfigWithoutLadderSectionLeavesLadderZeroValue(t *testing.T)
 		t.Fatalf("Load legacy config: Ladder = %+v, want empty PerCell/NeverAutomate", loaded.Ladder)
 	}
 }
+
+func TestLoadServerMaxInFlightCalls(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/serenity.yml"
+	contents := "version: 1\nmodels:\n  embedding: none@v0\n  extraction: none@v0\n  composer: none@v0\nindex:\n  engine: sqlite\nserver:\n  max_in_flight_calls: 17\nfamilies: {}\n"
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load config: %v", err)
+	}
+	if loaded.Server.MaxInFlightCalls != 17 {
+		t.Fatalf("Server.MaxInFlightCalls = %d, want 17", loaded.Server.MaxInFlightCalls)
+	}
+}

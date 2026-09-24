@@ -1,0 +1,207 @@
+{
+  "schema_version": "serenity-aws-price-list-receipt/v1",
+  "retrieved_at": "2026-09-21T15:48:09Z",
+  "sources": [
+    {
+      "service_code": "AmazonS3",
+      "region_code": "us-west-2",
+      "price_list_arn": "arn:aws:pricing:::price-list/aws/AmazonS3/USD/20260918174747/us-west-2",
+      "version": "20260918174747",
+      "publication_date": "2026-09-18T17:47:47Z",
+      "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/20260918174747/us-west-2/index.json",
+      "query": "GetProducts filtered by regionCode=us-west-2 and productFamily=API Request",
+      "products": [
+        {
+          "product": {
+            "productFamily": "API Request",
+            "attributes": {
+              "regionCode": "us-west-2",
+              "servicecode": "AmazonS3",
+              "groupDescription": "PUT/COPY/POST or LIST requests",
+              "usagetype": "USW2-Requests-Tier1",
+              "locationType": "AWS Region",
+              "location": "US West (Oregon)",
+              "servicename": "Amazon Simple Storage Service",
+              "operation": "",
+              "group": "S3-API-Tier1"
+            },
+            "sku": "D4PMUVH6F64HK2D6"
+          },
+          "serviceCode": "AmazonS3",
+          "terms": {
+            "OnDemand": {
+              "D4PMUVH6F64HK2D6.JRTCKXETXF": {
+                "priceDimensions": {
+                  "D4PMUVH6F64HK2D6.JRTCKXETXF.6YS6EN2CT7": {
+                    "unit": "Requests",
+                    "endRange": "Inf",
+                    "description": "$0.005 per 1,000 PUT, COPY, POST, or LIST requests",
+                    "appliesTo": [],
+                    "rateCode": "D4PMUVH6F64HK2D6.JRTCKXETXF.6YS6EN2CT7",
+                    "beginRange": "0",
+                    "pricePerUnit": {
+                      "USD": "0.0000050000"
+                    }
+                  }
+                },
+                "sku": "D4PMUVH6F64HK2D6",
+                "effectiveDate": "2026-09-01T00:00:00Z",
+                "offerTermCode": "JRTCKXETXF",
+                "termAttributes": {}
+              }
+            }
+          },
+          "version": "20260918174747",
+          "publicationDate": "2026-09-18T17:47:47Z"
+        },
+        {
+          "product": {
+            "productFamily": "API Request",
+            "attributes": {
+              "regionCode": "us-west-2",
+              "servicecode": "AmazonS3",
+              "groupDescription": "GET and all other requests",
+              "usagetype": "USW2-Requests-Tier2",
+              "locationType": "AWS Region",
+              "location": "US West (Oregon)",
+              "servicename": "Amazon Simple Storage Service",
+              "operation": "",
+              "group": "S3-API-Tier2"
+            },
+            "sku": "E77AQEM2DC4VV3FC"
+          },
+          "serviceCode": "AmazonS3",
+          "terms": {
+            "OnDemand": {
+              "E77AQEM2DC4VV3FC.JRTCKXETXF": {
+                "priceDimensions": {
+                  "E77AQEM2DC4VV3FC.JRTCKXETXF.6YS6EN2CT7": {
+                    "unit": "Requests",
+                    "endRange": "Inf",
+                    "description": "$0.004 per 10,000 GET and all other requests",
+                    "appliesTo": [],
+                    "rateCode": "E77AQEM2DC4VV3FC.JRTCKXETXF.6YS6EN2CT7",
+                    "beginRange": "0",
+                    "pricePerUnit": {
+                      "USD": "0.0000004000"
+                    }
+                  }
+                },
+                "sku": "E77AQEM2DC4VV3FC",
+                "effectiveDate": "2026-09-01T00:00:00Z",
+                "offerTermCode": "JRTCKXETXF",
+                "termAttributes": {}
+              }
+            }
+          },
+          "version": "20260918174747",
+          "publicationDate": "2026-09-18T17:47:47Z"
+        }
+      ],
+      "selection_method": "AWS Price List Query API GetProducts; filter regionCode=us-west-2 and productFamily=API Request",
+      "name": "AmazonS3 us-west-2 request prices",
+      "retrieved_at": "2026-09-21T15:48:09Z"
+    },
+    {
+      "service_code": "AWSDataTransfer",
+      "region_code": "us-west-2",
+      "price_list_arn": "arn:aws:pricing:::price-list/aws/AWSDataTransfer/USD/20260916132208/us-west-2",
+      "version": "20260916132208",
+      "publication_date": "2026-09-16T13:22:08Z",
+      "source_url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/20260916132208/us-west-2/index.json",
+      "query": "GetProducts filtered by usagetype=USW2-DataTransfer-Out-Bytes",
+      "products": [
+        {
+          "product": {
+            "productFamily": "Data Transfer",
+            "attributes": {
+              "fromLocationType": "AWS Region",
+              "toRegionCode": "",
+              "servicecode": "AWSDataTransfer",
+              "usagetype": "USW2-DataTransfer-Out-Bytes",
+              "fromRegionCode": "us-west-2",
+              "transferType": "AWS Outbound",
+              "servicename": "AWS Data Transfer",
+              "fromLocation": "US West (Oregon)",
+              "toLocationType": "Other",
+              "toLocation": "External",
+              "operation": ""
+            },
+            "sku": "5M4327XEUKBBTWAT"
+          },
+          "serviceCode": "AWSDataTransfer",
+          "terms": {
+            "OnDemand": {
+              "5M4327XEUKBBTWAT.JRTCKXETXF": {
+                "priceDimensions": {
+                  "5M4327XEUKBBTWAT.JRTCKXETXF.GPHXDESFBB": {
+                    "unit": "GB",
+                    "endRange": "Inf",
+                    "description": "$0.050 per GB - greater than 150 TB / month data transfer out",
+                    "appliesTo": [],
+                    "rateCode": "5M4327XEUKBBTWAT.JRTCKXETXF.GPHXDESFBB",
+                    "beginRange": "153600",
+                    "pricePerUnit": {
+                      "USD": "0.0500000000"
+                    }
+                  },
+                  "5M4327XEUKBBTWAT.JRTCKXETXF.VF6T3GAUKQ": {
+                    "unit": "GB",
+                    "endRange": "51200",
+                    "description": "$0.085 per GB - next 40 TB / month data transfer out",
+                    "appliesTo": [],
+                    "rateCode": "5M4327XEUKBBTWAT.JRTCKXETXF.VF6T3GAUKQ",
+                    "beginRange": "10240",
+                    "pricePerUnit": {
+                      "USD": "0.0850000000"
+                    }
+                  },
+                  "5M4327XEUKBBTWAT.JRTCKXETXF.Q3Z75P77EN": {
+                    "unit": "GB",
+                    "endRange": "10240",
+                    "description": "$0.090 per GB - first 10 TB / month data transfer out beyond the global free tier",
+                    "appliesTo": [],
+                    "rateCode": "5M4327XEUKBBTWAT.JRTCKXETXF.Q3Z75P77EN",
+                    "beginRange": "0",
+                    "pricePerUnit": {
+                      "USD": "0.0900000000"
+                    }
+                  },
+                  "5M4327XEUKBBTWAT.JRTCKXETXF.N9EW5UVVPA": {
+                    "unit": "GB",
+                    "endRange": "153600",
+                    "description": "$0.070 per GB - next 100 TB / month data transfer out",
+                    "appliesTo": [],
+                    "rateCode": "5M4327XEUKBBTWAT.JRTCKXETXF.N9EW5UVVPA",
+                    "beginRange": "51200",
+                    "pricePerUnit": {
+                      "USD": "0.0700000000"
+                    }
+                  }
+                },
+                "sku": "5M4327XEUKBBTWAT",
+                "effectiveDate": "2026-06-01T00:00:00Z",
+                "offerTermCode": "JRTCKXETXF",
+                "termAttributes": {}
+              }
+            }
+          },
+          "version": "20260916132208",
+          "publicationDate": "2026-09-16T13:22:08Z"
+        }
+      ],
+      "selection_method": "AWS Price List Query API GetProducts; filter usagetype=USW2-DataTransfer-Out-Bytes",
+      "name": "AWSDataTransfer us-west-2 internet egress prices",
+      "retrieved_at": "2026-09-21T15:48:09Z"
+    }
+  ],
+  "global_internet_data_transfer_allowance": {
+    "quantity": 100,
+    "unit": "GB/month",
+    "scope": "aggregated across AWS services and Regions except China and GovCloud",
+    "source_url": "https://aws.amazon.com/s3/pricing/",
+    "source_sha256": "745b9af7954e9d9af2346b29c17b67af8bfcb01f29699fa8ff0fcd2508888d7c",
+    "retrieved_at": "2026-09-21T15:48:09Z",
+    "evidence_excerpt": "Data transferred out to the internet for the first 100GB per month, aggregated across all AWS Services and Regions (except China and GovCloud)."
+  }
+}

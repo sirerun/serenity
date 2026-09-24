@@ -1,0 +1,97 @@
+{
+  "task_id": "T23.61",
+  "profile": "paid",
+  "status": "PARTIAL",
+  "source_sha": "b6d1a12a52bfc6d87ad69d697b53fb8e01afe610",
+  "recorded_at": "2026-09-22T22:15:03Z",
+  "evidence_level": "static",
+  "dependencies": {
+    "T23.42": "b6d1a12a52bfc6d87ad69d697b53fb8e01afe610",
+    "T23.43": "b6d1a12a52bfc6d87ad69d697b53fb8e01afe610",
+    "T23.60": "b6d1a12a52bfc6d87ad69d697b53fb8e01afe610"
+  },
+  "commands": [
+    "python3 scripts/hosted/provider_preflight.py --manifest docs/launch/hosted-completion/qualification.example.json --output docs/launch/evidence/T23.61/preflight.json --metadata-only",
+    "python3 -m unittest tests.hosted.test_provider_preflight",
+    "python3 -m py_compile scripts/hosted/provider_preflight.py"
+  ],
+  "cases": {
+    "planned": 3,
+    "executed": 3,
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "skip_reasons": []
+  },
+  "acceptance": [
+    {
+      "criterion": "Packet names secret destinations, permissions, budget and rollback without secret values or customer data",
+      "expected": "Sanitized packet with exact refs and owners",
+      "observed": "Provider setup and authorization matrix contain refs only; no values or customer data",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Preflight makes no provider calls and distinguishes missing metadata",
+      "expected": "network_calls=0 and BLOCKED when refs/config are unavailable",
+      "observed": "preflight.json reports BLOCKED, five metadata errors, network_calls=0",
+      "status": "PASS"
+    },
+    {
+      "criterion": "External gates are qualified",
+      "expected": "Provider, mail, Stripe, DNS and AWS evidence",
+      "observed": "No live provider, DNS, Stripe object, AWS resource or delivery evidence exists yet",
+      "status": "NOT_RUN"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "scripts/hosted/provider_preflight.py",
+      "sha256": "26a9af57f6f087d7d35012501b72a71823478d48925123f272c5f05719b9fc72"
+    },
+    {
+      "path": "tests/hosted/test_provider_preflight.py",
+      "sha256": "b59b34471c709a08564d2ef2866f01716fcb0a7596cb609aeb068b0650415149"
+    },
+    {
+      "path": "docs/launch/hosted-provider-setup.md",
+      "sha256": "57ef1e6642fddfec02e16bb6369f934c2199c69a9b267de6c7c43239aa24c230"
+    },
+    {
+      "path": "docs/launch/hosted-completion/authorizations.md",
+      "sha256": "5b505012cf61de40a3a15d946aa716a813618e00a832f76a2609f4edf57fcc96"
+    },
+    {
+      "path": "docs/launch/evidence/T23.61/preflight.json",
+      "sha256": "41b0f3fd588b958ff28f5522be306e2cc1912dd589902877c2024b6387f7402f"
+    }
+  ],
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": 1,
+    "authorization_refs": [
+      "founder synthetic-only qualification cap"
+    ]
+  },
+  "limitations": [
+    "Metadata-only preflight does not validate provider permissions, serving-provider terms, DNS, Stripe objects or mail delivery.",
+    "No qualification environment or AWS resources were created."
+  ],
+  "blockers": [
+    {
+      "owner": "provider/reviewer",
+      "required_input": "Approve current serving-provider privacy terms and run the bounded synthetic seed/live qualification."
+    },
+    {
+      "owner": "foundation/account owner",
+      "required_input": "Verify sender DNS and controlled Resend delivery to david+alerts@sire.run."
+    },
+    {
+      "owner": "billing owner",
+      "required_input": "Create isolated Stripe test products, portal and signed webhook configuration."
+    },
+    {
+      "owner": "coordinator",
+      "required_input": "Authorize and execute the private AWS qualification stack with a cleanup window."
+    }
+  ]
+}

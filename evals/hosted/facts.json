@@ -1,0 +1,529 @@
+{
+  "facts": [
+    {
+      "id": "filler-01",
+      "text": "Nadia keeps her houseplants alive with a strict watering spreadsheet.",
+      "type": "fact"
+    },
+    {
+      "id": "filler-02",
+      "text": "Otto collects vintage subway maps from cities he has never visited.",
+      "type": "fact"
+    },
+    {
+      "id": "filler-03",
+      "text": "Petra bakes sourdough bread every other weekend.",
+      "type": "fact"
+    },
+    {
+      "id": "filler-04",
+      "text": "Quang repairs broken umbrellas as a hobby.",
+      "type": "fact"
+    },
+    {
+      "id": "filler-05",
+      "text": "Rina practices calligraphy with a fountain pen each evening.",
+      "type": "fact"
+    },
+    {
+      "id": "filler-06",
+      "text": "Salim keeps a running list of palindromes he finds in the wild.",
+      "type": "fact"
+    },
+    {
+      "id": "filler-07",
+      "text": "Tea Okonkwo knits scarves for the animal shelter's fundraiser.",
+      "type": "fact"
+    },
+    {
+      "id": "filler-08",
+      "text": "Ulf photographs cloud formations from his rooftop.",
+      "type": "fact"
+    },
+    {
+      "id": "filler-09",
+      "text": "Vera memorizes a new poem every month.",
+      "type": "fact"
+    },
+    {
+      "id": "filler-10",
+      "text": "Wale restores old bicycles for neighborhood kids.",
+      "type": "fact"
+    },
+    {
+      "id": "para-01a-fact",
+      "text": "Amara commutes to the office by bicycle every Monday.",
+      "type": "fact"
+    },
+    {
+      "id": "para-01b-fact",
+      "text": "Baptiste commutes to the office by train every Tuesday.",
+      "type": "fact"
+    },
+    {
+      "id": "para-01c-fact",
+      "text": "Chidi commutes to the office by carpool every Wednesday.",
+      "type": "fact"
+    },
+    {
+      "id": "para-02a-fact",
+      "text": "Delphine keeps a cat named Mimir as a pet.",
+      "type": "fact"
+    },
+    {
+      "id": "para-02b-fact",
+      "text": "Esteban keeps a dog named Bruno as a pet.",
+      "type": "fact"
+    },
+    {
+      "id": "para-02c-fact",
+      "text": "Fenna keeps a parrot named Kiwi as a pet.",
+      "type": "fact"
+    },
+    {
+      "id": "para-03a-fact",
+      "text": "Grzegorz spends weekends restoring vintage typewriters.",
+      "type": "fact"
+    },
+    {
+      "id": "para-03b-fact",
+      "text": "Haruto spends weekends brewing small-batch soy sauce.",
+      "type": "fact"
+    },
+    {
+      "id": "para-03c-fact",
+      "text": "Ingrid spends weekends mapping abandoned rail lines.",
+      "type": "fact"
+    },
+    {
+      "id": "para-04a-fact",
+      "text": "Jokull starts every morning with a cup of chicory coffee.",
+      "type": "fact"
+    },
+    {
+      "id": "para-04b-fact",
+      "text": "Kwame starts every morning with a cup of ginger tea.",
+      "type": "fact"
+    },
+    {
+      "id": "para-04c-fact",
+      "text": "Liora starts every morning with a cup of yerba mate.",
+      "type": "fact"
+    },
+    {
+      "id": "para-05a-fact",
+      "text": "Mateus practices the cello for an hour each evening.",
+      "type": "fact"
+    },
+    {
+      "id": "para-05b-fact",
+      "text": "Noor practices the marimba for an hour each evening.",
+      "type": "fact"
+    },
+    {
+      "id": "para-05c-fact",
+      "text": "Oksana practices the accordion for an hour each evening.",
+      "type": "fact"
+    },
+    {
+      "id": "para-06a-fact",
+      "text": "Priya is currently reading a novel about arctic explorers.",
+      "type": "fact"
+    },
+    {
+      "id": "para-06b-fact",
+      "text": "Quentin is currently reading a novel about deep-sea cartography.",
+      "type": "fact"
+    },
+    {
+      "id": "para-06c-fact",
+      "text": "Rosalind is currently reading a novel about forgotten board games.",
+      "type": "fact"
+    },
+    {
+      "id": "para-07a-fact",
+      "text": "Sten grows chili peppers on the balcony.",
+      "type": "fact"
+    },
+    {
+      "id": "para-07b-fact",
+      "text": "Tanvir grows dwarf citrus trees on the balcony.",
+      "type": "fact"
+    },
+    {
+      "id": "para-07c-fact",
+      "text": "Urszula grows heirloom tomatoes on the balcony.",
+      "type": "fact"
+    },
+    {
+      "id": "para-08a-fact",
+      "text": "Viraj relocated to a new city, Cebu, for a role last spring.",
+      "type": "fact"
+    },
+    {
+      "id": "para-08b-fact",
+      "text": "Wren relocated to a new city, Ljubljana, for a role last spring.",
+      "type": "fact"
+    },
+    {
+      "id": "para-08c-fact",
+      "text": "Xochitl relocated to a new city, Accra, for a role last spring.",
+      "type": "fact"
+    },
+    {
+      "id": "para-09a-fact",
+      "text": "Yusuf makes a signature lamb tagine every Sunday for friends.",
+      "type": "fact"
+    },
+    {
+      "id": "para-09b-fact",
+      "text": "Zanele makes a signature mushroom risotto every Sunday for friends.",
+      "type": "fact"
+    },
+    {
+      "id": "para-09c-fact",
+      "text": "Aoife makes a signature potato farl every Sunday for friends.",
+      "type": "fact"
+    },
+    {
+      "id": "para-10a-fact",
+      "text": "Bilal is teaching themself Icelandic using flashcards.",
+      "type": "fact"
+    },
+    {
+      "id": "para-10b-fact",
+      "text": "Cosima is teaching themself Tagalog using flashcards.",
+      "type": "fact"
+    },
+    {
+      "id": "para-10c-fact",
+      "text": "Dov is teaching themself Xhosa using flashcards.",
+      "type": "fact"
+    },
+    {
+      "id": "para-11a-fact",
+      "text": "Fatoumata volunteers weekly at a local animal shelter.",
+      "type": "fact"
+    },
+    {
+      "id": "para-11b-fact",
+      "text": "Giedre volunteers weekly at a local homeless shelter.",
+      "type": "fact"
+    },
+    {
+      "id": "para-11c-fact",
+      "text": "Hamid volunteers weekly at a local wildlife shelter.",
+      "type": "fact"
+    },
+    {
+      "id": "para-12a-fact",
+      "text": "Rustam goes for a run along the river every morning before work.",
+      "type": "fact"
+    },
+    {
+      "id": "para-12b-fact",
+      "text": "Sunniva goes for a swim at the lake every morning before work.",
+      "type": "fact"
+    },
+    {
+      "id": "para-12c-fact",
+      "text": "Tobias goes for a row on the canal every morning before work.",
+      "type": "fact"
+    },
+    {
+      "id": "para-13a-fact",
+      "text": "Vasilis always listens to old radio dramas while cleaning the kitchen.",
+      "type": "fact"
+    },
+    {
+      "id": "para-13b-fact",
+      "text": "Winnie always listens to radio call-in quizzes while cleaning the kitchen.",
+      "type": "fact"
+    },
+    {
+      "id": "para-13c-fact",
+      "text": "Xander always listens to overnight radio jazz while cleaning the kitchen.",
+      "type": "fact"
+    },
+    {
+      "id": "para-40-fact",
+      "text": "Yolanda reads yesterday's newspaper backwards, starting from the sports page.",
+      "type": "fact"
+    },
+    {
+      "id": "name-01a-fact",
+      "text": "Katarzyna Wroblewski leads the Warsaw distribution hub.",
+      "type": "fact"
+    },
+    {
+      "id": "name-01b-fact",
+      "text": "Katarzyna Wozniak leads the Krakow distribution hub.",
+      "type": "fact"
+    },
+    {
+      "id": "name-01c-fact",
+      "text": "Katarzyna Wysocka leads the Gdansk distribution hub.",
+      "type": "fact"
+    },
+    {
+      "id": "name-02a-fact",
+      "text": "Meridian Freight Norway handles Arctic shipping routes.",
+      "type": "fact"
+    },
+    {
+      "id": "name-02b-fact",
+      "text": "Meridian Freight Chile handles Pacific coastal shipping routes.",
+      "type": "fact"
+    },
+    {
+      "id": "name-02c-fact",
+      "text": "Meridian Freight Kenya handles East African shipping routes.",
+      "type": "fact"
+    },
+    {
+      "id": "name-03a-fact",
+      "text": "Consultant Femi Adeyemi specializes in tax law for the Lagos office.",
+      "type": "fact"
+    },
+    {
+      "id": "name-03b-fact",
+      "text": "Consultant Ronke Adeyemi specializes in labor law for the Lagos office.",
+      "type": "fact"
+    },
+    {
+      "id": "name-03c-fact",
+      "text": "Consultant Tunde Adeyemi specializes in contract law for the Lagos office.",
+      "type": "fact"
+    },
+    {
+      "id": "name-04a-fact",
+      "text": "The AeroLite 200 drone has a 40-minute flight time.",
+      "type": "fact"
+    },
+    {
+      "id": "name-04b-fact",
+      "text": "The AeroLite 400 drone has a 25-minute flight time.",
+      "type": "fact"
+    },
+    {
+      "id": "name-04c-fact",
+      "text": "The AeroLite Mini drone has a 15-minute flight time.",
+      "type": "fact"
+    },
+    {
+      "id": "name-05a-fact",
+      "text": "Dr. Beatriz Souza is keynoting on coral reef restoration at the marine summit.",
+      "type": "fact"
+    },
+    {
+      "id": "name-05b-fact",
+      "text": "Dr. Camila Souza is keynoting on mangrove restoration at the marine summit.",
+      "type": "fact"
+    },
+    {
+      "id": "name-05c-fact",
+      "text": "Dr. Diana Souza is keynoting on seagrass restoration at the marine summit.",
+      "type": "fact"
+    },
+    {
+      "id": "name-06a-fact",
+      "text": "Youssef Haddad owns the bakery on Cedar Street.",
+      "type": "fact"
+    },
+    {
+      "id": "name-06b-fact",
+      "text": "Marwan Haddad owns the bookstore on Cedar Street.",
+      "type": "fact"
+    },
+    {
+      "id": "name-06c-fact",
+      "text": "Samira Haddad owns the pharmacy on Cedar Street.",
+      "type": "fact"
+    },
+    {
+      "id": "name-07a-fact",
+      "text": "Investor Lin Wei-Chen backed the seed round for a solar-panel recycling startup.",
+      "type": "fact"
+    },
+    {
+      "id": "name-07b-fact",
+      "text": "Investor Lin Mei-Hua backed the seed round for a rival solar-panel recycling startup.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-01a-fact",
+      "text": "Bram prefers coffee over tea in the mornings.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-01b-fact",
+      "text": "Corin prefers tea over coffee in the mornings.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-01c-fact",
+      "text": "Dara avoids both coffee and tea, drinking only water.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-02a-fact",
+      "text": "Elin prefers morning meetings and avoids anything after 4pm.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-02b-fact",
+      "text": "Farrukh prefers afternoon meetings and avoids anything before 10am.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-02c-fact",
+      "text": "Gunnar has no meeting-time preference and accepts any slot.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-03a-fact",
+      "text": "Halima does not eat shellfish but eats other seafood.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-03b-fact",
+      "text": "Imre does not eat any seafood at all, shellfish included.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-03c-fact",
+      "text": "Jovan eats shellfish but avoids other seafood.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-04a-fact",
+      "text": "Kaveh prefers window seats and never books an aisle seat.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-04b-fact",
+      "text": "Leilani prefers aisle seats and never books a window seat.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-04c-fact",
+      "text": "Milos has no seat preference and takes whatever is available.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-05a-fact",
+      "text": "Nour prefers email over phone calls for work matters.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-05b-fact",
+      "text": "Omar prefers phone calls over email for work matters.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-05c-fact",
+      "text": "Paloma refuses phone calls entirely, email only, no exceptions.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-06a-fact",
+      "text": "Reza used to prefer the gym in the evening but now trains at dawn.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-06b-fact",
+      "text": "Reza's colleague Soraya still trains in the evening, unchanged.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-06c-fact",
+      "text": "Tamar trains at dawn on weekdays and in the evening on weekends.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-07a-fact",
+      "text": "Ugne likes spicy food and adds chili to almost everything.",
+      "type": "fact"
+    },
+    {
+      "id": "pref-07b-fact",
+      "text": "Vikram dislikes spicy food and avoids chili entirely.",
+      "type": "fact"
+    },
+    {
+      "id": "ml-01-fact",
+      "text": "Amina's favorite holiday destination is the Azores.",
+      "type": "fact"
+    },
+    {
+      "id": "ml-02-fact",
+      "text": "Bjorn adopted a rescue greyhound named Sable.",
+      "type": "fact"
+    },
+    {
+      "id": "ml-03-fact",
+      "text": "Chiara teaches pottery classes on Thursday evenings.",
+      "type": "fact"
+    },
+    {
+      "id": "ml-04-fact",
+      "text": "Dawit repairs antique clocks as a side business.",
+      "type": "fact"
+    },
+    {
+      "id": "ml-05-fact",
+      "text": "Elif volunteers translating documents for refugee families.",
+      "type": "fact"
+    },
+    {
+      "id": "ml-06-fact",
+      "text": "Faisal keeps bees on his apartment rooftop.",
+      "type": "fact"
+    },
+    {
+      "id": "ml-07-fact",
+      "text": "Greta runs a small letterpress printing studio.",
+      "type": "fact"
+    },
+    {
+      "id": "ml-08-fact",
+      "text": "Hiroshi grows bonsai trees as a weekend practice.",
+      "type": "fact"
+    },
+    {
+      "id": "ml-09-fact",
+      "text": "Ines restores old sailing maps for a maritime museum.",
+      "type": "fact"
+    },
+    {
+      "id": "ml-10-fact",
+      "text": "Jamal composes ambient music under a stage name.",
+      "type": "fact"
+    },
+    {
+      "id": "temp-01-fact",
+      "text": "The Q3 product review is scheduled for the third Tuesday of September 2026.",
+      "type": "fact"
+    },
+    {
+      "id": "temp-02-fact",
+      "text": "The office lease renewal deadline is January 15, 2027.",
+      "type": "fact"
+    },
+    {
+      "id": "temp-03-fact",
+      "text": "The annual security audit begins the first Monday of November 2026.",
+      "type": "fact"
+    },
+    {
+      "id": "temp-04-fact",
+      "text": "The new hire onboarding cohort starts on 2026-10-05.",
+      "type": "fact"
+    },
+    {
+      "id": "temp-05-fact",
+      "text": "The data-retention policy changes take effect on 2027-03-01.",
+      "type": "fact"
+    }
+  ]
+}

@@ -24,6 +24,8 @@ for f,p in parsed.items():
  for url in p.links:
   u=urlsplit(url)
   if u.scheme or u.netloc:continue
+  # Dynamic hosted routes are covered by the hosted browser suite.
+  if u.path in ("/login", "/dashboard", "/oauth/connections"):continue
   target=(root/u.path.lstrip('/')) if u.path.startswith('/') else (f.parent/u.path)
   if not u.path:target=f
   if target.is_dir():target=target/'index.html'

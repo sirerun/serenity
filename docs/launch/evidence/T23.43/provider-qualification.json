@@ -1,0 +1,41 @@
+{
+  "schema": "serenity.hosted.t23.43.provider-qualification",
+  "schema_version": 1,
+  "reviewer": "David Ndungu",
+  "reviewed_at_utc": "2026-09-22T06:33:41Z",
+  "authorization": {
+    "inputs": "synthetic-only",
+    "total_cap_usd": 1.0,
+    "fallbacks": false
+  },
+  "adapter": {
+    "revision": "639a1abd6a38fdb34d528562470f0e85726ab5f9"
+  },
+  "request": {
+    "endpoint": "https://openrouter.ai/api/v1/embeddings",
+    "model": "perplexity/pplx-embed-v1-0.6b",
+    "provider_order": ["Perplexity"],
+    "allow_fallbacks": false,
+    "zdr": true,
+    "data_collection": "deny",
+    "input_class": "synthetic"
+  },
+  "response": {
+    "http_status": 200,
+    "model": "pplx-embed-v1-0.6b",
+    "serving_provider": "Perplexity",
+    "dimensions": 1024,
+    "prompt_tokens": 16,
+    "provider_cost_usd": 0.000000064
+  },
+  "pin": {
+    "version_pin": "openrouter-model-catalog-2026-09-21",
+    "privacy_review_ref": "openrouter-zdr-deny-2026-09-21",
+    "credential_ref": "EMBEDDINGS_API_KEY"
+  },
+  "limits": [
+    "This is a provider contract probe, not semantic retrieval qualification.",
+    "No customer or real-person input was sent.",
+    "The API key value and request identifier are intentionally omitted."
+  ]
+}

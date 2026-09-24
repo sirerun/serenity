@@ -1,0 +1,1759 @@
+{
+  "schema_version": 1,
+  "baseline": "b9863824faaea77b0dbe059af0e0b25efdce5750",
+  "created": "2026-09-18",
+  "epic": "E23",
+  "default_profile": "paid",
+  "profiles": [
+    "pilot",
+    "paid"
+  ],
+  "status_semantics": "ready/planned are planning states, not accepted completion; use source-pinned result receipts",
+  "tasks": [
+    {
+      "id": "T23.41",
+      "title": "Freeze integration contracts and reconcile the merged baseline",
+      "lane": "integrator",
+      "status": "ready",
+      "dependencies": [],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "4\u20136",
+      "write_paths": [
+        "docs/launch/hosted-completion/interfaces.md",
+        "internal/hosted/store/**",
+        "internal/hosted/service/service.go",
+        "internal/cli/hosted.go",
+        "internal/hosted/contracts/**",
+        "internal/hosted/testhooks/**"
+      ],
+      "steps": [
+        "Read b986382 and subsequent main changes; inventory each original E23 requirement using the crosswalk. Keep existing implemented features; record divergence from old contracts (JSON config, uppercase secret filenames, opaque sessions, actual packages).",
+        "With chief-architect, resolve and publish the four bounded design decisions in interfaces.md: physical storage reservation/headroom, crash-safe canonical-operation accounting, independently durable deletion journal, and restore eligibility. Required invariants and preferred mechanisms are in the execution plan. No worker chooses a weaker substitute. The journal design must prove completeness through activation and fence old service writers; a sequence/checksum alone does not prove no tail was omitted.",
+        "Freeze callable Go interfaces and failure codes for ReconcileCustomer, CloseBillingAccount, operation outcome reconciliation, deletion journal AppendDeletion/ReadThrough/Seal, backup manifest v2, restore Plan/Apply and telemetry. Specify lock order, request cancellation, accounting units and every new config field. Freeze a deterministic fault-barrier API compiled only under the hostedtest build tag, using inherited private pipes/files, never an HTTP endpoint or production environment switch. Feature owners implement checkpoints in their files before qualification begins.",
+        "As the sole schema owner, add forward-only migrations and helper APIs needed by tasks44/47/48/50 in reviewed increments before those dependent workers start. Migration must preserve schema1\u20133 data; never edit an applied migration. Do not add no-op production methods just to make interfaces compile. All applied SQL remains single-writer; reserve each migration version and its owning feature in interfaces.md. Feature workers submit schema/API requests and wait for the integrator commit instead of editing store files.",
+        "Publish a source-pinned interface receipt. Coordinator applies all subsequent shared-file requests and integrates each feature immediately in dependency order; task57 is the final integration/release gate, not permission to leave feature code unconnected."
+      ],
+      "acceptance": [
+        "Architectural review names the exact revision and approves each of the four decisions; unresolved decision means dependent task is blocked, not an agent guess.",
+        "Migrate schema1/2/3 fixture DBs twice; facts, subscriptions, tokens and usage retained; future schema refused without writes; fresh DB and upgraded DB equivalent.",
+        "Existing hosted tests and file-first gate pass. Interface document lists owning task, exact signature, semantic contract, schema version and integration file for every shared seam."
+      ],
+      "commands": [
+        "go test -race -count=1 ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts ./internal/hosted/testhooks ./internal/gate"
+      ],
+      "original_requirements": [
+        "T23.1",
+        "T23.2",
+        "T23.4",
+        "T23.11",
+        "T23.40"
+      ],
+      "evidence": "docs/launch/evidence/T23.41/result.json",
+      "resource_claims": [
+        "R-hosted-schema",
+        "R-hosted-assembly",
+        "R-hosted-launch-plan"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.42",
+      "title": "Qualify the OpenRouter-compatible adapter and fail closed on invalid vectors",
+      "lane": "embeddings",
+      "status": "planned",
+      "dependencies": [
+        "T23.41"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "3\u20135",
+      "write_paths": [
+        "internal/router/openai_embeddings.go",
+        "internal/router/openai_embeddings_test.go",
+        "internal/embed/**",
+        "internal/hosted/embedding/**",
+        "docs/launch/hosted-completion/provider-contract.md"
+      ],
+      "steps": [
+        "Use https://openrouter.ai/api/v1 and candidate perplexity/pplx-embed-v1-0.6b; EMBEDDINGS_API_KEY remains the provider-neutral secret filename. Do not change the production pin merely because a model is listed.",
+        "Confirm current primary documentation for endpoint, JSON numeric-vector encoding, model identity, dimension, input limit, cosine requirement, pricing, routing, retention and training use. Explicitly distinguish Perplexity direct terms from the serving provider selected by OpenRouter.",
+        "Test numeric INT8 values decoded into existing float storage; reject empty, nonfinite, malformed or inconsistent-dimension vectors. Persist/check a stable model+version+dimension pin; a mismatch must not silently mix spaces. Handle 401/429/5xx, deadlines, cancellation and absent usage.",
+        "Return sanitized typed provider errors; never return upstream body text that may echo input or a credential. Freeze provider routing to a privacy-qualified provider where supported; if the API cannot enforce required terms, fail qualification.",
+        "Provide integrator config/wiring request. Keep readiness probes bounded and account for their cost. Fix provider usage/cost recording only with explicit units; no silent cl100k_base=provider-token assumption. No paid fallback or background retries that bypass the configured budget."
+      ],
+      "acceptance": [
+        "Fixture server asserts endpoint, model, auth placement, cancellation and request body; error fixtures cannot leak sentinels in response/logs.",
+        "Pin/dimension mismatch cannot corrupt or silently reuse old index; compatibility verified with numeric INT8 and float fixtures.",
+        "Provider contract reports privacy status as verified/blocked with citations and date; fixture pass is not live qualification."
+      ],
+      "commands": [
+        "go test -race -count=1 ./internal/router ./internal/embed ./internal/hosted/embedding"
+      ],
+      "original_requirements": [
+        "T23.3",
+        "T23.11",
+        "T23.34"
+      ],
+      "evidence": "docs/launch/evidence/T23.42/result.json",
+      "resource_claims": [
+        "R-hosted-embeddings"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.43",
+      "title": "Build a reproducible semantic retrieval qualification corpus",
+      "lane": "embeddings",
+      "status": "ready",
+      "dependencies": [],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "3\u20135",
+      "write_paths": [
+        "evals/hosted/**",
+        "scripts/hosted/eval_embeddings.py",
+        "docs/launch/hosted-completion/embedding-eval.md"
+      ],
+      "steps": [
+        "Create100 synthetic query cases:40 paraphrases,20 names/entities,20 preferences/negation/near-duplicates,10 multilingual positive cases,5 temporal positive cases and5 expected-empty forgotten/expired cases. All95 positive cases have exactly one expected factID and scored distractors. No customer data. At least20 paraphrases lack useful content-word overlap.",
+        "Create a CLI harness that targets the real hosted MCP endpoint and separately runs lexical-only control in a disposable brain; never add a public debug bypass. Record model pin, provider, dimensions, corpus hash, exact source SHA, usage and elapsed time.",
+        "Support --fixtures for harness verification and explicit --live with a manifest budget/token/call cap, no automatic alternative-model routing. Query vectors and stored vectors use cosine semantics; test vector scale invariance.",
+        "Freeze expected IDs and candidate quality thresholds before looking at live outcomes. Save per-query ranks and failures; never adjust corpus/threshold to turn red green."
+      ],
+      "acceptance": [
+        "Before live evaluation, task41 reviewer freezes: Hit@5 (one relevant fact/query) >=0.90 over95 positive queries; paraphrases>=36/40; names>=19/20; preferences>=19/20; multilingual>=9/10; temporal=5/5. At least18/20 lexical-negative paraphrases hit semantically and miss in the lexical control. All5 expected-empty cases return no current fact; all cross-account/forgotten leakage=0. Expected-empty queries are excluded from Hit@5 denominator and scored separately.",
+        "Fixed-vector or lexical-only stub fails the quality predicate; fixture mode can pass harness mechanics but never marks quality PASS.",
+        "Budget exhausted/provider unavailable yields BLOCKED with partial results and no further calls. Threshold changes need a separate reviewed rationale, not a worker override."
+      ],
+      "commands": [
+        "python3 -m unittest discover -s evals/hosted -p \"test_*.py\"",
+        "python3 scripts/hosted/eval_embeddings.py --fixtures --manifest \"$QUALIFICATION_MANIFEST\" --output \"$EVIDENCE_DIR/eval-fixture.json\""
+      ],
+      "original_requirements": [
+        "T23.3",
+        "T23.34"
+      ],
+      "evidence": "docs/launch/evidence/T23.43/result.json",
+      "resource_claims": [
+        "R-hosted-eval"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.44",
+      "title": "Make quota accounting recoverable and storage admission bounded",
+      "lane": "runtime",
+      "status": "planned",
+      "dependencies": [
+        "T23.41"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "6\u201310",
+      "write_paths": [
+        "internal/hosted/gateway/gateway.go",
+        "internal/hosted/gateway/quota_test.go",
+        "internal/hosted/meter/**",
+        "internal/hosted/operation/**"
+      ],
+      "steps": [
+        "Implement the task41 operation ledger keyed by account+brain+canonical operation_key. Reserve writes and input units atomically; persist canonical outcome and finalize both counters atomically. Reconcile interrupted operations from canonical truth before expiring/releasing leases. For calls without operation_key, allocate and persist a distinct internal operation ID before mutation and carry it into canonical outcome evidence; only repeated explicit client keys deduplicate independent requests.",
+        "Treat failure after canonical commit as an unknown/durable outcome, never as an ordinary failed write that releases quota. Retries across brains/windows preserve one canonical fact and one committed charge; failed audit insertion cannot erase accounting.",
+        "Enforce the reviewed physical-byte admission/headroom contract before mutation, including Git history, canonical bytes, index/vector/WAL growth and concurrent brains. Never delete an acknowledged fact to recover space. If a safe upper bound cannot be established, block writes and escalate the contract; do not silently redefine published storage.",
+        "Keep export, deletion, billing cancellation and idempotent replay available at quota exhaustion. Test period rollover, released-row cleanup and all six published allowances. Produce a shared seam request for any core writer/index change; gate allowlist stays unchanged.",
+        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58."
+      ],
+      "acceptance": [
+        "100 concurrent one-write requests with allowance60 admit exactly60; one-byte headroom cannot produce an acknowledged write above the defined ceiling.",
+        "Crash after canonical write/flush/audit/token-finalization boundaries then retry consumes exactly one write and the agreed input units. A genuinely failed mutation consumes none. Cover unkeyed writes and identical content submitted with distinct keys.",
+        "Concurrent account brains share caps; forgotten Git history still counts; replay at zero remaining is safe; auth/readiness checks leave customer usage unchanged."
+      ],
+      "commands": [
+        "go test -race -count=1 ./internal/hosted/meter ./internal/hosted/operation ./internal/hosted/gateway"
+      ],
+      "original_requirements": [
+        "T23.19",
+        "T23.20",
+        "T23.23",
+        "T23.27"
+      ],
+      "evidence": "docs/launch/evidence/T23.44/result.json",
+      "resource_claims": [
+        "R-hosted-runtime",
+        "R-hosted-meter"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.45",
+      "title": "Remove avoidable tenant blocking and qualify fair admission",
+      "lane": "runtime",
+      "status": "planned",
+      "dependencies": [
+        "T23.44"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "4\u20136",
+      "write_paths": [
+        "internal/hosted/gateway/gateway.go",
+        "internal/hosted/gateway/admission.go",
+        "internal/hosted/gateway/admission_test.go",
+        "internal/hosted/credential/**",
+        "internal/hosted/pool/**"
+      ],
+      "steps": [
+        "Move cold runtime open/recovery outside the global pool lock with bounded per-brain opening coordination; preserve exactly one writer/runtime and total open/in-flight caps. Do not hold gateway global map lock over provider or disk work.",
+        "Make queued account admission context-aware and bounded before tool timeout starts; define per-account/per-brain/global semantics explicitly. Hash collisions must not cause unbounded unrelated-tenant waits.",
+        "Apply equivalent account admission to dashboard memory actions and authenticated MCP, without denying recovery/export/delete solely because write quota is exhausted. Bound maintenance/export work separately.",
+        "Exercise churn of credentials, MCP sessions, limiter keys and cold brains; expired/revoked entries relinquish capacity. Honor only trusted loopback proxy headers. Keep Scale ten-brain connectivity possible."
+      ],
+      "acceptance": [
+        "Over-cap admission returns typed capacity within100ms in deterministic local tests; canceled queued requests do no work and release permits.",
+        "Hot tenant with a blocked provider does not prevent an independent warm tenant from serving within its timeout; cold-open burst remains bounded.",
+        "Authenticated account/IP 429 includes Retry-After; multiple credentials cannot multiply quotas/concurrency; spoofed client-IP cannot bypass controls; maps plateau under sustained churn."
+      ],
+      "commands": [
+        "go test -race -count=1 ./internal/hosted/gateway ./internal/hosted/pool ./internal/hosted/credential"
+      ],
+      "original_requirements": [
+        "T23.6",
+        "T23.7",
+        "T23.8",
+        "T23.20",
+        "T23.36"
+      ],
+      "evidence": "docs/launch/evidence/T23.45/result.json",
+      "resource_claims": [
+        "R-hosted-runtime"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.46",
+      "title": "Complete identity edge cases and optional pilot admission",
+      "lane": "experience",
+      "status": "planned",
+      "dependencies": [
+        "T23.41"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "3\u20135",
+      "write_paths": [
+        "internal/hosted/identity/**",
+        "internal/hosted/provision/**"
+      ],
+      "steps": [
+        "Keep Resend magic-link/opaque-session architecture. Test single-use concurrency, expiration, replay, login throttling, capacity and interrupted provisioning with deterministic clocks.",
+        "Add the task41 registration-mode contract: public mode preserves current approved scope; invitation-only mode is deny-by-default for uninvited new email identities, with an operator-managed private allowlist. Existing eligible accounts can sign in; never log allowlist contents.",
+        "Optional pilot admission is implemented/tested but not activated by this plan. It must gate the actual signup/account-creation path, not only hide the website CTA.",
+        "Ensure deleting/restore_pending accounts cannot regain normal access; only the existing deletion retry route gets restricted session access. Re-signup after completed deletion creates a new identity/brain and cannot reconnect old tokens.",
+        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58."
+      ],
+      "acceptance": [
+        "Forged/expired/reused magic links and sessions denied; cookie renewal matches server expiry; logout invalidates server-side state.",
+        "Uninvited direct login submission creates neither account nor brain in pilot mode; allowed signup occurs exactly once under concurrency.",
+        "Crash-recovery fixture does not create duplicate default/additional brains; account-cap arithmetic remains atomic."
+      ],
+      "commands": [
+        "go test -race -count=1 ./internal/hosted/identity ./internal/hosted/provision ./internal/hosted/credential"
+      ],
+      "original_requirements": [
+        "T23.5",
+        "T23.6",
+        "T23.9",
+        "T23.10",
+        "T23.27"
+      ],
+      "evidence": "docs/launch/evidence/T23.46/result.json",
+      "resource_claims": [
+        "R-hosted-identity"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.47",
+      "title": "Complete billing reconciliation and deletion-safe provider closure",
+      "lane": "billing",
+      "status": "planned",
+      "dependencies": [
+        "T23.41"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "5\u20138",
+      "write_paths": [
+        "internal/hosted/billing/**"
+      ],
+      "steps": [
+        "Extract the frozen ReconcileCustomer(ctx,accountID) API used by webhooks and restore. Fetch provider truth for the server-owned customer and atomically update entitlements; reject unknown prices/customer mismatch without granting paid access. Reconciliation must support restore_pending rows without activation and replace stale subscriptions/checkout attempts after authoritative resolution.",
+        "Implement CloseBillingAccount for a durable deleting account: stop new checkout, expire pending sessions, list/cancel provider subscriptions even if the creation webhook never arrived, recheck until closure is known. Resume after ambiguous provider success and local timeout.",
+        "Reconcile checkout attempts older than23h without blindly creating a duplicate. Make the repair auditable and account-scoped. Late cancellation/deletion webhooks must be acknowledged/idempotent rather than permanently retried as503.",
+        "Use authoritative subscription/invoice timestamps for the fixed72h payment-failure grace; late/reversed events cannot restart it. Document upgrade proration, period-end downgrade/cancellation and billing-portal settings.",
+        "Expand fixture state table: initial incomplete/failure, activation, renewal, upgrade, scheduled downgrade, cancellation/re-subscription, duplicate subscription, stale/duplicate/reversed events, unknown price, provider outage and provider-success/local-save failure.",
+        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58."
+      ],
+      "acceptance": [
+        "Checkout return alone never grants access; one customer cannot acquire duplicate active paid subscriptions through retries.",
+        "Checkout completed before webhook then deletion cancels that subscription; open checkout cannot leave a live subscription after deletion closure is certified.",
+        "Grace deadline is stable under delayed/replayed events, first observed past_due, missed activation, new invoice/renewal and delayed old failure after payment. Renewal opens a fresh allowance while retaining old-window accounting history."
+      ],
+      "commands": [
+        "go test -race -count=1 ./internal/hosted/billing ./internal/hosted/meter"
+      ],
+      "original_requirements": [
+        "T23.16",
+        "T23.18",
+        "T23.21",
+        "T23.22",
+        "T23.25"
+      ],
+      "evidence": "docs/launch/evidence/T23.47/result.json",
+      "resource_claims": [
+        "R-hosted-billing"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.48",
+      "title": "Make deletion crash-safe with an independent durable tombstone journal",
+      "lane": "durability",
+      "status": "planned",
+      "dependencies": [
+        "T23.41",
+        "T23.47"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "5\u20138",
+      "write_paths": [
+        "internal/hosted/gateway/lifecycle.go",
+        "internal/hosted/gateway/lifecycle_test.go",
+        "internal/hosted/deletion/**"
+      ],
+      "steps": [
+        "Enter durable deleting state before provider work; block checkout and normal memory/session access. Use task47 provider closure before final irreversible data purge.",
+        "Use AppendDeletion to append an integrity-checked, monotonically ordered deletion intent to the task41 independent journal before acknowledging deletion. Journal contains opaque IDs/timestamps/state only, no memory/email/token. Local SQLite alone is not an independent recovery source. Journal individual-brain and account deletion, never reuse a deleted opaque ID. This task owns the runtime production object-storage journal adapter and its fixture tests, not task52.",
+        "Order and resume billing closure, credential revocation, brain directory cleanup, session/token deletion and account anonymization. Journal append failure leaves deletion pending and restricted retry available; never acknowledge a durability guarantee not achieved.",
+        "Coordinate journal storage/IAM with task52 and infra integrator; use an explicit filesystem fake locally and stack-scoped durable object storage in production. Preserve all ordinary account/brain ownership checks.",
+        "Keep export a quota-independent operation; verify canonical facts and restorable bundle. Wire dashboard via integrator request, not concurrent edits to dashboard.go.",
+        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58."
+      ],
+      "acceptance": [
+        "Fault injection at each phase converges to one completed deletion without resurrection, double cancellation or orphaned subscription.",
+        "Snapshot then delete, losing live disk, still leaves a valid independent deletion record; missing journal acknowledgment prevents successful delete response. Deleting one brain then restoring preserves its sibling but never the deleted brain or its credentials.",
+        "Cross-account export/delete fails without touching victim files/counters; export/deletion remain available at quota exhaustion; fresh re-signup is empty."
+      ],
+      "commands": [
+        "go test -race -count=1 ./internal/hosted/deletion ./internal/hosted/gateway"
+      ],
+      "original_requirements": [
+        "T23.24",
+        "T23.25",
+        "T23.26",
+        "T23.27"
+      ],
+      "evidence": "docs/launch/evidence/T23.48/result.json",
+      "resource_claims": [
+        "R-hosted-lifecycle"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.49",
+      "title": "Version and verify backup manifests before restoring any bytes",
+      "lane": "durability",
+      "status": "planned",
+      "dependencies": [
+        "T23.41"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "4\u20136",
+      "write_paths": [
+        "internal/hosted/backup/**"
+      ],
+      "steps": [
+        "Implement manifestv2 with source build/schema, UTC creation, sorted unique brain inventory, bundle/control DB SHA256+length and deletion-journal watermark; preserve explicit support/refusal policy for legacyv1 snapshots.",
+        "Validate every entry, checksum, expected DB inventory, bundle integrity, duplicates, symlinks and path traversal before creating a usable destination. A ready brain missing its Git repo is corruption, not an empty-brain success.",
+        "Create snapshots only under coordinated maintenance/ownership; consistent SQLite+canonical Git captures acknowledged writes. Offline backup must verify/flush dirty canonical state or refuse rather than silently omit it.",
+        "Restore into a new private staging directory, validate fully, then atomically publish to an empty destination; failures cannot leave a runnable partial restore. Continue revoking all sessions/tokens and freezing accounts.",
+        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58."
+      ],
+      "acceptance": [
+        "Truncated/tampered DB/bundle/manifest, duplicate/omitted/unknown brain, unsupported schema and unsafe path all fail before reactivation.",
+        "Manifest roundtrip matches exact fact IDs and canonical bundle heads; restored raw credentials/sessions remain invalid.",
+        "Live write during coordinated backup is either included consistently or excluded as a later operation; no acknowledged pre-snapshot write lost."
+      ],
+      "commands": [
+        "go test -race -count=1 ./internal/hosted/backup"
+      ],
+      "original_requirements": [
+        "T23.24",
+        "T23.26",
+        "T23.27"
+      ],
+      "evidence": "docs/launch/evidence/T23.49/result.json",
+      "resource_claims": [
+        "R-hosted-backup"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.50",
+      "title": "Implement explicit restore reconciliation and safe reactivation",
+      "lane": "durability",
+      "status": "planned",
+      "dependencies": [
+        "T23.47",
+        "T23.48",
+        "T23.49"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "5\u20138",
+      "write_paths": [
+        "internal/hosted/recovery/**",
+        "internal/cli/hosted_recovery.go"
+      ],
+      "steps": [
+        "Implement plan/apply recovery commands using task41 schema/interface and task49 manifest. Plan is read-only and emits hashed/sanitized inventory plus exact required reconciliation watermark; apply requires the unchanged plan hash.",
+        "Fetch trusted post-snapshot deletion journal through a fresh high-watermark and current Stripe truth via ReconcileCustomer. Remove deleted accounts/brains before permitting sign-in; absent/stale/integrity-failed authority leaves affected accounts frozen. Verify a complete journal through a fenced activation barrier: reject missing middle/tail, concurrent append races and a returning old writer. Merely reading the latest visible sequence is insufficient.",
+        "Keep every pre-restore credential/session revoked even for surviving accounts. Permit only fresh magic-link login and newly issued tokens after successful reconciliation. Never expose activate-all or directSQL operator shortcuts.",
+        "Persist idempotent recovery phases; interrupted plan/apply resumes. Billing-disabled pilot still requires deletion reconciliation and restores only Free eligibility, never historical paid access.",
+        "Supply CLI registration/service wiring patch request to integrator. Journal pruning cannot remove data needed by any restorable retained snapshot.",
+        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58."
+      ],
+      "acceptance": [
+        "Snapshot then revoke/delete/cancel, lose live state, restore: old key denied, deleted account absent, canceled plan Free, surviving facts recoverable after new login.",
+        "Provider/journal outage prevents affected activation; foreign account/modified plan hash rejected; second apply has no additional effect. Include a surviving Free account with canceled historical subscription/stale pending Checkout; no stale blocker may survive authoritative reconciliation.",
+        "Recovery report records counts, journal watermark, schema, provider mode and exact unresolved accounts without secret/customer content."
+      ],
+      "commands": [
+        "go test -race -count=1 ./internal/hosted/recovery ./internal/hosted/backup ./internal/cli"
+      ],
+      "original_requirements": [
+        "T23.26",
+        "T23.27",
+        "T23.28"
+      ],
+      "evidence": "docs/launch/evidence/T23.50/result.json",
+      "resource_claims": [
+        "R-hosted-recovery"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.51",
+      "title": "Bootstrap a blank ARM host idempotently and validate topology",
+      "lane": "operations",
+      "status": "planned",
+      "dependencies": [
+        "T23.41"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "4\u20136",
+      "write_paths": [
+        "deploy/hosted/bootstrap.sh",
+        "deploy/hosted/deploy.py",
+        "deploy/hosted/tests/test_bootstrap.py"
+      ],
+      "steps": [
+        "Keep AWS us-west-2 single ARM VM architecture; prepare scripts and fixtures without provisioning. Validate subnet belongs to VPC and AZ, region/account IDs and all stack inputs before preview/execution.",
+        "Install version-pinned/checksummed Caddy, Git, AWS CLI and required service dependencies on AL2023 ARM. Identify only the exact stack-owned EBS volume by ID; format only a positively identified blank new volume under recorded authorization. Never infer blankness from a missing mount.",
+        "Preserve an existing filesystem, mount by UUID, persist fstab, set ownership and order startup after mount/network/SSM. Refuse app startup on the root disk when the data volume is missing.",
+        "Use command adapters/fixtures to test block-device operations. Deliver stack UserData/DependsOn/IAM requirements to the sole stack integrator rather than edit stack.json here."
+      ],
+      "acceptance": [
+        "Blank intended disk, retained formatted disk, wrong disk, missing disk, second run and reboot cases have explicit expected outcomes; wrong/existing disk is never formatted.",
+        "Package/network failure leaves a stopped unhealthy service; no secret data in logs; region/VPC/AZ mismatch refuses before change-set creation.",
+        "Fresh-host live proof remains BLOCKED until task64; local fixture success is labeled local."
+      ],
+      "commands": [
+        "bash -n deploy/hosted/bootstrap.sh",
+        "python3 -m unittest discover -s deploy/hosted/tests -p \"test_bootstrap.py\"",
+        "python3 -m py_compile deploy/hosted/deploy.py"
+      ],
+      "original_requirements": [
+        "T23.13",
+        "T23.14"
+      ],
+      "evidence": "docs/launch/evidence/T23.51/result.json",
+      "resource_claims": [
+        "R-hosted-infra"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.52",
+      "title": "Implement verified uploads and bounded all-version retention",
+      "lane": "operations",
+      "status": "planned",
+      "dependencies": [
+        "T23.48",
+        "T23.49"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "4\u20136",
+      "write_paths": [
+        "deploy/hosted/backup.sh",
+        "deploy/hosted/serenity-backup.service",
+        "deploy/hosted/serenity-backup.timer",
+        "deploy/hosted/purge.py",
+        "deploy/hosted/tests/test_backup_retention.py",
+        "deploy/hosted/serenity-purge.service",
+        "deploy/hosted/serenity-purge.timer"
+      ],
+      "steps": [
+        "Permit one backup process at a time; check staging headroom, restrictive permissions, service-private path visibility and cleanup only its own failed staging directory. Never remove an existing retained snapshot as a cleanup shortcut.",
+        "Upload manifest-verified artifacts then a completion record binding the manifest hash; download verifies completion+checksums before restore. Failed upload is not complete and emits failure/age metrics.",
+        "Replace reliance on current30+noncurrent30 expiration with total-age purge of all versions and delete markers for expired snapshot prefixes. Choose scheduled cutoff with margin so customer-deletion backups are purged within30days, e.g. eligible snapshot age29days plus hourly sweep; lifecycle is only a backstop. Own/installable hourly systemd purge service+timer; task57 wires installation and task64 proves it runs. A script without its schedule fails acceptance.",
+        "Purge dry-run lists exact stack-owned keys/versions and source timestamps; apply requires scoped prefix/age checks and recorded destructive-action authority. Fail closed on malformed timestamps, pagination errors or missing version inventory.",
+        "Keep deletion-journal records until all snapshots they protect are permanently purged; then apply separate documented minimal-metadata retention. Submit precise IAM/alarms/unit requirements to task54."
+      ],
+      "acceptance": [
+        "Fixtures cover overwritten versions, delete markers, multipart remnants, pagination, incorrect prefix, clock cutoff and API denial; no eligible version silently survives a successful receipt.",
+        "Interrupted upload rejected by downloader; completed upload restores manifest-consistent contents. Failed purge yields a failed retention status, not a30day promise.",
+        "No production object deletion occurs in this task; live qualification is task66 with approved disposable resources."
+      ],
+      "commands": [
+        "bash -n deploy/hosted/backup.sh",
+        "python3 -m unittest discover -s deploy/hosted/tests -p \"test_backup_retention.py\""
+      ],
+      "original_requirements": [
+        "T23.25",
+        "T23.26",
+        "T23.28"
+      ],
+      "evidence": "docs/launch/evidence/T23.52/result.json",
+      "resource_claims": [
+        "R-hosted-backup-ops"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.53",
+      "title": "Add bounded telemetry and prove production log redaction",
+      "lane": "operations",
+      "status": "planned",
+      "dependencies": [
+        "T23.41",
+        "T23.42"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "3\u20135",
+      "write_paths": [
+        "internal/hosted/telemetry/**",
+        "deploy/hosted/telemetry/**"
+      ],
+      "steps": [
+        "Implement task41 metrics interface: requests/errors/readiness, provision duration, recall/remember latency, quota/admission denial, pool occupancy, provider calls/tokens/cost, disk utilization and last verified backup age. Fixed environment/service/operation dimensions only.",
+        "Provide structured logger with recursive sensitive-field redaction and error sanitization. Capture Caddy, CLI, provider failure, mail failure, backup Git stderr and billing webhook paths; redact magic-link query strings and authorization/cookies in proxy logs.",
+        "Provide service/CLI/Caddy integration requirements to integrator; avoid independent edits to shared assembly. Use bounded buffering and flush behavior that cannot block requests indefinitely.",
+        "Specify log/metric retention, emission frequency, missing-data behavior and cost in task60 inputs. Never add tenant IDs, emails, brain IDs, facts or tokens as metric labels."
+      ],
+      "acceptance": [
+        "Synthetic sentinel email/fact/token/session appears nowhere in production captured logs across success/failure paths; disabling one guard locally makes the test fail.",
+        "Development login links remain loopback-only; production cannot enable them. Telemetry failures do not cause memory data loss.",
+        "Metric JSON names/units/dimensions and sample frequencies match the frozen alarm contract; bounded buffer verified under blocked sink."
+      ],
+      "commands": [
+        "go test -race -count=1 ./internal/hosted/telemetry"
+      ],
+      "original_requirements": [
+        "T23.11",
+        "T23.29"
+      ],
+      "evidence": "docs/launch/evidence/T23.53/result.json",
+      "resource_claims": [
+        "R-hosted-telemetry"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.54",
+      "title": "Integrate least-privilege infrastructure and delivered alarms",
+      "lane": "integrator",
+      "status": "planned",
+      "dependencies": [
+        "T23.51",
+        "T23.52",
+        "T23.53",
+        "T23.60"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "3\u20135",
+      "write_paths": [
+        "deploy/hosted/stack.json",
+        "deploy/hosted/tests/test_stack.py",
+        "deploy/hosted/telemetry/**"
+      ],
+      "steps": [
+        "Only this task edits stack.json. Apply bootstrap, backup/journal, retention and telemetry requirements as one reviewed change set; keep existing account/region, encryption, IMDSv2, inbound80/443 and SSM administration.",
+        "Add exact least-privilege versioned-object/journal/metrics/log permissions. Keep write/delete prefixes and roles separated where needed; no broad s3:* or accountwide secret read.",
+        "Wire alarm actions to an approved existing destination or explicitly priced new destination. Thresholds: readiness2 consecutive1min failures; errors>5% over5min with>=20requests; disk>=80% warning/>=90% critical; last verified backup>3h; purge failure>=1; CPU>=70% for10min; instance failure>=1. Missing health/backup/purge telemetry breaches.",
+        "Validate alarm math/units with task53, network/AZ/disk boot topology with task51, and full monthly line items with task60. Preview only; record change-set impact and no unexpected replacements."
+      ],
+      "acceptance": [
+        "Template fixture checks prove every required metric has a producer, correct dimension and AlarmActions; every permission targets stack resources.",
+        "cloudformation validate-template passes. No resource creation is claimed from syntax checks.",
+        "Injected alarm delivery to the chosen destination is required in task64, not accepted from a green CloudWatch console state alone."
+      ],
+      "commands": [
+        "python3 -m unittest discover -s deploy/hosted/tests -p \"test_stack.py\"",
+        "aws cloudformation validate-template --template-body file://deploy/hosted/stack.json"
+      ],
+      "original_requirements": [
+        "T23.13",
+        "T23.29"
+      ],
+      "evidence": "docs/launch/evidence/T23.54/result.json",
+      "resource_claims": [
+        "R-hosted-infra",
+        "R-hosted-telemetry"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.55",
+      "title": "Finish onboarding, recovery UX and multi-account browser coverage",
+      "lane": "experience",
+      "status": "planned",
+      "dependencies": [
+        "T23.44",
+        "T23.45",
+        "T23.46",
+        "T23.47",
+        "T23.48"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "5\u20138",
+      "write_paths": [
+        "internal/hosted/dashboard/**",
+        "tests/hosted/**",
+        "playwright.hosted.config.js"
+      ],
+      "steps": [
+        "Inspect and pin the current real Rakazo settings source before UI changes; match those field labels. Add authenticated selected-brain connection status with bounded polling; never treat historical account-wide discovery as proof of the selected client connection. Task65 validates these exact instructions live.",
+        "Provide actionable states for expired link, account/credential capacity, allocation pending, provider outage, deletion pending/retry, exhausted quota and restore_pending. Preserve export/delete access and zero-card Free flow.",
+        "Complete usage numbers, remaining values, reset semantics and upgrade/portal paths; billing-disabled mode never offers a paid checkout. Separate stock capacity from period quotas in wording.",
+        "Refactor browser fixture to select each login link by synthetic account, support multiple contexts, controlled provider failure, time advance and restart. Add two-account/multi-brain, rotation/back/refresh, exact usage, exhaustion, export-clone, delete/re-signup and billing fixture flows.",
+        "Keep mobile/desktop no-overflow, keyboard focus, accessible labels and clipboard checks. Submit package/CI changes to integrator; no live email or Stripe in fixture CI."
+      ],
+      "acceptance": [
+        "All browser cases execute with zero skips at400px and1280px; rawtoken visible only at issuance; revoked old MCP session rejected.",
+        "Cross-account mutations do not alter victim files/usage; every mutating route rejects missing CSRF/origin; deletion retry session cannot call other routes.",
+        "Export bundle clones and matches facts; source counters match every rendered number; provider errors leak no private text; disabled billing has no checkout."
+      ],
+      "commands": [
+        "export SERENITY_TEST_BINARY=\"${TMPDIR:-/tmp}/serenity-T23.55-$(git rev-parse --short=12 HEAD)\"",
+        "GOWORK=off go build -trimpath -o \"$SERENITY_TEST_BINARY\" ./cmd/serenity",
+        "go test -race -count=1 ./internal/hosted/dashboard",
+        "npm run test:hosted"
+      ],
+      "original_requirements": [
+        "T23.9",
+        "T23.10",
+        "T23.23",
+        "T23.24",
+        "T23.25",
+        "T23.31",
+        "T23.35"
+      ],
+      "evidence": "docs/launch/evidence/T23.55/result.json",
+      "resource_claims": [
+        "R-hosted-ui"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.56",
+      "title": "Prepare honest pricing, hosted instructions and reversible site activation",
+      "lane": "experience",
+      "status": "planned",
+      "dependencies": [
+        "T23.55"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "2\u20134",
+      "write_paths": [
+        "site/index.html",
+        "site/product/**",
+        "site/get-started/**",
+        "tests/site/**",
+        "docs/launch/hosted-completion/site-activation.md"
+      ],
+      "steps": [
+        "Keep plans.v1.json generated from canonical plans; render every allowance and ratified Free/Builder/Scale prices. Do not silently change prices/caps for the pilot.",
+        "Prepare hosted guide using exact tested dashboard/Rakazo labels, empty default brain label and explicit write opt-in. Preserve the install-yourself path.",
+        "Explain selected provider processing, forget vs retained Git history, account deletion and only verified backup retention terms. No unsupported SLA, setup-time or privacy claim.",
+        "Prepare a separate, reversible activation diff for Start free/public checkout visibility; do not publish active public signup before task73. Pilot copy explicitly says invitation-only and hides unavailable paid controls without removing published ratified pricing."
+      ],
+      "acceptance": [
+        "Site link checker and mobile/desktop browser tests pass; generated pricing matches server bytes.",
+        "No public call-to-action points to an unqualified or inaccessible signup path; staging preview tests links against approved origin.",
+        "Activation and rollback are named commit diffs in evidence; unavailable features are labeled, not promised as live."
+      ],
+      "commands": [
+        "python3 scripts/site/check.py",
+        "npm run test:site"
+      ],
+      "original_requirements": [
+        "T23.18",
+        "T23.30",
+        "T23.31"
+      ],
+      "evidence": "docs/launch/evidence/T23.56/result.json",
+      "resource_claims": [
+        "R-hosted-site"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.57",
+      "title": "Wire all features and gate transactional deployment and releases",
+      "lane": "integrator",
+      "status": "planned",
+      "dependencies": [
+        "T23.42",
+        "T23.44",
+        "T23.45",
+        "T23.46",
+        "T23.47",
+        "T23.48",
+        "T23.49",
+        "T23.50",
+        "T23.53",
+        "T23.54",
+        "T23.55"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "4\u20137",
+      "write_paths": [
+        "internal/hosted/service/**",
+        "internal/cli/hosted.go",
+        "internal/hosted/store/**",
+        "deploy/hosted/deploy.sh",
+        "deploy/hosted/serenity-hosted.service",
+        "deploy/hosted/Caddyfile",
+        "deploy/hosted/config.example.json",
+        ".github/workflows/**",
+        "package.json",
+        "package-lock.json",
+        "deploy/hosted/tests/test_deploy.py"
+      ],
+      "steps": [
+        "Integrator continuously merges approved feature wiring during predecessor tasks; now verify one assembled binary exercises every feature. Rebase each worker on merged dependencies before accepting its receipt.",
+        "Finalize config/secrets/schema contracts and CLI registrations; migration/recovery/deletion code must be invoked by real service paths, not only tests. Preserve self-hosted command behavior.",
+        "Deploy stages checksum-verified binary/config, validates secrets without output, takes a coordinated pre-upgrade snapshot, checks schema compatibility, and switches only with bounded readiness verification. Revert binary/config on compatible failure; refuse unsafe downgrade and use reviewed restore path instead. Install and enable both backup and purge timers; retain the previous manifest/config for supported rollback.",
+        "Implement three artifact states: local candidate (integration tests), restricted qualification candidate (same immutable artifact plus tasks58/59 PASS), and hosted-qualified (task70 packet). CI may build/store the first before58/59 exist; it must refuse promoting to the second/third without their exact evidence. Ordinary self-hosted releases remain possible but are not called hosted-qualified.",
+        "Create a checksum-pinned immutable unqualified Linux ARM candidate artifact in CI, with retention sufficient for qualification, source SHA and build metadata; task64 deploys this exact candidate only after58/59 pass. Teach deployment to consume a verified downloaded candidate archive, not only a published release tag. Task70 certifies these same bytes in the release packet. Task73 owns publishing the approved tag/assets without rebuilding; an optional pilot71 may keep the immutable candidate private. Record prior supported version/schema pair. No production deploy or public release tag in this task."
+      ],
+      "acceptance": [
+        "Fresh and upgraded fixture service passes assembled integration suite; no unregistered/new unused feature accepted.",
+        "Bad checksum/config/secret/readiness leaves previous service usable or fails closed without data rollback; newer schema refuses older binary.",
+        "CI distinguishes fixture/live/missing-credential results and never turns a skipped live qualification into PASS; full final-head checks green."
+      ],
+      "commands": [
+        "export SERENITY_TEST_BINARY=\"${TMPDIR:-/tmp}/serenity-T23.57-$(git rev-parse --short=12 HEAD)\"",
+        "GOWORK=off go build -trimpath -o \"$SERENITY_TEST_BINARY\" ./cmd/serenity",
+        "make vet lint test",
+        "bash -n deploy/hosted/deploy.sh",
+        "python3 -m unittest discover -s deploy/hosted/tests -p \"test_deploy.py\"",
+        "npm run test:hosted"
+      ],
+      "original_requirements": [
+        "T23.11",
+        "T23.12",
+        "T23.14",
+        "T23.17",
+        "T23.28",
+        "T23.37"
+      ],
+      "evidence": "docs/launch/evidence/T23.57/result.json",
+      "resource_claims": [
+        "R-hosted-schema",
+        "R-hosted-assembly",
+        "R-hosted-release"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.58",
+      "title": "Prove crash recovery with real subprocess fault injection",
+      "lane": "qualification",
+      "status": "planned",
+      "dependencies": [
+        "T23.44",
+        "T23.47",
+        "T23.48",
+        "T23.49",
+        "T23.50",
+        "T23.57"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "4\u20137",
+      "write_paths": [
+        "internal/hosted/qualification/crash_test.go",
+        "internal/hosted/qualification/crash_helpers_test.go",
+        "scripts/hosted/crash_matrix.py"
+      ],
+      "steps": [
+        "Build a separate hostedtest-tagged CLI subprocess binary on disposable roots; use task41 private-pipe deterministic phase barriers, not sleeps. Production artifact stays untagged; no production environment switch or HTTP fault endpoint.",
+        "Kill after mkdir/before ready; canonical write/before index; flush/before accounting; first accounting phase; checkout provider success/before save; each deletion phase; partial upload; restore before publish/reactivation.",
+        "Restart and assert exact facts, counters, credentials, billing state and filesystem outcome. Exercise provider timeout and disk-full errors as well as SIGKILL.",
+        "Demonstrate a local negative control for each recovery family by disabling its repair hook in an isolated patch, record failure, then restore. Never commit the weakened version."
+      ],
+      "acceptance": [
+        "Every required phase was actually reached before kill, and each expected invariant measured after restart; absent barrier is FAIL, not skip.",
+        "No acknowledged pre-crash fact lost; exactly one billed operation on retry; no account/paid-plan/token resurrection; no partial restore becomes runnable.",
+        "Fixture external services are labeled and each scenario emits a machine-readable pass/fail and negative-control result."
+      ],
+      "commands": [
+        "go test -race -tags hostedtest -count=1 -timeout 600s ./internal/hosted/qualification -run Crash"
+      ],
+      "original_requirements": [
+        "T23.5",
+        "T23.19",
+        "T23.25",
+        "T23.26",
+        "T23.27"
+      ],
+      "evidence": "docs/launch/evidence/T23.58/result.json",
+      "resource_claims": [
+        "R-hosted-crash"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.59",
+      "title": "Execute the complete adversarial boundary matrix",
+      "lane": "qualification",
+      "status": "planned",
+      "dependencies": [
+        "T23.45",
+        "T23.46",
+        "T23.47",
+        "T23.48",
+        "T23.50",
+        "T23.55",
+        "T23.57"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "4\u20136",
+      "write_paths": [
+        "internal/hosted/qualification/security_test.go",
+        "internal/hosted/qualification/security_helpers_test.go"
+      ],
+      "steps": [
+        "Use real HTTP/SQLite/Git with2 accounts, multiple brains and credentials. Enumerate every mutation and tool rather than sampling one route.",
+        "Cover forged/expired sessions, each POST CSRF/origin, cross-account issue/rotate/revoke/export/delete/write/read, read-only credentials, old and foreign MCP sessions, path/entity/label tricks and unsupported tools.",
+        "Cover oversized/deep JSON,4097-byte facts, cancellation, dropped responses, dashboard abuse, direct-MCP second-credential quota bypass, exhausted quotas and backup concurrency.",
+        "Assert denials preserve victim facts/counters/directories, not only status codes. Run one isolated negative control per security boundary; record review of log-redaction evidence."
+      ],
+      "acceptance": [
+        "Complete route/tool inventory is covered; cross-account exposure or mutation exactly0.",
+        "Each deny result has verified unchanged victim state; tests fail under intentional local removal of the corresponding guard.",
+        "No new public debugging endpoints, auth exemptions or file-first allowlist expansion."
+      ],
+      "commands": [
+        "go test -race -count=1 -timeout 600s ./internal/hosted/qualification -run Security"
+      ],
+      "original_requirements": [
+        "T23.7",
+        "T23.9",
+        "T23.12",
+        "T23.20",
+        "T23.24",
+        "T23.25",
+        "T23.35"
+      ],
+      "evidence": "docs/launch/evidence/T23.59/result.json",
+      "resource_claims": [
+        "R-hosted-security"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.60",
+      "title": "Build the cost model and bounded capacity workload",
+      "lane": "operations",
+      "status": "ready",
+      "dependencies": [],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "3\u20135",
+      "write_paths": [
+        "scripts/hosted/cost_model.py",
+        "scripts/hosted/load.py",
+        "evals/hosted-load/**",
+        "docs/launch/hosted-economics.md"
+      ],
+      "steps": [
+        "Price0/10/100accounts and the original1Scale+3Builder+10Free full-limit mix. Include EC2 baseline/burst credits, root+data EBS, IPv4, KMS, secrets, hourly full snapshot amplification, S3 storage/requests, logs/metrics/alarms, transfer, email, embeddings, readiness probes and rebuilds.",
+        "Date/cite primary rates; distinguish assumptions from measurements. Compare minimum feasible AWS configuration to already-authorized existing capacity as a proposal; no automatic topology change, reservations, new GPU or spend.",
+        "Build bounded load harness with synthetic accounts, warm/cold brains, skewed tenants, retries, provider latency/failure, max facts/history and controlled synthetic billing entitlements. Never forge entitlements on public production. Freeze workload manifests before live measurement:10min warmup+30min steady+5min2x burst, total8concurrent clients, baseline4requests/s with80%recall/15%remember/5%forget,20%requests target cold brains,50%traffic one hot tenant,20\u2013128token queries and32\u2013512token facts. Full advertised memory/storage cardinalities for the selected profile; run quota-boundary saturation separately so expected429s cannot hide failures. Replay captures exact arrivals; repeat3times. These are reviewable qualification targets, not claims of tested performance.",
+        "Require explicit request/token/elapsed/cost caps before live mode; fixture mode cannot measure semantic quality. Report CPU/RSS/disk/writes, latency percentiles, provider totals and per-plan contribution.",
+        "Produce a conservative idle+peak monthly exposure and measurable cap recommendation. Original$60 ceiling is not a budget target or new authorization; no hidden plan-limit reductions."
+      ],
+      "acceptance": [
+        "Cost math fixtures cover units and full-snapshot multiplication; all recurring categories have rates or explicit unknowns.",
+        "Harness stops at caps and cannot target a production origin without an explicit environment guard; finite run, no new worker scheduler.",
+        "Freeze with task41 reviewer before execution: CPU<70%,RSS<80%RAM,disk<80%,cold-ready<=60s,admitted recallp95<=2s/rememberp95<=3s, >=99%offered non-injected eligible steady-state requests complete, unexpected5xx<0.1%, unexpected steady admission rejection<1%, zero isolation/durability errors. Count rejections/timeouts in total outcomes, not only admitted latencies. If full-limit preparation exceeds the approved provider budget, use explicitly labeled cached/precomputed vectors for infrastructure load and a separate bounded live-provider mix; never claim a full live-provider load test ran."
+      ],
+      "commands": [
+        "python3 -m unittest discover -s evals/hosted-load -p \"test_*.py\"",
+        "python3 scripts/hosted/load.py --fixtures --manifest \"$QUALIFICATION_MANIFEST\" --output \"$EVIDENCE_DIR/load-fixture.json\"",
+        "python3 scripts/hosted/cost_model.py --manifest \"$QUALIFICATION_MANIFEST\" --output \"$EVIDENCE_DIR/cost.json\""
+      ],
+      "original_requirements": [
+        "T23.3",
+        "T23.32",
+        "T23.36"
+      ],
+      "evidence": "docs/launch/evidence/T23.60/result.json",
+      "resource_claims": [
+        "R-hosted-cost"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.61",
+      "title": "Prepare the exact credential, budget and operator prerequisite packet",
+      "lane": "integrator",
+      "status": "planned",
+      "dependencies": [
+        "T23.42",
+        "T23.43",
+        "T23.60"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "1\u20133",
+      "write_paths": [
+        "docs/launch/hosted-provider-setup.md",
+        "docs/launch/hosted-completion/authorizations.md",
+        "scripts/hosted/provider_preflight.py"
+      ],
+      "steps": [
+        "Prepare named secret destinations, minimal permissions, exact config patch, selected provider terms, finite request allowance, forecast and rollback before requesting any missing external input.",
+        "OpenRouter: dedicated Serenity key at EMBEDDINGS_API_KEY, candidate model/provider pin, proposed$1 total qualification cap with no automatic reset/top-up/fallback. Confirm actual key limit and account credit status through sanitized metadata when authorized; recommendation alone is not permission.",
+        "Resend: scoped send key, sender domain records, optional separate domain-management access, controlled recipient ownership. Stripe: restricted test key for products/prices/customers/subscriptions/Checkout/portal/webhooks and generated signing secret. No live key yet.",
+        "Inventory existing AWS/foundation/notification authority read-only, and record missing permissions precisely. Prepare actual monthly deployment-cost maximum plus a separate time/cost cap and cleanup plan for rehearsal resources; do not ask user to solve implementation details.",
+        "Record mode as public-paid scope unchanged or optional invitation-only pilot explicitly selected. Existing approvals count; ask only for genuinely missing authority through the standing coordinator channel."
+      ],
+      "acceptance": [
+        "Packet contains no secret values, home paths or customer data; each gate lists required evidence, responsible role and exact operation authorized.",
+        "Missing key blocks live task only; deterministic development can continue. No provider purchases, resource creation or messages are sent by preflight.",
+        "Preflight checks placeholder/permissions/config names without echoing values and distinguishes unavailable credential from failed provider validation."
+      ],
+      "commands": [
+        "python3 scripts/hosted/provider_preflight.py --manifest \"$QUALIFICATION_MANIFEST\" --output \"$EVIDENCE_DIR/preflight.json\" --metadata-only"
+      ],
+      "original_requirements": [
+        "T23.3",
+        "T23.11",
+        "T23.13",
+        "T23.15",
+        "T23.16",
+        "T23.38",
+        "T23.40"
+      ],
+      "evidence": "docs/launch/evidence/T23.61/result.json",
+      "resource_claims": [
+        "R-hosted-launch-plan"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.62",
+      "title": "Prepare foundation DNS changes and verify real email",
+      "lane": "operations",
+      "status": "planned",
+      "dependencies": [
+        "T23.51",
+        "T23.61",
+        "T23.64"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [
+        "MAIL",
+        "DNS",
+        "SPEND"
+      ],
+      "estimate_agent_hours": "1\u20133",
+      "write_paths": [
+        "docs/launch/evidence/T23.62/**"
+      ],
+      "steps": [
+        "Discover foundation checkout from live process/map; coordinate its owner. Prepare a separate foundation PR with app A record bound to the stack EIP and exact Resend DKIM/SPF/return-path records. Do not manage the zone from Serenity scripts.",
+        "Apply through existing reviewed DNS authority after stack address exists; record foundation PR/revision. No guessed records or recipient.",
+        "With a valid scoped key, verify the sender and send a bounded test to the approved controlled mailbox. Record delivery timestamp, sender and redacted outcome, never magic-link values.",
+        "After task64 private deployment and the foundation DNS apply, verify public TLS and single-use email login at the public origin. Complete this task before task65 customer qualification; task64 does not require a public DNS/TLS success."
+      ],
+      "acceptance": [
+        "DNS answers expected stack address; provider reports verified sender; controlled mailbox actually receives the link.",
+        "Public certificate valid for app origin; production link works once and expires as configured. Post-deploy evidence is folded by task65.",
+        "No real-mail PASS based solely on Resend202; provider failure remains visible and creates no false signup success claim."
+      ],
+      "commands": [
+        "dig +short app.serenity.sire.run A",
+        "curl --fail --silent --show-error --head https://app.serenity.sire.run/healthz"
+      ],
+      "original_requirements": [
+        "T23.15",
+        "T23.17"
+      ],
+      "evidence": "docs/launch/evidence/T23.62/result.json",
+      "resource_claims": [],
+      "live_resource_claims": [
+        "R-hosted-environment"
+      ]
+    },
+    {
+      "id": "T23.63",
+      "title": "Create isolated Stripe test products, portal and webhook configuration",
+      "lane": "billing",
+      "status": "planned",
+      "dependencies": [
+        "T23.47",
+        "T23.61"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "paid"
+      ],
+      "external_gates": [
+        "STRIPE_TEST"
+      ],
+      "estimate_agent_hours": "2\u20133",
+      "write_paths": [
+        "scripts/hosted/stripe_setup.py",
+        "scripts/hosted/tests/test_stripe_setup.py",
+        "docs/launch/evidence/T23.63/**"
+      ],
+      "steps": [
+        "Confirm Sire Run account identity read-only; use testmode only. Idempotently create/reuse Serenity Builder1900USD/month and Scale4900USD/month tagged plan_version1; never alter unrelated products.",
+        "Configure portal upgrades/proration, scheduled downgrades/cancellation to match task47. Register only required events at the approved app test webhook; save generated webhook secret through secret manager, not logs.",
+        "Commands default to plan/dry-run; require explicit scoped apply and idempotency tags. Test local forwarding separately from the real public endpoint.",
+        "Finish with test object/configuration/secret setup and local forwarding fixtures only. Task67 owns all public signed delivery after tasks62/64; do not wait for64 inside this predecessor."
+      ],
+      "acceptance": [
+        "Running setup twice yields same owned object IDs and no duplicates; wrong account/live credential refused.",
+        "Exact prices/events/portal settings recorded with testmode label; signing secret never appears in artifacts.",
+        "Unit fixtures pass before external apply; setup outcome cannot be described as real revenue."
+      ],
+      "commands": [
+        "python3 -m unittest discover -s scripts/hosted/tests -p \"test_stripe_setup.py\"",
+        "python3 scripts/hosted/stripe_setup.py --manifest \"$QUALIFICATION_MANIFEST\" --plan --output \"$EVIDENCE_DIR/stripe-plan.json\"",
+        "python3 scripts/hosted/stripe_setup.py --manifest \"$QUALIFICATION_MANIFEST\" --apply --plan \"$EVIDENCE_DIR/stripe-plan.json\" --output \"$EVIDENCE_DIR/stripe-objects.json\""
+      ],
+      "original_requirements": [
+        "T23.16",
+        "T23.21",
+        "T23.22"
+      ],
+      "evidence": "docs/launch/evidence/T23.63/result.json",
+      "resource_claims": [
+        "R-hosted-billing"
+      ],
+      "live_resource_claims": [
+        "R-hosted-environment"
+      ]
+    },
+    {
+      "id": "T23.64",
+      "title": "Provision and privately deploy one cost-capped qualification environment",
+      "lane": "operations",
+      "status": "planned",
+      "dependencies": [
+        "T23.54",
+        "T23.57",
+        "T23.58",
+        "T23.59",
+        "T23.61"
+      ],
+      "profile_dependencies": {
+        "paid": [
+          "T23.63"
+        ]
+      },
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [
+        "SPEND",
+        "EMBEDDINGS",
+        "MAIL",
+        "DNS",
+        "OPS"
+      ],
+      "estimate_agent_hours": "2\u20134",
+      "write_paths": [
+        "docs/launch/evidence/T23.64/**"
+      ],
+      "steps": [
+        "Use reviewed exact change set/account/region, artifact SHA, selected mode and spending/rehearsal limits. Acquire R-hosted-environment; only one operator mutates the environment.",
+        "Create or use the explicitly authorized host and blank volume; bootstrap from scratch and deploy the candidate through SSM/private access. Output the EIP for task62 foundation DNS. Keep registration restricted to controlled synthetic identities. Do not require public DNS/TLS before task62.",
+        "Install working embedding/mail secrets securely, Stripe test secrets only for paid qualification profile. No live billing or public Start free activation.",
+        "Verify disk mount persistence, service identity/hardening, local Caddy forwarding, loopback readiness, initial backup+hourly timer, journal persistence and every alarm reaching its approved destination. Public certificate/DNS proof belongs to task62; private health is sufficient here. Verify the hourly purge timer is enabled and produces a receipt. Confirm deployed binary has no hostedtest fault hooks.",
+        "Capture reboot/redeploy idempotence and actual inventory/cost start time. Release operator lock and retain data safely; do not delete resources without scoped cleanup authorization."
+      ],
+      "acceptance": [
+        "Private/SSM health reaches the exact artifact; configured providers work; unauthenticated private routes denied. Public exposure remains unqualified until task62.",
+        "Fresh host and reboot require no undocumented manual install/mount; missing data mount prevents start.",
+        "Injected readiness/disk/backup/purge failure produces an alert at the destination; normal status restores. All charges/resources listed against authorization."
+      ],
+      "commands": [
+        "systemctl status serenity-hosted.service serenity-backup.timer",
+        "curl --fail --silent --show-error http://127.0.0.1:8090/readyz"
+      ],
+      "original_requirements": [
+        "T23.13",
+        "T23.14",
+        "T23.17",
+        "T23.29"
+      ],
+      "evidence": "docs/launch/evidence/T23.64/result.json",
+      "resource_claims": [],
+      "live_resource_claims": [
+        "R-hosted-environment"
+      ]
+    },
+    {
+      "id": "T23.65",
+      "title": "Prove real embeddings and the actual Rakazo customer journey",
+      "lane": "qualification",
+      "status": "planned",
+      "dependencies": [
+        "T23.42",
+        "T23.43",
+        "T23.55",
+        "T23.62",
+        "T23.64"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [
+        "EMBEDDINGS",
+        "MAIL"
+      ],
+      "estimate_agent_hours": "3\u20135",
+      "write_paths": [
+        "docs/launch/evidence/T23.65/**",
+        "scripts/hosted/client_qualification/**"
+      ],
+      "steps": [
+        "Run task43 frozen corpus with the dedicated capped key and privacy-qualified routing. Save corpus/model/provider/source hashes, ranks, exact usage and failures. Stop immediately at allowance.",
+        "Use pinned official MCP SDK through actual Caddy, then inspect/pin a real Rakazo build and settings. Verify four-tool discovery, read-only/write modes, empty label, bot/space entity scoping and two-account separation.",
+        "Save a unique synthetic fact, immediate paraphrase recall, lexical-negative control, service restart recall, stable IDs/citations, dropped-response dedup and forget absence from recall/exact read/export facts.json. Git bundle history may retain the forgotten text by design: explicitly verify/document this distinction. Verify bot/space scoping and two-account separation. No direct DB insert masquerading as customer write.",
+        "Time ten fresh controlled-mailbox browser journeys individually, from Start free/link entry to first authenticated recall. Report failures and small-sample p95; do not invent human timings.",
+        "Any changed instructions become a targeted task55/56 fix followed by relevant reruns; no broad upstream Rakazo work without a concrete reproduced defect."
+      ],
+      "acceptance": [
+        "Frozen semantic thresholds pass, zero scope leakage, no forgotten result; latency/usage reported even if outside target.",
+        "Actual Rakazo works through public HTTPS after restart using dashboard-issued credential; clipboard/rawtoken rules preserved.",
+        "Ten results have complete start/end/outcome records; synthetic browser runs are explicitly not human walkthroughs."
+      ],
+      "commands": [
+        "python3 scripts/hosted/eval_embeddings.py --live --manifest \"$QUALIFICATION_MANIFEST\" --output \"$EVIDENCE_DIR/semantic.json\"",
+        "python3 scripts/hosted/client_qualification/run.py --live --manifest \"$QUALIFICATION_MANIFEST\" --output \"$EVIDENCE_DIR/client.json\""
+      ],
+      "original_requirements": [
+        "T23.12",
+        "T23.17",
+        "T23.31",
+        "T23.32",
+        "T23.34"
+      ],
+      "evidence": "docs/launch/evidence/T23.65/result.json",
+      "resource_claims": [
+        "R-hosted-client-proof"
+      ],
+      "live_resource_claims": [
+        "R-hosted-environment"
+      ]
+    },
+    {
+      "id": "T23.66",
+      "title": "Rehearse off-host restore, deletion retention, migration and rollback",
+      "lane": "qualification",
+      "status": "planned",
+      "dependencies": [
+        "T23.48",
+        "T23.49",
+        "T23.50",
+        "T23.52",
+        "T23.57",
+        "T23.64"
+      ],
+      "profile_dependencies": {
+        "paid": [
+          "T23.67"
+        ]
+      },
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [
+        "SPEND",
+        "EMBEDDINGS"
+      ],
+      "estimate_agent_hours": "3\u20135",
+      "write_paths": [
+        "docs/launch/evidence/T23.66/**",
+        "scripts/hosted/recovery_rehearsal.py"
+      ],
+      "steps": [
+        "Use separately authorized disposable target/volume and synthetic accounts. Record snapshot, acknowledge writes, revoke token/delete account/cancel plan afterward, then restore only from actual downloaded complete backup plus independent journal.",
+        "Run plan/apply reconciliation; prove no deleted account/token/ended paid plan returns. Verify surviving memory through newly issued credential and semantic recall.",
+        "Inject corrupted bundle/DB/manifest, incomplete upload, stale journal, missing provider and interrupted apply. Measure wall time and last recoverable acknowledgment; report actual RTO/RPO, not invented SLA.",
+        "Rehearse migration from supported old schema snapshot and compatible rollback for named immutable versions. Unsupported downgrade must refuse; do not roll back production customer data to conceal migration failure.",
+        "Exercise all-version purge on explicitly disposable versioned test prefixes with an injected clock; prove the30day upper-bound policy algebra and actual API behavior. Never delete actual retained customer backups for testing."
+      ],
+      "acceptance": [
+        "Off-host recovery yields expected inventory/facts and invalid old credentials; deleted accounts remain absent despite pre-deletion snapshot.",
+        "Fault cases never yield a usable partial/unsafe restore; successful migration/rollback preserves acknowledged data.",
+        "RTO/RPO and purge evidence include actual artifact hashes, journal watermark, version inventory and resource cleanup/retention disposition."
+      ],
+      "commands": [
+        "python3 scripts/hosted/recovery_rehearsal.py --live --manifest \"$QUALIFICATION_MANIFEST\" --output \"$EVIDENCE_DIR/recovery.json\""
+      ],
+      "original_requirements": [
+        "T23.25",
+        "T23.26",
+        "T23.27",
+        "T23.28",
+        "T23.37"
+      ],
+      "evidence": "docs/launch/evidence/T23.66/result.json",
+      "resource_claims": [
+        "R-hosted-recovery-proof"
+      ],
+      "live_resource_claims": [
+        "R-hosted-environment"
+      ]
+    },
+    {
+      "id": "T23.67",
+      "title": "Execute the full Stripe lifecycle with test clocks",
+      "lane": "billing",
+      "status": "planned",
+      "dependencies": [
+        "T23.47",
+        "T23.63",
+        "T23.64",
+        "T23.62"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "paid"
+      ],
+      "external_gates": [
+        "STRIPE_TEST"
+      ],
+      "estimate_agent_hours": "3\u20135",
+      "write_paths": [
+        "scripts/hosted/stripe_qualification.py",
+        "docs/launch/evidence/T23.67/**"
+      ],
+      "steps": [
+        "Use dedicated synthetic test customers/clocks; drive actual Checkout/webhook/portal, not direct entitlementDB updates.",
+        "Run initial failed/incomplete purchase, activation, renewal, prorated upgrade, scheduled downgrade/cancel, fixed grace/expiry, re-subscribe, duplicate/reordered delivery and portal isolation.",
+        "Complete Checkout before webhook then delete account; race open checkout/deletion; inject provider-success/local-timeout and reconcile after restart.",
+        "Compare actual Stripe customer/subscription/invoice state with displayed plan, admission and counters. Clean only task-owned test objects; record no live charges."
+      ],
+      "acceptance": [
+        "Every row in task47 state table passes against Stripe testmode; no duplicate subscription or unintended paid entitlement.",
+        "Canceled/deleted customer has no collectible surviving subscription; late events converge without permanent webhook503.",
+        "Test clock/event IDs and sanitized outcomes retained; secrets and payment/customer details absent."
+      ],
+      "commands": [
+        "python3 scripts/hosted/stripe_qualification.py --test-mode --manifest \"$QUALIFICATION_MANIFEST\" --output \"$EVIDENCE_DIR/stripe-lifecycle.json\""
+      ],
+      "original_requirements": [
+        "T23.16",
+        "T23.21",
+        "T23.22",
+        "T23.23",
+        "T23.25"
+      ],
+      "evidence": "docs/launch/evidence/T23.67/result.json",
+      "resource_claims": [
+        "R-hosted-billing"
+      ],
+      "live_resource_claims": [
+        "R-hosted-environment"
+      ]
+    },
+    {
+      "id": "T23.68",
+      "title": "Measure capacity and recompute the launch bill",
+      "lane": "operations",
+      "status": "planned",
+      "dependencies": [
+        "T23.45",
+        "T23.60",
+        "T23.64",
+        "T23.65"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [
+        "SPEND",
+        "EMBEDDINGS"
+      ],
+      "estimate_agent_hours": "2\u20134",
+      "write_paths": [
+        "docs/launch/evidence/T23.68/**",
+        "docs/launch/hosted-economics.md"
+      ],
+      "steps": [
+        "Acquire environment lock and use controlled synthetic load window. For paid profile run full1Scale+3Builder+10Free workload; pilot profile measures its explicitly approved cap without implying paid-tier qualification.",
+        "Run warm/cold/skewed/churn load and provider failure; measure actual wall time, CPU/RSS/disk, p95 latency, error/admission rates and live-provider token totals within cap.",
+        "Project idle, measured and worst-case monthly costs including backup-history amplification and readiness/recovery calls; reconcile provider receipts with internal accounting. Produce $EVIDENCE_DIR/cost-measurements.json using the serenity-hosted-cost-measurements v1 schema documented in the [T23.60 cost-measurement schema](../../launch/hosted-economics.md#measurement-input), with each measured quantity bound to its scenario, unit, observation time and hash-pinned raw source evidence.",
+        "The cost command below applies only a separate cost-measurements.json document matching the T23.60 schema; load.json is a load result and must never be passed as --measurements. Without measurements, the command produces an assumptions-based baseline, not measured cost qualification. Unsupported quantities remain unknown, and a baseline subtotal cannot satisfy the monthly-maximum acceptance criterion.",
+        "If targets fail, record concrete smallest correction with owner/trigger, obtain any needed architecture/plan change review, and rerun affected workload. Never silently reduce published allowances or spend past cap."
+      ],
+      "acceptance": [
+        "Task60 thresholds met for selected profile or explicit FAIL prevents corresponding launch; zero durability/isolation errors.",
+        "The complete conservative monthly maximum is within the founder-selected $450/month planning ceiling; this planning ceiling is not AWS spend or deployment authorization, and any unknown line item blocks cost qualification.",
+        "Configured account/runtime caps match measured capacity, and reaching a cap fails gracefully with recovery operations available."
+      ],
+      "commands": [
+        "python3 scripts/hosted/load.py --live --manifest \"$QUALIFICATION_MANIFEST\" --output \"$EVIDENCE_DIR/load.json\"",
+        "python3 scripts/hosted/cost_model.py --manifest \"$QUALIFICATION_MANIFEST\" --measurements \"$EVIDENCE_DIR/cost-measurements.json\" --output \"$EVIDENCE_DIR/cost.json\""
+      ],
+      "original_requirements": [
+        "T23.3",
+        "T23.8",
+        "T23.20",
+        "T23.32",
+        "T23.36"
+      ],
+      "evidence": "docs/launch/evidence/T23.68/result.json",
+      "resource_claims": [
+        "R-hosted-cost"
+      ],
+      "live_resource_claims": [
+        "R-hosted-environment"
+      ]
+    },
+    {
+      "id": "T23.69",
+      "title": "Prepare and record first-time human walkthroughs",
+      "lane": "experience",
+      "status": "planned",
+      "dependencies": [
+        "T23.55",
+        "T23.56",
+        "T23.65"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [
+        "HUMANS"
+      ],
+      "estimate_agent_hours": "1\u20133",
+      "write_paths": [
+        "docs/launch/hosted-walkthrough.md",
+        "docs/launch/evidence/T23.69/**"
+      ],
+      "steps": [
+        "Prepare a one-page script: landing, mailbox login, token copy, Rakazo settings/write opt-in, save/paraphrase recall, export and deletion; provide approved disposable accounts and a reset procedure.",
+        "Recruit only through authorized coordinator/human channels; do not send unsolicited messages. Record up to5 consenting first-time participants, observed timings, confusion and failures without names/private memory.",
+        "Fix reproducible blocking UX problems through owning lane and rerun affected steps; preserve first-run results.",
+        "If no participants, record NOT_RUN and reason. Original scope permits explicitly unqualified human timing; only release reviewer/founder can accept that exception, and no speed claim may be published. Always produce a terminal receipt: PASS for completed observations or NOT_RUN with explicit unavailable-participants reason and coordinator-recorded exception request; never silently leave recruitment pending."
+      ],
+      "acceptance": [
+        "Actual participant observations are separate from automation; no fabricated scores/timings.",
+        "All material onboarding blockers have a fix receipt or block the selected launch; accessibility/mobile checks remain passing.",
+        "Timing/public claims match evidence; unavailable participants are visible in final packet."
+      ],
+      "commands": [
+        "python3 scripts/site/check.py"
+      ],
+      "original_requirements": [
+        "T23.30",
+        "T23.31",
+        "T23.33"
+      ],
+      "evidence": "docs/launch/evidence/T23.69/result.json",
+      "resource_claims": [
+        "R-hosted-walkthrough"
+      ],
+      "live_resource_claims": [
+        "R-hosted-environment"
+      ]
+    },
+    {
+      "id": "T23.70",
+      "title": "Assemble the reviewed release packet and exact launch actions",
+      "lane": "integrator",
+      "status": "planned",
+      "dependencies": [
+        "T23.56",
+        "T23.57",
+        "T23.58",
+        "T23.59",
+        "T23.65",
+        "T23.66",
+        "T23.68",
+        "T23.69"
+      ],
+      "profile_dependencies": {
+        "paid": [
+          "T23.67"
+        ]
+      },
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "2\u20134",
+      "write_paths": [
+        "docs/launch/hosted-release.md",
+        "docs/launch/hosted-runbook.md",
+        "docs/launch/hosted-acceptance.md",
+        "docs/launch/hosted-status.md",
+        "docs/launch/hosted-implementation-handoff.md"
+      ],
+      "steps": [
+        "Aggregate source-pinned per-task receipts for the selected pilot/paid profile. Any code change since evidence invalidates affected checks; rerun before recording PASS. Task69 must supply either actual human evidence or a documented unavailable-participants exception; this is an evidence requirement even though human availability is not a hard execution dependency.",
+        "Include immutable candidate artifact ID/archiveSHA and proposed release tag, CI, migration/rollbackpair, provider privacy/pin/budget, actual deployment inventory, secrets rotation, backup/journal/purge, alarms/recipient, measured costs/caps/RTO/RPO and security evidence.",
+        "Write copy-paste deploy/rollback/restore-plan/apply/rotate/deletion-retry runbook commands verified by a different operator. Resolve every original E23 requirement via crosswalk; no vague later.",
+        "Prepare separate reviewed pilot activation, live-billing cutover and publicsite activation diffs plus rollback. Record task69 result or explicit unqualified exception; no hidden acceptance waiver.",
+        "Ask for final action only once the packet is concrete; route through standing chief/founder surfaces. Prior valid approval is reused within scope. Plan publication is not deployment authority.",
+        "Certify the candidate as hosted-qualified in the packet only; do not publish a tag here. Task73 is the explicit release-publication owner under PUBLIC_GO; task71 may run a private pilot using the approved immutable candidate identifier."
+      ],
+      "acceptance": [
+        "No required row UNKNOWN/PARTIAL/NOT_RUN for selected profile; only explicit original human-walkthrough exception may remain, acknowledged with no timing claim.",
+        "Pilot packet explicitly excludes paid readiness; paid packet includes task67. Reviewer can perform rollback from the runbook.",
+        "Candidate source/artifact/evidence match and all final checks green. Record proposed release tag; task73 performs authorized publication of the same bytes. Receipt separates implemented, merged, deployed, live and deferred with owners/triggers."
+      ],
+      "commands": [
+        "export SERENITY_TEST_BINARY=\"${TMPDIR:-/tmp}/serenity-T23.70-$(git rev-parse --short=12 HEAD)\"",
+        "GOWORK=off go build -trimpath -o \"$SERENITY_TEST_BINARY\" ./cmd/serenity",
+        "python3 scripts/hosted/check_completion_plan.py",
+        "make vet lint test",
+        "npm run test:hosted"
+      ],
+      "original_requirements": [
+        "T23.28",
+        "T23.33",
+        "T23.35",
+        "T23.36",
+        "T23.37",
+        "T23.40"
+      ],
+      "evidence": "docs/launch/evidence/T23.70/result.json",
+      "allowed_dependency_exceptions": {
+        "T23.69": "NOT_RUN only with dated coordinator/human-unavailable disposition; no timing claims; release reviewer acknowledges exception"
+      },
+      "resource_claims": [
+        "R-hosted-launch-plan"
+      ],
+      "live_resource_claims": []
+    },
+    {
+      "id": "T23.71",
+      "title": "Activate an optional invitation-only Free pilot",
+      "lane": "release",
+      "status": "planned",
+      "dependencies": [
+        "T23.70"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "pilot"
+      ],
+      "external_gates": [
+        "PILOT_GO"
+      ],
+      "estimate_agent_hours": "0.5\u20131",
+      "write_paths": [
+        "docs/launch/evidence/T23.71/**"
+      ],
+      "steps": [
+        "Only after explicit selection/approval of the pilot packet, apply the exact allowlist/accountcap and billing_disabled configuration; use existing approved resources and budget.",
+        "Provide approved testers the actual signup/client journey through authorized human channels. Recheck readiness, isolation, write/recall, verified backup and alarm delivery.",
+        "Do not activate public Start free/paid Checkout or imply all paid launch requirements passed. Preserve proposed paid tasks in the ledger with trigger: pilot exit and paid packet approval.",
+        "On smoke failure close new registrations and roll back compatible config/binary without deleting memories."
+      ],
+      "acceptance": [
+        "Uninvited direct signup refused; invited new person uses real email+Rakazo without operator setup; billing disabled.",
+        "Pilot cohort/limit/budget and operator owner recorded; exact version matches approved packet.",
+        "Go/no-go is dated and traceable to human authority, not inferred from greenCI."
+      ],
+      "commands": [
+        "curl --fail --silent --show-error https://app.serenity.sire.run/readyz"
+      ],
+      "original_requirements": [
+        "T23.17",
+        "T23.39"
+      ],
+      "evidence": "docs/launch/evidence/T23.71/result.json",
+      "resource_claims": [],
+      "live_resource_claims": [
+        "R-hosted-environment"
+      ]
+    },
+    {
+      "id": "T23.72",
+      "title": "Activate live Stripe with a bounded operator payment",
+      "lane": "release",
+      "status": "planned",
+      "dependencies": [
+        "T23.70"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "paid"
+      ],
+      "external_gates": [
+        "LIVE_BILLING"
+      ],
+      "estimate_agent_hours": "1\u20132",
+      "write_paths": [
+        "docs/launch/evidence/T23.72/**"
+      ],
+      "steps": [
+        "Prepare exact live products/prices/webhook/portal diff from tested configuration, confirm Sire Run account and obtain dedicated restricted live credential securely. Never reuse test webhook secret.",
+        "Apply only after paid packet and specific live-charge authorization (amount, customer/operator, refund handling) are recorded. Perform one bounded operator Checkout and confirm signed entitlement.",
+        "Exercise rollback disabling new checkout and restoring test/config mode without pretending it cancels existing live subscriptions. Reconcile/refund/cancel operator subscription explicitly as authorized.",
+        "Record payment as operator smoke, not customer revenue; keep public signup/site activation closed until task73."
+      ],
+      "acceptance": [
+        "Correct liveprice/customer/webhook yields one intended charge and entitlement; no unrelated objects touched.",
+        "Observed charge/refund/subscription disposition and config rollback verified; secrets absent from receipts.",
+        "Failure blocks paid launch and returns checkout to safe disabled state without losing memory."
+      ],
+      "commands": [
+        "curl --fail --silent --show-error https://app.serenity.sire.run/readyz"
+      ],
+      "original_requirements": [
+        "T23.38"
+      ],
+      "evidence": "docs/launch/evidence/T23.72/result.json",
+      "resource_claims": [],
+      "live_resource_claims": [
+        "R-hosted-environment"
+      ]
+    },
+    {
+      "id": "T23.73",
+      "title": "Perform the public launch go/no-go and final customer smoke",
+      "lane": "release",
+      "status": "planned",
+      "dependencies": [
+        "T23.70",
+        "T23.72"
+      ],
+      "profile_dependencies": {},
+      "profiles": [
+        "paid"
+      ],
+      "external_gates": [
+        "PUBLIC_GO"
+      ],
+      "estimate_agent_hours": "1\u20132",
+      "write_paths": [
+        "docs/launch/evidence/T23.73/**",
+        "site/index.html",
+        "site/get-started/**"
+      ],
+      "steps": [
+        "Present final paid release packet and explicit state/cost/remaining-risk summary to David through the standing path; obtain go/no-go, not silence-as-consent.",
+        "On go, publish the reviewed release tag/assets from the exact qualified immutable candidate without rebuilding, then apply reviewed public registration/site activation diff. Verify source/tag/archiveSHA, DNS/TLS/email and Free signup\u2192Rakazo write\u2192recall\u2192export/delete; published prices/limits and paid path match qualified objects.",
+        "On no-go/failure, preserve private candidate and data, disable new admission/Checkout and execute reviewed compatible rollback. No unsupported public availability or SLA announcement.",
+        "Record exact release/deploy/site/Stripe revisions, time and operator; start the finite observation window in task74."
+      ],
+      "acceptance": [
+        "New customer can complete the journey without server setup; Free requires no card; public pages reflect actual behavior.",
+        "All required paid gates passed on deployed revision; no code/secret/config drift since qualification.",
+        "Dated human go/no-go and final smoke receipts are attached; launched is never inferred from merged."
+      ],
+      "commands": [
+        "python3 scripts/site/check.py",
+        "curl --fail --silent --show-error https://app.serenity.sire.run/readyz"
+      ],
+      "original_requirements": [
+        "T23.30",
+        "T23.38",
+        "T23.39"
+      ],
+      "evidence": "docs/launch/evidence/T23.73/result.json",
+      "resource_claims": [
+        "R-hosted-site",
+        "R-hosted-release"
+      ],
+      "live_resource_claims": [
+        "R-hosted-environment"
+      ]
+    },
+    {
+      "id": "T23.74",
+      "title": "Observe the launch and close the epic with owned follow-ups",
+      "lane": "release",
+      "status": "planned",
+      "dependencies": [],
+      "profile_dependencies": {
+        "pilot": [
+          "T23.71"
+        ],
+        "paid": [
+          "T23.73"
+        ]
+      },
+      "profiles": [
+        "pilot",
+        "paid"
+      ],
+      "external_gates": [],
+      "estimate_agent_hours": "1\u20132 active + 24h observation",
+      "write_paths": [
+        "docs/launch/evidence/T23.74/**",
+        "docs/launch/hosted-status.md",
+        "docs/launch/hosted-release.md"
+      ],
+      "steps": [
+        "After selected launch predecessor, observe24h using existing CloudWatch/systemd/budget mechanisms. Do not build a polling daemon or hold an interactive agent sleeping overnight.",
+        "Check actual signup/error/admission rates, privacy-safe provider spend, backup completion/age, journal/purge state, disk/CPU and alert delivery. Compare costs to approved forecast.",
+        "At24h issue a finite operator receipt. Any critical isolation/durability/billing failure closes new signup/checkout and invokes runbook; retain customer data.",
+        "Close selected milestone only with named support/operator owner, next restore/rotation rehearsal date, and every deferred item carrying taskID/owner/dependency/trigger. Paid tasks remain open after a pilot."
+      ],
+      "acceptance": [
+        "Observation has a start/end and actual metrics; missing telemetry or backup is a failure, not quiet success.",
+        "No spend over approved cap; remaining issues are actionable assigned rows.",
+        "Pilot-complete and paid-launch-complete are reported distinctly with exact artifact and launch authorization."
+      ],
+      "commands": [
+        "curl --fail --silent --show-error https://app.serenity.sire.run/readyz"
+      ],
+      "original_requirements": [
+        "T23.28",
+        "T23.29",
+        "T23.39",
+        "T23.40"
+      ],
+      "evidence": "docs/launch/evidence/T23.74/result.json",
+      "resource_claims": [
+        "R-hosted-launch-plan"
+      ],
+      "live_resource_claims": [
+        "R-hosted-environment"
+      ]
+    }
+  ]
+}

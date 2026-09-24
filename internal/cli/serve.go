@@ -44,13 +44,25 @@ func newServeCmd() *cobra.Command {
 		if !stdio && !httpMode {
 			return fmt.Errorf("choose --stdio or --http to serve MCP")
 		}
+		profile, hasProfile, err := resolveCredentialProfile(cmd)
+		if err != nil {
+			return err
+		}
 		if stdio {
+			// stdio has no bearer-token authentication at all (RFC-BRAIN-AUTH-02:
+			// "profile+stdio must reject rather than imply HTTP authentication
+			// applies to stdio") -- a profile flag here would silently do nothing,
+			// which is worse than refusing.
+			if hasProfile {
+				return fmt.Errorf("--%s has no effect with --stdio: stdio has no bearer-token authentication to select a credential for", credentialProfileFlagName)
+			}
 			return runServeStdio(cmd)
 		}
-		return runServeHTTP(cmd)
+		return runServeHTTP(cmd, profile, hasProfile)
 	}}
 	cmd.Flags().Bool("stdio", false, "read and write newline-delimited MCP JSON-RPC")
 	cmd.Flags().Bool("http", false, "serve authenticated MCP Streamable HTTP at /mcp (RFC 0001 section 14)")
+	addCredentialProfileFlag(cmd)
 	cmd.MarkFlagsMutuallyExclusive("stdio", "http")
 	return cmd
 }
@@ -109,7 +121,14 @@ func runServeStdio(cmd *cobra.Command) (runErr error) {
 // 0001 section 14) wholesale -- no bespoke auth or listener path -- and
 // the exact same memoryTools registry construction --stdio uses, so a
 // client sees the same five MEMORY_VERBS tools over either transport.
-func runServeHTTP(cmd *cobra.Command) (runErr error) {
+//
+// profile/hasProfile come from --credential-profile (RFC-BRAIN-AUTH-02):
+// absent (hasProfile=false) is the exact legacy path, byte-for-byte; a
+// given profile is validated by resolveCredentialProfile before this is
+// ever called, so a malformed name never reaches here, but an
+// unprovisioned valid one still must fail closed below rather than fall
+// back to the legacy shared token.
+func runServeHTTP(cmd *cobra.Command, profile string, hasProfile bool) (runErr error) {
 	stderr := cmd.ErrOrStderr()
 	tools, closeDeps, eng, q, err := memoryTools(flagRoot, stderr)
 	if err != nil {
@@ -123,12 +142,24 @@ func runServeHTTP(cmd *cobra.Command) (runErr error) {
 		return err
 	}
 
-	if _, err := secrets.DaemonToken(); err != nil {
-		return fmt.Errorf("serve --http: daemon auth token missing -- run `serenity init` first: %w", err)
+	var tokenSource func() (string, error)
+	if hasProfile {
+		if _, err := secrets.ProfileDaemonToken(profile); err != nil {
+			return fmt.Errorf("serve --http --%s %s: token missing -- run `serenity connect --%s %s --provision-token` first: %w", credentialProfileFlagName, profile, credentialProfileFlagName, profile, err)
+		}
+		tokenSource = func() (string, error) { return secrets.ProfileDaemonToken(profile) }
+	} else {
+		if _, err := secrets.DaemonToken(); err != nil {
+			return fmt.Errorf("serve --http: daemon auth token missing -- run `serenity init` first: %w", err)
+		}
+		tokenSource = secrets.DaemonToken
 	}
 
-	srv := server.New(server.FromBrainConfig(loadServerConfig(flagRoot)))
-	httpHandler := mcp.NewHTTPHandler(mcpServer)
+	serverConfig := loadServerConfig(flagRoot)
+	cfg := server.FromBrainConfig(serverConfig)
+	cfg.TokenSource = tokenSource
+	srv := server.New(cfg)
+	httpHandler := mcp.NewHTTPHandlerWithConfig(mcpServer, mcp.HTTPConfig{MaxInFlightCalls: serverConfig.MaxInFlightCalls})
 	srv.Handle("/mcp", httpHandler)
 	if eng != nil && q != nil {
 		dispositionStore := coredisposition.NewStore(eng)
@@ -188,15 +219,24 @@ func loadServerConfig(root string) config.Server {
 // a failure there is a genuine infra problem and is returned as a hard
 // error, the same posture internal/cli/ask.go's own runAsk takes.
 func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, *index.SQLite, *writer.Queue, error) {
-	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	_, err := config.Load(filepath.Join(root, config.FileName))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "serve: %s is not a brain repo -- serving MCP transport with no MEMORY_VERBS tools\n", root)
 		return nil, nil, nil, nil, nil
 	}
 
+	owner, err := writer.AcquireBrain(root)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	// Re-read under ownership: config may have changed while recognizing the brain.
+	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	if err != nil {
+		return nil, nil, nil, nil, errors.Join(err, owner.Close())
+	}
 	eng, err := providers.OpenIndex(root)
 	if err != nil {
-		return nil, nil, nil, nil, fmt.Errorf("serve: open index: %w", err)
+		return nil, nil, nil, nil, errors.Join(fmt.Errorf("serve: open index: %w", err), owner.Close())
 	}
 	// The writer queue is this daemon's own owned resource (memory-compat-
 	// mapping.md coordinator refinement #2: "stdio serve must close its
@@ -206,7 +246,7 @@ func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, *inde
 	closeDeps := func() error {
 		q.Close()
 		_, flushErr := writer.Flush(q, root)
-		return errors.Join(flushErr, eng.Close())
+		return errors.Join(flushErr, eng.Close(), owner.Close())
 	}
 
 	ledger := &providers.IndexSpendLedger{Eng: eng}
@@ -239,7 +279,8 @@ func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, *inde
 		Fence:                   store.NewFenceWriter(root),
 		Shard:                   store.NewShardStore(root),
 	}
-	return memory.New(deps).Tools(), closeDeps, eng, q, nil
+	handlers := memory.New(deps)
+	return append(handlers.Tools(), handlers.ExtensionTools()...), closeDeps, eng, q, nil
 }
 
 // Inherited stdin/stdout may be blocking descriptors outside Go's runtime poller.

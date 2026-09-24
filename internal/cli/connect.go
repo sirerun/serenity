@@ -30,15 +30,86 @@ func newConnectCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			provision, err := cmd.Flags().GetBool("provision-token")
+			if err != nil {
+				return err
+			}
+			profile, hasProfile, err := resolveCredentialProfile(cmd)
+			if err != nil {
+				return err
+			}
+			if provision && !hasProfile {
+				return fmt.Errorf("--provision-token requires --%s NAME", credentialProfileFlagName)
+			}
+			if hasProfile {
+				switch {
+				case provision:
+					return runConnectProvisionProfile(profile, cmd.OutOrStdout())
+				case rotate:
+					return runConnectRotateProfile(profile, cmd.OutOrStdout())
+				default:
+					return runConnectProfileStatus(profile, cmd.OutOrStdout())
+				}
+			}
 			if rotate {
 				return runConnectRotateToken(cmd.OutOrStdout())
 			}
 			return runConnectStatus(cmd.OutOrStdout())
 		},
 	}
-	cmd.Flags().Bool("rotate-token", false, "mint a new daemon bearer token, invalidating the old one")
+	cmd.Flags().Bool("rotate-token", false, "mint a new daemon bearer token, invalidating the old one (the legacy shared token, or the named --credential-profile's own token)")
+	cmd.Flags().Bool("provision-token", false, "create a fresh, independent bearer token for --credential-profile NAME (requires --credential-profile; never copies the legacy token's value)")
+	addCredentialProfileFlag(cmd)
+	cmd.MarkFlagsMutuallyExclusive("rotate-token", "provision-token")
 	cmd.AddCommand(newConnectClaudeCmd())
 	return cmd
+}
+
+// runConnectProvisionProfile is `serenity connect --credential-profile NAME
+// --provision-token` (RFC-BRAIN-AUTH-02): the only way a profile's token is
+// ever created. Idempotent -- an already-provisioned profile is left
+// unchanged and reported as such, never silently re-minted or replaced
+// (that is --rotate-token's job). The printed note is the CLI-help-visible
+// disclosure the contract requires: a profile name is an operator-selected
+// label, not a stored, persistent per-brain binding.
+func runConnectProvisionProfile(name string, out io.Writer) error {
+	_, created, err := secrets.EnsureProfileDaemonToken(name)
+	if err != nil {
+		return fmt.Errorf("provision credential profile %s: %w", name, err)
+	}
+	if created {
+		_, _ = fmt.Fprintf(out, "credential profile %q provisioned with a fresh, independent daemon auth token (service %q)\n", name, secrets.Service)
+	} else {
+		_, _ = fmt.Fprintf(out, "credential profile %q already provisioned; token unchanged\n", name)
+	}
+	_, _ = fmt.Fprintln(out, "this is an operator-selected label, not a stored per-brain binding -- pass the exact same --credential-profile on every `serve --http` invocation for this brain, and never reuse it for a different one")
+	return nil
+}
+
+// runConnectRotateProfile is `serenity connect --credential-profile NAME
+// --rotate-token`: scoped rotation. Only NAME's own keychain entry changes;
+// every other profile and the legacy shared token are provably untouched,
+// since each is a distinct keychain account (internal/secrets.profileAccountKey).
+func runConnectRotateProfile(name string, out io.Writer) error {
+	if _, err := secrets.RotateProfileDaemonToken(name); err != nil {
+		return fmt.Errorf("rotate credential profile %s: %w", name, err)
+	}
+	_, _ = fmt.Fprintf(out, "credential profile %q rotated (service %q); its previous token no longer authenticates -- every other profile and the legacy shared token are unaffected\n", name, secrets.Service)
+	return nil
+}
+
+// runConnectProfileStatus is bare `serenity connect --credential-profile
+// NAME` (no --provision-token/--rotate-token): read-only, exactly like bare
+// `connect` for the legacy token -- it never mints a token as a side effect
+// of checking one.
+func runConnectProfileStatus(name string, out io.Writer) error {
+	if _, err := secrets.ProfileDaemonToken(name); err != nil {
+		_, _ = fmt.Fprintf(out, "credential profile %q has no token yet -- run `serenity connect --credential-profile %s --provision-token`\n", name, name)
+	} else {
+		_, _ = fmt.Fprintf(out, "credential profile %q has a token in the OS keychain (service %q)\n", name, secrets.Service)
+	}
+	_, _ = fmt.Fprintln(out, "note: this is a status check on an operator-selected label, not proof of a stored per-brain binding -- the same name used against a different brain would resolve to this identical token")
+	return nil
 }
 
 // runConnectRotateToken is `serenity connect --rotate-token` (RFC §14,

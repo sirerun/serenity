@@ -1,6 +1,11 @@
 {
   "name": "serenity-site-verification",
   "private": true,
-  "scripts": {"test:site": "playwright test"},
-  "devDependencies": {"@playwright/test": "1.63.0"}
+  "scripts": {
+    "test:site": "playwright test",
+    "test:hosted": "playwright test --config playwright.hosted.config.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
 }

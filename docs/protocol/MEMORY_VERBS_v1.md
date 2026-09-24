@@ -273,3 +273,79 @@ Error codes:
   two protocols Serenity does author, under the same governance model.
 - `docs/operator/claude.md` — `serenity connect claude`, the one-command
   MCP install path for this protocol.
+
+## Optional Serenity extension: cancel_memory_operation
+
+The five pinned MEMORY_VERBS tools, including forget's required `id`, are
+unchanged. Serenity additionally advertises `cancel_memory_operation` through
+MCP tools/list. Discover it before relying on this extension; older servers do
+not implement it. This is a write capability of the same controlled brain.
+
+The required `operation_key` is the original immutable remember key. An optional
+`reason` is an audit annotation. The writer durably fences the key even when the
+fact has not arrived. The response's `canceled:true` confirms that fence. Its `id`
+is empty when no fact exists; `expired:true` means this call expired an active
+fact. Repeat cancellation is idempotent. An existing private fact returns
+scope_denied and is unchanged. Canonical failure is not successful cancellation.
+
+A subsequent remember cannot create an absent canceled key: operation_canceled
+is returned. If a matching fact existed, exact replay recovers its expired ID;
+changed payloads still return operation_conflict. Cancellation is not secure
+physical erasure and cannot be bypassed by retrying the same publication under
+a different key. The source projection also applies fences to later merged facts.
+
+Storage uses memory_expiry format v2 for key cancellation. Old binaries fail
+closed on that version; ordinary fact-ID expiry retains format v1. Do not roll
+back a brain containing cancellations to an incompatible reader/writer.
+
+Schemas: [request](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_cancel_operation_request.schema.json)
+and [response](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_cancel_operation_response.schema.json).
+
+## Optional Serenity extension: read_memory_fact
+
+The five pinned MEMORY_VERBS tools are unchanged. Serenity additionally
+advertises `read_memory_fact` through MCP tools/list. Discover it before
+relying on this extension; older servers do not implement it. This is a read
+capability only: it never writes, and it is not recall or entity -- it takes
+no query, no entity reference, and does no search or embedding-model call.
+
+The required `id` is the exact opaque `fact_id` remember/recall already
+return (`facts[].fact_id`) -- 64 lowercase hex characters, and nothing else.
+Unlike forget, this brand-new tool carries no compatibility obligation to
+also accept the pre-v1 legacy decimal id, so it does not: a legacy id, a
+page slug, an entity reference, a truncated or wrong-case hex string, or a
+search query are all rejected as `invalid_params` before any lookup runs.
+
+A resolvable id returns that fact's live `fact`/`kind`/`visibility`/
+`entity_slug`/`provenance`/`valid_until` directly, reusing the same
+audience/eligibility filter recall's own facts arm applies (remote callers
+see only active, world-visibility facts) -- never an index-only lookup that
+could resurrect withdrawn data. `content_untrusted` is always `true`: this is
+raw attributed input, never verified evidence or an accepted claim, and
+reading it never promotes it into one.
+
+An id that is unknown, private, TTL-expired, explicitly forgotten, or fenced
+by an operation-key cancellation all produce the exact same `unavailable`
+error -- deliberately: a caller must not learn, from the shape of a failure,
+that a private or withdrawn fact exists under a given id.
+
+There is no fact-text length limit to inherit (remember only bounds
+`provenance`, at 500 characters; imported facts can be much larger than an
+interactive request). Rather than silently truncate an "exact" read, this
+tool measures the ACTUAL serialized MCP tool-result envelope -- after the
+domain response is embedded (and re-escaped) as `Content[0].Text`, not just
+the inner domain JSON, which under-counts every quote/backslash/control
+character in `fact`/`provenance` by ignoring that second escaping pass --
+against the same `mcp.MaxFrameBytes` bound this server's own transport
+already enforces on inbound frames, less a fixed reserve for the outer
+JSON-RPC frame and a gateway adapter's own separate cap. An eligible fact
+whose real envelope would exceed it still returns `unavailable` (no new
+shared error code -- this is a read-only, extension-local outcome, unlike
+`operation_canceled`, which remember itself needed), but with a distinct,
+documented size message rather than the uniform missing/private/expired/
+canceled text, and it never truncates the body. There is currently no
+supported bulk/import path this tool falls back to for such a fact --
+`serenity import` is a write, not a read.
+
+Schemas: [request](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_read_fact_request.schema.json)
+and [response](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_read_fact_response.schema.json).

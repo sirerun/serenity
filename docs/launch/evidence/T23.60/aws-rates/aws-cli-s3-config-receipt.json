@@ -1,0 +1,18 @@
+{
+  "schema": "serenity-hosted-rate-receipt",
+  "subject": "aws_cli_s3_multipart_defaults",
+  "url": "https://docs.aws.amazon.com/cli/latest/topic/s3-config.html",
+  "retrieved_at": "2026-09-19T04:58:40Z",
+  "http_status": 200,
+  "page_sha256": "f5512bc7b9611f8568cfd852e4e8eaca8635f2fe59bc5829d1ddba4bf8ea6529",
+  "page_bytes": 53959,
+  "extraction": "visible text of the saved HTML with script and style removed, tags stripped, whitespace collapsed",
+  "excerpts": {
+    "multipart_threshold": "multipart_threshold \u00b6 Default - 8MB When uploading, downloading, or copying a file, the S3 commands will switch to multipart operations if the file reaches a given size threshold. The multipart_threshold controls this value. You can specify this value in one of two ways: The file size in bytes. For example, 1048576 . The file size with a size suffix. You can use KB , MB , GB , TB . For example: 10MB , 1GB .",
+    "multipart_chunksize": "multipart_chunksize \u00b6 Default - 8MB Minimum For Uploads - 5MB Once the S3 commands have decided to use multipart operations, the file is divided into chunks. This configuration option specifies what the chunk size (also referred to as the part size) should be.",
+    "preferred_transfer_client": "preferred_transfer_client \u00b6 Default - auto Determines the underlying Amazon S3 transfer client to use for transferring files to and from S3. Valid choices are: auto - Auto resolve the Amazon S3 transfer client to use. Currently, it resolves to crt when all of the following criteria is met: The s3 command used is not an S3 to S3 copy transfer. The crt transfer client currently only supports uploads to S3, downloads from S3, and deletion of S3 objects. The host running the AWS CLI is optimized for the crt transfer client. Currently, the crt transfer client is optimized for Amazon EC2 instances that are running Linux as the operating system and are of any of these instance types: p4d.24xlarge p4de.24xlarge p5.48xlarge trn1n.32xlarge trn1.32xlarge p5e.48xlarge p5en.48xlarge p6-b200.48xlarge p6-b300.48xlarge There are no other running processes of the AWS CLI using the CRT S3 transfer client. To force multiple concurrently running processes of the AWS CLI to use the CRT S3 transfer client, set the preferred_transfer_client configuration variable to crt . Otherwise, it resolves to classic ."
+  },
+  "conclusion": "Defaults: multipart_threshold 8MB, multipart_chunksize 8MB, minimum part size for uploads 5MB. Uploads that reach the threshold use multipart operations. The default preferred_transfer_client is auto, which resolves to crt only on the listed large instance types and otherwise to classic.",
+  "not_stated_by_the_page": "The page does not say whether the size suffix MB is 1,000,000 or 1,048,576 bytes (it states powers of 2 only for rate suffixes). The model uses 8 MiB (8,388,608 bytes); 8,000,000 bytes changes the part count by at most 4.9%.",
+  "not_established": "Which CLI version, configuration values and transfer client the deployed host uses. The deployment template sets none of them."
+}

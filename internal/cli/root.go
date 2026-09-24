@@ -22,7 +22,8 @@ func newRootCmd() *cobra.Command {
 		Version:       Version,
 	}
 	root.PersistentFlags().StringVarP(&flagRoot, "root", "C", ".", "brain repo root")
-	root.AddCommand(newInitCmd(), newSyncCmd(), newExtractCmd(), newDoctorCmd(), newStatusCmd(), newCompactCmd(), newConnectorsCmd(), newSearchCmd(), newMigrateCmd(), newAskCmd(), newCheckCmd(), newConnectCmd(), newConfigCmd(), newCronCmd(), newCaptureCmd(), newInboxCmd(), newInterviewCmd(), newReportCmd(), newServeCmd(), newProtocolCmd(), newImportCmd())
+	root.AddCommand(newHostedCmd(), newInitCmd(), newSyncCmd(), newExtractCmd(), newDoctorCmd(), newStatusCmd(), newCompactCmd(), newConnectorsCmd(), newSearchCmd(), newMigrateCmd(), newAskCmd(), newCheckCmd(), newConnectCmd(), newConfigCmd(), newCronCmd(), newCaptureCmd(), newInboxCmd(), newInterviewCmd(), newReportCmd(), newServeCmd(), newProtocolCmd(), newImportCmd())
+	installBrainOwnership(root)
 	return root
 }
 

@@ -3,11 +3,13 @@ module github.com/sirerun/serenity
 go 1.26.5
 
 require (
+	github.com/ajent-social/go v0.0.0-20260924042100-b90bbb417d9d
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/kazi-org/dira v0.2.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.10.2
+	github.com/tiktoken-go/tokenizer v0.8.1
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/sys v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -16,6 +18,7 @@ require (
 
 require (
 	github.com/danieljoos/wincred v1.2.3 // indirect
+	github.com/dlclark/regexp2/v2 v2.5.1 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emersion/go-message v0.18.2 // indirect
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect

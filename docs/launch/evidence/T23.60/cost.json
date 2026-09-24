@@ -1,0 +1,2402 @@
+{
+  "task_id": "T23.60",
+  "profile": "paid",
+  "calculation": {
+    "status": "CALCULATED",
+    "meaning": "arithmetic over the listed rates, assumptions and validated measurements; it is not a launch cost qualification"
+  },
+  "launch_cost_qualification": {
+    "status": "NOT_QUALIFIED",
+    "full_maximum_computable": false,
+    "blocking_unknowns": [
+      "cloudwatch_custom_metrics",
+      "cloudwatch_logs",
+      "control_db_lifetime_growth",
+      "egress_response_size",
+      "email_peak_volume",
+      "embedding_restore_and_reopen",
+      "embeddings",
+      "outbound_bytes_unmodeled",
+      "s3_get_list_restore",
+      "s3_multipart_requests",
+      "ec2_cpu_credit_mode",
+      "global_free_allowances"
+    ],
+    "note": "A calculated subtotal or peak is not an approved spend, a measured bill or a capacity acceptance."
+  },
+  "rate_table": {
+    "ec2_t4g_small_usd_per_hour": {
+      "value": 0.0168,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS EC2 on-demand price list, US West (Oregon), Linux, published 2026-09-18T20:33:44Z",
+      "receipt": {
+        "file": "aws-rates/ec2-oregon-rate-receipt.json",
+        "rate_code": "NTSJZ6S2KD2YFRVB.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Hrs",
+        "catalog_usd": "0.0168000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "On-demand Linux t4g.small in US West (Oregon), before credits, storage and network. No reservation, savings plan or account-specific offer is implied."
+    },
+    "ec2_t4g_burst_credit_usd_per_vcpu_hour": {
+      "value": 0.04,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonEC2 us-west-2 price list version 20260918212757, published 2026-09-18T21:27:57Z",
+      "receipt": {
+        "file": "aws-rates/ec2-ebs-oregon-rate-extract.json",
+        "rate_code": "U8TTEWHUFZA4FZYG.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "vCPU-Hours",
+        "catalog_usd": "0.0400000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "T4g surplus CPU credit, billed only when a burstable instance runs in unlimited credit mode and exhausts its balance."
+    },
+    "ebs_gp3_usd_per_gb_month": {
+      "value": 0.08,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonEC2 us-west-2 price list version 20260918212757, published 2026-09-18T21:27:57Z",
+      "receipt": {
+        "file": "aws-rates/ec2-ebs-oregon-rate-extract.json",
+        "rate_code": "BB8UJWJ4XPFJB95G.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "GB-Mo",
+        "catalog_usd": "0.0800000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "Baseline 3,000 IOPS and 125 MiB/s are included; this deployment's 8 GB root and 30 GB data volumes are not modeled beyond that baseline."
+    },
+    "ebs_gp3_extra_iops_usd_per_iops_month": {
+      "value": 0.005,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonEC2 us-west-2 price list version 20260918212757, published 2026-09-18T21:27:57Z",
+      "receipt": {
+        "file": "aws-rates/ec2-ebs-oregon-rate-extract.json",
+        "rate_code": "XBTB827YUJSN6SSV.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "IOPS-Mo",
+        "catalog_usd": "0.0050000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "Beyond the 3,000 free baseline IOPS. Not applied: no evidence of exceeding baseline."
+    },
+    "ebs_gp3_extra_throughput_usd_per_mibps_month": {
+      "value": 0.04,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonEC2 us-west-2 price list version 20260918212757, published 2026-09-18T21:27:57Z",
+      "receipt": {
+        "file": "aws-rates/ec2-ebs-oregon-rate-extract.json",
+        "rate_code": "3MQHJKUUZSKTF82F.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "GiBps-mo",
+        "catalog_usd": "40.9600000000",
+        "catalog_to_rate_factor": 0.0009765625
+      },
+      "note": "The catalog prices 40.96 USD per GiBps-month, which is 0.04 USD per MiBps-month (divide by 1,024). Beyond the 125 MiB/s free baseline. Not applied: no evidence of exceeding baseline."
+    },
+    "s3_standard_usd_per_gib_month": {
+      "value": 0.023,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonS3 us-west-2 price list, published 2026-09-18T17:47:47Z, first 50 TB tier",
+      "receipt": {
+        "file": "s3-rate.json",
+        "rate_code": "sku:Z3FQZG73HYSPVABR@first-50-TB",
+        "catalog_unit": "GB-Mo",
+        "catalog_usd": "0.0230000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "unit_receipt": "aws-rates/s3-storage-unit-receipt.json",
+      "note": "First 50 TB tier. The earlier claim of 0.0265 for Oregon was incorrect. The catalog unit GB-Mo is a binary gigabyte: S3 bills storage in units of 2^30 bytes (aws-rates/s3-storage-unit-receipt.json), so this rate applies to GiB-months and the billed quantity is bytes / 2^30, never bytes / 10^9."
+    },
+    "s3_put_usd_per_1000_requests": {
+      "value": 0.005,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AmazonS3 us-west-2 Price List version 20260918174747, USW2-Requests-Tier1",
+      "receipt": {
+        "file": "aws-rates/s3-request-transfer-price-receipt.json",
+        "rate_code": "D4PMUVH6F64HK2D6.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Requests",
+        "catalog_usd": "0.0000050000",
+        "catalog_to_rate_factor": 1000
+      },
+      "note": "PUT/COPY/POST/LIST request rate; the catalog charges per request and the model shows per 1,000. No request count is proven by this rate receipt."
+    },
+    "s3_get_usd_per_1000_requests": {
+      "value": 0.0004,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AmazonS3 us-west-2 Price List version 20260918174747, USW2-Requests-Tier2",
+      "receipt": {
+        "file": "aws-rates/s3-request-transfer-price-receipt.json",
+        "rate_code": "E77AQEM2DC4VV3FC.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Requests",
+        "catalog_usd": "0.0000004000",
+        "catalog_to_rate_factor": 1000
+      },
+      "note": "GET/other request rate; no routine GET count is modeled."
+    },
+    "kms_key_usd_per_month": {
+      "value": 1.0,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS awskms us-west-2 price list version 20260911124601, published 2026-09-11T12:46:01Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "S8HBXBVJKWKDP9AS.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Keys",
+        "catalog_usd": "1.0000000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "One customer managed key version. The template sets EnableKeyRotation, and AWS adds 1 USD per month for each of the first two rotations (prorated hourly), capped after the second (https://aws.amazon.com/kms/pricing/), so storage can rise from 1 to 3 USD per month. 1 USD is the figure before any rotation."
+    },
+    "kms_rotation_billed_versions_max": {
+      "value": 2,
+      "kind": "published",
+      "verification": "secondary_summary_not_regionally_verified",
+      "source": "https://aws.amazon.com/kms/pricing/ ('the first and second rotation of the key adds $1/month (prorated hourly) ... capped at the second rotation'), page saved by the coordinator",
+      "note": "Number of rotations that add a key-version charge. A count from AWS's pricing page text, not a catalog rate, so it is not regionally verified."
+    },
+    "kms_usd_per_10000_requests": {
+      "value": 0.03,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS awskms us-west-2 price list version 20260911124601, published 2026-09-11T12:46:01Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "SE9KXT6M6JTP7E4W.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Requests",
+        "catalog_usd": "0.0000030000",
+        "catalog_to_rate_factor": 10000
+      },
+      "note": "The catalog prices one request at 0.000003 USD."
+    },
+    "kms_free_requests_per_month": {
+      "value": 20000,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS awskms us-west-2 price list version 20260911124601, published 2026-09-11T12:46:01Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "VTFSAGP364M6QE4A.A429C66SYZ.7K6Z2V4Y4Q",
+        "catalog_unit": "Requests",
+        "catalog_usd": "0.0000000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "A global free tier shared across every AWS KMS use in the account and all regions. The model cannot assume the whole allowance is unused; the peak exposure uses none of it."
+    },
+    "secrets_manager_usd_per_secret_month": {
+      "value": 0.4,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AWSSecretsManager us-west-2 price list version 20260911124610, published 2026-09-11T12:46:10Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "DWJP9S4V3HP98UNC.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Secrets",
+        "catalog_usd": "0.4000000000",
+        "catalog_to_rate_factor": 1.0
+      }
+    },
+    "secrets_manager_usd_per_10000_calls": {
+      "value": 0.05,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AWSSecretsManager us-west-2 price list version 20260911124610, published 2026-09-11T12:46:10Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "AEBQHWFEG8Q4Y7AT.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "API Requests",
+        "catalog_usd": "0.0000050000",
+        "catalog_to_rate_factor": 10000
+      },
+      "note": "The catalog prices one API request at 0.000005 USD. No free tier for API calls is listed."
+    },
+    "cloudwatch_alarm_usd_per_month": {
+      "value": 0.1,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonCloudWatch us-west-2 price list version 20260918142158, published 2026-09-18T14:21:58Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "SJTFAZNHSW2WVZB2.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Alarms",
+        "catalog_usd": "0.1000000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "Standard resolution alarm metric."
+    },
+    "cloudwatch_custom_metric_usd_per_month": {
+      "value": 0.3,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonCloudWatch us-west-2 price list version 20260918142158, published 2026-09-18T14:21:58Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "CN6TP6ZEVS58RK7M.JRTCKXETXF.A6VD9GXV7W",
+        "catalog_unit": "Metrics",
+        "catalog_usd": "0.3000000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "First 10,000 metrics tier."
+    },
+    "cloudwatch_logs_ingest_usd_per_gb": {
+      "value": 0.5,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonCloudWatch us-west-2 price list version 20260918142158, published 2026-09-18T14:21:58Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "CWY7X4MZ4F3MP5SD.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "GB",
+        "catalog_usd": "0.5000000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "Custom log data ingested in the Standard log class."
+    },
+    "cloudwatch_logs_storage_usd_per_gb_month": {
+      "value": 0.03,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonCloudWatch us-west-2 price list version 20260918142158, published 2026-09-18T14:21:58Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "MN45SJANDTCPR9QA.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "GB-Mo",
+        "catalog_usd": "0.0300000000",
+        "catalog_to_rate_factor": 1.0
+      }
+    },
+    "eip_usd_per_hour": {
+      "value": 0.005,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWS AmazonVPC us-west-2 price list version 20260917190528, published 2026-09-17T19:05:28Z",
+      "receipt": {
+        "file": "aws-rates/aws-regional-rates-selected.json",
+        "rate_code": "NBHXEKTE88TJDDQF.JRTCKXETXF.6YS6EN2CT7",
+        "catalog_unit": "Hrs",
+        "catalog_usd": "0.0050000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "In-use public IPv4 address. An idle address is priced the same (rate code 4KKZ7RH6GMEH6Q4Q.JRTCKXETXF.6YS6EN2CT7)."
+    },
+    "data_transfer_out_usd_per_gb": {
+      "value": 0.09,
+      "kind": "published",
+      "verification": "aws_regional_catalog_primary",
+      "source": "AWSDataTransfer us-west-2 Price List version 20260916132208, first 10 TB egress tier beyond global free tier",
+      "receipt": {
+        "file": "aws-rates/s3-request-transfer-price-receipt.json",
+        "rate_code": "5M4327XEUKBBTWAT.JRTCKXETXF.Q3Z75P77EN",
+        "catalog_unit": "GB",
+        "catalog_usd": "0.0900000000",
+        "catalog_to_rate_factor": 1.0
+      },
+      "note": "Price List unit is GB. The model's bytes-to-GB conversion remains an explicit decimal-GB assumption and is not a measured egress quantity."
+    },
+    "data_transfer_out_free_gb_per_month": {
+      "value": 100,
+      "kind": "published",
+      "verification": "aws_published_pricing_primary",
+      "source": "AWS S3 pricing page (hashed in aws-rates/s3-request-transfer-price-receipt.json)",
+      "note": "The published first-100-GB monthly internet-egress allowance is aggregated across AWS services and Regions except China and GovCloud. Actual target-account availability/consumption is unverified; the known subtotal applies it and the peak exposure uses none."
+    },
+    "resend_free_emails_per_month": {
+      "value": 3000,
+      "kind": "published",
+      "verification": "vendor_page_secondary",
+      "source": "https://resend.com/pricing (worker search summary, fetched 2026-09-19)"
+    },
+    "resend_free_emails_per_day_cap": {
+      "value": 100,
+      "kind": "published",
+      "verification": "vendor_page_secondary",
+      "source": "same as resend_free_emails_per_month"
+    },
+    "resend_pro_usd_per_month_low": {
+      "value": 20,
+      "kind": "published",
+      "verification": "vendor_page_secondary",
+      "source": "same as resend_free_emails_per_month",
+      "note": "Pro tier range (20-35 USD/mo) if free-tier volume or the day cap is exceeded; not applied in these scenarios (see email category)."
+    },
+    "hours_per_month": {
+      "value": 730,
+      "kind": "constant",
+      "note": "365*24/12."
+    }
+  },
+  "rate_receipts": {
+    "aws-rates/ec2-oregon-rate-receipt.json": {
+      "sha256": "d37a8d3dc613187bdbc105ab1cc105abaa86cea3e45a7491ffe4ed043526e370",
+      "sources": [
+        {
+          "name": "ec2-ondemand-without-sec-sel, US West (Oregon), Linux",
+          "url": "https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20West%20(Oregon)/Linux/index.json",
+          "sha256": "858d2bdd6067c75ef9ae994b9640ab0153507723a676f161e165f364b603bb6a",
+          "publication_date": "2026-09-18T20:33:44Z"
+        }
+      ]
+    },
+    "aws-rates/ec2-ebs-oregon-rate-extract.json": {
+      "sha256": "946d3ed7b200b5a9b278602e92f54a00c24ff85b98e519d2d6e941d8f5056eb4",
+      "sources": [
+        {
+          "name": "AmazonEC2 us-west-2 price list (EBS gp3 and T4g CPU credits)",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/20260918212757/us-west-2/index.json",
+          "sha256": "ec1e0d93973aa692ae4c350df1f52688b0c5b76abc2523a2d536e374dca8e904",
+          "version": "20260918212757",
+          "publication_date": "2026-09-18T21:27:57Z"
+        }
+      ]
+    },
+    "aws-rates/aws-regional-rates-selected.json": {
+      "sha256": "e823dca1ab9c8367b8bb5bfb473d0ef951b2e99042d95ffc66f199e4ef399c78",
+      "sources": [
+        {
+          "name": "awskms",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/awskms/current/us-west-2/index.json",
+          "sha256": "1b76589db555229b457c8d8c22549bd4b39ed20ff70b8eacc37fc1871b9f4ed7",
+          "version": "20260911124601",
+          "publication_date": "2026-09-11T12:46:01Z"
+        },
+        {
+          "name": "AWSSecretsManager",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSSecretsManager/current/us-west-2/index.json",
+          "sha256": "eca00c993943f761212d1df8cc90dd12f85b85e9f865ce2f82379baa99c4ce7b",
+          "version": "20260911124610",
+          "publication_date": "2026-09-11T12:46:10Z"
+        },
+        {
+          "name": "AmazonVPC",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonVPC/current/us-west-2/index.json",
+          "sha256": "135af0c0e46094eb449afcd990a970fded51f409a3998c727ac0bad09e09a0e8",
+          "version": "20260917190528",
+          "publication_date": "2026-09-17T19:05:28Z"
+        },
+        {
+          "name": "AmazonCloudWatch",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonCloudWatch/current/us-west-2/index.json",
+          "sha256": "cbc665d7f5c6ebf83792a44f342ce10c0e002dc2bf128d5b0b8ea088160c6c21",
+          "version": "20260918142158",
+          "publication_date": "2026-09-18T14:21:58Z"
+        }
+      ]
+    },
+    "s3-rate.json": {
+      "sha256": "d266bbb0bb6bde3f92833f123531535f783f039df1f8121444592bfd7bb09691",
+      "sources": [
+        {
+          "name": "AmazonS3 us-west-2 price list (Standard storage tiers)",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/current/us-west-2/index.json",
+          "publication_date": "2026-09-18T17:47:47Z"
+        }
+      ]
+    },
+    "aws-rates/s3-storage-unit-receipt.json": {
+      "sha256": "7a76ac51729ef1a2173006eb5279ec9a867e7a43813ab5700f6390a957111344",
+      "sources": [
+        {
+          "name": "S3 pricing page: storage usage is calculated in binary gigabytes, 1 GB = 2^30 bytes",
+          "url": "https://aws.amazon.com/s3/pricing/",
+          "sha256": "c103717eedfa124da9200d5d0c90700006de7eb35a2137a5b2d900ce8d174b76",
+          "retrieved_at": "2026-09-19T04:58:40Z"
+        }
+      ]
+    },
+    "aws-rates/s3-request-transfer-price-receipt.json": {
+      "sha256": "4136f8badd16f401d967ad917057b19c6b85883c274e0dd99984352e3734f3c9",
+      "sources": [
+        {
+          "name": "AmazonS3 us-west-2 request prices",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonS3/20260918174747/us-west-2/index.json",
+          "version": "20260918174747",
+          "publication_date": "2026-09-18T17:47:47Z",
+          "retrieved_at": "2026-09-21T15:48:09Z"
+        },
+        {
+          "name": "AWSDataTransfer us-west-2 internet egress prices",
+          "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSDataTransfer/20260916132208/us-west-2/index.json",
+          "version": "20260916132208",
+          "publication_date": "2026-09-16T13:22:08Z",
+          "retrieved_at": "2026-09-21T15:48:09Z"
+        },
+        {
+          "name": "AWS S3 pricing page: global internet data-transfer allowance",
+          "url": "https://aws.amazon.com/s3/pricing/",
+          "sha256": "745b9af7954e9d9af2346b29c17b67af8bfcb01f29699fa8ff0fcd2508888d7c",
+          "retrieved_at": "2026-09-21T15:48:09Z"
+        }
+      ]
+    },
+    "aws-rates/aws-cli-s3-config-receipt.json": {
+      "sha256": "e6329d8de6c62954d54b68630904203ec5aa3d89988492ac27f7a28ca9ff8be6",
+      "sources": [
+        {
+          "name": "AWS CLI S3 configuration: multipart_threshold and multipart_chunksize default 8MB",
+          "url": "https://docs.aws.amazon.com/cli/latest/topic/s3-config.html",
+          "sha256": "f5512bc7b9611f8568cfd852e4e8eaca8635f2fe59bc5829d1ddba4bf8ea6529",
+          "retrieved_at": "2026-09-19T04:58:40Z"
+        }
+      ]
+    }
+  },
+  "unit_definitions": {
+    "plan_quotas": {
+      "unit": "counts, cl100k_base tokens and decimal bytes",
+      "source": "internal/hosted/plans/plans.go",
+      "note": "kept in bytes; never converted to GiB for a quota comparison"
+    },
+    "s3_storage_billed": {
+      "unit": "GiB-month",
+      "definition": "1 GB = 2^30 bytes",
+      "source": "aws-rates/s3-storage-unit-receipt.json",
+      "note": "the only unit this pass re-based"
+    },
+    "s3_requests": {
+      "unit": "requests; the catalog price is per request and converts to per 1,000",
+      "source": "aws-rates/s3-request-transfer-price-receipt.json"
+    },
+    "kms_and_secrets_requests": {
+      "unit": "requests; the catalog price is per request and converts to per 10,000",
+      "source": "aws-rates/aws-regional-rates-selected.json"
+    },
+    "ebs_volume_size": {
+      "unit": "configured volume size as written in deploy/hosted/stack.json",
+      "note": "priced as written; not re-based from the S3 statement. The 30 read as decimal GB in the storage-risk check is conservative for a volume configured in GiB"
+    },
+    "ebs_gp3_throughput": {
+      "unit": "catalog GiBps-month converted to MiBps-month by 1/1024",
+      "source": "aws-rates/ec2-ebs-oregon-rate-extract.json"
+    },
+    "data_transfer": {
+      "unit": "GB per month, decimal assumed",
+      "note": "AWS's data-transfer GB is not sourced in this pass, so the decimal reading is an assumption; a binary reading would change the billed GB by at most 7.4%"
+    },
+    "readiness_embeds": {
+      "unit": "successful embeds per month",
+      "note": "counted on the 30-day month, with the 730-hour month beside it"
+    }
+  },
+  "cpu_credit_exposure": {
+    "kind": "sensitivity_not_measured_usage",
+    "instance": {
+      "type": "t4g.small",
+      "vcpus": 2,
+      "baseline_per_vcpu": 0.2,
+      "credits_earned_per_hour": 24
+    },
+    "hours_per_month": 730,
+    "usd_per_surplus_vcpu_hour": 0.04,
+    "sustained_100_percent_credits_exhausted": {
+      "mean_cpu_utilization": 1.0,
+      "surplus_vcpu_hours": 1168.0,
+      "monthly_usd": 46.72
+    },
+    "mean_70_percent": {
+      "mean_cpu_utilization": 0.7,
+      "surplus_vcpu_hours": 730.0,
+      "monthly_usd": 29.2
+    },
+    "mean_case_assumption_in_known_subtotal": {
+      "fraction_of_vcpu_hours_billed_as_surplus": 0.02,
+      "applies_when": "usage_fraction >= 1.0 only",
+      "note": "not a peak"
+    },
+    "credit_mode": {
+      "status": "unverified",
+      "template": "deploy/hosted/stack.json sets no CreditSpecification, so the instance takes the account default for T4g",
+      "requirement": "An owner confirms unlimited or standard mode. Unlimited bills the surplus above. Standard bills none and throttles the node at baseline, a capacity limit instead of a cost. The model sets neither and changes no infrastructure, threshold or retention."
+    }
+  },
+  "unknown_rates": {
+    "embeddings_usd_per_1k_tokens": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md); the provider's tokenizer is unqualified too, so provider-billable tokens have no measured count and no proven bound",
+    "embedding_provider_tokens": "the gateway meters cl100k_base tokens of each remembered fact against Plan.InputTokens. The candidate provider's own tokenizer is unqualified, so the service counter is not a bound on provider-billable tokens, an average token proxy is not a bound either, and no provider-token count is claimed. Recalls, readiness probes and restore re-embeds are not metered by the gateway",
+    "embedding_restore_and_reopen": "a restored brain has no vectors (the derived index is not in the Git bundle), and every cold open runs RecoverMemorySearch, which embeds each eligible unexpired fact lacking a vector, one provider call per fact. The number of restore events, cold reopens (max_open is 8 against up to 29 brains) and failed write-time embeds is request-driven and unmeasured, so neither a steady-state missing-vector rate nor a monthly restore count exists. Per event, the call count is at most the brain's stored eligible facts; the tokens and the embedded text bytes are unproven",
+    "readiness_probe_actual_calls": "the readiness embed cadence is derived from Caddy health_interval 30s and the service's one-minute cache (60 to 90 second spacing), not measured. Failed probes, the router's retries (up to 3 provider attempts) and probes from other callers are unmeasured, and only successful embeds are ledgered",
+    "cloudwatch_logs_volume_gb_per_month": "rate is priced (cloudwatch_logs_ingest_usd_per_gb) but no log shipping is wired yet (ops go through SSM Run Command per ADR 014); volume unknown pending T23.53 telemetry",
+    "cloudwatch_custom_metrics_count": "rate is priced (cloudwatch_custom_metric_usd_per_month) but T23.53's metric cardinality is not yet implemented",
+    "s3_get_list_restore": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here",
+    "control_db_lifetime_growth": "control.db is copied whole into every snapshot and no runtime code prunes committed reservations or audit_log rows, so it grows with lifetime writes, recalls, readiness embeds and restore re-embeds. The 20 MB constant is a scenario assumption at snapshot time, not a lifetime bound. Each scenario reports named, non-overlapping components at sampled row sizes over stated horizons, which is a sensitivity and not an upper bound. Actual growth needs a database allocated-size (dbstat) measurement over a bounded window, and the provider ledger cannot attribute rows to write, query, readiness or rebuild without instrumentation",
+    "ec2_cpu_credit_mode": "the template sets no CreditSpecification, so a t4g.small uses the account default for T4g, which is unverified (AWS's default is unlimited). Unlimited mode bills surplus credits; standard mode bills none and throttles at baseline. An owner must confirm the mode; the model sets neither",
+    "s3_multipart_requests": "the request count is modeled from a per-object-size assumption at the AWS CLI defaults (8 MiB threshold and chunk, classic transfer client): one request for an object below the threshold, otherwise a create, one request per part and a complete. The deployed CLI version, its configuration and transfer client, and the real object-size inventory are not recorded; retries, aborted uploads, list or head checks are not counted; and the number of KMS requests a multipart object makes is not established, so the KMS line keeps an explicit one-per-object assumption",
+    "egress_response_size": "the recall response size is unbounded by the current plan: limit accepts any nonnegative integer, the facts arm can return every visible fact, and response bytes are not metered or capped. The 4,096 bytes per recall is an assumed average, not measured and not an enforced size, and a limit times 4,096 product is not a hard bound either (JSON escaping, metadata, result-arm duplication and HTTP compression change the bytes). No exposure is claimed beyond the average model. The lane implements no runtime cap",
+    "outbound_bytes_unmodeled": "the egress line counts recall response bytes only. Outbound bytes from the server that are not modeled: write and other tool responses, embedding request text sent to the provider, email API calls, dashboard responses and AWS API traffic; no measurement exists. Inbound write request bytes are not outbound egress and are not counted",
+    "global_free_allowances": "the KMS request allowance and the data-transfer allowance are account-wide, and the shared AWS account's other use is unknown, so neither can be assumed unused; the peak exposure uses none of them",
+    "email_peak_volume": "Resend cost is modeled from average logins per month, and an average day is not a maximum: a burst past the 100-per-day free cap needs a paid tier. Peak login volume is unknown, so no email maximum is claimed"
+  },
+  "measurements": {
+    "supplied": false,
+    "schema": null,
+    "applied_count": 0,
+    "note": "A record changes only the scenario and quantity it names. A scenario with no record is priced on assumptions, and a measurement is never evidence of capacity acceptance."
+  },
+  "scenarios": {
+    "idle_0_accounts": {
+      "scenario": "idle_0_accounts",
+      "assumption": "no signups yet; fixed infrastructure cost floor",
+      "measurements_applied": [],
+      "account_totals": {
+        "accounts": 0,
+        "brains_allowed": 0,
+        "memories": 0,
+        "recalls": 0,
+        "writes": 0,
+        "input_tokens": 0,
+        "storage_bytes": 0
+      },
+      "storage_risk": {
+        "exceeds_usable_data_volume": false,
+        "usable_data_volume_bytes": 24000000000
+      },
+      "known_categories_usd": {
+        "ec2_baseline": 12.264,
+        "ec2_burst_credits": {
+          "value": 0.0,
+          "kind": "assumption",
+          "note": "mean-case assumption, not a peak, and only if the account default credit mode is unlimited; see peak_exposure"
+        },
+        "ebs_fixed": 3.04,
+        "eip": 3.65,
+        "kms_key": {
+          "value": 1.0,
+          "kind": "published",
+          "note": "key storage before any rotation; the template enables rotation, so it can reach 3 USD/month; see peak_exposure"
+        },
+        "secrets_manager_storage": 1.6,
+        "secrets_manager_api_calls": {
+          "value": 0.0001,
+          "kind": "assumption",
+          "note": "assumes 5 restarts/month reading all 4 secrets at boot (ADR 014); no other Secrets Manager traffic modeled"
+        },
+        "cloudwatch_alarms": 0.2,
+        "s3_storage_backups": {
+          "value": 0.6173,
+          "kind": "assumption",
+          "measured_inputs": [],
+          "modeled_inputs": [
+            "retained_backup_sets",
+            "objects_per_backup",
+            "snapshot_size_bytes"
+          ],
+          "snapshot_size_bytes": 20000000,
+          "snapshot_size_gib": 0.018626,
+          "billed_quantity": {
+            "value": 26.8407,
+            "unit": "GiB-month",
+            "conversion": "snapshot bytes / 2^30 times retained backup sets; S3 GB = 2^30 bytes",
+            "unit_receipt": "aws-rates/s3-storage-unit-receipt.json"
+          },
+          "retained_backup_sets": 1441,
+          "objects_per_backup": 3,
+          "brains_in_backup": 0,
+          "allowed_brains_ceiling": 0,
+          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state, the deployed-template baseline -- see docs/launch/hosted-economics.md. The control database is a scenario assumption at snapshot time, not a lifetime bound; see unknown_categories.control_db_lifetime_growth."
+        },
+        "s3_requests": {
+          "value": 0.0252,
+          "kind": "assumption",
+          "monthly_put_count": 5040,
+          "unit": "requests_per_month",
+          "modeled_requests_per_month": 5040,
+          "per_backup": {
+            "objects": 3,
+            "multipart_objects": 1,
+            "parts": 3,
+            "requests": 7
+          },
+          "per_object_size_assumption": [
+            {
+              "object": "manifest.json",
+              "bytes_each": 4096,
+              "count": 1,
+              "objects": 1,
+              "multipart_objects": 0,
+              "parts": 0,
+              "requests": 1
+            },
+            {
+              "object": "COMPLETE",
+              "bytes_each": 4096,
+              "count": 1,
+              "objects": 1,
+              "multipart_objects": 0,
+              "parts": 0,
+              "requests": 1
+            },
+            {
+              "object": "control.db",
+              "bytes_each": 20000000,
+              "count": 1,
+              "objects": 1,
+              "multipart_objects": 1,
+              "parts": 3,
+              "requests": 5
+            }
+          ],
+          "basis": "one request per object below 8388608 bytes, otherwise a create, one request per 8388608-byte part and a complete (AWS CLI classic client defaults); sizes are an assumption, not an inventory; retries, aborts and list checks are unknown; see unknown_categories.s3_multipart_requests"
+        },
+        "kms_requests": {
+          "value": 0.0,
+          "kind": "assumption",
+          "unit": "requests_per_month",
+          "monthly_kms_requests": 2160,
+          "derived_from": "modeled objects a month times 1 KMS request per object; a measured S3 request count does not measure KMS calls",
+          "note": "SSE-KMS attaches an assumed 1 KMS request per object written (no bucket key is set in the template); the per-part count for multipart objects is unknown and is not set equal to the S3 request count; 20000/month global free tier applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it."
+        },
+        "data_transfer_out": {
+          "value": 0.0,
+          "kind": "assumption",
+          "model": "average_recall_response_unbounded_by_current_plan",
+          "unit": "GB_per_month (decimal assumed)",
+          "modeled_transfer_gb": 0.0,
+          "note": "an assumed 4096 B average per recall response, recall responses only; nothing enforces it (limit is uncapped), so this is an average and not an exposure bound. Inbound write bytes are not egress and are not counted. Server and provider outbound bytes are unmodeled. Any measured bytes must name their scope (request mix and limit values) and horizon (window) and are not a bound. First 100 GB/month free applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it. See unknown_categories.egress_response_size."
+        },
+        "email": {
+          "value": 0.0,
+          "kind": "assumption",
+          "emails_per_month": 0,
+          "within_free_tier": true,
+          "note": "assumes 10 magic-link emails/account/month, an average day and not a maximum; Resend free tier is 3000/month capped 100/day"
+        }
+      },
+      "known_subtotal_usd": 22.4,
+      "peak_exposure": {
+        "kind": "sensitivity_not_forecast",
+        "note": "Replaces the mean-case CPU surplus, the pre-rotation KMS key, and the free-allowance offsets on KMS requests and transfer with their worst case. Every unknown category stays out, so this is not a full maximum. It is not a spending recommendation.",
+        "peak_known_subtotal_usd_sustained_100_percent_cpu": 71.12,
+        "peak_known_subtotal_usd_mean_70_percent_cpu": 53.6,
+        "components_usd": {
+          "ec2_surplus_credits_sustained_100_percent_cpu": 46.72,
+          "ec2_surplus_credits_mean_70_percent_cpu": 29.2,
+          "kms_key_storage_after_two_rotations": 3.0,
+          "kms_requests_no_free_allowance": 0.0065,
+          "data_transfer_out_no_free_allowance": 0.0
+        },
+        "data_transfer_model": "average_recall_response_unbounded_by_current_plan: an average, not an egress bound",
+        "replaced_known_lines_usd": 1.0,
+        "not_included": [
+          "embeddings",
+          "embedding_restore_and_reopen",
+          "cloudwatch_logs",
+          "cloudwatch_custom_metrics",
+          "s3_get_list_restore",
+          "control_db_lifetime_growth",
+          "s3_multipart_requests",
+          "egress_response_size",
+          "outbound_bytes_unmodeled",
+          "email_peak_volume"
+        ],
+        "full_maximum_computable": false,
+        "within_60usd_ceiling_peak_known_subtotal": false
+      },
+      "per_plan_contribution": {
+        "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
+        "variable_total_usd": 0.6426,
+        "by_plan": {}
+      },
+      "unknown_categories": {
+        "embeddings": {
+          "monthly_usd": null,
+          "usd_per_1k_tokens": null,
+          "reason": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md); the provider's tokenizer is unqualified too, so provider-billable tokens have no measured count and no proven bound",
+          "units": {
+            "service_counter": "cl100k_base tokens the gateway counts on each remembered fact against Plan.InputTokens",
+            "provider_calls": "successful embed calls a month; a count, not tokens",
+            "provider_tokens": "tokens under the provider's own tokenizer, which is unqualified: unknown",
+            "average_proxy_tokens": "load-scenario averages times counts, in tokens of no specific tokenizer"
+          },
+          "service_counter": {
+            "write_input_tokens_at_entitlement_x_usage": {
+              "value": 0,
+              "unit": "cl100k_base_tokens_per_month",
+              "kind": "plan entitlement times the scenario's usage fraction; a gateway cap on remembers only at usage 1.0",
+              "not_metered": "recalls, readiness probes and restore or reopen re-embeds"
+            }
+          },
+          "provider_calls": {
+            "write_embeds": {
+              "value": 0,
+              "unit": "calls_per_month",
+              "kind": "plan write entitlement times usage fraction; one embed per remember when the index is present; retried and failed attempts are not counted"
+            },
+            "query_embeds": {
+              "value": 0,
+              "unit": "calls_per_month",
+              "kind": "plan recall entitlement times usage fraction; assumes one query embedding per recall (recall runs search.Search once when an index is present), not measured"
+            },
+            "readiness_embeds": {
+              "kind": "cadence_range_derived_from_source_not_measured",
+              "spacing_seconds": {
+                "fastest_handler_floor": 60,
+                "typical_with_caddy_tick": 90
+              },
+              "sources": {
+                "caddy": "deploy/hosted/Caddyfile health_uri /readyz, health_interval 30s",
+                "handler": "internal/hosted/service/service.go readiness(): recompute, with one paid embed of the probe text, only when the cache is older than one minute",
+                "not_a_source": "the two EC2 CloudWatch alarms in deploy/hosted/stack.json read CPUUtilization and StatusCheckFailed and never call /readyz"
+              },
+              "successful_embeds_per_month": {
+                "30_day_month": {
+                  "low": 28800,
+                  "high": 43200
+                },
+                "730_hour_month": {
+                  "low": 29200,
+                  "high": 43800
+                }
+              },
+              "event_month_basis": "30_day_month",
+              "low_is": "Caddy-driven typical spacing; the high is the handler's floor and applies to a single running service instance",
+              "not_counted": "failed probes (not ledgered) and the router's retries (up to 3 provider attempts per embed); actual call counts are unmeasured",
+              "probe_text_bytes": 24,
+              "unit": "calls_per_month",
+              "event_month_range": {
+                "low": 28800,
+                "high": 43200
+              }
+            }
+          },
+          "provider_tokens": {
+            "value": null,
+            "unit": "provider_tokens_per_month",
+            "reason": "the gateway meters cl100k_base tokens of each remembered fact against Plan.InputTokens. The candidate provider's own tokenizer is unqualified, so the service counter is not a bound on provider-billable tokens, an average token proxy is not a bound either, and no provider-token count is claimed. Recalls, readiness probes and restore re-embeds are not metered by the gateway"
+          },
+          "average_proxy_tokens": {
+            "kind": "average proxy, not provider-billable tokens, not a cap and not an upper bound",
+            "avg_fact_tokens": 272,
+            "avg_query_tokens": 74,
+            "avg_readiness_probe_tokens": 10,
+            "write_proxy_tokens": 0,
+            "query_proxy_tokens": 0,
+            "readiness_proxy_tokens": {
+              "low": 288000,
+              "high": 432000
+            },
+            "query_mean_note": "74 is the load scenario's query-token average, not a service cap"
+          },
+          "text_bytes_handed_to_the_embedder": {
+            "kind": "proven only where stated; the provider request's serialization and tokenizer output are not bounded by these",
+            "readiness_probe_bytes_per_call": 24,
+            "query_bytes_per_call_max": 1048576,
+            "query_bytes_note": "the request frame caps the whole request at 1 MiB, so the query text cannot exceed it",
+            "write_and_reembed_bytes": "not proven: the embedder receives the indexed chunk text, which is not shown to equal the fact's bytes"
+          }
+        },
+        "embedding_restore_and_reopen": {
+          "monthly_usd": null,
+          "unit": "calls",
+          "restore_full_reembed": {
+            "kind": "per_event_count_bound_only",
+            "reason": "the Git bundle excludes the derived index, so a restored brain has no vectors and RecoverMemorySearch may call the provider once for every eligible unexpired fact",
+            "stored_memories_at_scenario_usage": 0,
+            "provider_calls_per_event_max": 0,
+            "provider_calls_per_event_max_basis": "plan memory entitlement times usage fraction, summed over accounts; memories are account-wide, and an enforced write cap only at usage 1.0",
+            "provider_tokens_per_event": null,
+            "events_per_month": null,
+            "monthly_provider_calls": null
+          },
+          "steady_state_missing_vector_retry": {
+            "kind": "unknown_rate",
+            "reason": "outside a restore a vector is missing only after a failed write-time embed, and every cold reopen retries it. The failure rate and the reopen frequency (max_open 8 against up to 29 brains) are unmeasured",
+            "missing_vector_rate": null,
+            "reopens_per_month": null,
+            "monthly_provider_calls": null
+          },
+          "not_governed_by": "Plan.InputTokens: the account input cap does not meter restore, reopen, readiness or query embeds",
+          "operational_note": "a restore's embeds run one at a time while the brain pool lock is held, so time to ready scales with facts times provider latency (unmeasured)",
+          "reason": "a restored brain has no vectors (the derived index is not in the Git bundle), and every cold open runs RecoverMemorySearch, which embeds each eligible unexpired fact lacking a vector, one provider call per fact. The number of restore events, cold reopens (max_open is 8 against up to 29 brains) and failed write-time embeds is request-driven and unmeasured, so neither a steady-state missing-vector rate nor a monthly restore count exists. Per event, the call count is at most the brain's stored eligible facts; the tokens and the embedded text bytes are unproven"
+        },
+        "cloudwatch_logs": {
+          "priced_usd_per_gb": 0.5,
+          "reason": "rate is priced (cloudwatch_logs_ingest_usd_per_gb) but no log shipping is wired yet (ops go through SSM Run Command per ADR 014); volume unknown pending T23.53 telemetry"
+        },
+        "cloudwatch_custom_metrics": {
+          "priced_usd_per_metric": 0.3,
+          "reason": "rate is priced (cloudwatch_custom_metric_usd_per_month) but T23.53's metric cardinality is not yet implemented"
+        },
+        "s3_get_list_restore": {
+          "reason": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+        },
+        "control_db_lifetime_growth": {
+          "status": "unbounded_in_current_runtime",
+          "monthly_usd": null,
+          "assumed_control_db_bytes_in_snapshot": 20000000,
+          "assumed_control_db_gib_in_snapshot": 0.018626,
+          "assumed_control_db_kind": "scenario assumption at snapshot time, never a lifetime bound",
+          "components": {
+            "write_and_recall_paths": {
+              "bytes_per_write": 1060,
+              "bytes_per_recall": 530,
+              "monthly_bytes": 0,
+              "kind": "sampled slope; includes the provider-ledger rows the sample's own write and recall paths wrote, so no second provider slope is added for them"
+            },
+            "readiness_probe_rows": {
+              "rows_per_month": {
+                "low": 28800,
+                "high": 43200
+              },
+              "bytes_per_row": 229,
+              "monthly_bytes": {
+                "low": 6595200,
+                "high": 9892800
+              },
+              "kind": "one provider-ledger audit row per successful readiness embed, at the sampled audit-row size; the sample is 1,500 writes and 11 recalls and reports no readiness call, so these rows are not in the write and recall slope. A real provider's row may be larger"
+            },
+            "restore_reembed_rows": {
+              "rows_per_event_max": 0,
+              "bytes_per_row": 229,
+              "bytes_per_event_max": 0,
+              "events_per_month": null,
+              "monthly_bytes": null,
+              "kind": "one provider-ledger row per re-embedded fact; unknown events, so not in any horizon below"
+            }
+          },
+          "sampled_row_bytes": {
+            "reservation": 301,
+            "audit": 229,
+            "per_write": 1060,
+            "per_recall": 530
+          },
+          "sample": "launch-audit-real-writer-handoff.md sha256 cff5bb74012f404b345240e54acd83b62a8fdaeb3a4ae8cf9e0ed8b818a4ef40: one account, one brain, 1,500 writes, 11 recalls, 3-dimension stub embedder; the recall size is derived from row sizes",
+          "growth_bytes_per_month_at_scenario_usage": {
+            "low": 6595200,
+            "high": 9892800
+          },
+          "sensitivity_by_horizon": [
+            {
+              "months": 1,
+              "control_db_bytes": {
+                "low": 26595200,
+                "high": 29892800
+              },
+              "control_db_gib": {
+                "low": 0.024769,
+                "high": 0.02784
+              },
+              "added_s3_backup_storage_usd_per_month": {
+                "low": 0.2,
+                "high": 0.31
+              }
+            },
+            {
+              "months": 12,
+              "control_db_bytes": {
+                "low": 99142400,
+                "high": 138713600
+              },
+              "control_db_gib": {
+                "low": 0.092334,
+                "high": 0.129187
+              },
+              "added_s3_backup_storage_usd_per_month": {
+                "low": 2.44,
+                "high": 3.66
+              }
+            },
+            {
+              "months": 24,
+              "control_db_bytes": {
+                "low": 178284800,
+                "high": 257427200
+              },
+              "control_db_gib": {
+                "low": 0.166041,
+                "high": 0.239748
+              },
+              "added_s3_backup_storage_usd_per_month": {
+                "low": 4.89,
+                "high": 7.33
+              }
+            }
+          ],
+          "sensitivity_basis": "write and recall slope plus readiness rows, every month at this scenario's usage, no pruning, and every one of the retained backup sets carrying the full grown size, billed at GiB. A sensitivity at sampled row sizes, not a forecast and not a bound. Restore re-embed rows are excluded because their frequency is unknown.",
+          "measurement_required": {
+            "what": "control.db allocated size (dbstat page bytes and the file size) at the start and end of a bounded window, bound to the scenario, the window and the source",
+            "attribution": "the provider ledger rows carry only task class embedding, so write, query, readiness and rebuild cannot be told apart without instrumentation; failed or retried billable attempts may not be ledgered at all",
+            "accepted_by_this_model_today": false,
+            "why_not_accepted": "no producer can attest the database's provenance, so a field for it is not added to the measurement schema"
+          },
+          "reason": "control.db is copied whole into every snapshot and no runtime code prunes committed reservations or audit_log rows, so it grows with lifetime writes, recalls, readiness embeds and restore re-embeds. The 20 MB constant is a scenario assumption at snapshot time, not a lifetime bound. Each scenario reports named, non-overlapping components at sampled row sizes over stated horizons, which is a sensitivity and not an upper bound. Actual growth needs a database allocated-size (dbstat) measurement over a bounded window, and the provider ledger cannot attribute rows to write, query, readiness or rebuild without instrumentation"
+        },
+        "s3_multipart_requests": {
+          "monthly_usd": null,
+          "modeled_in_known_line": "s3_requests, from a per-object-size assumption at the AWS CLI defaults",
+          "defaults_source": "aws-rates/aws-cli-s3-config-receipt.json",
+          "unmeasured_inputs": [
+            "deployed AWS CLI version, configuration values and transfer client (preferred_transfer_client defaults to auto, which resolves to classic on this instance type per the same page)",
+            "real per-object size inventory of a backup",
+            "retries",
+            "aborted multipart uploads (the template's lifecycle aborts incomplete uploads after 1 day; the count is unknown)",
+            "list or head checks",
+            "KMS requests per multipart part"
+          ],
+          "kms_ratio": {
+            "assumed_per_object": 1,
+            "status": "explicit assumption; AWS documents the KMS operations but not a one-per-part count, so it is not derived from the S3 request count",
+            "sensitivity_if_one_kms_request_per_s3_request": {
+              "kms_requests_per_month": 5040,
+              "usd_per_month_no_free_allowance": 0.0151,
+              "usd_per_month_with_global_free_tier": 0.0,
+              "kind": "unverified sensitivity, not in any subtotal or peak"
+            },
+            "modeled_kms_requests_per_month": 2160
+          },
+          "reason": "the request count is modeled from a per-object-size assumption at the AWS CLI defaults (8 MiB threshold and chunk, classic transfer client): one request for an object below the threshold, otherwise a create, one request per part and a complete. The deployed CLI version, its configuration and transfer client, and the real object-size inventory are not recorded; retries, aborted uploads, list or head checks are not counted; and the number of KMS requests a multipart object makes is not established, so the KMS line keeps an explicit one-per-object assumption"
+        },
+        "egress_response_size": {
+          "monthly_usd": null,
+          "per_response_bound": null,
+          "modeled_average_bytes_per_recall": 4096,
+          "reason": "the recall response size is unbounded by the current plan: limit accepts any nonnegative integer, the facts arm can return every visible fact, and response bytes are not metered or capped. The 4,096 bytes per recall is an assumed average, not measured and not an enforced size, and a limit times 4,096 product is not a hard bound either (JSON escaping, metadata, result-arm duplication and HTTP compression change the bytes). No exposure is claimed beyond the average model. The lane implements no runtime cap"
+        },
+        "outbound_bytes_unmodeled": {
+          "monthly_usd": null,
+          "reason": "the egress line counts recall response bytes only. Outbound bytes from the server that are not modeled: write and other tool responses, embedding request text sent to the provider, email API calls, dashboard responses and AWS API traffic; no measurement exists. Inbound write request bytes are not outbound egress and are not counted"
+        },
+        "ec2_cpu_credit_mode": {
+          "monthly_usd": null,
+          "reason": "the template sets no CreditSpecification, so a t4g.small uses the account default for T4g, which is unverified (AWS's default is unlimited). Unlimited mode bills surplus credits; standard mode bills none and throttles at baseline. An owner must confirm the mode; the model sets neither"
+        },
+        "global_free_allowances": {
+          "reason": "the KMS request allowance and the data-transfer allowance are account-wide, and the shared AWS account's other use is unknown, so neither can be assumed unused; the peak exposure uses none of them"
+        },
+        "email_peak_volume": {
+          "reason": "Resend cost is modeled from average logins per month, and an average day is not a maximum: a burst past the 100-per-day free cap needs a paid tier. Peak login volume is unknown, so no email maximum is claimed"
+        }
+      },
+      "within_60usd_ceiling_known_subtotal": true
+    },
+    "10_accounts_light": {
+      "scenario": "10_accounts_light",
+      "assumption": "early-adoption mix at 10% of each plan's allowance, each account with its default brain only; product/growth input not yet recorded",
+      "measurements_applied": [],
+      "account_totals": {
+        "accounts": 10,
+        "brains_allowed": 14,
+        "memories": 2800,
+        "recalls": 28000,
+        "writes": 1400,
+        "input_tokens": 280000,
+        "storage_bytes": 280000000
+      },
+      "storage_risk": {
+        "exceeds_usable_data_volume": false,
+        "usable_data_volume_bytes": 24000000000
+      },
+      "known_categories_usd": {
+        "ec2_baseline": 12.264,
+        "ec2_burst_credits": {
+          "value": 0.0,
+          "kind": "assumption",
+          "note": "mean-case assumption, not a peak, and only if the account default credit mode is unlimited; see peak_exposure"
+        },
+        "ebs_fixed": 3.04,
+        "eip": 3.65,
+        "kms_key": {
+          "value": 1.0,
+          "kind": "published",
+          "note": "key storage before any rotation; the template enables rotation, so it can reach 3 USD/month; see peak_exposure"
+        },
+        "secrets_manager_storage": 1.6,
+        "secrets_manager_api_calls": {
+          "value": 0.0001,
+          "kind": "assumption",
+          "note": "assumes 5 restarts/month reading all 4 secrets at boot (ADR 014); no other Secrets Manager traffic modeled"
+        },
+        "cloudwatch_alarms": 0.2,
+        "s3_storage_backups": {
+          "value": 9.26,
+          "kind": "assumption",
+          "measured_inputs": [],
+          "modeled_inputs": [
+            "retained_backup_sets",
+            "objects_per_backup",
+            "snapshot_size_bytes"
+          ],
+          "snapshot_size_bytes": 300000000,
+          "snapshot_size_gib": 0.279397,
+          "billed_quantity": {
+            "value": 402.6107,
+            "unit": "GiB-month",
+            "conversion": "snapshot bytes / 2^30 times retained backup sets; S3 GB = 2^30 bytes",
+            "unit_receipt": "aws-rates/s3-storage-unit-receipt.json"
+          },
+          "retained_backup_sets": 1441,
+          "objects_per_backup": 13,
+          "brains_in_backup": 10,
+          "allowed_brains_ceiling": 14,
+          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state, the deployed-template baseline -- see docs/launch/hosted-economics.md. The control database is a scenario assumption at snapshot time, not a lifetime bound; see unknown_categories.control_db_lifetime_growth."
+        },
+        "s3_requests": {
+          "value": 0.2412,
+          "kind": "assumption",
+          "monthly_put_count": 48240,
+          "unit": "requests_per_month",
+          "modeled_requests_per_month": 48240,
+          "per_backup": {
+            "objects": 13,
+            "multipart_objects": 11,
+            "parts": 43,
+            "requests": 67
+          },
+          "per_object_size_assumption": [
+            {
+              "object": "manifest.json",
+              "bytes_each": 4096,
+              "count": 1,
+              "objects": 1,
+              "multipart_objects": 0,
+              "parts": 0,
+              "requests": 1
+            },
+            {
+              "object": "COMPLETE",
+              "bytes_each": 4096,
+              "count": 1,
+              "objects": 1,
+              "multipart_objects": 0,
+              "parts": 0,
+              "requests": 1
+            },
+            {
+              "object": "control.db",
+              "bytes_each": 20000000,
+              "count": 1,
+              "objects": 1,
+              "multipart_objects": 1,
+              "parts": 3,
+              "requests": 5
+            },
+            {
+              "object": "free brain bundle",
+              "bytes_each": 10000000,
+              "count": 8,
+              "objects": 8,
+              "multipart_objects": 8,
+              "parts": 16,
+              "requests": 32
+            },
+            {
+              "object": "builder brain bundle",
+              "bytes_each": 100000000,
+              "count": 2,
+              "objects": 2,
+              "multipart_objects": 2,
+              "parts": 24,
+              "requests": 28
+            }
+          ],
+          "basis": "one request per object below 8388608 bytes, otherwise a create, one request per 8388608-byte part and a complete (AWS CLI classic client defaults); sizes are an assumption, not an inventory; retries, aborts and list checks are unknown; see unknown_categories.s3_multipart_requests"
+        },
+        "kms_requests": {
+          "value": 0.0,
+          "kind": "assumption",
+          "unit": "requests_per_month",
+          "monthly_kms_requests": 9360,
+          "derived_from": "modeled objects a month times 1 KMS request per object; a measured S3 request count does not measure KMS calls",
+          "note": "SSE-KMS attaches an assumed 1 KMS request per object written (no bucket key is set in the template); the per-part count for multipart objects is unknown and is not set equal to the S3 request count; 20000/month global free tier applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it."
+        },
+        "data_transfer_out": {
+          "value": 0.0,
+          "kind": "assumption",
+          "model": "average_recall_response_unbounded_by_current_plan",
+          "unit": "GB_per_month (decimal assumed)",
+          "modeled_transfer_gb": 0.1147,
+          "note": "an assumed 4096 B average per recall response, recall responses only; nothing enforces it (limit is uncapped), so this is an average and not an exposure bound. Inbound write bytes are not egress and are not counted. Server and provider outbound bytes are unmodeled. Any measured bytes must name their scope (request mix and limit values) and horizon (window) and are not a bound. First 100 GB/month free applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it. See unknown_categories.egress_response_size."
+        },
+        "email": {
+          "value": 0.0,
+          "kind": "assumption",
+          "emails_per_month": 100,
+          "within_free_tier": true,
+          "note": "assumes 10 magic-link emails/account/month, an average day and not a maximum; Resend free tier is 3000/month capped 100/day"
+        }
+      },
+      "known_subtotal_usd": 31.26,
+      "peak_exposure": {
+        "kind": "sensitivity_not_forecast",
+        "note": "Replaces the mean-case CPU surplus, the pre-rotation KMS key, and the free-allowance offsets on KMS requests and transfer with their worst case. Every unknown category stays out, so this is not a full maximum. It is not a spending recommendation.",
+        "peak_known_subtotal_usd_sustained_100_percent_cpu": 80.01,
+        "peak_known_subtotal_usd_mean_70_percent_cpu": 62.49,
+        "components_usd": {
+          "ec2_surplus_credits_sustained_100_percent_cpu": 46.72,
+          "ec2_surplus_credits_mean_70_percent_cpu": 29.2,
+          "kms_key_storage_after_two_rotations": 3.0,
+          "kms_requests_no_free_allowance": 0.0281,
+          "data_transfer_out_no_free_allowance": 0.0103
+        },
+        "data_transfer_model": "average_recall_response_unbounded_by_current_plan: an average, not an egress bound",
+        "replaced_known_lines_usd": 1.0,
+        "not_included": [
+          "embeddings",
+          "embedding_restore_and_reopen",
+          "cloudwatch_logs",
+          "cloudwatch_custom_metrics",
+          "s3_get_list_restore",
+          "control_db_lifetime_growth",
+          "s3_multipart_requests",
+          "egress_response_size",
+          "outbound_bytes_unmodeled",
+          "email_peak_volume"
+        ],
+        "full_maximum_computable": false,
+        "within_60usd_ceiling_peak_known_subtotal": false
+      },
+      "per_plan_contribution": {
+        "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
+        "variable_total_usd": 9.5013,
+        "by_plan": {
+          "free": {
+            "accounts": 8,
+            "storage_share": 0.2857,
+            "variable_cost_usd": 2.7147
+          },
+          "builder": {
+            "accounts": 2,
+            "storage_share": 0.7143,
+            "variable_cost_usd": 6.7866
+          },
+          "scale": {
+            "accounts": 0,
+            "storage_share": 0.0,
+            "variable_cost_usd": 0.0
+          }
+        }
+      },
+      "unknown_categories": {
+        "embeddings": {
+          "monthly_usd": null,
+          "usd_per_1k_tokens": null,
+          "reason": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md); the provider's tokenizer is unqualified too, so provider-billable tokens have no measured count and no proven bound",
+          "units": {
+            "service_counter": "cl100k_base tokens the gateway counts on each remembered fact against Plan.InputTokens",
+            "provider_calls": "successful embed calls a month; a count, not tokens",
+            "provider_tokens": "tokens under the provider's own tokenizer, which is unqualified: unknown",
+            "average_proxy_tokens": "load-scenario averages times counts, in tokens of no specific tokenizer"
+          },
+          "service_counter": {
+            "write_input_tokens_at_entitlement_x_usage": {
+              "value": 280000,
+              "unit": "cl100k_base_tokens_per_month",
+              "kind": "plan entitlement times the scenario's usage fraction; a gateway cap on remembers only at usage 1.0",
+              "not_metered": "recalls, readiness probes and restore or reopen re-embeds"
+            }
+          },
+          "provider_calls": {
+            "write_embeds": {
+              "value": 1400,
+              "unit": "calls_per_month",
+              "kind": "plan write entitlement times usage fraction; one embed per remember when the index is present; retried and failed attempts are not counted"
+            },
+            "query_embeds": {
+              "value": 28000,
+              "unit": "calls_per_month",
+              "kind": "plan recall entitlement times usage fraction; assumes one query embedding per recall (recall runs search.Search once when an index is present), not measured"
+            },
+            "readiness_embeds": {
+              "kind": "cadence_range_derived_from_source_not_measured",
+              "spacing_seconds": {
+                "fastest_handler_floor": 60,
+                "typical_with_caddy_tick": 90
+              },
+              "sources": {
+                "caddy": "deploy/hosted/Caddyfile health_uri /readyz, health_interval 30s",
+                "handler": "internal/hosted/service/service.go readiness(): recompute, with one paid embed of the probe text, only when the cache is older than one minute",
+                "not_a_source": "the two EC2 CloudWatch alarms in deploy/hosted/stack.json read CPUUtilization and StatusCheckFailed and never call /readyz"
+              },
+              "successful_embeds_per_month": {
+                "30_day_month": {
+                  "low": 28800,
+                  "high": 43200
+                },
+                "730_hour_month": {
+                  "low": 29200,
+                  "high": 43800
+                }
+              },
+              "event_month_basis": "30_day_month",
+              "low_is": "Caddy-driven typical spacing; the high is the handler's floor and applies to a single running service instance",
+              "not_counted": "failed probes (not ledgered) and the router's retries (up to 3 provider attempts per embed); actual call counts are unmeasured",
+              "probe_text_bytes": 24,
+              "unit": "calls_per_month",
+              "event_month_range": {
+                "low": 28800,
+                "high": 43200
+              }
+            }
+          },
+          "provider_tokens": {
+            "value": null,
+            "unit": "provider_tokens_per_month",
+            "reason": "the gateway meters cl100k_base tokens of each remembered fact against Plan.InputTokens. The candidate provider's own tokenizer is unqualified, so the service counter is not a bound on provider-billable tokens, an average token proxy is not a bound either, and no provider-token count is claimed. Recalls, readiness probes and restore re-embeds are not metered by the gateway"
+          },
+          "average_proxy_tokens": {
+            "kind": "average proxy, not provider-billable tokens, not a cap and not an upper bound",
+            "avg_fact_tokens": 272,
+            "avg_query_tokens": 74,
+            "avg_readiness_probe_tokens": 10,
+            "write_proxy_tokens": 380800,
+            "query_proxy_tokens": 2072000,
+            "readiness_proxy_tokens": {
+              "low": 288000,
+              "high": 432000
+            },
+            "query_mean_note": "74 is the load scenario's query-token average, not a service cap"
+          },
+          "text_bytes_handed_to_the_embedder": {
+            "kind": "proven only where stated; the provider request's serialization and tokenizer output are not bounded by these",
+            "readiness_probe_bytes_per_call": 24,
+            "query_bytes_per_call_max": 1048576,
+            "query_bytes_note": "the request frame caps the whole request at 1 MiB, so the query text cannot exceed it",
+            "write_and_reembed_bytes": "not proven: the embedder receives the indexed chunk text, which is not shown to equal the fact's bytes"
+          }
+        },
+        "embedding_restore_and_reopen": {
+          "monthly_usd": null,
+          "unit": "calls",
+          "restore_full_reembed": {
+            "kind": "per_event_count_bound_only",
+            "reason": "the Git bundle excludes the derived index, so a restored brain has no vectors and RecoverMemorySearch may call the provider once for every eligible unexpired fact",
+            "stored_memories_at_scenario_usage": 2800,
+            "provider_calls_per_event_max": 2800,
+            "provider_calls_per_event_max_basis": "plan memory entitlement times usage fraction, summed over accounts; memories are account-wide, and an enforced write cap only at usage 1.0",
+            "provider_tokens_per_event": null,
+            "events_per_month": null,
+            "monthly_provider_calls": null
+          },
+          "steady_state_missing_vector_retry": {
+            "kind": "unknown_rate",
+            "reason": "outside a restore a vector is missing only after a failed write-time embed, and every cold reopen retries it. The failure rate and the reopen frequency (max_open 8 against up to 29 brains) are unmeasured",
+            "missing_vector_rate": null,
+            "reopens_per_month": null,
+            "monthly_provider_calls": null
+          },
+          "not_governed_by": "Plan.InputTokens: the account input cap does not meter restore, reopen, readiness or query embeds",
+          "operational_note": "a restore's embeds run one at a time while the brain pool lock is held, so time to ready scales with facts times provider latency (unmeasured)",
+          "reason": "a restored brain has no vectors (the derived index is not in the Git bundle), and every cold open runs RecoverMemorySearch, which embeds each eligible unexpired fact lacking a vector, one provider call per fact. The number of restore events, cold reopens (max_open is 8 against up to 29 brains) and failed write-time embeds is request-driven and unmeasured, so neither a steady-state missing-vector rate nor a monthly restore count exists. Per event, the call count is at most the brain's stored eligible facts; the tokens and the embedded text bytes are unproven"
+        },
+        "cloudwatch_logs": {
+          "priced_usd_per_gb": 0.5,
+          "reason": "rate is priced (cloudwatch_logs_ingest_usd_per_gb) but no log shipping is wired yet (ops go through SSM Run Command per ADR 014); volume unknown pending T23.53 telemetry"
+        },
+        "cloudwatch_custom_metrics": {
+          "priced_usd_per_metric": 0.3,
+          "reason": "rate is priced (cloudwatch_custom_metric_usd_per_month) but T23.53's metric cardinality is not yet implemented"
+        },
+        "s3_get_list_restore": {
+          "reason": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+        },
+        "control_db_lifetime_growth": {
+          "status": "unbounded_in_current_runtime",
+          "monthly_usd": null,
+          "assumed_control_db_bytes_in_snapshot": 20000000,
+          "assumed_control_db_gib_in_snapshot": 0.018626,
+          "assumed_control_db_kind": "scenario assumption at snapshot time, never a lifetime bound",
+          "components": {
+            "write_and_recall_paths": {
+              "bytes_per_write": 1060,
+              "bytes_per_recall": 530,
+              "monthly_bytes": 16324000,
+              "kind": "sampled slope; includes the provider-ledger rows the sample's own write and recall paths wrote, so no second provider slope is added for them"
+            },
+            "readiness_probe_rows": {
+              "rows_per_month": {
+                "low": 28800,
+                "high": 43200
+              },
+              "bytes_per_row": 229,
+              "monthly_bytes": {
+                "low": 6595200,
+                "high": 9892800
+              },
+              "kind": "one provider-ledger audit row per successful readiness embed, at the sampled audit-row size; the sample is 1,500 writes and 11 recalls and reports no readiness call, so these rows are not in the write and recall slope. A real provider's row may be larger"
+            },
+            "restore_reembed_rows": {
+              "rows_per_event_max": 2800,
+              "bytes_per_row": 229,
+              "bytes_per_event_max": 641200,
+              "events_per_month": null,
+              "monthly_bytes": null,
+              "kind": "one provider-ledger row per re-embedded fact; unknown events, so not in any horizon below"
+            }
+          },
+          "sampled_row_bytes": {
+            "reservation": 301,
+            "audit": 229,
+            "per_write": 1060,
+            "per_recall": 530
+          },
+          "sample": "launch-audit-real-writer-handoff.md sha256 cff5bb74012f404b345240e54acd83b62a8fdaeb3a4ae8cf9e0ed8b818a4ef40: one account, one brain, 1,500 writes, 11 recalls, 3-dimension stub embedder; the recall size is derived from row sizes",
+          "growth_bytes_per_month_at_scenario_usage": {
+            "low": 22919200,
+            "high": 26216800
+          },
+          "sensitivity_by_horizon": [
+            {
+              "months": 1,
+              "control_db_bytes": {
+                "low": 42919200,
+                "high": 46216800
+              },
+              "control_db_gib": {
+                "low": 0.039972,
+                "high": 0.043043
+              },
+              "added_s3_backup_storage_usd_per_month": {
+                "low": 0.71,
+                "high": 0.81
+              }
+            },
+            {
+              "months": 12,
+              "control_db_bytes": {
+                "low": 295030400,
+                "high": 334601600
+              },
+              "control_db_gib": {
+                "low": 0.274768,
+                "high": 0.311622
+              },
+              "added_s3_backup_storage_usd_per_month": {
+                "low": 8.49,
+                "high": 9.71
+              }
+            },
+            {
+              "months": 24,
+              "control_db_bytes": {
+                "low": 570060800,
+                "high": 649203200
+              },
+              "control_db_gib": {
+                "low": 0.53091,
+                "high": 0.604618
+              },
+              "added_s3_backup_storage_usd_per_month": {
+                "low": 16.98,
+                "high": 19.42
+              }
+            }
+          ],
+          "sensitivity_basis": "write and recall slope plus readiness rows, every month at this scenario's usage, no pruning, and every one of the retained backup sets carrying the full grown size, billed at GiB. A sensitivity at sampled row sizes, not a forecast and not a bound. Restore re-embed rows are excluded because their frequency is unknown.",
+          "measurement_required": {
+            "what": "control.db allocated size (dbstat page bytes and the file size) at the start and end of a bounded window, bound to the scenario, the window and the source",
+            "attribution": "the provider ledger rows carry only task class embedding, so write, query, readiness and rebuild cannot be told apart without instrumentation; failed or retried billable attempts may not be ledgered at all",
+            "accepted_by_this_model_today": false,
+            "why_not_accepted": "no producer can attest the database's provenance, so a field for it is not added to the measurement schema"
+          },
+          "reason": "control.db is copied whole into every snapshot and no runtime code prunes committed reservations or audit_log rows, so it grows with lifetime writes, recalls, readiness embeds and restore re-embeds. The 20 MB constant is a scenario assumption at snapshot time, not a lifetime bound. Each scenario reports named, non-overlapping components at sampled row sizes over stated horizons, which is a sensitivity and not an upper bound. Actual growth needs a database allocated-size (dbstat) measurement over a bounded window, and the provider ledger cannot attribute rows to write, query, readiness or rebuild without instrumentation"
+        },
+        "s3_multipart_requests": {
+          "monthly_usd": null,
+          "modeled_in_known_line": "s3_requests, from a per-object-size assumption at the AWS CLI defaults",
+          "defaults_source": "aws-rates/aws-cli-s3-config-receipt.json",
+          "unmeasured_inputs": [
+            "deployed AWS CLI version, configuration values and transfer client (preferred_transfer_client defaults to auto, which resolves to classic on this instance type per the same page)",
+            "real per-object size inventory of a backup",
+            "retries",
+            "aborted multipart uploads (the template's lifecycle aborts incomplete uploads after 1 day; the count is unknown)",
+            "list or head checks",
+            "KMS requests per multipart part"
+          ],
+          "kms_ratio": {
+            "assumed_per_object": 1,
+            "status": "explicit assumption; AWS documents the KMS operations but not a one-per-part count, so it is not derived from the S3 request count",
+            "sensitivity_if_one_kms_request_per_s3_request": {
+              "kms_requests_per_month": 48240,
+              "usd_per_month_no_free_allowance": 0.1447,
+              "usd_per_month_with_global_free_tier": 0.0847,
+              "kind": "unverified sensitivity, not in any subtotal or peak"
+            },
+            "modeled_kms_requests_per_month": 9360
+          },
+          "reason": "the request count is modeled from a per-object-size assumption at the AWS CLI defaults (8 MiB threshold and chunk, classic transfer client): one request for an object below the threshold, otherwise a create, one request per part and a complete. The deployed CLI version, its configuration and transfer client, and the real object-size inventory are not recorded; retries, aborted uploads, list or head checks are not counted; and the number of KMS requests a multipart object makes is not established, so the KMS line keeps an explicit one-per-object assumption"
+        },
+        "egress_response_size": {
+          "monthly_usd": null,
+          "per_response_bound": null,
+          "modeled_average_bytes_per_recall": 4096,
+          "reason": "the recall response size is unbounded by the current plan: limit accepts any nonnegative integer, the facts arm can return every visible fact, and response bytes are not metered or capped. The 4,096 bytes per recall is an assumed average, not measured and not an enforced size, and a limit times 4,096 product is not a hard bound either (JSON escaping, metadata, result-arm duplication and HTTP compression change the bytes). No exposure is claimed beyond the average model. The lane implements no runtime cap"
+        },
+        "outbound_bytes_unmodeled": {
+          "monthly_usd": null,
+          "reason": "the egress line counts recall response bytes only. Outbound bytes from the server that are not modeled: write and other tool responses, embedding request text sent to the provider, email API calls, dashboard responses and AWS API traffic; no measurement exists. Inbound write request bytes are not outbound egress and are not counted"
+        },
+        "ec2_cpu_credit_mode": {
+          "monthly_usd": null,
+          "reason": "the template sets no CreditSpecification, so a t4g.small uses the account default for T4g, which is unverified (AWS's default is unlimited). Unlimited mode bills surplus credits; standard mode bills none and throttles at baseline. An owner must confirm the mode; the model sets neither"
+        },
+        "global_free_allowances": {
+          "reason": "the KMS request allowance and the data-transfer allowance are account-wide, and the shared AWS account's other use is unknown, so neither can be assumed unused; the peak exposure uses none of them"
+        },
+        "email_peak_volume": {
+          "reason": "Resend cost is modeled from average logins per month, and an average day is not a maximum: a burst past the 100-per-day free cap needs a paid tier. Peak login volume is unknown, so no email maximum is claimed"
+        }
+      },
+      "within_60usd_ceiling_known_subtotal": true
+    },
+    "100_accounts_light": {
+      "scenario": "100_accounts_light",
+      "assumption": "at ADR 014's 100 free-account cap, light usage, each account with its default brain only; product/growth input not yet recorded",
+      "measurements_applied": [],
+      "account_totals": {
+        "accounts": 100,
+        "brains_allowed": 134,
+        "memories": 27000,
+        "recalls": 230000,
+        "writes": 12500,
+        "input_tokens": 2500000,
+        "storage_bytes": 2700000000
+      },
+      "storage_risk": {
+        "exceeds_usable_data_volume": false,
+        "usable_data_volume_bytes": 24000000000
+      },
+      "known_categories_usd": {
+        "ec2_baseline": 12.264,
+        "ec2_burst_credits": {
+          "value": 0.0,
+          "kind": "assumption",
+          "note": "mean-case assumption, not a peak, and only if the account default credit mode is unlimited; see peak_exposure"
+        },
+        "ebs_fixed": 3.04,
+        "eip": 3.65,
+        "kms_key": {
+          "value": 1.0,
+          "kind": "published",
+          "note": "key storage before any rotation; the template enables rotation, so it can reach 3 USD/month; see peak_exposure"
+        },
+        "secrets_manager_storage": 1.6,
+        "secrets_manager_api_calls": {
+          "value": 0.0001,
+          "kind": "assumption",
+          "note": "assumes 5 restarts/month reading all 4 secrets at boot (ADR 014); no other Secrets Manager traffic modeled"
+        },
+        "cloudwatch_alarms": 0.2,
+        "s3_storage_backups": {
+          "value": 83.9578,
+          "kind": "assumption",
+          "measured_inputs": [],
+          "modeled_inputs": [
+            "retained_backup_sets",
+            "objects_per_backup",
+            "snapshot_size_bytes"
+          ],
+          "snapshot_size_bytes": 2720000000,
+          "snapshot_size_gib": 2.533197,
+          "billed_quantity": {
+            "value": 3650.3375,
+            "unit": "GiB-month",
+            "conversion": "snapshot bytes / 2^30 times retained backup sets; S3 GB = 2^30 bytes",
+            "unit_receipt": "aws-rates/s3-storage-unit-receipt.json"
+          },
+          "retained_backup_sets": 1441,
+          "objects_per_backup": 103,
+          "brains_in_backup": 100,
+          "allowed_brains_ceiling": 134,
+          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state, the deployed-template baseline -- see docs/launch/hosted-economics.md. The control database is a scenario assumption at snapshot time, not a lifetime bound; see unknown_categories.control_db_lifetime_growth."
+        },
+        "s3_requests": {
+          "value": 2.1708,
+          "kind": "assumption",
+          "monthly_put_count": 434160,
+          "unit": "requests_per_month",
+          "modeled_requests_per_month": 434160,
+          "per_backup": {
+            "objects": 103,
+            "multipart_objects": 101,
+            "parts": 399,
+            "requests": 603
+          },
+          "per_object_size_assumption": [
+            {
+              "object": "manifest.json",
+              "bytes_each": 4096,
+              "count": 1,
+              "objects": 1,
+              "multipart_objects": 0,
+              "parts": 0,
+              "requests": 1
+            },
+            {
+              "object": "COMPLETE",
+              "bytes_each": 4096,
+              "count": 1,
+              "objects": 1,
+              "multipart_objects": 0,
+              "parts": 0,
+              "requests": 1
+            },
+            {
+              "object": "control.db",
+              "bytes_each": 20000000,
+              "count": 1,
+              "objects": 1,
+              "multipart_objects": 1,
+              "parts": 3,
+              "requests": 5
+            },
+            {
+              "object": "free brain bundle",
+              "bytes_each": 10000000,
+              "count": 90,
+              "objects": 90,
+              "multipart_objects": 90,
+              "parts": 180,
+              "requests": 360
+            },
+            {
+              "object": "builder brain bundle",
+              "bytes_each": 100000000,
+              "count": 8,
+              "objects": 8,
+              "multipart_objects": 8,
+              "parts": 96,
+              "requests": 112
+            },
+            {
+              "object": "scale brain bundle",
+              "bytes_each": 500000000,
+              "count": 2,
+              "objects": 2,
+              "multipart_objects": 2,
+              "parts": 120,
+              "requests": 124
+            }
+          ],
+          "basis": "one request per object below 8388608 bytes, otherwise a create, one request per 8388608-byte part and a complete (AWS CLI classic client defaults); sizes are an assumption, not an inventory; retries, aborts and list checks are unknown; see unknown_categories.s3_multipart_requests"
+        },
+        "kms_requests": {
+          "value": 0.1625,
+          "kind": "assumption",
+          "unit": "requests_per_month",
+          "monthly_kms_requests": 74160,
+          "derived_from": "modeled objects a month times 1 KMS request per object; a measured S3 request count does not measure KMS calls",
+          "note": "SSE-KMS attaches an assumed 1 KMS request per object written (no bucket key is set in the template); the per-part count for multipart objects is unknown and is not set equal to the S3 request count; 20000/month global free tier applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it."
+        },
+        "data_transfer_out": {
+          "value": 0.0,
+          "kind": "assumption",
+          "model": "average_recall_response_unbounded_by_current_plan",
+          "unit": "GB_per_month (decimal assumed)",
+          "modeled_transfer_gb": 0.9421,
+          "note": "an assumed 4096 B average per recall response, recall responses only; nothing enforces it (limit is uncapped), so this is an average and not an exposure bound. Inbound write bytes are not egress and are not counted. Server and provider outbound bytes are unmodeled. Any measured bytes must name their scope (request mix and limit values) and horizon (window) and are not a bound. First 100 GB/month free applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it. See unknown_categories.egress_response_size."
+        },
+        "email": {
+          "value": 0.0,
+          "kind": "assumption",
+          "emails_per_month": 1000,
+          "within_free_tier": true,
+          "note": "assumes 10 magic-link emails/account/month, an average day and not a maximum; Resend free tier is 3000/month capped 100/day"
+        }
+      },
+      "known_subtotal_usd": 108.05,
+      "peak_exposure": {
+        "kind": "sensitivity_not_forecast",
+        "note": "Replaces the mean-case CPU surplus, the pre-rotation KMS key, and the free-allowance offsets on KMS requests and transfer with their worst case. Every unknown category stays out, so this is not a full maximum. It is not a spending recommendation.",
+        "peak_known_subtotal_usd_sustained_100_percent_cpu": 156.91,
+        "peak_known_subtotal_usd_mean_70_percent_cpu": 139.39,
+        "components_usd": {
+          "ec2_surplus_credits_sustained_100_percent_cpu": 46.72,
+          "ec2_surplus_credits_mean_70_percent_cpu": 29.2,
+          "kms_key_storage_after_two_rotations": 3.0,
+          "kms_requests_no_free_allowance": 0.2225,
+          "data_transfer_out_no_free_allowance": 0.0848
+        },
+        "data_transfer_model": "average_recall_response_unbounded_by_current_plan: an average, not an egress bound",
+        "replaced_known_lines_usd": 1.1625,
+        "not_included": [
+          "embeddings",
+          "embedding_restore_and_reopen",
+          "cloudwatch_logs",
+          "cloudwatch_custom_metrics",
+          "s3_get_list_restore",
+          "control_db_lifetime_growth",
+          "s3_multipart_requests",
+          "egress_response_size",
+          "outbound_bytes_unmodeled",
+          "email_peak_volume"
+        ],
+        "full_maximum_computable": false,
+        "within_60usd_ceiling_peak_known_subtotal": false
+      },
+      "per_plan_contribution": {
+        "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
+        "variable_total_usd": 86.2912,
+        "by_plan": {
+          "free": {
+            "accounts": 90,
+            "storage_share": 0.3333,
+            "variable_cost_usd": 28.7637
+          },
+          "builder": {
+            "accounts": 8,
+            "storage_share": 0.2963,
+            "variable_cost_usd": 25.5678
+          },
+          "scale": {
+            "accounts": 2,
+            "storage_share": 0.3704,
+            "variable_cost_usd": 31.9597
+          }
+        }
+      },
+      "unknown_categories": {
+        "embeddings": {
+          "monthly_usd": null,
+          "usd_per_1k_tokens": null,
+          "reason": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md); the provider's tokenizer is unqualified too, so provider-billable tokens have no measured count and no proven bound",
+          "units": {
+            "service_counter": "cl100k_base tokens the gateway counts on each remembered fact against Plan.InputTokens",
+            "provider_calls": "successful embed calls a month; a count, not tokens",
+            "provider_tokens": "tokens under the provider's own tokenizer, which is unqualified: unknown",
+            "average_proxy_tokens": "load-scenario averages times counts, in tokens of no specific tokenizer"
+          },
+          "service_counter": {
+            "write_input_tokens_at_entitlement_x_usage": {
+              "value": 2500000,
+              "unit": "cl100k_base_tokens_per_month",
+              "kind": "plan entitlement times the scenario's usage fraction; a gateway cap on remembers only at usage 1.0",
+              "not_metered": "recalls, readiness probes and restore or reopen re-embeds"
+            }
+          },
+          "provider_calls": {
+            "write_embeds": {
+              "value": 12500,
+              "unit": "calls_per_month",
+              "kind": "plan write entitlement times usage fraction; one embed per remember when the index is present; retried and failed attempts are not counted"
+            },
+            "query_embeds": {
+              "value": 230000,
+              "unit": "calls_per_month",
+              "kind": "plan recall entitlement times usage fraction; assumes one query embedding per recall (recall runs search.Search once when an index is present), not measured"
+            },
+            "readiness_embeds": {
+              "kind": "cadence_range_derived_from_source_not_measured",
+              "spacing_seconds": {
+                "fastest_handler_floor": 60,
+                "typical_with_caddy_tick": 90
+              },
+              "sources": {
+                "caddy": "deploy/hosted/Caddyfile health_uri /readyz, health_interval 30s",
+                "handler": "internal/hosted/service/service.go readiness(): recompute, with one paid embed of the probe text, only when the cache is older than one minute",
+                "not_a_source": "the two EC2 CloudWatch alarms in deploy/hosted/stack.json read CPUUtilization and StatusCheckFailed and never call /readyz"
+              },
+              "successful_embeds_per_month": {
+                "30_day_month": {
+                  "low": 28800,
+                  "high": 43200
+                },
+                "730_hour_month": {
+                  "low": 29200,
+                  "high": 43800
+                }
+              },
+              "event_month_basis": "30_day_month",
+              "low_is": "Caddy-driven typical spacing; the high is the handler's floor and applies to a single running service instance",
+              "not_counted": "failed probes (not ledgered) and the router's retries (up to 3 provider attempts per embed); actual call counts are unmeasured",
+              "probe_text_bytes": 24,
+              "unit": "calls_per_month",
+              "event_month_range": {
+                "low": 28800,
+                "high": 43200
+              }
+            }
+          },
+          "provider_tokens": {
+            "value": null,
+            "unit": "provider_tokens_per_month",
+            "reason": "the gateway meters cl100k_base tokens of each remembered fact against Plan.InputTokens. The candidate provider's own tokenizer is unqualified, so the service counter is not a bound on provider-billable tokens, an average token proxy is not a bound either, and no provider-token count is claimed. Recalls, readiness probes and restore re-embeds are not metered by the gateway"
+          },
+          "average_proxy_tokens": {
+            "kind": "average proxy, not provider-billable tokens, not a cap and not an upper bound",
+            "avg_fact_tokens": 272,
+            "avg_query_tokens": 74,
+            "avg_readiness_probe_tokens": 10,
+            "write_proxy_tokens": 3400000,
+            "query_proxy_tokens": 17020000,
+            "readiness_proxy_tokens": {
+              "low": 288000,
+              "high": 432000
+            },
+            "query_mean_note": "74 is the load scenario's query-token average, not a service cap"
+          },
+          "text_bytes_handed_to_the_embedder": {
+            "kind": "proven only where stated; the provider request's serialization and tokenizer output are not bounded by these",
+            "readiness_probe_bytes_per_call": 24,
+            "query_bytes_per_call_max": 1048576,
+            "query_bytes_note": "the request frame caps the whole request at 1 MiB, so the query text cannot exceed it",
+            "write_and_reembed_bytes": "not proven: the embedder receives the indexed chunk text, which is not shown to equal the fact's bytes"
+          }
+        },
+        "embedding_restore_and_reopen": {
+          "monthly_usd": null,
+          "unit": "calls",
+          "restore_full_reembed": {
+            "kind": "per_event_count_bound_only",
+            "reason": "the Git bundle excludes the derived index, so a restored brain has no vectors and RecoverMemorySearch may call the provider once for every eligible unexpired fact",
+            "stored_memories_at_scenario_usage": 27000,
+            "provider_calls_per_event_max": 27000,
+            "provider_calls_per_event_max_basis": "plan memory entitlement times usage fraction, summed over accounts; memories are account-wide, and an enforced write cap only at usage 1.0",
+            "provider_tokens_per_event": null,
+            "events_per_month": null,
+            "monthly_provider_calls": null
+          },
+          "steady_state_missing_vector_retry": {
+            "kind": "unknown_rate",
+            "reason": "outside a restore a vector is missing only after a failed write-time embed, and every cold reopen retries it. The failure rate and the reopen frequency (max_open 8 against up to 29 brains) are unmeasured",
+            "missing_vector_rate": null,
+            "reopens_per_month": null,
+            "monthly_provider_calls": null
+          },
+          "not_governed_by": "Plan.InputTokens: the account input cap does not meter restore, reopen, readiness or query embeds",
+          "operational_note": "a restore's embeds run one at a time while the brain pool lock is held, so time to ready scales with facts times provider latency (unmeasured)",
+          "reason": "a restored brain has no vectors (the derived index is not in the Git bundle), and every cold open runs RecoverMemorySearch, which embeds each eligible unexpired fact lacking a vector, one provider call per fact. The number of restore events, cold reopens (max_open is 8 against up to 29 brains) and failed write-time embeds is request-driven and unmeasured, so neither a steady-state missing-vector rate nor a monthly restore count exists. Per event, the call count is at most the brain's stored eligible facts; the tokens and the embedded text bytes are unproven"
+        },
+        "cloudwatch_logs": {
+          "priced_usd_per_gb": 0.5,
+          "reason": "rate is priced (cloudwatch_logs_ingest_usd_per_gb) but no log shipping is wired yet (ops go through SSM Run Command per ADR 014); volume unknown pending T23.53 telemetry"
+        },
+        "cloudwatch_custom_metrics": {
+          "priced_usd_per_metric": 0.3,
+          "reason": "rate is priced (cloudwatch_custom_metric_usd_per_month) but T23.53's metric cardinality is not yet implemented"
+        },
+        "s3_get_list_restore": {
+          "reason": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+        },
+        "control_db_lifetime_growth": {
+          "status": "unbounded_in_current_runtime",
+          "monthly_usd": null,
+          "assumed_control_db_bytes_in_snapshot": 20000000,
+          "assumed_control_db_gib_in_snapshot": 0.018626,
+          "assumed_control_db_kind": "scenario assumption at snapshot time, never a lifetime bound",
+          "components": {
+            "write_and_recall_paths": {
+              "bytes_per_write": 1060,
+              "bytes_per_recall": 530,
+              "monthly_bytes": 135150000,
+              "kind": "sampled slope; includes the provider-ledger rows the sample's own write and recall paths wrote, so no second provider slope is added for them"
+            },
+            "readiness_probe_rows": {
+              "rows_per_month": {
+                "low": 28800,
+                "high": 43200
+              },
+              "bytes_per_row": 229,
+              "monthly_bytes": {
+                "low": 6595200,
+                "high": 9892800
+              },
+              "kind": "one provider-ledger audit row per successful readiness embed, at the sampled audit-row size; the sample is 1,500 writes and 11 recalls and reports no readiness call, so these rows are not in the write and recall slope. A real provider's row may be larger"
+            },
+            "restore_reembed_rows": {
+              "rows_per_event_max": 27000,
+              "bytes_per_row": 229,
+              "bytes_per_event_max": 6183000,
+              "events_per_month": null,
+              "monthly_bytes": null,
+              "kind": "one provider-ledger row per re-embedded fact; unknown events, so not in any horizon below"
+            }
+          },
+          "sampled_row_bytes": {
+            "reservation": 301,
+            "audit": 229,
+            "per_write": 1060,
+            "per_recall": 530
+          },
+          "sample": "launch-audit-real-writer-handoff.md sha256 cff5bb74012f404b345240e54acd83b62a8fdaeb3a4ae8cf9e0ed8b818a4ef40: one account, one brain, 1,500 writes, 11 recalls, 3-dimension stub embedder; the recall size is derived from row sizes",
+          "growth_bytes_per_month_at_scenario_usage": {
+            "low": 141745200,
+            "high": 145042800
+          },
+          "sensitivity_by_horizon": [
+            {
+              "months": 1,
+              "control_db_bytes": {
+                "low": 161745200,
+                "high": 165042800
+              },
+              "control_db_gib": {
+                "low": 0.150637,
+                "high": 0.153708
+              },
+              "added_s3_backup_storage_usd_per_month": {
+                "low": 4.38,
+                "high": 4.48
+              }
+            },
+            {
+              "months": 12,
+              "control_db_bytes": {
+                "low": 1720942400,
+                "high": 1760513600
+              },
+              "control_db_gib": {
+                "low": 1.602753,
+                "high": 1.639606
+              },
+              "added_s3_backup_storage_usd_per_month": {
+                "low": 52.5,
+                "high": 53.72
+              }
+            },
+            {
+              "months": 24,
+              "control_db_bytes": {
+                "low": 3421884800,
+                "high": 3501027200
+              },
+              "control_db_gib": {
+                "low": 3.186879,
+                "high": 3.260586
+              },
+              "added_s3_backup_storage_usd_per_month": {
+                "low": 105.01,
+                "high": 107.45
+              }
+            }
+          ],
+          "sensitivity_basis": "write and recall slope plus readiness rows, every month at this scenario's usage, no pruning, and every one of the retained backup sets carrying the full grown size, billed at GiB. A sensitivity at sampled row sizes, not a forecast and not a bound. Restore re-embed rows are excluded because their frequency is unknown.",
+          "measurement_required": {
+            "what": "control.db allocated size (dbstat page bytes and the file size) at the start and end of a bounded window, bound to the scenario, the window and the source",
+            "attribution": "the provider ledger rows carry only task class embedding, so write, query, readiness and rebuild cannot be told apart without instrumentation; failed or retried billable attempts may not be ledgered at all",
+            "accepted_by_this_model_today": false,
+            "why_not_accepted": "no producer can attest the database's provenance, so a field for it is not added to the measurement schema"
+          },
+          "reason": "control.db is copied whole into every snapshot and no runtime code prunes committed reservations or audit_log rows, so it grows with lifetime writes, recalls, readiness embeds and restore re-embeds. The 20 MB constant is a scenario assumption at snapshot time, not a lifetime bound. Each scenario reports named, non-overlapping components at sampled row sizes over stated horizons, which is a sensitivity and not an upper bound. Actual growth needs a database allocated-size (dbstat) measurement over a bounded window, and the provider ledger cannot attribute rows to write, query, readiness or rebuild without instrumentation"
+        },
+        "s3_multipart_requests": {
+          "monthly_usd": null,
+          "modeled_in_known_line": "s3_requests, from a per-object-size assumption at the AWS CLI defaults",
+          "defaults_source": "aws-rates/aws-cli-s3-config-receipt.json",
+          "unmeasured_inputs": [
+            "deployed AWS CLI version, configuration values and transfer client (preferred_transfer_client defaults to auto, which resolves to classic on this instance type per the same page)",
+            "real per-object size inventory of a backup",
+            "retries",
+            "aborted multipart uploads (the template's lifecycle aborts incomplete uploads after 1 day; the count is unknown)",
+            "list or head checks",
+            "KMS requests per multipart part"
+          ],
+          "kms_ratio": {
+            "assumed_per_object": 1,
+            "status": "explicit assumption; AWS documents the KMS operations but not a one-per-part count, so it is not derived from the S3 request count",
+            "sensitivity_if_one_kms_request_per_s3_request": {
+              "kms_requests_per_month": 434160,
+              "usd_per_month_no_free_allowance": 1.3025,
+              "usd_per_month_with_global_free_tier": 1.2425,
+              "kind": "unverified sensitivity, not in any subtotal or peak"
+            },
+            "modeled_kms_requests_per_month": 74160
+          },
+          "reason": "the request count is modeled from a per-object-size assumption at the AWS CLI defaults (8 MiB threshold and chunk, classic transfer client): one request for an object below the threshold, otherwise a create, one request per part and a complete. The deployed CLI version, its configuration and transfer client, and the real object-size inventory are not recorded; retries, aborted uploads, list or head checks are not counted; and the number of KMS requests a multipart object makes is not established, so the KMS line keeps an explicit one-per-object assumption"
+        },
+        "egress_response_size": {
+          "monthly_usd": null,
+          "per_response_bound": null,
+          "modeled_average_bytes_per_recall": 4096,
+          "reason": "the recall response size is unbounded by the current plan: limit accepts any nonnegative integer, the facts arm can return every visible fact, and response bytes are not metered or capped. The 4,096 bytes per recall is an assumed average, not measured and not an enforced size, and a limit times 4,096 product is not a hard bound either (JSON escaping, metadata, result-arm duplication and HTTP compression change the bytes). No exposure is claimed beyond the average model. The lane implements no runtime cap"
+        },
+        "outbound_bytes_unmodeled": {
+          "monthly_usd": null,
+          "reason": "the egress line counts recall response bytes only. Outbound bytes from the server that are not modeled: write and other tool responses, embedding request text sent to the provider, email API calls, dashboard responses and AWS API traffic; no measurement exists. Inbound write request bytes are not outbound egress and are not counted"
+        },
+        "ec2_cpu_credit_mode": {
+          "monthly_usd": null,
+          "reason": "the template sets no CreditSpecification, so a t4g.small uses the account default for T4g, which is unverified (AWS's default is unlimited). Unlimited mode bills surplus credits; standard mode bills none and throttles at baseline. An owner must confirm the mode; the model sets neither"
+        },
+        "global_free_allowances": {
+          "reason": "the KMS request allowance and the data-transfer allowance are account-wide, and the shared AWS account's other use is unknown, so neither can be assumed unused; the peak exposure uses none of them"
+        },
+        "email_peak_volume": {
+          "reason": "Resend cost is modeled from average logins per month, and an average day is not a maximum: a burst past the 100-per-day free cap needs a paid tier. Peak login volume is unknown, so no email maximum is claimed"
+        }
+      },
+      "within_60usd_ceiling_known_subtotal": false
+    },
+    "full_limit_mix": {
+      "scenario": "full_limit_mix",
+      "assumption": "the ratified 1 Scale + 3 Builder + 10 Free mix at full advertised allowance (90,000 total facts) with every allowed brain (29) present, per docs/launch/hosted-completion/evidence.md",
+      "measurements_applied": [],
+      "account_totals": {
+        "accounts": 14,
+        "brains_allowed": 29,
+        "memories": 90000,
+        "recalls": 700000,
+        "writes": 40000,
+        "input_tokens": 8000000,
+        "storage_bytes": 9000000000
+      },
+      "storage_risk": {
+        "exceeds_usable_data_volume": false,
+        "usable_data_volume_bytes": 24000000000
+      },
+      "known_categories_usd": {
+        "ec2_baseline": 12.264,
+        "ec2_burst_credits": {
+          "value": 1.168,
+          "kind": "assumption",
+          "note": "mean-case assumption, not a peak, and only if the account default credit mode is unlimited; see peak_exposure"
+        },
+        "ebs_fixed": 3.04,
+        "eip": 3.65,
+        "kms_key": {
+          "value": 1.0,
+          "kind": "published",
+          "note": "key storage before any rotation; the template enables rotation, so it can reach 3 USD/month; see peak_exposure"
+        },
+        "secrets_manager_storage": 1.6,
+        "secrets_manager_api_calls": {
+          "value": 0.0001,
+          "kind": "assumption",
+          "note": "assumes 5 restarts/month reading all 4 secrets at boot (ADR 014); no other Secrets Manager traffic modeled"
+        },
+        "cloudwatch_alarms": 0.2,
+        "s3_storage_backups": {
+          "value": 278.4188,
+          "kind": "assumption",
+          "measured_inputs": [],
+          "modeled_inputs": [
+            "retained_backup_sets",
+            "objects_per_backup",
+            "snapshot_size_bytes"
+          ],
+          "snapshot_size_bytes": 9020000000,
+          "snapshot_size_gib": 8.40053,
+          "billed_quantity": {
+            "value": 12105.1632,
+            "unit": "GiB-month",
+            "conversion": "snapshot bytes / 2^30 times retained backup sets; S3 GB = 2^30 bytes",
+            "unit_receipt": "aws-rates/s3-storage-unit-receipt.json"
+          },
+          "retained_backup_sets": 1441,
+          "objects_per_backup": 32,
+          "brains_in_backup": 29,
+          "allowed_brains_ceiling": 29,
+          "note": "backup.sh writes a unique timestamped prefix every run (never overwritten); Expiration(30d)+NoncurrentVersionExpiration(30d) in series gives each object a ~60-day bucket lifetime, so ~1441 hourly backup-sets are retained at steady state, the deployed-template baseline -- see docs/launch/hosted-economics.md. The control database is a scenario assumption at snapshot time, not a lifetime bound; see unknown_categories.control_db_lifetime_growth."
+        },
+        "s3_requests": {
+          "value": 4.122,
+          "kind": "assumption",
+          "monthly_put_count": 824400,
+          "unit": "requests_per_month",
+          "modeled_requests_per_month": 824400,
+          "per_backup": {
+            "objects": 32,
+            "multipart_objects": 30,
+            "parts": 1083,
+            "requests": 1145
+          },
+          "per_object_size_assumption": [
+            {
+              "object": "manifest.json",
+              "bytes_each": 4096,
+              "count": 1,
+              "objects": 1,
+              "multipart_objects": 0,
+              "parts": 0,
+              "requests": 1
+            },
+            {
+              "object": "COMPLETE",
+              "bytes_each": 4096,
+              "count": 1,
+              "objects": 1,
+              "multipart_objects": 0,
+              "parts": 0,
+              "requests": 1
+            },
+            {
+              "object": "control.db",
+              "bytes_each": 20000000,
+              "count": 1,
+              "objects": 1,
+              "multipart_objects": 1,
+              "parts": 3,
+              "requests": 5
+            },
+            {
+              "object": "free brain bundle",
+              "bytes_each": 100000000,
+              "count": 10,
+              "objects": 10,
+              "multipart_objects": 10,
+              "parts": 120,
+              "requests": 140
+            },
+            {
+              "object": "builder brain bundle",
+              "bytes_each": 333333333,
+              "count": 9,
+              "objects": 9,
+              "multipart_objects": 9,
+              "parts": 360,
+              "requests": 378
+            },
+            {
+              "object": "scale brain bundle",
+              "bytes_each": 500000000,
+              "count": 10,
+              "objects": 10,
+              "multipart_objects": 10,
+              "parts": 600,
+              "requests": 620
+            }
+          ],
+          "basis": "one request per object below 8388608 bytes, otherwise a create, one request per 8388608-byte part and a complete (AWS CLI classic client defaults); sizes are an assumption, not an inventory; retries, aborts and list checks are unknown; see unknown_categories.s3_multipart_requests"
+        },
+        "kms_requests": {
+          "value": 0.0091,
+          "kind": "assumption",
+          "unit": "requests_per_month",
+          "monthly_kms_requests": 23040,
+          "derived_from": "modeled objects a month times 1 KMS request per object; a measured S3 request count does not measure KMS calls",
+          "note": "SSE-KMS attaches an assumed 1 KMS request per object written (no bucket key is set in the template); the per-part count for multipart objects is unknown and is not set equal to the S3 request count; 20000/month global free tier applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it."
+        },
+        "data_transfer_out": {
+          "value": 0.0,
+          "kind": "assumption",
+          "model": "average_recall_response_unbounded_by_current_plan",
+          "unit": "GB_per_month (decimal assumed)",
+          "modeled_transfer_gb": 2.8672,
+          "note": "an assumed 4096 B average per recall response, recall responses only; nothing enforces it (limit is uncapped), so this is an average and not an exposure bound. Inbound write bytes are not egress and are not counted. Server and provider outbound bytes are unmodeled. Any measured bytes must name their scope (request mix and limit values) and horizon (window) and are not a bound. First 100 GB/month free applied before this line, and an account-wide allowance cannot be assumed unused, so peak_exposure uses none of it. See unknown_categories.egress_response_size."
+        },
+        "email": {
+          "value": 0.0,
+          "kind": "assumption",
+          "emails_per_month": 140,
+          "within_free_tier": true,
+          "note": "assumes 10 magic-link emails/account/month, an average day and not a maximum; Resend free tier is 3000/month capped 100/day"
+        }
+      },
+      "known_subtotal_usd": 305.47,
+      "peak_exposure": {
+        "kind": "sensitivity_not_forecast",
+        "note": "Replaces the mean-case CPU surplus, the pre-rotation KMS key, and the free-allowance offsets on KMS requests and transfer with their worst case. Every unknown category stays out, so this is not a full maximum. It is not a spending recommendation.",
+        "peak_known_subtotal_usd_sustained_100_percent_cpu": 353.34,
+        "peak_known_subtotal_usd_mean_70_percent_cpu": 335.82,
+        "components_usd": {
+          "ec2_surplus_credits_sustained_100_percent_cpu": 46.72,
+          "ec2_surplus_credits_mean_70_percent_cpu": 29.2,
+          "kms_key_storage_after_two_rotations": 3.0,
+          "kms_requests_no_free_allowance": 0.0691,
+          "data_transfer_out_no_free_allowance": 0.258
+        },
+        "data_transfer_model": "average_recall_response_unbounded_by_current_plan: an average, not an egress bound",
+        "replaced_known_lines_usd": 2.1771,
+        "not_included": [
+          "embeddings",
+          "embedding_restore_and_reopen",
+          "cloudwatch_logs",
+          "cloudwatch_custom_metrics",
+          "s3_get_list_restore",
+          "control_db_lifetime_growth",
+          "s3_multipart_requests",
+          "egress_response_size",
+          "outbound_bytes_unmodeled",
+          "email_peak_volume"
+        ],
+        "full_maximum_computable": false,
+        "within_60usd_ceiling_peak_known_subtotal": false
+      },
+      "per_plan_contribution": {
+        "note": "Fixed shared-node infrastructure (EC2, EBS, EIP, KMS key, Secrets Manager storage, CloudWatch alarms) is not allocated per-plan -- one node serves every tenant. Only usage-driven categories are apportioned, by each plan's share of total customer storage bytes.",
+        "variable_total_usd": 282.55,
+        "by_plan": {
+          "free": {
+            "accounts": 10,
+            "storage_share": 0.1111,
+            "variable_cost_usd": 31.3944
+          },
+          "builder": {
+            "accounts": 3,
+            "storage_share": 0.3333,
+            "variable_cost_usd": 94.1833
+          },
+          "scale": {
+            "accounts": 1,
+            "storage_share": 0.5556,
+            "variable_cost_usd": 156.9722
+          }
+        }
+      },
+      "unknown_categories": {
+        "embeddings": {
+          "monthly_usd": null,
+          "usd_per_1k_tokens": null,
+          "reason": "pending task42 provider/serving-provider pin (perplexity/pplx-embed-v1-0.6b terms are unqualified per docs/launch/hosted-plan.md); the provider's tokenizer is unqualified too, so provider-billable tokens have no measured count and no proven bound",
+          "units": {
+            "service_counter": "cl100k_base tokens the gateway counts on each remembered fact against Plan.InputTokens",
+            "provider_calls": "successful embed calls a month; a count, not tokens",
+            "provider_tokens": "tokens under the provider's own tokenizer, which is unqualified: unknown",
+            "average_proxy_tokens": "load-scenario averages times counts, in tokens of no specific tokenizer"
+          },
+          "service_counter": {
+            "write_input_tokens_at_entitlement_x_usage": {
+              "value": 8000000,
+              "unit": "cl100k_base_tokens_per_month",
+              "kind": "plan entitlement times the scenario's usage fraction; a gateway cap on remembers only at usage 1.0",
+              "not_metered": "recalls, readiness probes and restore or reopen re-embeds"
+            }
+          },
+          "provider_calls": {
+            "write_embeds": {
+              "value": 40000,
+              "unit": "calls_per_month",
+              "kind": "plan write entitlement times usage fraction; one embed per remember when the index is present; retried and failed attempts are not counted"
+            },
+            "query_embeds": {
+              "value": 700000,
+              "unit": "calls_per_month",
+              "kind": "plan recall entitlement times usage fraction; assumes one query embedding per recall (recall runs search.Search once when an index is present), not measured"
+            },
+            "readiness_embeds": {
+              "kind": "cadence_range_derived_from_source_not_measured",
+              "spacing_seconds": {
+                "fastest_handler_floor": 60,
+                "typical_with_caddy_tick": 90
+              },
+              "sources": {
+                "caddy": "deploy/hosted/Caddyfile health_uri /readyz, health_interval 30s",
+                "handler": "internal/hosted/service/service.go readiness(): recompute, with one paid embed of the probe text, only when the cache is older than one minute",
+                "not_a_source": "the two EC2 CloudWatch alarms in deploy/hosted/stack.json read CPUUtilization and StatusCheckFailed and never call /readyz"
+              },
+              "successful_embeds_per_month": {
+                "30_day_month": {
+                  "low": 28800,
+                  "high": 43200
+                },
+                "730_hour_month": {
+                  "low": 29200,
+                  "high": 43800
+                }
+              },
+              "event_month_basis": "30_day_month",
+              "low_is": "Caddy-driven typical spacing; the high is the handler's floor and applies to a single running service instance",
+              "not_counted": "failed probes (not ledgered) and the router's retries (up to 3 provider attempts per embed); actual call counts are unmeasured",
+              "probe_text_bytes": 24,
+              "unit": "calls_per_month",
+              "event_month_range": {
+                "low": 28800,
+                "high": 43200
+              }
+            }
+          },
+          "provider_tokens": {
+            "value": null,
+            "unit": "provider_tokens_per_month",
+            "reason": "the gateway meters cl100k_base tokens of each remembered fact against Plan.InputTokens. The candidate provider's own tokenizer is unqualified, so the service counter is not a bound on provider-billable tokens, an average token proxy is not a bound either, and no provider-token count is claimed. Recalls, readiness probes and restore re-embeds are not metered by the gateway"
+          },
+          "average_proxy_tokens": {
+            "kind": "average proxy, not provider-billable tokens, not a cap and not an upper bound",
+            "avg_fact_tokens": 272,
+            "avg_query_tokens": 74,
+            "avg_readiness_probe_tokens": 10,
+            "write_proxy_tokens": 10880000,
+            "query_proxy_tokens": 51800000,
+            "readiness_proxy_tokens": {
+              "low": 288000,
+              "high": 432000
+            },
+            "query_mean_note": "74 is the load scenario's query-token average, not a service cap"
+          },
+          "text_bytes_handed_to_the_embedder": {
+            "kind": "proven only where stated; the provider request's serialization and tokenizer output are not bounded by these",
+            "readiness_probe_bytes_per_call": 24,
+            "query_bytes_per_call_max": 1048576,
+            "query_bytes_note": "the request frame caps the whole request at 1 MiB, so the query text cannot exceed it",
+            "write_and_reembed_bytes": "not proven: the embedder receives the indexed chunk text, which is not shown to equal the fact's bytes"
+          }
+        },
+        "embedding_restore_and_reopen": {
+          "monthly_usd": null,
+          "unit": "calls",
+          "restore_full_reembed": {
+            "kind": "per_event_count_bound_only",
+            "reason": "the Git bundle excludes the derived index, so a restored brain has no vectors and RecoverMemorySearch may call the provider once for every eligible unexpired fact",
+            "stored_memories_at_scenario_usage": 90000,
+            "provider_calls_per_event_max": 90000,
+            "provider_calls_per_event_max_basis": "plan memory entitlement times usage fraction, summed over accounts; memories are account-wide, and an enforced write cap only at usage 1.0",
+            "provider_tokens_per_event": null,
+            "events_per_month": null,
+            "monthly_provider_calls": null
+          },
+          "steady_state_missing_vector_retry": {
+            "kind": "unknown_rate",
+            "reason": "outside a restore a vector is missing only after a failed write-time embed, and every cold reopen retries it. The failure rate and the reopen frequency (max_open 8 against up to 29 brains) are unmeasured",
+            "missing_vector_rate": null,
+            "reopens_per_month": null,
+            "monthly_provider_calls": null
+          },
+          "not_governed_by": "Plan.InputTokens: the account input cap does not meter restore, reopen, readiness or query embeds",
+          "operational_note": "a restore's embeds run one at a time while the brain pool lock is held, so time to ready scales with facts times provider latency (unmeasured)",
+          "reason": "a restored brain has no vectors (the derived index is not in the Git bundle), and every cold open runs RecoverMemorySearch, which embeds each eligible unexpired fact lacking a vector, one provider call per fact. The number of restore events, cold reopens (max_open is 8 against up to 29 brains) and failed write-time embeds is request-driven and unmeasured, so neither a steady-state missing-vector rate nor a monthly restore count exists. Per event, the call count is at most the brain's stored eligible facts; the tokens and the embedded text bytes are unproven"
+        },
+        "cloudwatch_logs": {
+          "priced_usd_per_gb": 0.5,
+          "reason": "rate is priced (cloudwatch_logs_ingest_usd_per_gb) but no log shipping is wired yet (ops go through SSM Run Command per ADR 014); volume unknown pending T23.53 telemetry"
+        },
+        "cloudwatch_custom_metrics": {
+          "priced_usd_per_metric": 0.3,
+          "reason": "rate is priced (cloudwatch_custom_metric_usd_per_month) but T23.53's metric cardinality is not yet implemented"
+        },
+        "s3_get_list_restore": {
+          "reason": "no routine GET/List/restore is modeled (no scheduled integrity check or restore drill in the current design); a restore drill or T23.50 recovery testing adds GET/List cost on top of this baseline, not included here"
+        },
+        "control_db_lifetime_growth": {
+          "status": "unbounded_in_current_runtime",
+          "monthly_usd": null,
+          "assumed_control_db_bytes_in_snapshot": 20000000,
+          "assumed_control_db_gib_in_snapshot": 0.018626,
+          "assumed_control_db_kind": "scenario assumption at snapshot time, never a lifetime bound",
+          "components": {
+            "write_and_recall_paths": {
+              "bytes_per_write": 1060,
+              "bytes_per_recall": 530,
+              "monthly_bytes": 413400000,
+              "kind": "sampled slope; includes the provider-ledger rows the sample's own write and recall paths wrote, so no second provider slope is added for them"
+            },
+            "readiness_probe_rows": {
+              "rows_per_month": {
+                "low": 28800,
+                "high": 43200
+              },
+              "bytes_per_row": 229,
+              "monthly_bytes": {
+                "low": 6595200,
+                "high": 9892800
+              },
+              "kind": "one provider-ledger audit row per successful readiness embed, at the sampled audit-row size; the sample is 1,500 writes and 11 recalls and reports no readiness call, so these rows are not in the write and recall slope. A real provider's row may be larger"
+            },
+            "restore_reembed_rows": {
+              "rows_per_event_max": 90000,
+              "bytes_per_row": 229,
+              "bytes_per_event_max": 20610000,
+              "events_per_month": null,
+              "monthly_bytes": null,
+              "kind": "one provider-ledger row per re-embedded fact; unknown events, so not in any horizon below"
+            }
+          },
+          "sampled_row_bytes": {
+            "reservation": 301,
+            "audit": 229,
+            "per_write": 1060,
+            "per_recall": 530
+          },
+          "sample": "launch-audit-real-writer-handoff.md sha256 cff5bb74012f404b345240e54acd83b62a8fdaeb3a4ae8cf9e0ed8b818a4ef40: one account, one brain, 1,500 writes, 11 recalls, 3-dimension stub embedder; the recall size is derived from row sizes",
+          "growth_bytes_per_month_at_scenario_usage": {
+            "low": 419995200,
+            "high": 423292800
+          },
+          "sensitivity_by_horizon": [
+            {
+              "months": 1,
+              "control_db_bytes": {
+                "low": 439995200,
+                "high": 443292800
+              },
+              "control_db_gib": {
+                "low": 0.409777,
+                "high": 0.412849
+              },
+              "added_s3_backup_storage_usd_per_month": {
+                "low": 12.96,
+                "high": 13.07
+              }
+            },
+            {
+              "months": 12,
+              "control_db_bytes": {
+                "low": 5059942400,
+                "high": 5099513600
+              },
+              "control_db_gib": {
+                "low": 4.712439,
+                "high": 4.749292
+              },
+              "added_s3_backup_storage_usd_per_month": {
+                "low": 155.57,
+                "high": 156.79
+              }
+            },
+            {
+              "months": 24,
+              "control_db_bytes": {
+                "low": 10099884800,
+                "high": 10179027200
+              },
+              "control_db_gib": {
+                "low": 9.406251,
+                "high": 9.479958
+              },
+              "added_s3_backup_storage_usd_per_month": {
+                "low": 311.13,
+                "high": 313.58
+              }
+            }
+          ],
+          "sensitivity_basis": "write and recall slope plus readiness rows, every month at this scenario's usage, no pruning, and every one of the retained backup sets carrying the full grown size, billed at GiB. A sensitivity at sampled row sizes, not a forecast and not a bound. Restore re-embed rows are excluded because their frequency is unknown.",
+          "measurement_required": {
+            "what": "control.db allocated size (dbstat page bytes and the file size) at the start and end of a bounded window, bound to the scenario, the window and the source",
+            "attribution": "the provider ledger rows carry only task class embedding, so write, query, readiness and rebuild cannot be told apart without instrumentation; failed or retried billable attempts may not be ledgered at all",
+            "accepted_by_this_model_today": false,
+            "why_not_accepted": "no producer can attest the database's provenance, so a field for it is not added to the measurement schema"
+          },
+          "reason": "control.db is copied whole into every snapshot and no runtime code prunes committed reservations or audit_log rows, so it grows with lifetime writes, recalls, readiness embeds and restore re-embeds. The 20 MB constant is a scenario assumption at snapshot time, not a lifetime bound. Each scenario reports named, non-overlapping components at sampled row sizes over stated horizons, which is a sensitivity and not an upper bound. Actual growth needs a database allocated-size (dbstat) measurement over a bounded window, and the provider ledger cannot attribute rows to write, query, readiness or rebuild without instrumentation"
+        },
+        "s3_multipart_requests": {
+          "monthly_usd": null,
+          "modeled_in_known_line": "s3_requests, from a per-object-size assumption at the AWS CLI defaults",
+          "defaults_source": "aws-rates/aws-cli-s3-config-receipt.json",
+          "unmeasured_inputs": [
+            "deployed AWS CLI version, configuration values and transfer client (preferred_transfer_client defaults to auto, which resolves to classic on this instance type per the same page)",
+            "real per-object size inventory of a backup",
+            "retries",
+            "aborted multipart uploads (the template's lifecycle aborts incomplete uploads after 1 day; the count is unknown)",
+            "list or head checks",
+            "KMS requests per multipart part"
+          ],
+          "kms_ratio": {
+            "assumed_per_object": 1,
+            "status": "explicit assumption; AWS documents the KMS operations but not a one-per-part count, so it is not derived from the S3 request count",
+            "sensitivity_if_one_kms_request_per_s3_request": {
+              "kms_requests_per_month": 824400,
+              "usd_per_month_no_free_allowance": 2.4732,
+              "usd_per_month_with_global_free_tier": 2.4132,
+              "kind": "unverified sensitivity, not in any subtotal or peak"
+            },
+            "modeled_kms_requests_per_month": 23040
+          },
+          "reason": "the request count is modeled from a per-object-size assumption at the AWS CLI defaults (8 MiB threshold and chunk, classic transfer client): one request for an object below the threshold, otherwise a create, one request per part and a complete. The deployed CLI version, its configuration and transfer client, and the real object-size inventory are not recorded; retries, aborted uploads, list or head checks are not counted; and the number of KMS requests a multipart object makes is not established, so the KMS line keeps an explicit one-per-object assumption"
+        },
+        "egress_response_size": {
+          "monthly_usd": null,
+          "per_response_bound": null,
+          "modeled_average_bytes_per_recall": 4096,
+          "reason": "the recall response size is unbounded by the current plan: limit accepts any nonnegative integer, the facts arm can return every visible fact, and response bytes are not metered or capped. The 4,096 bytes per recall is an assumed average, not measured and not an enforced size, and a limit times 4,096 product is not a hard bound either (JSON escaping, metadata, result-arm duplication and HTTP compression change the bytes). No exposure is claimed beyond the average model. The lane implements no runtime cap"
+        },
+        "outbound_bytes_unmodeled": {
+          "monthly_usd": null,
+          "reason": "the egress line counts recall response bytes only. Outbound bytes from the server that are not modeled: write and other tool responses, embedding request text sent to the provider, email API calls, dashboard responses and AWS API traffic; no measurement exists. Inbound write request bytes are not outbound egress and are not counted"
+        },
+        "ec2_cpu_credit_mode": {
+          "monthly_usd": null,
+          "reason": "the template sets no CreditSpecification, so a t4g.small uses the account default for T4g, which is unverified (AWS's default is unlimited). Unlimited mode bills surplus credits; standard mode bills none and throttles at baseline. An owner must confirm the mode; the model sets neither"
+        },
+        "global_free_allowances": {
+          "reason": "the KMS request allowance and the data-transfer allowance are account-wide, and the shared AWS account's other use is unknown, so neither can be assumed unused; the peak exposure uses none of them"
+        },
+        "email_peak_volume": {
+          "reason": "Resend cost is modeled from average logins per month, and an average day is not a maximum: a burst past the 100-per-day free cap needs a paid tier. Peak login volume is unknown, so no email maximum is claimed"
+        }
+      },
+      "within_60usd_ceiling_known_subtotal": false
+    }
+  },
+  "historical_ceiling_usd": 60.0,
+  "ceiling_note": "The historical USD 60/month figure is a ceiling, not a budget target or new spend authorization (docs/launch/hosted-plan.md).",
+  "citation_note": "Rates marked aws_regional_catalog_primary are read from AWS's own US West (Oregon) price lists, with a receipt file, rate code, price-list version, source hash and publication date each (docs/launch/evidence/T23.60/aws-rates/, s3-rate.json). S3 request and egress prices now use the regional Price List; the 100-GB shared internet-egress allowance is sourced from AWS's published pricing page, but target-account consumption is unknown. Resend prices remain vendor_page_secondary. Receipts imply no account, credit, free-tier availability or spend authority. The retention baseline is the deployed template's; any thinning proposal is unapproved and not modeled."
+}

@@ -3,8 +3,10 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -98,5 +100,44 @@ func TestOpenAIEmbeddingsProviderIdentity(t *testing.T) {
 	}
 	if p.ModelVersion() != "text-embedding-3-small@v1" {
 		t.Fatalf("ModelVersion() = %q, want text-embedding-3-small@v1", p.ModelVersion())
+	}
+}
+
+func TestOpenAIEmbeddingsProviderPrivacyRoutingAndDimensionPin(t *testing.T) {
+	var got openAIEmbeddingsRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"embedding":[1,2]}]}`))
+	}))
+	defer server.Close()
+	p := &OpenAIEmbeddingsProvider{BaseURL: server.URL, APIKey: "secret", Model: "perplexity/pplx-embed-v1-0.6b", Version: "v1", Dimensions: 2, ProviderOnly: []string{"Perplexity"}, ZDR: true, DataCollection: "deny"}
+	if _, err := p.Send(context.Background(), "synthetic"); err != nil {
+		t.Fatal(err)
+	}
+	if got.Provider == nil || len(got.Provider.Only) != 1 || got.Provider.Only[0] != "Perplexity" || got.Provider.AllowFallbacks == nil || *got.Provider.AllowFallbacks || !got.Provider.ZDR || got.Provider.DataCollection != "deny" {
+		t.Fatalf("routing policy = %+v", got.Provider)
+	}
+	p.Dimensions = 3
+	if _, err := p.Send(context.Background(), "synthetic"); err == nil {
+		t.Fatal("expected dimension mismatch")
+	}
+}
+
+func TestOpenAIEmbeddingsProviderSanitizesErrorBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "customer sentinel secret", http.StatusBadGateway)
+	}))
+	defer server.Close()
+	p := &OpenAIEmbeddingsProvider{BaseURL: server.URL, Model: "m", Version: "v"}
+	_, err := p.Send(context.Background(), "customer sentinel")
+	if err == nil || strings.Contains(err.Error(), "sentinel") || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("unsanitized error: %v", err)
+	}
+	var providerErr *EmbeddingProviderError
+	if !errors.As(err, &providerErr) || !providerErr.Retryable {
+		t.Fatalf("error type = %T %v", err, err)
 	}
 }

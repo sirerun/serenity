@@ -1,0 +1,13 @@
+[Unit]
+Description=Serenity hosted encrypted off-host backup
+After=serenity-hosted.service
+RequiresMountsFor=/var/lib/serenity
+
+[Service]
+Type=oneshot
+User=serenity
+Group=serenity
+EnvironmentFile=/etc/serenity/backup.env
+ExecStart=/opt/serenity-hosted/backup.sh
+UMask=0077
+TimeoutStartSec=900

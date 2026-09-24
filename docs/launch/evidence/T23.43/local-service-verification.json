@@ -1,0 +1,274 @@
+{
+  "binary": {
+    "name": "serenity",
+    "sha256": "d738c0243fe32f820d7142490f1f109c76d8cc9afc23652f7bda0abbc7d348c4"
+  },
+  "checks": [
+    {
+      "expected": "distinct brains, bearer tokens of the documented shape",
+      "name": "two fresh synthetic accounts, real dev-mode signup and scoped credential issuance",
+      "observed": "{'brains_distinct': True, 'tokens_distinct': True}",
+      "passed": true
+    },
+    {
+      "expected": "Live memories 0 and 0",
+      "name": "both accounts start empty on the dashboard",
+      "observed": "[0, 0]",
+      "passed": true
+    },
+    {
+      "expected": "exit 0, ledger calls 0",
+      "name": "--init-ledger began the cumulative ledger, offline",
+      "observed": "{'exit': 0, 'calls': 0}",
+      "passed": true
+    },
+    {
+      "expected": "PARTIAL, exit 0, both receipts complete",
+      "name": "the seed run completed against the real service",
+      "observed": "{'status': 'PARTIAL', 'exit': 0, 'blockers': []}",
+      "passed": true
+    },
+    {
+      "expected": "evidence_level=fixture; endpoints classed loopback",
+      "name": "a local run is labelled fixture, never live-provider",
+      "observed": "{'evidence_level': 'fixture', 'classes': ['loopback']}",
+      "passed": true
+    },
+    {
+      "expected": "receipt facts == dashboard Live memories == export facts (keys and texts)",
+      "name": "positive account: receipt, dashboard count and export agree",
+      "observed": "{'receipt': 102, 'dashboard': 102, 'export': 102, 'texts_equal': True}",
+      "passed": true
+    },
+    {
+      "expected": "Live memories 0 and export facts []",
+      "name": "empty-case account holds ZERO current facts by the dashboard and the export",
+      "observed": "{'dashboard': 0, 'export': 0}",
+      "passed": true
+    },
+    {
+      "expected": "5 memory_fact records; the expire-mode ones carry valid_until == the receipt's instant; 3 memory_expiry records for exactly the forget-mode ids",
+      "name": "canonical store: every target still exists on disk; the TTL ones carry the fixed instant; only the forgotten ones have expiry records",
+      "observed": "{'facts_on_disk': 5, 'with_valid_until': 2, 'expiry_records': 3}",
+      "passed": true
+    },
+    {
+      "expected": "probe was past valid_until by more than the clock skew plus the Date header's resolution",
+      "name": "the expiry was crossed on the SERVICE's clock",
+      "observed": "{'probed_after_valid_until_seconds': 5.011, 'worst_skew_seconds': 0.899}",
+      "passed": true
+    },
+    {
+      "expected": "valid_until - remember time == ttl; probe >= margin past it",
+      "name": "the wait was a real one at the frozen or declared constants",
+      "observed": "{'ttl_seconds': 60, 'margin_seconds': 5, 'production': True}",
+      "passed": true
+    },
+    {
+      "expected": "second seed BLOCKED after the empty-account proof, accounts unchanged; same receipt dir BLOCKED with 0 calls",
+      "name": "reusing the seeded accounts is refused before anything is written",
+      "observed": "{'second_seed': {'status': 'BLOCKED', 'exit': 2, 'blocker': 'hosted_mcp: account is not empty (facts_total=1, search_results=5); refusing to seed', 'ledger_calls_spent': 4, 'accounts_unchanged': True}, 'same_receipt_dir': {'status': 'BLOCKED', 'exit': 2, 'ledger_calls_spent': 0}}",
+      "passed": true
+    },
+    {
+      "expected": "status PARTIAL, evidence_level fixture, quality row NOT_RUN, 95/95 hits (the oracle is the answer key)",
+      "name": "a live run over the real service is a fixture PARTIAL even when every ranking is correct",
+      "observed": "{'status': 'PARTIAL', 'exit': 0, 'evidence_level': 'fixture', 'positive_hits': '95/95', 'cases_executed': 100, 'quality_row': 'NOT_RUN', 'usage': {'calls_this_run': 107, 'request_bytes': 17575, 'response_bytes': 373227, 'input_token_upper_bound_cumulative': 55680, 'reserved_not_sent': 0}, 'blockers': [{'owner': 'coordinator', 'required_input': 'Run against the provisioned hosted test accounts on a remote endpoint: a local endpoint (empty_case_hosted_mcp, hosted_mcp) is a fixture and cannot satisfy a live-provider gate.'}]}",
+      "passed": true
+    },
+    {
+      "expected": "positive never sees the marker; empty never reaches the sentinel; exports hold only their own facts",
+      "name": "isolation: neither account can reach the other's facts, and only the owner's export holds them",
+      "observed": "{'marker_written_to': 'empty-case account', 'marker_status': 'inserted', 'positive_account_sees_marker': False, 'empty_account_reaches_sentinel': False, 'dashboard': {'positive': 102, 'empty_case': 1}}",
+      "passed": true
+    },
+    {
+      "expected": "auth_failures=0, bad_requests=0, models_seen=[MODEL], requests>0",
+      "name": "loopback provider was used only as configured",
+      "observed": "{'requests': 229, 'auth_failures': 0, 'bad_requests': 0, 'models_seen': ['local-synthetic-oracle'], 'distinct_inputs': 210}",
+      "passed": true
+    },
+    {
+      "expected": "SIGTERM (or already exited), exit recorded, ps shows no such PID",
+      "name": "the exact owned PID was stopped and is gone",
+      "observed": "{'pid_confirmed_gone': True, 'record': {'pid': 6880, 'signals': ['SIGTERM'], 'exit_code': 0, 'confirmed_gone': True}}",
+      "passed": true
+    },
+    {
+      "expected": "no path left",
+      "name": "the owned directory was removed",
+      "observed": "removed",
+      "passed": true
+    }
+  ],
+  "constants": {
+    "margin_seconds": 5,
+    "production_constants": true,
+    "supplemental_sha256": "4a1b4822937f57c947ab2ef4c8d44462e3c7879d2280b32de5a07198827aa193",
+    "ttl_seconds": 60
+  },
+  "elapsed_seconds": 202.2,
+  "evidence_level": "local-process",
+  "isolation": {
+    "dashboard": {
+      "empty_case": 1,
+      "positive": 102
+    },
+    "empty_account_reaches_sentinel": false,
+    "marker_status": "inserted",
+    "marker_written_to": "empty-case account",
+    "positive_account_sees_marker": false
+  },
+  "label": "Verifies plumbing, the TTL and forget seed protocol, the actual server clock, account isolation and the ordinary APIs against the local hosted service binary, behind a synthetic loopback embedding provider. It measures no retrieval quality.",
+  "live": {
+    "blockers": [
+      {
+        "owner": "coordinator",
+        "required_input": "Run against the provisioned hosted test accounts on a remote endpoint: a local endpoint (empty_case_hosted_mcp, hosted_mcp) is a fixture and cannot satisfy a live-provider gate."
+      }
+    ],
+    "cases_executed": 100,
+    "evidence_level": "fixture",
+    "exit": 0,
+    "positive_hits": "95/95",
+    "quality_row": "NOT_RUN",
+    "status": "PARTIAL",
+    "usage": {
+      "calls_this_run": 107,
+      "input_token_upper_bound_cumulative": 55680,
+      "request_bytes": 17575,
+      "reserved_not_sent": 0,
+      "response_bytes": 373227
+    }
+  },
+  "not_proved": [
+    "Retrieval quality: the loopback provider is a cached-vector oracle plus a hash-bag fallback, not a semantic model.",
+    "Any real provider's latency, dimensions, model pin, availability or cost. The provider and semantic qualification stay BLOCKED.",
+    "Anything about production, deployment, billing, mail delivery or a hosted account that is not this throwaway one.",
+    "The lexical-negative criterion, which the task41 reviewer must still resolve."
+  ],
+  "process": {
+    "confirmed_gone": true,
+    "exit_code": 0,
+    "pid": 6880,
+    "signals": [
+      "SIGTERM"
+    ]
+  },
+  "provider_and_semantic_qualification": "BLOCKED",
+  "provider_requests": {
+    "auth_failures": 0,
+    "bad_requests": 0,
+    "distinct_inputs": 210,
+    "models_seen": [
+      "local-synthetic-oracle"
+    ],
+    "requests": 229
+  },
+  "rate_limit": {
+    "gateway_limit": "120 requests per minute per account (internal/hosted/gateway)",
+    "note": "a full-speed harness phase against one account uses most of the per-account limit; back-to-back phases see HTTP 429",
+    "retried_after_429_seconds": 0,
+    "waits_between_phases": [
+      {
+        "before": "the reuse-refusal seed",
+        "seconds": 60.8
+      },
+      {
+        "before": "the isolation control",
+        "seconds": 61.0
+      }
+    ]
+  },
+  "redaction": {
+    "registered_secrets": 11,
+    "verified_clean": true
+  },
+  "reuse_refusal": {
+    "same_receipt_dir": {
+      "exit": 2,
+      "ledger_calls_spent": 0,
+      "status": "BLOCKED"
+    },
+    "second_seed": {
+      "accounts_unchanged": true,
+      "blocker": "hosted_mcp: account is not empty (facts_total=1, search_results=5); refusing to seed",
+      "exit": 2,
+      "ledger_calls_spent": 4,
+      "status": "BLOCKED"
+    }
+  },
+  "seed": {
+    "acceptance": [
+      {
+        "criterion": "Empty-account proof before the first seed write, for each account",
+        "status": "PASS"
+      },
+      {
+        "criterion": "Controlled seeding: every planned fact inserted with a stored vector, inventory equals the seed",
+        "status": "PASS"
+      },
+      {
+        "criterion": "Forgotten/expired protocol: each expected-empty target shown present, then removed by forget (3) or by a fixed absolute TTL shown absent only after the service clock passed it (2), with the still-present forget targets as a control; final inventory empty; cross-account sentinel unreachable",
+        "status": "PASS"
+      }
+    ],
+    "blockers": [],
+    "elapsed_seconds": 77.4,
+    "evidence_level": "fixture",
+    "exit": 0,
+    "provider": {
+      "declared": {
+        "allow_fallback": false,
+        "base_url": "http://127.0.0.1:62137/v1",
+        "dimensions": 1536,
+        "environment_kind": "local-fixture",
+        "model": "local-synthetic-oracle",
+        "privacy_review_ref": "local-synthetic-no-personal-data",
+        "serving_provider": "local-synthetic-oracle",
+        "version_pin": "local-synthetic-oracle-v1"
+      },
+      "observed": {
+        "dimensions": null,
+        "hosted_endpoints": {
+          "empty_case_hosted_mcp": {
+            "class": "loopback",
+            "url": "http://127.0.0.1:62138/mcp"
+          },
+          "hosted_mcp": {
+            "class": "loopback",
+            "url": "http://127.0.0.1:62138/mcp"
+          }
+        },
+        "model": null,
+        "provider_identity_verified": false
+      },
+      "qualification_prerequisites": [
+        "Run against the provisioned hosted test accounts on a remote endpoint: a local endpoint (empty_case_hosted_mcp, hosted_mcp) is a fixture and cannot satisfy a live-provider gate.",
+        "The embedding provider, model pin and dimensions are declared by the manifest and are not observed: the hosted recall response reports neither. Deployment configuration evidence (the EMBEDDINGS gate's key, allowance and model pin, and T23.42's provider adapter) must show which provider served the run.",
+        "budget.authorization_ref must name the EMBEDDINGS authority's approval of these caps; the ledger enforces the caps but does not check who approved them.",
+        "task41's reviewer must confirm the freeze receipt (corpus hash, lexical-negative criterion, supplemental hash)."
+      ]
+    },
+    "status": "PARTIAL",
+    "usage": {
+      "calls_this_run": 135,
+      "input_token_upper_bound_cumulative": 37608,
+      "request_bytes": 37608,
+      "reserved_not_sent": 0,
+      "response_bytes": 101798
+    }
+  },
+  "server_clock": {
+    "probed_after_valid_until_seconds": 5.011,
+    "resolution_seconds": 1.0,
+    "skew_after_seconds": 0.29,
+    "skew_before_seconds": 0.899
+  },
+  "source": {
+    "dirty_paths": [],
+    "sha": "dcf3174d61a6ed4f1d0bbeeab32349916834cd47",
+    "tree_was_dirty": false
+  },
+  "status": "PARTIAL"
+}

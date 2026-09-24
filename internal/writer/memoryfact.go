@@ -36,18 +36,25 @@ type MemoryFact struct {
 // idempotent-forget outcome, not this error).
 var ErrMemoryFactNotFound = errors.New("writer: no memory fact with this id")
 
+// ErrMemoryOperationConflict means a durable key was reused with different input.
+var ErrMemoryOperationCanceled = errors.New("writer: memory operation was canceled")
+var ErrMemoryScopeDenied = errors.New("writer: memory fact is outside remote scope")
+
+var ErrMemoryOperationConflict = errors.New("writer: memory operation key conflicts with prior input")
+
 // RememberInput is the durable half of a remember call -- already
 // validated by the MCP-layer verb handler (non-empty fact/provenance,
 // closed kind/visibility enums, parsed TTL); this package only allocates
 // and writes.
 type RememberInput struct {
-	Fact       string
-	Provenance string
-	EntitySlug string
-	EntityType string
-	Kind       store.MemoryFactKind
-	Visibility store.MemoryVisibility
-	ValidUntil *time.Time
+	OperationKey string
+	Fact         string
+	Provenance   string
+	EntitySlug   string
+	EntityType   string
+	Kind         store.MemoryFactKind
+	Visibility   store.MemoryVisibility
+	ValidUntil   *time.Time
 }
 
 // RememberResult is what the caller needs to build MEMORY_VERBS's remember
@@ -82,13 +89,35 @@ func (w *MemoryFact) Remember(input RememberInput, now time.Time) (RememberResul
 // Remember's Job.Render) -- the single-writer window every allocation and
 // dedup decision in this method depends on.
 func (w *MemoryFact) rememberLocked(input RememberInput, now time.Time) (RememberResult, error) {
+	if !store.ValidMemoryOperationKey(input.OperationKey) {
+		return RememberResult{}, fmt.Errorf("writer: invalid memory operation key")
+	}
 	proj, err := store.LoadMemoryProjection(w.Sources)
 	if err != nil {
 		return RememberResult{}, err
 	}
 
 	key := store.DedupKey(input.Fact, input.Provenance, input.EntitySlug, input.Kind, input.Visibility, input.ValidUntil, input.EntityType)
-	if dup, ok := proj.FindDuplicate(key, now); ok {
+	if input.OperationKey != "" {
+		// Look through expired records too: retry must never resurrect a withdrawal.
+		for _, rec := range proj.All() {
+			if rec.Payload.OperationKey != input.OperationKey {
+				continue
+			}
+			p := rec.Payload
+			prior := store.DedupKey(p.Fact, p.Provenance, p.EntitySlug, p.Kind, p.Visibility, p.ValidUntil, p.EntityType)
+			if prior != key {
+				return RememberResult{}, ErrMemoryOperationConflict
+			}
+			w.markSource(rec.SHA256)
+			w.markSource(rec.ExpirySHA256)
+			return RememberResult{Record: rec, Inserted: false}, nil
+		}
+		if sha, canceled := proj.OperationCancellation(input.OperationKey); canceled {
+			w.markSource(sha)
+			return RememberResult{}, ErrMemoryOperationCanceled
+		}
+	} else if dup, ok := proj.FindDuplicate(key, now); ok {
 		w.markSource(dup.SHA256)
 		return RememberResult{Record: dup, Inserted: false}, nil
 	}
@@ -98,6 +127,7 @@ func (w *MemoryFact) rememberLocked(input RememberInput, now time.Time) (Remembe
 		return RememberResult{}, err
 	}
 	payload := store.MemoryFactPayload{
+		OperationKey:  input.OperationKey,
 		FormatVersion: store.MemoryFactFormatVersion,
 		RecordType:    store.SourceKindMemoryFact,
 		LegacyID:      legacyID,
@@ -217,4 +247,46 @@ func (w *MemoryFact) markSource(sha string) {
 	dir := w.Sources.DirFor(sha)
 	w.Queue.MarkTouched(filepath.Join(dir, "bytes"))
 	w.Queue.MarkTouched(filepath.Join(dir, "meta.yaml"))
+}
+
+// CancelRemoteOperation durably fences a key and expires any matching world
+// fact, without needing its body or an acknowledged fact ID. A later remember
+// cannot create a missing canceled operation. Existing facts still recover their
+// expired identity. The complete decision is serialized with Remember.
+func (w *MemoryFact) CancelRemoteOperation(key, reason string, now time.Time) (ForgetResult, error) {
+	if w.Queue == nil || w.Sources == nil || key == "" || !store.ValidMemoryOperationKey(key) {
+		return ForgetResult{}, fmt.Errorf("writer: invalid cancellation dependencies/key")
+	}
+	var result ForgetResult
+	res := w.Queue.Submit(Job{Render: func() ([]byte, error) {
+		proj, err := store.LoadMemoryProjection(w.Sources)
+		if err != nil {
+			return nil, err
+		}
+		for _, rec := range proj.All() {
+			if rec.Payload.OperationKey != key {
+				continue
+			}
+			if rec.Payload.Visibility != store.MemoryVisibilityWorld {
+				return nil, ErrMemoryScopeDenied
+			}
+			result.Record = rec
+			result.Expired = !rec.Expired(now)
+			break
+		}
+		if sha, canceled := proj.OperationCancellation(key); canceled {
+			w.markSource(sha)
+			result.Expired = false
+			return nil, nil
+		}
+		written, err := w.Sources.WriteMemoryExpiry(store.MemoryExpiryPayload{OperationKey: key, Reason: reason, ExpiredAt: now})
+		if written.SHA256 != "" {
+			w.markSource(written.SHA256)
+		}
+		return nil, err
+	}})
+	if res.Err != nil {
+		return ForgetResult{}, res.Err
+	}
+	return result, nil
 }

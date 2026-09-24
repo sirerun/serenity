@@ -1,0 +1,265 @@
+{
+  "task_id": "T23.41",
+  "profile": "paid",
+  "status": "PARTIAL",
+  "source_sha": "378a3f153fab820196cbec2e3169d10c52f5cb82",
+  "recorded_at": "2026-09-21T19:39:05Z",
+  "evidence_level": "local-process",
+  "dependencies": {},
+  "commands": [
+    "gofmt -l internal/hosted",
+    "go vet ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "go vet -tags hostedtest ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "golangci-lint run ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "golangci-lint run --build-tags hostedtest ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "GOFLAGS=-p=2 GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp go test -race -count=1 -json -timeout 20m ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate",
+    "GOFLAGS=-p=2 GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp go test -race -count=1 ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts ./internal/hosted/contracts/contractstest ./internal/hosted/testhooks ./internal/gate",
+    "GOFLAGS=-p=2 GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp go vet ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "GOFLAGS=-p=2 GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp go vet -tags hostedtest ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp golangci-lint run ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp golangci-lint run --build-tags hostedtest ./internal/hosted/contracts/... ./internal/hosted/testhooks/...",
+    "go vet ./internal/hosted/store",
+    "go test ./internal/hosted/store",
+    "go test ./internal/hosted/contracts",
+    "GOCACHE=/Volumes/BuildOffload/tmp-t2341-gocache GOTMPDIR=/Volumes/BuildOffload/tmp-t2341-gotmp TMPDIR=/Volumes/BuildOffload/tmp-t2341-tmp golangci-lint run ./internal/hosted/store",
+    "go test -race -count=1 ./internal/hosted/contracts",
+    "go test -race -count=1 ./internal/hosted/store"
+  ],
+  "cases": {
+    "planned": 50,
+    "executed": 50,
+    "passed": 50,
+    "failed": 0,
+    "skipped": 0,
+    "skip_reasons": []
+  },
+  "acceptance": [
+    {
+      "criterion": "Architectural review names the exact revision and approves each of the four decisions; unresolved decision means dependent task is blocked, not an agent guess.",
+      "expected": "chief-architect reviews and rules (approve/amend/reject) on storage headroom, operation accounting, deletion journal and restore eligibility, recorded in interfaces.md's freeze receipt.",
+      "observed": "Chief-architect explicitly ruled on all four decisions at PR236 revision 218d7234d9abea5964f9d4640d1bfffe5c9f8087, with the corrected narrow commit-section scope recorded in interfaces.md. Decision 1 is approved conditionally; its production implementation remains BLOCKED on task44 physical-allocation accounting, MaxMutationStageBytes and an OS-enforced stage limit. This is the exact architecture ruling required by the criterion; it is not ordinary code review or merge approval.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Migrate schema1/2/3 fixture DBs twice; facts, subscriptions, tokens and usage retained; future schema refused without writes; fresh DB and upgraded DB equivalent.",
+      "expected": "A new forward-only migration exists (needed by tasks44/47/48/50) and this round-trip test passes against it.",
+      "observed": "Forward-only migration v4 creates the operations journal. TestLegacySchemasUpgradeTwiceAndPreserveControlData opens schema1/2/3 fixtures twice and verifies every subscription field, including plan/grace data where present, preserves login tokens and usage, and leaves the canonical-fact fixture hash unchanged because facts live outside the control DB. TestFutureSchemaIsRejectedWithoutWriting confirms schema5 is refused with an unchanged DB-file hash. TestFreshAndUpgradedOperationSchemasAreEquivalent compares fresh and upgraded table/index shapes. Operation phase, JSON-array and retry-key uniqueness constraints are tested. Regression coverage now marshals OperationDelta and queries the stored JSON at $.metric and $.units, proving the persisted names match the schema contract.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Existing hosted tests and file-first gate pass.",
+      "expected": "go test -race -count=1 over ./internal/hosted/store ./internal/hosted/service ./internal/hosted/contracts/... ./internal/hosted/testhooks ./internal/gate exits 0 with no skips.",
+      "observed": "The final scoped race suite passed under the recorded R-build-lease on source 378a3f153fab820196cbec2e3169d10c52f5cb82: store, service, contracts, contractstest, testhooks and internal/gate all passed with no skips. The contracts package also passed focused race tests, go vet and golangci-lint after the recovery-plan binding changes. The tests now reject self-attested plan generations, request/plan hash mismatches, accounts outside the approved plan, apply-all sentinels, malformed or stale journal seals, and mixed unfreeze/refusal results. All 13 GitHub checks passed on PR #236 receipt head 94b3a00366ce126987b0152090082210c3b1e6ab, which contains current code source 378a3f153fab820196cbec2e3169d10c52f5cb82 plus its source-pinned evidence receipt. CI success is not ordinary review or merge approval.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Interface document lists owning task, exact signature, semantic contract, schema version and integration file for every shared seam.",
+      "expected": "Every row in interfaces.md's seam table has a frozen Go signature, contract and integration file.",
+      "observed": "interfaces.md now has a callable seam index listing each shared owner, exact Go callable surface, semantic contract, persistence/schema version and integration file. RecoveryPlanner.Plan and RecoveryApplier.Apply were added and are compile-time checked alongside the other interfaces. Migration v4 is named as task41-owned; task44 retains runtime ledger/staging implementation. RecoveryApplyResult now carries PlanGeneration from the immutable plan identified by PlanHash; FenceReceipt.Sufficient(expectedGeneration) requires that exact positive generation, and tests reject a self-consistent fence for a different generation. Recovery apply validation now consumes the approved plan and request together; the shape remains field-compatible while structural validation and seal position/hash checks make plan identity, eligible account membership, generation and post-watermark sealing executable.",
+      "status": "PASS"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "docs/launch/evidence/T23.41/architecture-review-request.md",
+      "sha256": "ac5c158c5807aec94c85b7bfbfb7475a28dd3f407137189b91bed333a8da6e57"
+    },
+    {
+      "path": "docs/launch/hosted-completion/interfaces.md",
+      "sha256": "37760995fa9be95259fdb8016ee211ea168e33ce389827b377397ef48901140c"
+    },
+    {
+      "path": "internal/hosted/contracts/backup.go",
+      "sha256": "4110f6a0c939ba7cec3b2d8e437742f8ef3c5a917f0dd7e23e3499a90f31131b"
+    },
+    {
+      "path": "internal/hosted/contracts/billing.go",
+      "sha256": "1dabea773650c5b0ee799eb0c9e45145282b55e8b42f636e1b53929144011a85"
+    },
+    {
+      "path": "internal/hosted/contracts/commitfence.go",
+      "sha256": "fe99f51d7e1d314059c59003837a51c19604472abd88d89f3922debaea6bf651"
+    },
+    {
+      "path": "internal/hosted/contracts/contracts_test.go",
+      "sha256": "1879958c745b6740271be6c6d2ca1cbb2d11f9e6e2c5fd7648194d1e8704f29c"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/canonical.go",
+      "sha256": "ebacf4d985a0c2927bf9c4f4e32b297b01b1f841c72d55219b07c7fccd2e0b5e"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/clock.go",
+      "sha256": "ec06f5393360076d2a930c4348f226614b30a6d5480f862120e84015691629dc"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/cross_host_lock_test.go",
+      "sha256": "24158bd31be453c7afaa6d35569250f65227167a503fa6972b2177e4ff669825"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/doc.go",
+      "sha256": "ea73ae99ae80b6fc89566a61a91b9914963f3b00609af9229e326f1df4f89140"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/fence.go",
+      "sha256": "424308d6d7f86c2f40caf8321e5194cf30923072df50898870077d9c17b11ca4"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/journal.go",
+      "sha256": "2c233c2aacef6a2ed19c59b7244b28ad1680572b4e757f95934d743ed12df3d9"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/journal_suite.go",
+      "sha256": "acd56590bb00073b7b14908b7c660f9fb63203eedd08c55fce169b5469e37be3"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/journal_test.go",
+      "sha256": "9658c40eb9026304b898e2c7a8acccd826f666eb7cfbe75bce531f54651b03e8"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/ledger.go",
+      "sha256": "02bde85b7ebb11e910c058b5986617f0a8b4094cd07499e8da5131d7f3de093d"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/ledger_suite.go",
+      "sha256": "a7ce1ef8fe56c0910f9a3c439f5acecf4134bdcd37c32949c34a81bfdc65ad45"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/ledger_test.go",
+      "sha256": "b6c5f611eb7e209219d483bc317deddfe723f48ea6cc3dca86838344be6eb3a2"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/staging.go",
+      "sha256": "af6e4c06106ab300495ef24e2854a3da247388d3f39d53dbba57153f5c920e13"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/staging_suite.go",
+      "sha256": "72958d24e154928873d33ed4465bc4d4eda3abc4477612086c36eeecbf8ae34d"
+    },
+    {
+      "path": "internal/hosted/contracts/contractstest/staging_test.go",
+      "sha256": "31dd5a667a56b07d3b20e56c58a3a999f0d43f3029e2afdf09c59a4864dad155"
+    },
+    {
+      "path": "internal/hosted/contracts/deletion.go",
+      "sha256": "25070888772360f71548c46e2a115358cc597533a772a610022be184a61515f5"
+    },
+    {
+      "path": "internal/hosted/contracts/fence.go",
+      "sha256": "31f70544acf61ec74448fda29e672aa7421ad49911dab105f3ee3b2f4d1ac8a1"
+    },
+    {
+      "path": "internal/hosted/contracts/manifest_test.go",
+      "sha256": "d97cd664a550bca9fc58f588fb523abcca517a96daeafd1025382fe9e460f0e2"
+    },
+    {
+      "path": "internal/hosted/contracts/operations.go",
+      "sha256": "03aaa4a8222e5afeb45ed17955ab0f823a7d7d161e9358bf77078f0225e1741b"
+    },
+    {
+      "path": "internal/hosted/contracts/provider.go",
+      "sha256": "805de75c789f092ce5b58b93ccd17d5a0f602197de76d996d0e5d14501ce375b"
+    },
+    {
+      "path": "internal/hosted/contracts/semantics_test.go",
+      "sha256": "15e50e51c3d475e4ee1e2cb45c27431021992558eba89ebdb09c99fe16eac7d0"
+    },
+    {
+      "path": "internal/hosted/contracts/storage.go",
+      "sha256": "ccc49ff73007621c5b5fa399456f4ab138a8c8719fb68e8cfb0bafe2c062bcd2"
+    },
+    {
+      "path": "internal/hosted/contracts/telemetry.go",
+      "sha256": "8a4ef483c89646893cffadfb6e099f43479a714897831bac17414d7451ef2d0c"
+    },
+    {
+      "path": "internal/hosted/store/migrations.go",
+      "sha256": "e1e8b7ee180ad41069e6f12f51e3ffba3fca69a7fc57dc00e268973b32f738f3"
+    },
+    {
+      "path": "internal/hosted/store/migrations_test.go",
+      "sha256": "99cec146bd02cc4ddc6162955ce17694421cf18f2c11407ed58e97eb1384a425"
+    },
+    {
+      "path": "internal/hosted/store/store.go",
+      "sha256": "5a1e0375a0077d854d8a190ef1b74278d8bf86abc91e78d1eeefc6ba6e252529"
+    },
+    {
+      "path": "internal/hosted/store/store_test.go",
+      "sha256": "3eced54a6fcdda3b37084039a0f5afa792121a1edc8f88547422c1446b83d20e"
+    },
+    {
+      "path": "internal/hosted/testhooks/hook_hostedtest.go",
+      "sha256": "3500acd6534d3895fe5ade7bd7a77621b412e2b3fefa98c3149f5fe5916f3af5"
+    },
+    {
+      "path": "internal/hosted/testhooks/hook_prod.go",
+      "sha256": "c424cf03e2b50cb02ae266a6a51491d82f3cbf6e348f5cbb2cd805e672203dfb"
+    },
+    {
+      "path": "internal/hosted/testhooks/phases_test.go",
+      "sha256": "e2b52a8655c921190b5de859d72fd0bb682f39768238e5b3d55665ef2321a455"
+    },
+    {
+      "path": "internal/hosted/testhooks/testdata/concurrent/main.go",
+      "sha256": "3d82455fc74ea89ab6071eeef494167be0f6121e11815cd14574b8db63e218f5"
+    },
+    {
+      "path": "internal/hosted/testhooks/testdata/probe/main.go",
+      "sha256": "6141ff98f7bbce8ffd55173acab3cc09fadf536255bfabd220eb372fb0778383"
+    },
+    {
+      "path": "internal/hosted/testhooks/testhooks.go",
+      "sha256": "f6903d2f4ac8b8b569feda3b3d4992e21fb2eab3de41b87e746dca3f98359e2a"
+    },
+    {
+      "path": "internal/hosted/testhooks/testhooks_test.go",
+      "sha256": "ebc682c2b15211364cded2adfcf2a6268f42d979b4e75336957aa2ca65680a2c"
+    }
+  ],
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": null,
+    "authorization_refs": []
+  },
+  "limitations": [
+    "The chief-architect ruling is recorded at exact revision 218d7234d9abea5964f9d4640d1bfffe5c9f8087 and approves the four designs (storage conditionally). This branch reconciles that ruling and adds migration v4. All 13 CI checks pass on PR #236 head 516ebf8, which contains the current code source 378a3f153fab820196cbec2e3169d10c52f5cb82. An independent headless Claude review of the exact contract and evidence found no blocking defect. The founder directed merge of this contract/reference PR; the merge does not accept T23.41 as complete or lift the separate coordinator-acceptance gate for downstream work.",
+    "S3 conditional create is documented (the coordinator's source check, s3-conditional-write-source-check.md) but was not qualified against the real bucket, bucket policy or CLI/SDK build. Task48 live qualification remains required.",
+    "No MaxMutationStageBytes measurement exists, and no OS-enforced size limit under the staging area is designed or tested. StageMeter is cooperative accounting, so storage admission remains BLOCKED.",
+    "Migration v4 adds the operation journal schema and constraints, but it does not implement the operation ledger, quota admission, transitions, or canonical reconciliation. No operation contract is wired under internal/hosted/service or internal/cli; task44 owns that work.",
+    "Mutation checks on reference models and ManifestV2.Validate were run with throwaway scripts that are not committed; their resulting conformance cases are in the repository.",
+    "Disclosure: an earlier lease-held verification in this pass started with 15Gi free on the internal disk, below the 20GB hold, without redirecting caches to the offload volume; the final runs did redirect them. An earlier stray test process was stopped with a broad pkill pattern; later work killed only exact PIDs. The first pushed head also had three CI errcheck findings on test cleanup; these were corrected and retested locally in 5306141.",
+    "Ajent inbox and search were used at session start; inbox cursor 144 contained no new posts and the focused search found no relevant prior finding. No Ajent publication has been made yet for this work.",
+    "Gateway.ServeHTTP holds Gateway.mu across Pool.Acquire; documented in interfaces.md, not fixed (task45 scope).",
+    "Storage headroom, retention window and other numeric values remain unset where they require task44 measurement or an operator decision.",
+    "An earlier coordinator verification of the baseline tree recorded 165 race-detected tests including subtests, zero failures/skips; its raw JSON is retained outside the repo. This branch adds three store tests and reruns the required package set successfully.",
+    "OperationDelta previously serialized as uppercase Metric/Units and did not match the v4 JSON contract; its struct now names lower-case fields, with a migration-store regression proving SQLite json_extract sees metric/units. No task44 ledger/runtime implementation is included by this fix.",
+    "RecoveryPlan.Validate checks structure and cross-field ordering only. The task50 planner/applier still must compute and verify the canonical PlanHash over the exact snapshot, journal watermark, provider truth and eligible account set, load only the approved plan for Apply, and perform stop/revoke/seal in the documented order; no restore runtime is implemented here."
+  ],
+  "blockers": [
+    {
+      "owner": "PR236 review owner / coordinator",
+      "required_input": "Coordinator acceptance of T23.41 remains required before task44 and other dependent implementation are dispatched. PR #236 may merge as a reviewed contract/reference under the founder's explicit direction; that merge is not a task-completion receipt and does not unblock storage admission or live S3 use."
+    },
+    {
+      "owner": "task44 with the writer owner",
+      "required_input": "Implement the approved operation ledger against schema v4; deliver allocation-based MaxMutationStageBytes measurement and OS-enforced staging limit before claiming bounded storage admission."
+    },
+    {
+      "owner": "task48 with infrastructure54",
+      "required_input": "Qualify S3 conditional create, versioning/delete-marker protection and bucket policy on an authorized disposable resource before live deletion-journal use."
+    },
+    {
+      "owner": "task48 and task52 owners",
+      "required_input": "Verify idempotent purge excludes the deletion journal and name the control-database retention owner before retention work."
+    },
+    {
+      "owner": "founder",
+      "required_input": "Choose A (apply the exact updated PR title/description and keep draft) or B (leave the current text) in the founder card."
+    }
+  ],
+  "binary_sha256": null,
+  "configuration_sha256": null,
+  "corpus_sha256": null,
+  "provider": null
+}

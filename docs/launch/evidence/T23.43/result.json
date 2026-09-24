@@ -1,0 +1,140 @@
+{
+  "acceptance": [
+    {
+      "criterion": "Hit@5 thresholds (overall>=0.90, category floors, empty leakage=0, lexical-negative>=18/20) frozen before live results",
+      "expected": "Measured only against a live hosted MCP recall endpoint (see --live)",
+      "observed": "hashbag(mechanics-only) overall_hit_rate=0.579; fixed-vector(must-fail) overall_hit_rate=0.000; lexical-control overall_hit_rate=0.000 (none of these three arms is a live semantic-quality measurement)",
+      "status": "BLOCKED"
+    },
+    {
+      "criterion": "Fixed-vector/lexical-only stub fails the quality predicate; fixture mode passes harness mechanics but never marks quality PASS",
+      "expected": "fixed-vector overall_hit_rate < 0.90 AND all 95 positive cases mechanically scored",
+      "observed": "fixed-vector overall_hit_rate=0.000 (<0.90: True); mechanics completed for 95/95 positive cases",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Budget exhausted/provider unavailable yields BLOCKED with partial results and no further calls",
+      "expected": "N/A in --fixtures mode (no external budget/provider involved)",
+      "observed": "fixtures mode never calls a live provider. The --seed and --live paths are exercised by evals/hosted/test_eval_embeddings.py (TestSeeding, TestForgottenFactProtocol, TestExpiryProtocol, TestExpiryReceiptVerification, TestLiveModeBudgetEnforcement, TestCumulativeLedger, TestInitLedgerCommand, TestLexicalControlFailureIsBlocked, TestUnexpectedErrorsKeepEvidence, TestBudgetAcceptanceRowIsTruthful, TestCostReporting, TestNoCredentialOrUpstreamTextEverEscapes), evals/hosted/test_ledger.py and test_mcp_client.py (TestWallClockDeadline, TestResponseClosureAndStallDeadline) against loopback HTTP servers; 298 of 300 tests pass and 2 opt-in tests are skipped. The new TestPreflight.test_preflight_blocks_without_two_current_reviewer_freezes covers both seed and live phases across 12 missing, pending and stale freeze cases, asserting BLOCKED with zero fake-provider calls. All of this is plumbing evidence, not a run against a hosted provider or account.",
+      "status": "NOT_RUN"
+    },
+    {
+      "criterion": "Expected-empty cases return NO current fact: each synthetic target is remembered, shown present, then removed by forget (3 cases) or by a fixed absolute TTL shown absent only after a real wait past the service clock (2 cases); the final inventory is empty; a cross-account sentinel stays inaccessible",
+      "expected": "A --seed then --live run against two real hosted accounts ends with an empty inventory, zero results and facts for all 5 frozen empty queries and the sentinel probe, and a receipt of ids, sent and reported valid_until, and the post-wait clock reading",
+      "observed": "Protocol implemented (evals/hosted/lib/seeding.py, strict score_empty_case with no allowed set) and tested against the loopback fake, whose expiry is evaluated at query time against a shared clock (and once against the real clock with a real wait). Faults blocked, never passed: no forget tool, a lying forget, a forgotten or expired fact still searchable, a TTL ignored, a TTL accepted but not reported, a TTL reported but never applied, a service clock more than the margin behind, an expiry that lapses before presence, an elapsed cap too short for the wait, a cross-account leak. The same protocol also ran end to end against the actual serenity hosted service on loopback with the production constants (TTL 60 s, margin 5 s): 16 of 16 checks passed, the expiry was crossed on the service's own clock, and both accounts ended with zero current facts (docs/launch/evidence/T23.43/local-service-verification.json, evidence level local-process). That run used a synthetic loopback embedding provider, so it proves the plumbing, TTL, service clock, isolation and ordinary APIs, not provider behaviour or retrieval quality. Never run against a provisioned hosted account or a real provider.",
+      "status": "BLOCKED"
+    },
+    {
+      "criterion": "Live and seed budget caps are enforced before any request leaves the process, and the wall-clock deadline holds against slow servers, including a first body byte at half the budget followed by a stall",
+      "expected": "max_calls, max_input_tokens (one token per serialized request byte), max_cost_per_call_usd and max_elapsed_seconds each stop the run before the offending request; the TTL wait counts against max_elapsed_seconds; every response and socket is closed on every path",
+      "observed": "Exact-byte precharge inside MCPClient._post, a watchdog that shuts the socket down at an absolute deadline, and explicit closing are covered by the preserved hard-cap regression tests, TestWallClockDeadline and TestResponseClosureAndStallDeadline. The cumulative ledger (evals/hosted/lib/ledger.py) makes the four caps hold across seed, retry and live processes: every request is reserved durably before it leaves, a reservation is never refunded, a corrupt, empty, torn, conflicting or missing ledger blocks, and only the explicit --init-ledger step creates one (test_ledger.py, TestCumulativeLedger, TestInitLedgerCommand). The elapsed deadline is rechecked after the durable reservation and passed into the lock wait; a 50 ms reservation delay under a 10 ms cap and a real competing lock held past the cap each send zero requests to a loopback server. The stall case ran 0.61 s against a 0.6 s budget. DNS resolution is not covered by the deadline, so there is no end-to-end time guarantee against a hostname. The ledger is a local guard, not tamper-proof: see limitations. No hosted endpoint was contacted.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "cost.actual_usd is null unless a billing measurement exists, and the worst-case reservation is reported under its own name",
+      "expected": "cost.actual_usd null; cost.operator_ceiling_projection_usd = calls x max_cost_per_call_usd, including seed-receipt calls",
+      "observed": "TestCostReporting asserts null actual_usd and the named projection for seed, live, blocked-live, blocked-before-any-call and fixtures results. This result reports actual_usd null and a projection of 0 because no hosted call was made.",
+      "status": "PASS"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "evals/hosted/corpus.json",
+      "sha256": "b24603db8ae668198e9e942f4735ede6e43ac4251ed6e26bfc2c608cc6ac652e"
+    },
+    {
+      "path": "evals/hosted/facts.json",
+      "sha256": "d937fca2bee6aac5ea2fd1a72e2a30e7fd8bc7eff0350ee57c6a58ee4645907a"
+    },
+    {
+      "path": "docs/launch/evidence/T23.43/eval-fixture.json",
+      "sha256": "7146dfa2b67b77defe5d7788b6579d95d20329f0b62b1011ce1d41fc4ba440ef"
+    },
+    {
+      "path": "docs/launch/evidence/T23.43/local-service-verification.json",
+      "sha256": "99eb24298f6bee855bd9512a37aaceafe0eedb41a9166815d2bc67196c7b4064"
+    },
+    {
+      "path": "docs/launch/hosted-completion/embedding-eval.md",
+      "sha256": "8233c4619e70b98cef495e7658d50e19047aa1324396a14ddbcf1e558860031e"
+    }
+  ],
+  "binary_sha256": "508161c586d6ea140756af5a448b580463435bbdc652a00a189a8a39d7e65877",
+  "blockers": [
+    {
+      "owner": "task41 reviewer",
+      "required_input": "Review and sign the freeze receipt in docs/launch/hosted-completion/embedding-eval.md: corpus hash f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6; the lexical-negative criterion, where the draft's raw count (18 hits when at least 20 cases are flagged, 18 of 21 here) is an unapproved interpretation weaker than the contract's 18/20, so choose an exact 20-of-21 subset scored 18 of 20 or an exact ratio such as 19 of 21; and the supplemental plan (hash 4a1b4822937f57c947ab2ef4c8d44462e3c7879d2280b32de5a07198827aa193: target texts, forget/expire modes, expiry timing, sentinel), before any --seed or --live run is authorized."
+    },
+    {
+      "owner": "David / EMBEDDINGS gate owner",
+      "required_input": "Provision EMBEDDINGS_API_KEY with an approved allowance and model pin per docs/launch/hosted-plan.md's external gate registry, and merge T23.42's real provider adapter."
+    },
+    {
+      "owner": "coordinator (identity/provisioning owner, T23.44/46)",
+      "required_input": "Provision two genuinely separate fresh hosted test accounts, then run the 'Seeding and the real-run recipe' in embedding-eval.md (--preflight seed, --seed, --preflight live, --live) with a manifest that carries seeding.authorized, authorization_ref, the provider pin and a budget sized from the --preflight plan, including max_elapsed_seconds well above the 95 s floor. Record the resulting seed receipts and result."
+    },
+    {
+      "owner": "coordinator",
+      "required_input": "Independently verify the T23.43 pass-4 commits (284b038, 19ab870, 547d922, dcf3174 and the evidence commit that follows them), the two ledger repairs (existing empty file must block; deadline rechecked after the durable reservation), and the local-service verification report."
+    }
+  ],
+  "cases": {
+    "executed": 298,
+    "failed": 0,
+    "passed": 298,
+    "planned": 300,
+    "skip_reasons": [
+      "test_local_service.TestActualService is opt-in (T2343_LOCAL_SERVICE=1 with SERENITY_BIN); the same scenario has separate evidence in local-service-verification.json.",
+      "TestLexicalControlArm is opt-in (SERENITY_BIN and SEEDBRAIN_BIN); it was separately run against the prebuilt binaries after adding the verbatim-query positive control and passed."
+    ],
+    "skipped": 2
+  },
+  "commands": [
+    "SERENITY_BIN=/Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/serenity SEEDBRAIN_BIN=/Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/seedbrain python3 -X dev -m unittest discover -s evals/hosted -p \"test_*.py\"",
+    "python3 evals/hosted/corpus_gen.py --check",
+    "SERENITY_BIN=/Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/serenity SEEDBRAIN_BIN=/Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/seedbrain python3 scripts/hosted/eval_embeddings.py --fixtures --manifest docs/launch/hosted-completion/qualification.example.json --output docs/launch/evidence/T23.43/eval-fixture.json",
+    "T2343_LOCAL_SERVICE=1 SERENITY_BIN=/Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/serenity python3 evals/hosted/local_service_fixture.py --output docs/launch/evidence/T23.43/local-service-verification.json",
+    "shasum -a 256 /Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/seedbrain /Volumes/BuildOffload/wt/serenity-launch-runs-20260918/bin/serenity",
+    "git log --oneline a8c12df..HEAD -- cmd internal go.mod go.sum evals/hosted/fixtures"
+  ],
+  "configuration_sha256": "1434535ba051e9c0eab21ae42fcbf46d1a1401c548b78a60afcd9441bd0ce737",
+  "corpus_sha256": "f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6",
+  "cost": {
+    "actual_usd": null,
+    "approved_max_usd": null,
+    "authorization_refs": [],
+    "operator_ceiling_projection_usd": 0.0
+  },
+  "dependencies": {
+    "main_base": "810349ba7c1ed2c05fe34e3892de764a26a4633c"
+  },
+  "evidence_level": "fixture",
+  "limitations": [
+    "'cases' counts the Python suite (python3 -X dev -m unittest discover -s evals/hosted -p \\\"test_*.py\\\"): latest full rerun on source_sha 0ad478bf9ccc7feb88e33fa79c7dd220988feaa0; 300 tests, 298 pass, 2 opt-in skips, no ResourceWarning, no traceback, 172.476 s. The skipped real-service case has separate evidence in local-service-verification.json; the lexical-control binary test was run separately and passed. No hosted provider/account was contacted. The 100-case corpus mechanics run is in docs/launch/evidence/T23.43/eval-fixture.json (100 planned, 100 executed, configuration_sha256 1434535ba051e9c0eab21ae42fcbf46d1a1401c548b78a60afcd9441bd0ce737).",
+    "cost.actual_usd is null: no billing measurement exists for anything this task has run. cost.operator_ceiling_projection_usd is calls x budget.max_cost_per_call_usd, the worst-case reservation the budget guard enforces, and is 0 here because no hosted call was made. It is not a spend figure or an invoice.",
+    "binary_sha256 is the seedbrain helper (evals/hosted/fixtures/seedbrain); the serenity binary used by the lexical control hashes to d738c0243fe32f820d7142490f1f109c76d8cc9afc23652f7bda0abbc7d348c4. Both are the prebuilt binaries from the earlier repair pass (built from cmd/serenity and the seedbrain helper at a8c12df under the R-build-lease with GOFLAGS=-p=2); they were not rebuilt in this pass. No Go source under cmd, internal, go.mod, go.sum or evals/hosted/fixtures changed after a8c12df (git log a8c12df..HEAD over those paths is empty), and the hashes match the ones recorded then.",
+    "No live semantic measurement has ever been taken. EMBEDDINGS_API_KEY is not provisioned, T23.42's real provider adapter is not merged, and no hosted account pair is seeded. --seed and --live are implemented and exercised against a loopback fake that mirrors the real hosted MCP wire shapes and, once, against the actual local hosted service behind a synthetic loopback embedding provider (local-service-verification.json). Every Hit@5 number this task has produced is a fixtures-only mechanical rehearsal (hash-bag, fixed-vector, local lexical control), never a quality PASS.",
+    "Both removal paths for the expected-empty targets (forget for empty-01, empty-02, empty-05; a fixed absolute TTL for empty-03, empty-04) are exercised only against the loopback fake. Its expiry is real semantics (now >= valid_until evaluated at query time on a shared clock, plus one test on the real clock), but it is not the hosted service: whether the real service expires a fact on schedule and drops it from search at that moment is exactly what a real --seed would measure. The expiry is judged on the service's clock; a clock more than the 5 s margin behind the harness's blocks the seed and cannot be told apart from a service that ignores the TTL.",
+    "The supplemental plan (evals/hosted/lib/forgotten_targets.py: five synthetic target texts, the removal mode of each, the expiry timing TTL 60 s / margin 5 s / tail 30 s, and the cross-account sentinel) is a proposed addition outside corpus.json that the task41 reviewer has not confirmed. Its hash is 4a1b4822937f57c947ab2ef4c8d44462e3c7879d2280b32de5a07198827aa193, recorded in every seed receipt as forgotten_targets_sha256 and pinned in embedding-eval.md by a test. The 95 positive queries, the 5 frozen empty queries and every numeric threshold are unchanged, and the frozen corpus hash f2593f81a5935a0e763672a057195f57c3b81475f21f78132689903ce56b56b6 is pinned by test.",
+    "Account-isolation evidence is behavioural: distinct credential references, a seed receipt that records the endpoint and credential env-var name, an empty inventory on the empty-case account, and an unreachable sentinel. A receipt hash is integrity, not approval, and cannot prove two credentials are two accounts. See 'Scope of the account-isolation evidence' in embedding-eval.md.",
+    "The wall-clock deadline does not cover DNS resolution (getaddrinfo cannot be interrupted), so no total end-to-end time guarantee is claimed for a manifest that names a hostname; use literal IPs or already-resolvable hosts. The budget guard charges one token per serialized request byte, an upper bound roughly four times stricter than chars/4.",
+    "The seed's elapsed cap must cover the whole run, including a real 65 s wait. Preflight and seed block a cap below TTL + margin + tail (95 s), but that floor is necessary, not sufficient: the cap must also cover seeding the positive account and the calls before the wait.",
+    "The local lexical control's empty cases run against isolated brains holding one unrelated filler fact (seedbrain refuses an empty brain) and are scored strictly: returning the filler fails. That arm is a control, not the forgotten/expired qualification. The lexical-negative check reads 6/21 in the fixtures run.",
+    "The production lexical fallback (internal/index.LiteralFTSQuery) implicit-ANDs every query term including stopwords, so natural-language questions almost never lexically match a short fact statement regardless of the corpus's designed word-overlap category. See embedding-eval.md 'Known limits'.",
+    "task41's threshold-review freeze receipt in docs/launch/hosted-completion/embedding-eval.md is not signed off. This task proposes the frozen corpus and thresholds but cannot self-approve them.",
+    "Ajent inbox at task boundary was empty through cursor 144; searches returned no relevant T23.43 findings. No external provider, hosted account, or live endpoint was contacted.",
+    "The local-service run has its own label, evidence_level local-process. This result stays at evidence_level fixture because no provider or semantic measurement exists; that run does not raise it. It ran the serenity binary hashed above (d738c024...) on loopback with SERENITY_HOSTED_DEV=1 in an owned directory under /tmp, and its report records the exact source commit (dcf3174, clean harness tree), zero auth failures, the redaction check and the confirmed-gone owned PID.",
+    "Fixture versus live-provider evidence: a loopback, private-range or localhost endpoint, or an environment.kind of local-fixture, always yields evidence_level fixture and a status no higher than PARTIAL, and the Hit@5 row is NOT_RUN or FAIL, never PASS. Host names are not resolved, so a name pointed at a local address is not detected as local. Even a remote endpoint does not prove the provider: provider.declared records the manifest's pin, provider.observed lists only the endpoints called with provider_identity_verified false, and provider.qualification_prerequisites lists what a real run must still show.",
+    "The cumulative ledger is a local guard against accidental overspend, not a defence against its owner. A hash chain cannot detect removal of a whole suffix back to a previously valid prefix, or an edit of the final record, and the owner can delete, rewrite or restore the files. Existing empty, corrupt or torn files block; a missing ledger blocks; renewing an allowance is an intentional offline step (--init-ledger with a new authorization), never automatic. The guarantee that holds is narrower: within the files as written, no process can spend past the four bound caps.",
+    "The deadline controls only this process's monotonic clock, the lock wait and the socket. It does not control wall-clock jumps, DNS resolution or anything the server does after the request leaves. A reservation that expires between the durable write and the send is retained, counted as reserved_not_sent, and never refunded.",
+    "The gateway allows 120 requests per minute per account (fixed one-minute window; 429 with Retry-After: 60) and the harness does not pace itself. The local run waited between phases to stay inside the limit. A real run should pace requests or leave at least 60 s between phases; no pacing or 429 handling was added to the harness.",
+    "The service's remember tool silently ignores unknown arguments (the expiry argument is ttl, an absolute ISO instant). The harness guards against that by requiring the service to echo valid_until before it trusts a TTL. The harness's MCP handshake was wrong for the real transport (session id, MCP-Protocol-Version and notifications/initialized are required); it is fixed and tested.",
+    "One local-service attempt failed intermittently with an OSError while the owned directory was being removed, on a disk about 93 percent full. Cleanup now retries, re-checks that the directory is still the owned one, and reports a leftover instead of hiding it. Later runs, including the recorded one, left nothing behind."
+  ],
+  "profile": "paid",
+  "provider": null,
+  "recorded_at": "2026-09-21T19:24:08Z",
+  "source_sha": "0ad478bf9ccc7feb88e33fa79c7dd220988feaa0",
+  "status": "PARTIAL",
+  "task_id": "T23.43"
+}

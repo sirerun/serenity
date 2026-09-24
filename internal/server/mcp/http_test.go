@@ -3,10 +3,12 @@ package mcp_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +21,7 @@ import (
 type httpClient struct {
 	t         *testing.T
 	srv       *httptest.Server
+	client    *http.Client
 	sessionID string
 }
 
@@ -32,7 +35,7 @@ func newHTTPTestServer(t *testing.T, tools ...mcp.Tool) (*httpClient, *mcp.HTTPH
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	t.Cleanup(h.Close)
-	return &httpClient{t: t, srv: ts}, h
+	return &httpClient{t: t, srv: ts, client: ts.Client()}, h
 }
 
 type postResult struct {
@@ -62,7 +65,7 @@ func (c *httpClient) postRaw(body string, headers map[string]string, contentType
 			req.Header.Set(k, v)
 		}
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		c.t.Fatal(err)
 	}
@@ -355,7 +358,7 @@ func TestHTTPDeleteEndsSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set(mcp.SessionIDHeader, c.sessionID)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -418,7 +421,7 @@ func TestHTTPDisconnectDoesNotCancelToolWork(t *testing.T) {
 
 	respCh := make(chan error, 1)
 	go func() {
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := c.client.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
 		}
@@ -470,7 +473,7 @@ func TestHTTPCloseJoinsInFlightWork(t *testing.T) {
 	h := mcp.NewHTTPHandler(srv)
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
-	c := &httpClient{t: t, srv: ts}
+	c := &httpClient{t: t, srv: ts, client: ts.Client()}
 	c.initialize()
 
 	reqCtx, cancelReq := context.WithCancel(context.Background())
@@ -483,7 +486,7 @@ func TestHTTPCloseJoinsInFlightWork(t *testing.T) {
 	req.Header.Set(mcp.SessionIDHeader, c.sessionID)
 	req.Header.Set(mcp.ProtocolVersionHeader, mcp.ProtocolVersion)
 	go func() {
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := c.client.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
 		}
@@ -501,5 +504,283 @@ func TestHTTPCloseJoinsInFlightWork(t *testing.T) {
 	case <-closed:
 	case <-time.After(3 * time.Second):
 		t.Fatal("Close did not join the in-flight call's goroutine")
+	}
+}
+
+func TestHTTPMetricsTrackCallLifecycle(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	tools := []mcp.Tool{{Name: "block", InputSchema: json.RawMessage(`{"type":"object"}`), Handler: func(context.Context, json.RawMessage) (mcp.Result, error) {
+		close(started)
+		<-release
+		return mcp.Result{Content: []mcp.Content{{Type: "text", Text: "ok"}}}, nil
+	}}}
+	srv, err := mcp.New("test", tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mcp.NewHTTPHandler(srv)
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	t.Cleanup(h.Close)
+	c := &httpClient{t: t, srv: ts, client: ts.Client()}
+	c.initialize()
+	req, err := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"block"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(mcp.SessionIDHeader, c.sessionID)
+	req.Header.Set(mcp.ProtocolVersionHeader, mcp.ProtocolVersion)
+	respCh := make(chan *http.Response, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		resp, requestErr := c.client.Do(req)
+		if requestErr != nil {
+			errCh <- requestErr
+			return
+		}
+		respCh <- resp
+	}()
+	<-started
+	metrics := h.Metrics()
+	if metrics.ActiveCalls != 1 || metrics.CallsStarted != 1 || metrics.CallsFinished != 0 {
+		t.Fatalf("in-flight metrics = %+v, want one active unfinished call", metrics)
+	}
+	close(release)
+	select {
+	case err := <-errCh:
+		t.Fatal(err)
+	case resp := <-respCh:
+		_ = resp.Body.Close()
+	case <-time.After(3 * time.Second):
+		t.Fatal("blocked HTTP call did not finish")
+	}
+	metrics = h.Metrics()
+	if metrics.ActiveCalls != 0 || metrics.CallsFinished != 1 || metrics.CallsCanceled != 0 || metrics.CallLatencyNanos == 0 {
+		t.Fatalf("finished metrics = %+v, want one completed call with latency", metrics)
+	}
+}
+
+func TestHTTPMetricsTrackCancellation(t *testing.T) {
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	tools := []mcp.Tool{{Name: "cancel", InputSchema: json.RawMessage(`{"type":"object"}`), Handler: func(ctx context.Context, _ json.RawMessage) (mcp.Result, error) {
+		close(started)
+		<-ctx.Done()
+		close(finished)
+		return mcp.Result{}, ctx.Err()
+	}}}
+	srv, err := mcp.New("test", tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mcp.NewHTTPHandler(srv)
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	t.Cleanup(h.Close)
+	c := &httpClient{t: t, srv: ts, client: ts.Client()}
+	c.initialize()
+	req, err := http.NewRequest(http.MethodPost, ts.URL, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"cancel"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(mcp.SessionIDHeader, c.sessionID)
+	req.Header.Set(mcp.ProtocolVersionHeader, mcp.ProtocolVersion)
+	go func() {
+		resp, requestErr := c.client.Do(req)
+		if requestErr == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	<-started
+	if r := c.post(`{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}`); r.status != http.StatusAccepted {
+		t.Fatalf("cancel notification status = %d, want 202", r.status)
+	}
+	select {
+	case <-finished:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled tool did not finish")
+	}
+	var metrics mcp.HTTPMetrics
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		metrics = h.Metrics()
+		if metrics.CallsFinished == 1 && metrics.ActiveCalls == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if metrics.ActiveCalls != 0 || metrics.CallsStarted != 1 || metrics.CallsFinished != 1 || metrics.CallsCanceled != 1 || metrics.CallLatencyNanos == 0 {
+		t.Fatalf("cancelled metrics = %+v, want one finished cancellation", metrics)
+	}
+}
+
+func TestHTTPMetricsTrackRejectedSessions(t *testing.T) {
+	c, h := newHTTPTestServer(t)
+	defer h.Close()
+	initialize := func(i int) int {
+		body := fmt.Sprintf(`{"jsonrpc":"2.0","id":"init-%d","method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`, i)
+		req, err := http.NewRequest(http.MethodPost, c.srv.URL, strings.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := c.client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		return resp.StatusCode
+	}
+	for i := 0; i < mcp.MaxHTTPSessions; i++ {
+		if got := initialize(i); got != http.StatusOK {
+			t.Fatalf("initialize %d status = %d, want 200", i, got)
+		}
+	}
+	if got := initialize(mcp.MaxHTTPSessions); got != http.StatusServiceUnavailable {
+		t.Fatalf("overflow initialize status = %d, want 503", got)
+	}
+	if got := h.Metrics().SessionsRejected; got != 1 {
+		t.Fatalf("SessionsRejected = %d, want 1", got)
+	}
+}
+
+func TestHTTPAdmissionRejectsAndReleasesOnCancellation(t *testing.T) {
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	var calls atomic.Int32
+	tools := []mcp.Tool{{Name: "work", InputSchema: json.RawMessage(`{"type":"object"}`), Handler: func(ctx context.Context, _ json.RawMessage) (mcp.Result, error) {
+		if calls.Add(1) == 1 {
+			close(started)
+			<-ctx.Done()
+			close(finished)
+			return mcp.Result{}, ctx.Err()
+		}
+		return mcp.Result{Content: []mcp.Content{{Type: "text", Text: "ok"}}}, nil
+	}}}
+	srv, err := mcp.New("test", tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mcp.NewHTTPHandlerWithConfig(srv, mcp.HTTPConfig{MaxInFlightCalls: 1})
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	t.Cleanup(h.Close)
+	first := &httpClient{t: t, srv: ts, client: ts.Client()}
+	second := &httpClient{t: t, srv: ts, client: ts.Client()}
+	first.initialize()
+	second.initialize()
+
+	call := func(c *httpClient, id int) chan postResult {
+		out := make(chan postResult, 1)
+		go func() {
+			out <- c.post(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"tools/call","params":{"name":"work","arguments":{}}}`, id))
+		}()
+		return out
+	}
+	firstCall := call(first, 1)
+	<-started
+	if rejected := second.post(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"work","arguments":{}}}`); rejected.status != http.StatusOK || errCode(t, rejected) != -32029 {
+		t.Fatalf("overloaded call = status %d body %s, want JSON-RPC -32029", rejected.status, rejected.raw)
+	}
+	if cancelled := first.post(`{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}`); cancelled.status != http.StatusAccepted {
+		t.Fatalf("cancel notification status = %d, want 202", cancelled.status)
+	}
+	select {
+	case <-finished:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled call did not finish")
+	}
+	select {
+	case <-firstCall:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled HTTP call did not return")
+	}
+	if admitted := second.post(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"work","arguments":{}}}`); admitted.status != http.StatusOK || strings.Contains(string(admitted.raw), `"code":-32029`) {
+		t.Fatalf("post-cancellation call was not admitted: status %d body %s", admitted.status, admitted.raw)
+	}
+	metrics := h.Metrics()
+	if metrics.CallsRejected != 1 || metrics.CallsCanceled != 1 || metrics.CallsFinished != 2 || metrics.ActiveCalls != 0 {
+		t.Fatalf("admission metrics = %+v, want one rejection, one cancellation, two finishes", metrics)
+	}
+}
+
+func TestHTTPAdmissionDoesNotReleaseBeforeWorkerReturns(t *testing.T) {
+	started := make(chan struct{})
+	cancelObserved := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	tools := []mcp.Tool{{Name: "work", InputSchema: json.RawMessage(`{"type":"object"}`), Handler: func(ctx context.Context, _ json.RawMessage) (mcp.Result, error) {
+		if calls.Add(1) == 1 {
+			close(started)
+			<-ctx.Done()
+			close(cancelObserved)
+			<-release // simulate a worker that cannot stop immediately
+			return mcp.Result{}, ctx.Err()
+		}
+		return mcp.Result{Content: []mcp.Content{{Type: "text", Text: "ok"}}}, nil
+	}}}
+	srv, err := mcp.New("test", tools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mcp.NewHTTPHandlerWithConfig(srv, mcp.HTTPConfig{MaxInFlightCalls: 1})
+	ts := httptest.NewServer(h)
+	t.Cleanup(ts.Close)
+	t.Cleanup(h.Close)
+	first := &httpClient{t: t, srv: ts, client: ts.Client()}
+	second := &httpClient{t: t, srv: ts, client: ts.Client()}
+	first.initialize()
+	second.initialize()
+	firstCall := make(chan postResult, 1)
+	go func() {
+		firstCall <- first.post(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"work","arguments":{}}}`)
+	}()
+	<-started
+	if cancelled := first.post(`{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}`); cancelled.status != http.StatusAccepted {
+		t.Fatalf("cancel notification status = %d, want 202", cancelled.status)
+	}
+	<-cancelObserved
+	if rejected := second.post(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"work","arguments":{}}}`); rejected.status != http.StatusOK || errCode(t, rejected) != -32029 {
+		t.Fatalf("call admitted before worker returned: status %d body %s", rejected.status, rejected.raw)
+	}
+	close(release)
+	select {
+	case <-firstCall:
+	case <-time.After(3 * time.Second):
+		t.Fatal("worker did not return after release")
+	}
+	if admitted := second.post(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"work","arguments":{}}}`); admitted.status != http.StatusOK || strings.Contains(string(admitted.raw), `"code":-32029`) {
+		t.Fatalf("post-worker call was not admitted: status %d body %s", admitted.status, admitted.raw)
+	}
+}
+
+func TestHTTPMiddlewareValuesArePerRequest(t *testing.T) {
+	type key struct{}
+	srv, err := mcp.New("test", []mcp.Tool{{Name: "identity", InputSchema: json.RawMessage(`{"type":"object"}`), Handler: func(ctx context.Context, _ json.RawMessage) (mcp.Result, error) {
+		value, _ := ctx.Value(key{}).(string)
+		return mcp.Result{Content: []mcp.Content{{Type: "text", Text: value}}}, nil
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mcp.NewHTTPHandler(srv)
+	defer h.Close()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), key{}, r.Header.Get("X-Test-Identity"))))
+	}))
+	defer ts.Close()
+	c := &httpClient{t: t, srv: ts, client: ts.Client()}
+	c.initialize()
+	for _, identity := range []string{"first-access-token", "refreshed-access-token"} {
+		got := c.postRaw(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"identity","arguments":{}}}`, map[string]string{"X-Test-Identity": identity}, "application/json")
+		if !strings.Contains(string(got.raw), identity) {
+			t.Fatalf("request identity was lost: %s", got.raw)
+		}
 	}
 }

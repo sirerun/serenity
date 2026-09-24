@@ -1,0 +1,32 @@
+[
+  {
+    "id": "free",
+    "monthly_cents": 0,
+    "brains": 1,
+    "memories": 1000,
+    "writes": 500,
+    "recalls": 10000,
+    "input_tokens": 100000,
+    "storage_bytes": 100000000
+  },
+  {
+    "id": "builder",
+    "monthly_cents": 1900,
+    "brains": 3,
+    "memories": 10000,
+    "writes": 5000,
+    "recalls": 100000,
+    "input_tokens": 1000000,
+    "storage_bytes": 1000000000
+  },
+  {
+    "id": "scale",
+    "monthly_cents": 4900,
+    "brains": 10,
+    "memories": 50000,
+    "writes": 20000,
+    "recalls": 300000,
+    "input_tokens": 4000000,
+    "storage_bytes": 5000000000
+  }
+]

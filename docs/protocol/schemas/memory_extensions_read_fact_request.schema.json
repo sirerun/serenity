@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_read_fact_request.schema.json",
+  "title": "Exact memory fact read request",
+  "protocol_version": 1,
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "Exact opaque fact id from remember/recall (facts[].fact_id). Never a page slug, entity reference, search query, or the legacy numeric id."
+    }
+  },
+  "required": ["id"],
+  "additionalProperties": false
+}

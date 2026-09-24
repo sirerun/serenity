@@ -515,3 +515,140 @@ func RefreshMemoryFact(ctx context.Context, root, sha string, eng *SQLite, now t
 	}
 	return tx.Commit()
 }
+
+// RefreshMemoryFactSearch indexes one immutable fact and, when configured,
+// embeds only that eligible source. The caller must hold its writer queue for
+// the complete call so a withdrawal cannot race the egress decision. Failure
+// leaves canonical storage untouched; lexical availability can still succeed.
+func RefreshMemoryFactSearch(ctx context.Context, root, sha string, eng *SQLite, embedder Embedder, clock func() time.Time) (state string, expired bool, err error) {
+	state = "unavailable"
+	now := clock()
+	proj, err := store.LoadMemoryProjection(store.NewSourceStore(root))
+	if err != nil {
+		return state, false, err
+	}
+	rec, ok := proj.Get(sha)
+	if !ok {
+		return state, false, fmt.Errorf("index: memory source not found")
+	}
+	expired = rec.Expired(now)
+	if err := RefreshMemoryFact(ctx, root, sha, eng, now); err != nil {
+		return state, expired, err
+	}
+	hit := Hit{ChunkRef: "fact:" + sha, EntitySlug: rec.Payload.EntitySlug, Text: rec.Payload.Fact, SourceSHA256: sha, Kind: store.SourceKindMemoryFact}
+	eligible, err := RetrievalEligibility(root, proj, true, true, now)
+	if err != nil {
+		return state, expired, err
+	}
+	if !eligible(hit) || rec.Expired(clock()) {
+		return "not_eligible", rec.Expired(clock()), nil
+	}
+	state = "lexical"
+	if embedder == nil {
+		return state, expired, nil
+	}
+	pin := embedder.ModelVersion()
+	has, err := eng.HasVector(ctx, hit.ChunkRef, pin)
+	if err != nil {
+		return state, expired, err
+	}
+	if rec.Expired(clock()) {
+		return "not_eligible", true, nil
+	}
+	if has {
+		return "semantic", false, nil
+	}
+	// Bound egress by remaining TTL as well as the caller's indexing deadline.
+	if rec.Payload.ValidUntil != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, rec.Payload.ValidUntil.Sub(clock()))
+		defer cancel()
+	}
+	if rec.Expired(clock()) {
+		return "not_eligible", true, nil
+	}
+	if ctx.Err() != nil {
+		return state, false, ctx.Err()
+	}
+	vec, err := embedder.Embed(ctx, hit.Text)
+	if rec.Expired(clock()) {
+		return "not_eligible", true, nil
+	}
+	if err != nil {
+		return state, expired, err
+	}
+	if err := eng.UpsertVector(ctx, hit.ChunkRef, pin, vec); err != nil {
+		return state, expired, err
+	}
+	return "semantic", expired, nil
+}
+
+// RecoverMemorySearch repairs the memory index from canonical sources in one
+// projection scan, reusing vectors under the unchanged model pin. The caller
+// must hold exclusive writer ownership for the entire pass. This is the named
+// hosted recovery seam: no caller-provided fact text becomes index authority.
+func RecoverMemorySearch(ctx context.Context, root string, eng *SQLite, embedding Embedder) error {
+	projection, err := store.LoadMemoryProjection(store.NewSourceStore(root))
+	if err != nil {
+		return err
+	}
+	chunks, err := eng.AllChunks(ctx)
+	if err != nil {
+		return err
+	}
+	existing := make(map[string]Hit, len(chunks))
+	for _, hit := range chunks {
+		existing[hit.ChunkRef] = hit
+	}
+	eligible, err := RetrievalEligibility(root, projection, true, true, time.Now())
+	if err != nil {
+		return err
+	}
+	for _, fact := range projection.All() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if fact.Expired(time.Now()) {
+			continue
+		}
+		ref := "fact:" + fact.SHA256
+		hit := Hit{ChunkRef: ref, EntitySlug: fact.Payload.EntitySlug, Text: fact.Payload.Fact, SourceSHA256: fact.SHA256, Kind: store.SourceKindMemoryFact}
+		prior, found := existing[ref]
+		if !found {
+			if err = eng.InsertChunk(ctx, ref, hit.EntitySlug, hit.Text, hit.SourceSHA256, hit.Kind); err != nil {
+				return err
+			}
+		} else if prior != hit {
+			if err = RefreshMemoryFact(ctx, root, fact.SHA256, eng, time.Now()); err != nil {
+				return err
+			}
+		}
+		if embedding == nil || !eligible(hit) || fact.Expired(time.Now()) {
+			continue
+		}
+		present, err := eng.HasVector(ctx, ref, embedding.ModelVersion())
+		if err != nil {
+			return err
+		}
+		if present {
+			continue
+		}
+		deadline := time.Now().Add(15 * time.Second)
+		if fact.Payload.ValidUntil != nil && fact.Payload.ValidUntil.Before(deadline) {
+			deadline = *fact.Payload.ValidUntil
+		}
+		callCtx, cancel := context.WithDeadline(ctx, deadline)
+		vec, err := embedding.Embed(callCtx, hit.Text)
+		cancel()
+		if err != nil {
+			return err
+		}
+		if fact.Expired(time.Now()) {
+			continue
+		}
+		if err = eng.UpsertVector(ctx, ref, embedding.ModelVersion(), vec); err != nil {
+			return err
+		}
+	}
+	return nil
+}

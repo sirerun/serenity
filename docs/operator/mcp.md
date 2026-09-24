@@ -189,3 +189,66 @@ curl -i http://127.0.0.1:<port>/mcp
 For a fuller check against the frozen conformance transcripts (MEMORY_VERBS
 plus DISPOSITION/DIRECTION, if also registered on this target), see
 [Protocol conformance](conformance.md).
+
+### Optional keyed remember recovery (pending release)
+
+A binary advertising `operation_key` on `remember` can recover an ambiguous
+write by replaying the original payload with that key. Keys are brain-scoped,
+1–128 ASCII letters/digits or `_.:-`, and are durable public identifiers within
+the brain, never credentials. A keyed TTL must be absolute or omitted. Different
+keys allocate distinct facts; a key reused with changed durable input returns
+`operation_conflict`. The response's `expired` field reports current expiry,
+including withdrawal. Retrying a withdrawn keyed write returns its original ID
+without reviving it. Keep the same supported writer version for all writers;
+older binaries ignore this additive field and cannot enforce the contract.
+
+This extends exact retry under the existing single-queue constraint; it does
+not establish cross-process exclusion or an operation-status service. See
+[the recovery contract](../plans/keyed-memory-recovery.md).
+
+### Canonical writer ownership (pending release)
+
+One supported CLI process owns canonical writes to a brain at a time. A second
+server or mutating CLI command fails promptly with `another Serenity writer owns
+this brain`. The lock remains through shutdown and flush; process death releases
+it. Do not delete `.serenity/writer.lock` to bypass an owner. Stop the server
+before running sync, import, cron or other canonical CLI mutations, or use its
+existing MCP verbs where applicable. Multiple MCP clients can share one HTTP
+server. The generated plan-check hook remains usable while serve runs.
+
+This is a local cooperating-process guarantee, requiring supported binaries for
+all writers; it does not serialize arbitrary Git/filesystem edits or grant
+atomic snapshots to readers. See [ownership contract](../plans/cli-writer-ownership.md).
+
+### Fresh-write search readiness (pending release)
+
+`remember` returns `search_state`: `semantic` when the eligible fact has a vector
+under the configured pin, `lexical` when only keyword search is ready,
+`not_eligible` for excluded lifecycle/audience state, or `unavailable` when the
+search projection could not be established. These fields are optional for compatibility with older v1 servers; missing
+readiness means unknown. These describe search readiness,
+not acceptance or truth. Canonical storage success remains represented by the
+fact ID and status. Retry the same operation key to recover missing indexing.
+
+Configured embedding work runs under the writer queue with a ten-second context
+deadline; competing canonical mutations wait for that decision. Private and
+withdrawn sources do not enter the provider. With no embedding provider, the
+existing lexical behavior remains. No separate daemon restart or whole-brain
+extract pass is needed for a successfully indexed fresh write.
+
+### Canceling an ambiguous write
+
+When tools/list advertises `cancel_memory_operation`, callers can send its
+`operation_key` without an acknowledged fact ID. This durably prevents a delayed missing write from being created and expires
+an already-written matching world fact without replaying its revoked body.
+`canceled:true` confirms the fence. `id` is empty if no fact existed; `expired`
+is true only if this call expired a live fact. Retrying cancellation is safe.
+A later remember returns `operation_canceled` for an absent canceled key, or
+recovers the original expired identity when it already existed. Do not change
+keys to bypass withdrawal. Existing private facts remain outside remote scope.
+
+Operation cancellation uses canonical memory_expiry format v2. Older writers
+and readers reject such a brain; do not downgrade to a binary lacking support.
+Ordinary fact-ID expiry stays v1. Git/history bytes are retained, so cancellation
+is logical withdrawal, not physical purge. Check advertised support before
+relying on cancellation to close cross-system ingestion races.

@@ -57,10 +57,19 @@ explicitly:
 server:
   bind: "0.0.0.0:8443"     # or a Tailscale interface address
   allow_lan: true           # required for a non-loopback bind to succeed
+  max_in_flight_calls: 256  # optional MCP tools/call admission budget
 ```
 
 Without `allow_lan: true`, the daemon refuses to start rather than
 silently exposing itself.
+
+`max_in_flight_calls` is optional. It sets the concurrent `tools/call` budget
+for this daemon's MCP HTTP handler; omitted or zero uses the default budget
+of 2,048. The `serve --http` daemon creates one such handler, so the budget
+covers all of its MCP sessions. Separate `HTTPHandler` instances have
+separate budgets. Calls rejected after the budget is full receive JSON-RPC
+error `-32029` and can be retried. The budget is released when the tool
+worker returns, including after a cancellation request.
 
 ### Optional mTLS
 
