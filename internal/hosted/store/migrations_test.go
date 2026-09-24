@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 	_ "modernc.org/sqlite"
@@ -35,8 +37,8 @@ func TestLegacySchemasUpgradeTwiceAndPreserveControlData(t *testing.T) {
 				if err := s.db.QueryRow(`SELECT max(version),count(*) FROM schema_migrations`).Scan(&version, &count); err != nil {
 					t.Fatal(err)
 				}
-				if version != 5 || count != 5 {
-					t.Fatalf("migration versions max=%d count=%d, want 5/5", version, count)
+				if version != 7 || count != 7 {
+					t.Fatalf("migration versions max=%d count=%d, want 7/7", version, count)
 				}
 				if pass == 2 {
 					if err := assertOperationSchema(s.db); err != nil {
@@ -97,7 +99,7 @@ func TestFutureSchemaIsRejectedWithoutWriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec(`INSERT INTO schema_migrations(version,applied_at) VALUES(6,'future')`); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO schema_migrations(version,applied_at) VALUES(8,'future')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {
@@ -107,11 +109,35 @@ func TestFutureSchemaIsRejectedWithoutWriting(t *testing.T) {
 	if opened, err := Open(path); err == nil {
 		_ = opened.Close()
 		t.Fatal("future schema opened")
-	} else if got := err.Error(); got != "migrate hosted database: unsupported hosted schema version 6" {
+	} else if got := err.Error(); got != "migrate hosted database: unsupported hosted schema version 8" {
 		t.Fatalf("future schema error = %q", got)
 	}
 	if after := databaseFileHash(t, path); after != before {
 		t.Fatalf("future schema rejection wrote database: before %x after %x", before, after)
+	}
+}
+
+func TestCheckoutRequestIdentityIsImmutableButSessionCanBeSaved(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "control.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	a, err := s.CreateAccount(context.Background(), "checkout-migration@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.Exec(`INSERT INTO checkout_attempts(account_id,id,price_id,created_at,request_version,request_body) VALUES(?,?,?,?,1,?)`, a.ID, "attempt-a", "price_a", Stamp(time.Now()), "mode=subscription&customer=cus_a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.db.Exec(`UPDATE checkout_attempts SET session_id='cs_a' WHERE account_id=?`, a.ID); err != nil {
+		t.Fatalf("saving provider session id failed: %v", err)
+	}
+	if _, err = s.db.Exec(`UPDATE checkout_attempts SET request_body='customer=cus_b' WHERE account_id=?`, a.ID); err == nil {
+		t.Fatal("immutable checkout request body changed")
+	}
+	if _, err = s.db.Exec(`UPDATE checkout_attempts SET id='attempt-b' WHERE account_id=?`, a.ID); err == nil {
+		t.Fatal("checkout attempt identity changed in place")
 	}
 }
 

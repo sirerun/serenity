@@ -1,0 +1,91 @@
+package billing_test
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/sirerun/serenity/internal/hosted/billing"
+	"github.com/sirerun/serenity/internal/hosted/store"
+)
+
+// The same provider snapshot and event must converge regardless of which
+// synchronization path reaches a fresh local database first.
+func TestGraceDeadlineIndependentOfDeliveryOrder(t *testing.T) {
+	ctx := context.Background()
+	period := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	eventTime := period.Add(10 * 24 * time.Hour)
+	snapshot := fmt.Sprintf(`{"id":"sub_order","customer":"cus_order","status":"past_due","latest_invoice":"in_order","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}`, period.Unix(), period.Add(30*24*time.Hour).Unix())
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/subscriptions":
+			fmt.Fprintf(w, `{"data":[%s],"has_more":false}`, snapshot)
+		case "/subscriptions/sub_order":
+			fmt.Fprint(w, snapshot)
+		default:
+			t.Errorf("unexpected provider request: %s", r.URL.Path)
+			http.Error(w, "unexpected request", 500)
+		}
+	}))
+	t.Cleanup(provider.Close)
+	deadlines := make(map[string]string)
+	for _, order := range []string{"webhook_first", "reconcile_first"} {
+		t.Run(order, func(t *testing.T) {
+			db, err := store.Open(filepath.Join(t.TempDir(), "control.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := db.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			account, err := db.CreateAccount(ctx, "order@example.com")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_order' WHERE id=?`, account.ID); err != nil {
+				t.Fatal(err)
+			}
+			service := &billing.Service{Store: db, Config: billing.Config{SecretKey: "fixture", WebhookSecret: "secret", BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}
+			webhook := func() {
+				body, err := json.Marshal(map[string]any{"id": "evt_order", "type": "customer.subscription.updated", "created": eventTime.Unix(), "data": map[string]any{"object": map[string]any{"id": "sub_order"}}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := service.Webhook(ctx, body, signature(body, "secret", time.Now())); err != nil {
+					t.Fatal(err)
+				}
+			}
+			reconcile := func() {
+				if _, err := service.ReconcileCustomer(ctx, account.ID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if order == "webhook_first" {
+				webhook()
+				reconcile()
+			} else {
+				reconcile()
+				webhook()
+			}
+			var deadline string
+			if err := db.DB().QueryRowContext(ctx, `SELECT grace_until FROM subscriptions WHERE id='sub_order'`).Scan(&deadline); err != nil {
+				t.Fatal(err)
+			}
+			deadlines[order] = deadline
+		})
+	}
+	if len(deadlines) != 2 {
+		t.Fatal("both synchronization orders must execute")
+	}
+	if deadlines["webhook_first"] != deadlines["reconcile_first"] {
+		t.Fatalf("same provider state gives different grace deadlines: webhook first=%s; reconcile first=%s", deadlines["webhook_first"], deadlines["reconcile_first"])
+	}
+}

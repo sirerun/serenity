@@ -86,3 +86,34 @@ CREATE INDEX oauth_codes_expiry ON oauth_codes(expires_at);
 CREATE INDEX oauth_tokens_expiry ON oauth_tokens(expires_at);
 INSERT INTO schema_migrations(version,applied_at) VALUES(5,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 `
+
+// migration6 preserves the exact provider evidence behind a grace deadline
+// and the immutable parameters used to create a Checkout Session. Without
+// these records, process-order and configuration changes could change billing
+// outcomes after a retry or restart.
+const migration6 = `
+ALTER TABLE checkout_attempts ADD COLUMN request_version INTEGER NOT NULL DEFAULT 0 CHECK(request_version IN (0,1));
+ALTER TABLE checkout_attempts ADD COLUMN request_body TEXT;
+CREATE TRIGGER checkout_attempt_request_immutable
+ BEFORE UPDATE OF id,request_version,request_body ON checkout_attempts
+ WHEN NEW.id<>OLD.id OR NEW.request_version<>OLD.request_version OR NEW.request_body IS NOT OLD.request_body
+ BEGIN SELECT RAISE(ABORT,'checkout request identity is immutable'); END;
+CREATE TABLE billing_failures(
+ account_id TEXT NOT NULL REFERENCES accounts(id),
+ subscription_id TEXT NOT NULL,
+ invoice_id TEXT NOT NULL,
+ event_id TEXT NOT NULL,
+ first_failed_at TEXT NOT NULL,
+ PRIMARY KEY(subscription_id,invoice_id)
+);
+CREATE INDEX billing_failures_account ON billing_failures(account_id,subscription_id);
+INSERT INTO schema_migrations(version,applied_at) VALUES(6,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+`
+
+// migration7 records which exact provider invoice established the current
+// past-due grace window. A second failed invoice in the same billing period
+// must not silently extend access.
+const migration7 = `
+ALTER TABLE subscriptions ADD COLUMN grace_invoice_id TEXT;
+INSERT INTO schema_migrations(version,applied_at) VALUES(7,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+`

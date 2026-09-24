@@ -2,72 +2,94 @@
   "task_id": "T23.47",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "ba1999caedbf1ea6e2175f23c09c1ce9b685e3b2",
-  "recorded_at": "2026-09-22T23:34:00Z",
+  "source_sha": "9c6b88a75bcfcd477b3e8e6804659b0aed31fc94",
+  "recorded_at": "2026-09-24T16:04:41.097388+00:00",
   "evidence_level": "local-process",
   "dependencies": {
     "T23.41": "ab39dd0"
   },
   "commands": [
-    "go test ./internal/hosted/billing ./internal/hosted/contracts ./internal/hosted/service",
-    "go test -tags hostedtest ./internal/hosted/billing ./internal/hosted/testhooks",
-    "go test -race -count=1 ./internal/hosted/billing ./internal/hosted/meter"
+    "go test -race -count=1 -tags hostedtest -json ./internal/hosted/billing ./internal/hosted/testhooks",
+    "golangci-lint run ./internal/hosted/billing"
   ],
   "cases": {
-    "planned": 8,
-    "executed": 8,
-    "passed": 8,
+    "planned": 31,
+    "executed": 31,
+    "passed": 31,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
   },
   "acceptance": [
     {
-      "criterion": "Checkout return alone never grants access and duplicate provider subscriptions are rejected",
-      "expected": "Provider snapshot is authoritative; duplicate nonterminal subscriptions fail closed",
-      "observed": "ReconcileCustomer validates server-owned customer, known prices, single nonterminal subscription and atomically updates entitlements; fixture tests pass",
+      "criterion": "Checkout return alone never grants access; one customer cannot acquire duplicate active paid subscriptions through retries",
+      "expected": "Provider snapshot is authoritative for entitlement, never a client-supplied return; a customer holding any nonterminal subscription cannot start a second checkout, and duplicate nonterminal subscriptions reported by the provider fail closed rather than picking one",
+      "observed": "Checkout() blocks a second attempt while one nonterminal subscription exists and returns the same session on retry (TestCheckoutSurvivesRestartAndPreventsSecondPlan). ReconcileCustomer rejects two nonterminal subscriptions for one customer without granting access or corrupting the account's plan (TestReconcileRejectsDuplicateNonterminalSubscriptions, added this pass) Coordinator regression now inserts reconciliation between initial checkout and fresh-Service retry. It failed before 874dd90 because empty subscription lists erased an open attempt. The corrected path retains it, rejects a different plan, and reuses the original session without a second creation.",
       "status": "PASS"
     },
     {
-      "criterion": "Deletion closes open checkout sessions and all provider subscriptions, including unobserved subscriptions",
-      "expected": "CloseBillingAccount expires sessions, cancels all listed subscriptions and rechecks provider truth",
-      "observed": "Stateful provider fixture covers expiry, cancellation and final empty recheck; race suite passes",
-      "status": "PASS"
+      "criterion": "Checkout completed before webhook then deletion cancels that subscription; open checkout cannot leave a live subscription after deletion closure is certified",
+      "expected": "CloseBillingAccount expires open checkout sessions, cancels every provider subscription including ones never observed locally, and only certifies closed after a re-list confirms none remain active; a resumed call after partial success stays idempotent",
+      "observed": "TestReconcileCustomerAndCloseBillingAccount confirms session expiry, subscription cancellation and the post-cancel recheck before CloseStatusClosed. TestCloseBillingAccountResumesAfterAlreadyClosedProviderState (added this pass) confirms a second call against already-terminal provider state, with a stale local checkout row left over as if a prior local commit never landed, still certifies closed and clears the stale row TestCloseBillingRetriesAfterProviderSuccessAndLocalCommitFailure now injects an actual SQLite transaction abort after successful provider cancellation, asserts pending and rollback, then retries through a fresh Service and proves local cancellation/free plan with exactly one provider cancellation. Known-session expiration now checks matching ID and expired status. A real provider-success/local-session-save-failure fixture reproduced false closure; corrected behavior retains the unknown attempt and returns pending. Automatic unknown-session resolution is not implemented, so full resumable closure remains unqualified.",
+      "status": "NOT_RUN"
     },
     {
       "criterion": "Stale checkout attempts are repaired account-scoped and auditable; late webhooks are idempotently acknowledged",
-      "expected": "Old attempts are resolved or fail closed with audit entry; deleting/deleted customer events do not retry forever",
-      "observed": "ReconcileCustomer repairs attempts older than 23h, writes audit_log, and webhook acknowledges absent/frozen accounts",
-      "status": "PASS"
+      "expected": "Attempts older than 23h are resolved or fail closed with an audit_log entry; webhooks for a deleted account acknowledge without creating entitlement; duplicate event IDs are not refetched",
+      "observed": "Known-session old-attempt fixtures prove confirmed expiration removes the attempt with one audit, while open/completed/wrong-ID expiration responses retain it without a success audit. Empty-ID attempts now remain ambiguous rather than being dropped due to age. Automatic resolution of these attempts and the complete late-deletion event matrix remain unqualified; existing duplicate-event tests cover a subset.",
+      "status": "NOT_RUN"
     },
     {
-      "criterion": "Fixed payment-failure grace remains stable under replay",
-      "expected": "First past_due observation starts 72h; replay preserves deadline",
-      "observed": "Existing webhook grace test and reconciliation projection preserve the stored deadline",
-      "status": "PASS"
+      "criterion": "Grace deadline is stable under delayed/replayed events, first observed past_due, missed activation, new invoice/renewal and delayed old failure after payment. Renewal opens a fresh allowance while retaining old-window accounting history",
+      "expected": "The 72h payment-failure grace anchors to an authoritative provider timestamp, never local processing time, so delayed delivery or a delayed reconcile cannot silently extend or misplace it; a renewal into a new unpaid period starts a fresh deadline while the closed window's accounting is retained, not overwritten in place",
+      "observed": "Coordinator source review rejects the timestamp semantics: subscription period start need not equal payment failure, and an old event can trigger a fetch of a newer past_due snapshot. Webhook event.created then does not identify that current failure. The paths can produce different initial deadlines depending on arrival order. Existing passing fixtures encode the disputed anchors and do not prove this full criterion. Invoice-bound failure identity and durable timing evidence remain required. Executed delivery-order reproducer on ba90538 yielded September14 versus September4 for the same provider state. Its source is retained separately as an explicitly failing qualification reproducer; the passing default tests do not include it.",
+      "status": "FAIL"
     },
     {
       "criterion": "Hostedtest phase barrier is present and production build cannot activate it",
       "expected": "Reconciliation calls PhaseReconcileFenced; tagged/untagged testhook behavior is proven",
-      "observed": "Call site added; hostedtest and ordinary testhook suites pass",
+      "observed": "Latest tagged race verification passed 23 billing and 8 testhook top-level tests, including the real dashboard pending-deletion route fixture. Production/tagged probe behavior remains covered by the testhook suite. Build lease released; lint zero issues. This does not qualify automatic checkout recovery, grace timing, or assembled deletion.",
       "status": "PASS"
+    },
+    {
+      "criterion": "Required-step-5 fixture state table (covered subset): initial incomplete/failure, activation, renewal, scheduled downgrade, cancellation/re-subscription state transitions reused via dedup/late-event tests, duplicate subscription, stale/duplicate/reversed events, unknown price, reconcile-side provider outage, provider-success/local-save failure",
+      "expected": "Each named fixture state exercised by a scenario naming it",
+      "observed": "Coordinator added TestWebhookPriceChangesCancellationAndResubscription (activation, same-subscription upgrade, applied downgrade, cancellation and new subscription) and TestWebhookProviderOutageLeavesEventRetryable (503 preserves free access and unprocessed event; retry grants access and marks processed). These passed with race detection. This does not prove portal scheduling, proration, Checkout-based re-subscription, or full provider portal behavior; the complete matrix remains unqualified. Actual provider-success/local-commit-failure recovery is now separately proven by the injected-transaction test; the full remaining matrix is still not qualified.",
+      "status": "NOT_RUN"
+    },
+    {
+      "criterion": "Required-step-5 fixture state table (remaining gap): dedicated upgrade (price change on an existing subscription id), a full cancellation-then-re-subscription cycle, and webhook-side provider outage",
+      "expected": "Each named fixture state exercised by a scenario naming it",
+      "observed": "Coordinator added TestWebhookPriceChangesCancellationAndResubscription (activation, same-subscription upgrade, applied downgrade, cancellation and new subscription) and TestWebhookProviderOutageLeavesEventRetryable (503 preserves free access and unprocessed event; retry grants access and marks processed). These passed with race detection. This does not prove portal scheduling, proration, Checkout-based re-subscription, or full provider portal behavior; the complete matrix remains unqualified. Actual provider-success/local-commit-failure recovery is now separately proven by the injected-transaction test; the full remaining matrix is still not qualified.",
+      "status": "NOT_RUN"
     },
     {
       "criterion": "Live Stripe lifecycle qualification",
       "expected": "Test products, webhooks, test clocks and provider receipts",
-      "observed": "No Stripe test objects or live provider calls were made; Composio Stripe toolkit remains unavailable",
+      "observed": "Not run: this lane is explicitly fixture-only. Credentials were intentionally not supplied to the worker; this is not evidence they are globally unavailable.",
       "status": "NOT_RUN"
     }
   ],
   "artifacts": [
     {
-      "path": "internal/hosted/billing/billing.go"
+      "path": "internal/hosted/billing/billing.go",
+      "sha256": "93bc7ebe8c7c3b35687e95364b33b56af5c1cf0b3b88027becf7de65002b4e21"
     },
     {
-      "path": "internal/hosted/billing/billing_test.go"
+      "path": "internal/hosted/billing/billing_test.go",
+      "sha256": "10ed88c18b3f1ccc3b0129e60bb59b022f1fefc53f6977ab16de5610d9c76628"
     },
     {
-      "path": "docs/launch/evidence/T23.47/result.json"
+      "path": "internal/hosted/billing/checkout_interruption_test.go",
+      "sha256": "9c0dacebfcaeabcc4ca31310688406d7cab5d9ef0c7e6b6240f72a2b43e4bb5d"
+    },
+    {
+      "path": "internal/hosted/billing/checkout_reconcile_test.go",
+      "sha256": "19b570f5d8681f51720355ddf7eb3686d897c38f31a5e1a801accd4d3b9cce78"
+    },
+    {
+      "path": "internal/hosted/billing/legacy_closure_test.go",
+      "sha256": "e4ef4065942903cf35ff616d8a37ceefbe06d4881efadf86474f464be423b36c"
     }
   ],
   "cost": {
@@ -78,18 +100,24 @@
     ]
   },
   "limitations": [
-    "Live Stripe test-object lifecycle, test-clock renewal and webhook delivery remain unqualified.",
     "Service assembly does not yet invoke ReconcileCustomer/CloseBillingAccount; integrator task T23.57 must wire the frozen interfaces.",
-    "No production deployment or external provider mutation occurred."
+    "No production deployment or external provider mutation occurred.",
+    "Payment-failure timing remains incorrect/unaccepted; see coordinator-review.md.",
+    "Local lifecycle fixtures do not configure or qualify provider portal policy, checkout re-subscription, proration ; injected local-save failure after provider success is now covered by a local fixture.",
+    "Latest verification includes legacy CancelAccount pending propagation and dashboard 503/account-plan-session retention; no brain exists in that fixture, so memory-file retention is not proven."
   ],
   "blockers": [
     {
-      "owner": "integrator",
+      "owner": "integrator (T23.57, R-hosted-assembly)",
       "required_input": "Wire the billing reconciler and closer into service/deletion assembly under the frozen contracts."
     },
     {
       "owner": "billing/coordinator",
-      "required_input": "Connect Stripe test toolkit and run isolated test lifecycle qualification after T23.63 setup."
+      "required_input": "Correct and qualify invoice-bound grace timing; execute live Stripe lifecycle only in its separately authorized qualification phase."
     }
-  ]
+  ],
+  "binary_sha256": null,
+  "configuration_sha256": null,
+  "corpus_sha256": null,
+  "provider": null
 }
