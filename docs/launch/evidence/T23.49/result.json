@@ -2,8 +2,8 @@
   "task_id": "T23.49",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "9cd0a2d4064a9de51ec96533c9b571b0af9e352e",
-  "recorded_at": "2026-09-24T15:10:00Z",
+  "source_sha": "c680510068b28110075c2599c4a34d29517e0802",
+  "recorded_at": "2026-09-24T15:40:00Z",
   "evidence_level": "local-process",
   "dependencies": {
     "T23.41": "ab39dd02cb227a08f6ab31bfe7f8d7fdf374357d"
@@ -17,9 +17,9 @@
     "go test -race -count=1 ./internal/hosted/backup/... (exit status checked directly, not inferred from a piped command)"
   ],
   "cases": {
-    "planned": 25,
-    "executed": 25,
-    "passed": 25,
+    "planned": 26,
+    "executed": 26,
+    "passed": 26,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
@@ -28,7 +28,7 @@
     {
       "criterion": "Truncated/tampered DB/bundle/manifest, duplicate/omitted/unknown brain, unsupported schema and unsafe path all fail before reactivation.",
       "expected": "Every listed corruption/tamper class is rejected before any bytes are published to the restore destination.",
-      "observed": "Fixture tests cover: truncated/tampered control.db and bundle (checksum/length), truncated and legacy-v1 manifest, tampered bundle head recorded in the manifest, unknown brain (renamed ID) and omitted brain (dropped manifest entry) against the restored control database, schema-version mismatch between manifest and artifact (checked read-only before store.Open can migrate), and a symlinked control.db/bundle/manifest.json. Every case leaves no destination directory at all (os.Stat confirms ErrNotExist). Fixture/local-process evidence only.",
+      "observed": "Fixture tests cover: truncated/tampered control.db and bundle (checksum/length), truncated and legacy-v1 manifest, tampered bundle head recorded in the manifest, unknown brain (renamed ID) and omitted brain (dropped manifest entry) against the restored control database, a ready brain tampered into a false manifest Empty claim (TestRestoreRejectsReadyBrainMarkedEmptyInManifest -- reproduces a real data-loss path the coordinator demonstrated: a structurally valid manifest keeping a ready brain's ID but zeroing its artifact/heads and setting Empty=true previously passed inventory verification and restoreBrain silently created an empty directory in its place; confirmed this test fails against the prior code and passes against the fix), schema-version mismatch between manifest and artifact (checked read-only before store.Open can migrate), and a symlinked control.db/bundle/manifest.json. Every case leaves no destination directory at all (os.Stat confirms ErrNotExist). Fixture/local-process evidence only.",
       "status": "PASS"
     },
     {
@@ -47,7 +47,7 @@
   "artifacts": [
     {
       "path": "internal/hosted/backup/backup.go",
-      "sha256": "eee711aea8775ece06d5c06339db01b4e956d42c3b5d29797c47adc80855d29f"
+      "sha256": "ecedb2997bedbbc8d359f082f8e4447ab5d982715f1481d7c841a929366f9169"
     },
     {
       "path": "internal/hosted/backup/client.go",
@@ -55,7 +55,7 @@
     },
     {
       "path": "internal/hosted/backup/backup_test.go",
-      "sha256": "fde9c3aa497481af1cdd2e6f7f47bf0cfcdb3fdb101c53720a8eda55375cb224"
+      "sha256": "bf3f9fccbc53342dbf0d96320f8084864171037c9177edf709c49d2db00d42b1"
     },
     {
       "path": "internal/hosted/backup/faultbarrier_test.go",
