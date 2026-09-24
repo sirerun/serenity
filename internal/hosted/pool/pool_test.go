@@ -5,12 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/hosted/pool"
+	"github.com/sirerun/serenity/internal/hosted/provision"
 	hoststore "github.com/sirerun/serenity/internal/hosted/store"
 	"github.com/sirerun/serenity/internal/writer"
 )
@@ -109,5 +112,66 @@ func TestEvictionOwnershipAndBoundedAdmission(t *testing.T) {
 	}
 	if !recalled {
 		t.Fatal("recall tool absent")
+	}
+}
+
+func TestProvisionedBrainCommitsConfigOnFirstOpenAndRetry(t *testing.T) {
+	for _, interrupted := range []bool{false, true} {
+		name := "first_open"
+		if interrupted {
+			name = "config_written_before_interruption"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			dir := t.TempDir()
+			db, err := hoststore.Open(filepath.Join(dir, "db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := db.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			a, err := db.CreateAccount(ctx, "pool-init@example.com")
+			if err != nil {
+				t.Fatal(err)
+			}
+			brains := filepath.Join(dir, "brains")
+			b, err := (&provision.Provisioner{Store: db, BrainsRoot: brains}).Provision(ctx, a.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := filepath.Join(brains, b.ID)
+			if interrupted {
+				c := config.Default()
+				c.Models.Embedding = (embedding{}).ModelVersion()
+				if err := c.Save(filepath.Join(root, config.FileName)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p, err := pool.New(pool.Config{BrainsRoot: brains, MaxOpen: 1, MaxInFlight: 1, Embedder: embedding{}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := p.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			_, release, err := p.Acquire(ctx, b.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			release()
+			out, err := exec.CommandContext(ctx, "git", "-C", root, "show", "HEAD:"+config.FileName).CombinedOutput()
+			if err != nil || !strings.Contains(string(out), (embedding{}).ModelVersion()) {
+				t.Fatalf("model config not committed: %v %s", err, out)
+			}
+			out, err = exec.CommandContext(ctx, "git", "-C", root, "status", "--porcelain").CombinedOutput()
+			if err != nil || len(out) != 0 {
+				t.Fatalf("first open left dirty canonical state: %v %s", err, out)
+			}
+		})
 	}
 }
