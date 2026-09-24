@@ -2,8 +2,8 @@
   "task_id": "T23.49",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "c680510068b28110075c2599c4a34d29517e0802",
-  "recorded_at": "2026-09-24T15:40:00Z",
+  "source_sha": "9815c7ad7e4e2ee301f65a5e9fd1934e177aad53",
+  "recorded_at": "2026-09-24T16:05:00Z",
   "evidence_level": "local-process",
   "dependencies": {
     "T23.41": "ab39dd02cb227a08f6ab31bfe7f8d7fdf374357d"
@@ -47,7 +47,7 @@
   "artifacts": [
     {
       "path": "internal/hosted/backup/backup.go",
-      "sha256": "ecedb2997bedbbc8d359f082f8e4447ab5d982715f1481d7c841a929366f9169"
+      "sha256": "a34d7088e8d54ef53e2ee9504789bed3da3ad6917013e31762792970ed640328"
     },
     {
       "path": "internal/hosted/backup/client.go",
@@ -55,7 +55,7 @@
     },
     {
       "path": "internal/hosted/backup/backup_test.go",
-      "sha256": "bf3f9fccbc53342dbf0d96320f8084864171037c9177edf709c49d2db00d42b1"
+      "sha256": "c185b0f203f87eb0735c491eda1bb2b72f3c46f659714c4d5359651e84a1fcbe"
     },
     {
       "path": "internal/hosted/backup/faultbarrier_test.go",
@@ -77,6 +77,7 @@
     "A ready brain with no canonical Git repository now fails backup as corruption unconditionally, including a freshly signed-up, never-connected brain -- today's provisioning (provision.finish) can produce exactly that state before pool.Acquire's lazy git-init ever runs. This is a cross-owner provisioning gap (T23.46/pool), recorded in integration-request.md, not something this task's write scope can fix.",
     "Create now refuses (fails closed) rather than flushes a dirty canonical working tree; this makes Service.Backup's existing Pool.FlushAll-before-Create sequencing load-bearing, and the offline CLI path has no equivalent flush step today (see integration-request.md).",
     "No genuinely concurrent writer racing with an in-progress bundle/backup was exercised; only a write already dirty when Create starts is covered, and only via provably lossless refusal, not inclusion.",
+    "Create's bundle files and Restore's cloned brain repository trees are now explicitly fsynced (bottom-up for directories) before publication, closing a gap where fsyncDir(staging) alone only covered staging's own directory entries, not nested file/directory durability. This is unit-level proof the sync calls run, are ordered correctly and propagate errors -- not an actual power-loss/crash-consistency qualification, which remains unrun.",
     "All evidence is local fixture/process-level (go test, single package, no build-lease claim needed per the mini's multi-package threshold). No live AWS/S3 deletion-journal qualification, no deployed service, no real signup, no browser or end-to-end service test was run.",
     "service.go's existing service_test.go/oauth_test.go call backup.Restore (unchanged signature) and would need a corresponding backup.Create/Request update wherever they or Service.Backup are exercised after the integrator applies the signature change; this task did not run those out-of-scope suites."
   ],
