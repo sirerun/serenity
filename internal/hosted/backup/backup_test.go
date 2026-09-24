@@ -870,3 +870,30 @@ func truncate(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 }
+
+func TestRestoreRejectsDuplicateInventoryAndUnsafePaths(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*contracts.ManifestV2)
+	}{
+		{"duplicate_brain", func(m *contracts.ManifestV2) { m.Brains = append(m.Brains, m.Brains[0]) }},
+		{"control_parent_traversal", func(m *contracts.ManifestV2) { m.ControlDB.RelativePath = "../control.db" }},
+		{"bundle_parent_traversal", func(m *contracts.ManifestV2) { m.Brains[0].RelativePath = "../brain.bundle" }},
+		{"absolute_control", func(m *contracts.ManifestV2) { m.ControlDB.RelativePath = "/control.db" }},
+		{"nested_bundle", func(m *contracts.ManifestV2) { m.Brains[0].RelativePath = "nested/brain.bundle" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, snapshot, _ := freshSnapshot(t, 1)
+			m := readManifestFile(t, snapshot)
+			tc.mutate(&m)
+			writeManifestFile(t, snapshot, m)
+			restored := filepath.Join(t.TempDir(), "restored")
+			if err := Restore(context.Background(), snapshot, restored); !errors.Is(err, contracts.ErrManifestInvalid) {
+				t.Fatalf("got %v, want invalid manifest", err)
+			}
+			if _, err := os.Lstat(restored); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("destination published: %v", err)
+			}
+		})
+	}
+}
