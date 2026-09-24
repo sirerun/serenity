@@ -66,7 +66,7 @@ const (
 	// item. Not detected by this task: recognizing that a claim "touches
 	// a precept" needs a precept-matching lookup this task has no
 	// dependency on (T2.2's own deps: [T1.9, T1.10, T2.1] -- no
-	// internal/dira dependency). Disclosed gap, left to a later task;
+	// kazi-org/dira dependency). Disclosed gap, left to a later task;
 	// the value exists purely so Verdict's shape is forward-compatible
 	// with RFC §10.2's full four-way routing once that lookup exists.
 	// Detect never returns it.

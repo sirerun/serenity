@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/sirerun/serenity/internal/dira/schema"
+	"github.com/kazi-org/dira/schema"
 )
 
 const fixtureBody = `Spend above the ceiling requires asking first.

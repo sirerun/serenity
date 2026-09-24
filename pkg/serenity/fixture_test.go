@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kazi-org/dira/ledger"
 	"github.com/sirerun/serenity/internal/config"
-	"github.com/sirerun/serenity/internal/dira/ledger"
 )
 
 // fixtureBrain copies testdata/brain-fixture's .dira ledger (T3.14's

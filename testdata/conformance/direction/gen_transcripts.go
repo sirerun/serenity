@@ -38,8 +38,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/kazi-org/dira/ledger"
 	"github.com/sirerun/serenity/internal/conformance"
-	"github.com/sirerun/serenity/internal/dira/ledger"
 	coredirection "github.com/sirerun/serenity/internal/direction"
 	coredisp "github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/domain"

@@ -12,7 +12,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/sirerun/serenity/internal/dira/frontmatter"
+	"github.com/kazi-org/dira/frontmatter"
 	"github.com/sirerun/serenity/internal/domain"
 )
 

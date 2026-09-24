@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kazi-org/dira/ledger"
 	"github.com/sirerun/serenity/internal/connector"
 	"github.com/sirerun/serenity/internal/connector/gitrepo"
-	"github.com/sirerun/serenity/internal/dira/ledger"
 	"github.com/sirerun/serenity/internal/store"
 )
 

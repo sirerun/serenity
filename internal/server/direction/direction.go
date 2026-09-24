@@ -66,8 +66,8 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/kazi-org/dira/ledger"
 	"github.com/sirerun/serenity/internal/briefing"
-	"github.com/sirerun/serenity/internal/dira/ledger"
 	coredirection "github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/direction/check"
 	coredisp "github.com/sirerun/serenity/internal/disposition"
@@ -568,7 +568,7 @@ func renderPrecept(e *ledger.Entry) string {
 }
 
 // intentItems is brief's "current intents chained to ambitions" section.
-// dira's Kind vocabulary is closed at five (internal/dira/ledger's own
+// dira's Kind vocabulary is closed at five (the kazi-org/dira ledger package's own
 // doc comment) with no separate "ambition" entity type, so the "chained
 // to ambitions" half of RFC 0001 §12's phrase is read here via each
 // intent's own derives_from edges -- the same reading questions.go's
