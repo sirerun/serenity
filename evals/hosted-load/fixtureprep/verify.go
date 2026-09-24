@@ -828,7 +828,7 @@ func aggregate(r *Report, plan *Plan, marker *Marker, brains []*BrainObs, byLabe
 		add(b.IndexChunks != b.ExpectedFacts || b.IndexChunksMissing != 0 || b.IndexChunksExtra != 0, "index chunks %d (missing %d, extra %d), want %d", b.IndexChunks, b.IndexChunksMissing, b.IndexChunksExtra, b.ExpectedFacts)
 		add(b.Vectors != b.ExpectedFacts || b.VectorsMissing != 0 || b.VectorsExtra != 0 || b.VectorsBadLength != 0, "vectors under the fixture pin %d (missing %d, extra or other pin %d, bad length %d), want %d", b.Vectors, b.VectorsMissing, b.VectorsExtra, b.VectorsBadLength, b.ExpectedFacts)
 		add(b.ConfigPin != marker.EmbedderPin, "config embedding pin %q, want the fixture pin", b.ConfigPin)
-		add(b.GitCommits != wantCommits+1, "git commits %d, want %d (baseline plus %d batch commits)", b.GitCommits, wantCommits+1, wantCommits)
+		add(b.GitCommits != wantCommits+2, "git commits %d, want %d (provisioning and runtime baselines plus %d batch commits)", b.GitCommits, wantCommits+2, wantCommits)
 		add(b.GitDirtyPaths != 0, "%d uncommitted paths", b.GitDirtyPaths)
 		add(b.GitTrackedSources != 2*b.ExpectedFacts, "git tracks %d source files, want %d", b.GitTrackedSources, 2*b.ExpectedFacts)
 		if len(reasons) > 0 {
@@ -885,7 +885,7 @@ func aggregate(r *Report, plan *Plan, marker *Marker, brains []*BrainObs, byLabe
 		"storage_bytes_by_component":             comp,
 		"largest_account_share_of_storage_quota": float64(top) / 1e9,
 		"accounts_at_or_over_storage_quota":      over,
-		"git_history_is_batched":                 fmt.Sprintf("Facts are committed in batches of %d, so each brain has one baseline commit plus ceil(facts/%d) batch commits. Production commits after every acknowledged remember, so its history is longer and larger than this fixture's.", marker.CommitEvery, marker.CommitEvery),
+		"git_history_is_batched":                 fmt.Sprintf("Facts are committed in batches of %d, so each brain has two initialization commits (provisioning baseline and runtime configuration) plus ceil(facts/%d) batch commits. Production commits after every acknowledged remember, so its history is longer and larger than this fixture's.", marker.CommitEvery, marker.CommitEvery),
 		"fact_text_share_of_quota_at_4096_bytes": "at most 4.096% of every plan's storage quota; the rest is envelope, Git objects and the derived index",
 		"at_the_memory_cap":                      "an account whose memories equal its plan cap has every further nonreplay remember refused by the gateway with limit_exceeded (class quota, outcome tool_error); this is read from the cap rule, not observed from a run",
 		"storage_saturation":                     "not represented: this fixture fills the memory count, not the storage quota; a storage-saturation sample is a separate design question (decision request, question 5)",

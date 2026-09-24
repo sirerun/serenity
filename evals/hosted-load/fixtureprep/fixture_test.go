@@ -195,8 +195,8 @@ func TestPreparedSmokeFixturePassesAndNeverSatisfiesFull(t *testing.T) {
 		t.Fatalf("report has %d brains and %d accounts", len(r.Brains), len(r.Accounts))
 	}
 	for _, b := range r.Brains {
-		if b.GitCommits != smokeFactsInTests+1 {
-			t.Errorf("%s/%d: %d commits, want a baseline plus one per fact (commit-every 1)", b.Label, b.Index, b.GitCommits)
+		if b.GitCommits != smokeFactsInTests+2 {
+			t.Errorf("%s/%d: %d commits, want two initialization commits plus one per fact (commit-every 1)", b.Label, b.Index, b.GitCommits)
 		}
 	}
 	if !strings.Contains(strings.Join(r.NotClaimed, " "), "REDUCED SMOKE") || !strings.Contains(strings.Join(r.NotClaimed, " "), "unqualified") {
@@ -405,8 +405,8 @@ func TestPrepareWithWorkersAndBatchedCommitsVerifies(t *testing.T) {
 		t.Fatalf("failing: %v", failing(r))
 	}
 	for _, b := range r.Brains {
-		if b.GitCommits != 3 { // baseline plus ceil(3/2) batch commits.
-			t.Errorf("%s/%d: %d commits, want 3", b.Label, b.Index, b.GitCommits)
+		if b.GitCommits != 4 { // two initialization commits plus ceil(3/2) batch commits.
+			t.Errorf("%s/%d: %d commits, want 4", b.Label, b.Index, b.GitCommits)
 		}
 	}
 }
@@ -610,7 +610,7 @@ func TestNegativeConfigAndGitDrift(t *testing.T) {
 		dir := mutable(t)
 		root := filepath.Dir(firstMatch(t, dir, "data/brains/*/serenity.yml"))
 		git(t, root, "commit", "--allow-empty", "-m", "extra")
-		wantFail(t, verify(t, dir, ProfileSmoke), "brains.every_brain_matches_its_planned_state", "git commits 4, want 3")
+		wantFail(t, verify(t, dir, ProfileSmoke), "brains.every_brain_matches_its_planned_state", "git commits 5, want 4")
 	})
 	t.Run("tracked file modified", func(t *testing.T) {
 		dir := mutable(t)
