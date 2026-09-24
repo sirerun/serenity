@@ -691,7 +691,7 @@ func TestReconcileIncompleteSubscriptionGrantsNoAccess(t *testing.T) {
 }
 
 // TestReconcileScheduledCancellationPreservesAccessUntilPeriodEnd covers the
-// required "scheduled downgrade"/cancellation-at-period-end fixture state:
+// cancellation-at-period-end fixture state (not a scheduled price downgrade):
 // cancel_at_period_end must be recorded without revoking current access,
 // matching the documented Portal behavior above.
 func TestReconcileScheduledCancellationPreservesAccessUntilPeriodEnd(t *testing.T) {
@@ -725,5 +725,125 @@ func TestReconcileScheduledCancellationPreservesAccessUntilPeriodEnd(t *testing.
 	var cancelAtPeriodEnd int
 	if err = db.DB().QueryRowContext(ctx, `SELECT cancel_at_period_end FROM subscriptions WHERE id='sub_scheduled'`).Scan(&cancelAtPeriodEnd); err != nil || cancelAtPeriodEnd != 1 {
 		t.Fatalf("cancel_at_period_end not recorded: %d err=%v", cancelAtPeriodEnd, err)
+	}
+}
+
+func TestWebhookPriceChangesCancellationAndResubscription(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	a, err := db.CreateAccount(ctx, "lifecycle@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_cycle' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	var payload atomic.Value
+	now := time.Now().UTC()
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(payload.Load().(string)))
+	}))
+	t.Cleanup(provider.Close)
+	svc := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, WebhookSecret: "secret", BuilderPrice: "price_builder", ScalePrice: "price_scale"}}
+	for i, step := range []struct{ name, id, status, price, plan string }{
+		{"activate", "sub_cycle", "active", "price_builder", "builder"},
+		{"upgrade_same_subscription", "sub_cycle", "active", "price_scale", "scale"},
+		{"downgrade_applied_by_provider", "sub_cycle", "active", "price_builder", "builder"},
+		{"cancel", "sub_cycle", "canceled", "price_builder", "free"},
+		{"resubscribe_new_subscription", "sub_again", "active", "price_scale", "scale"},
+	} {
+		t.Run(step.name, func(t *testing.T) {
+			payload.Store(fmt.Sprintf(`{"id":%q,"customer":"cus_cycle","status":%q,"items":{"data":[{"price":{"id":%q},"current_period_start":%d,"current_period_end":%d}]}}`, step.id, step.status, step.price, now.Unix(), now.Add(30*24*time.Hour).Unix()))
+			body, err := json.Marshal(map[string]any{"id": fmt.Sprintf("evt_cycle_%d", i), "type": "customer.subscription.updated", "created": now.Unix(), "data": map[string]any{"object": map[string]any{"id": step.id}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := svc.Webhook(ctx, body, signature(body, "secret", now)); err != nil {
+				t.Fatal(err)
+			}
+			ent, err := (&meter.Meter{Store: db}).Entitlement(ctx, a.ID)
+			if err != nil || ent.Plan.ID != step.plan {
+				t.Fatalf("plan=%s want=%s err=%v", ent.Plan.ID, step.plan, err)
+			}
+			var count int
+			if err := db.DB().QueryRowContext(ctx, `SELECT count(*) FROM subscriptions WHERE account_id=? AND status='active'`, a.ID).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			want := 1
+			if step.status == "canceled" {
+				want = 0
+			}
+			if count != want {
+				t.Fatalf("active subscriptions=%d want=%d", count, want)
+			}
+		})
+	}
+}
+
+func TestWebhookProviderOutageLeavesEventRetryable(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	a, err := db.CreateAccount(ctx, "retry@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_retry' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	var unavailable atomic.Bool
+	unavailable.Store(true)
+	now := time.Now()
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if unavailable.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"id":"sub_retry","customer":"cus_retry","status":"active","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}`, now.Unix(), now.Add(24*time.Hour).Unix())
+	}))
+	t.Cleanup(provider.Close)
+	svc := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, WebhookSecret: "secret", BuilderPrice: "price_builder"}}
+	body, err := json.Marshal(map[string]any{"id": "evt_retry", "type": "customer.subscription.updated", "created": now.Unix(), "data": map[string]any{"object": map[string]any{"id": "sub_retry"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = svc.Webhook(ctx, body, signature(body, "secret", now)); err == nil {
+		t.Fatal("provider outage acknowledged as success")
+	}
+	var processed sql.NullString
+	if err = db.DB().QueryRowContext(ctx, `SELECT processed_at FROM stripe_events WHERE id='evt_retry'`).Scan(&processed); err != nil || processed.Valid {
+		t.Fatalf("processed=%v err=%v", processed, err)
+	}
+	ent, err := (&meter.Meter{Store: db}).Entitlement(ctx, a.ID)
+	if err != nil || ent.Plan.ID != "free" {
+		t.Fatalf("outage granted access: %+v %v", ent, err)
+	}
+	unavailable.Store(false)
+	if err = svc.Webhook(ctx, body, signature(body, "secret", now)); err != nil {
+		t.Fatal(err)
+	}
+	ent, err = (&meter.Meter{Store: db}).Entitlement(ctx, a.ID)
+	if err != nil || ent.Plan.ID != "builder" {
+		t.Fatalf("retry did not activate: %+v %v", ent, err)
+	}
+	if err = db.DB().QueryRowContext(ctx, `SELECT processed_at FROM stripe_events WHERE id='evt_retry'`).Scan(&processed); err != nil || !processed.Valid {
+		t.Fatalf("successful retry not recorded: %v %v", processed, err)
 	}
 }

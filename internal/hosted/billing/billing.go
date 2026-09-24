@@ -498,19 +498,12 @@ func (s *Service) Checkout(ctx context.Context, account, plan string) (string, e
 	return result.URL, nil
 }
 
-// Portal returns a Stripe-hosted billing portal session URL. Plan changes,
-// proration, period-end downgrades and cancellations are all handled inside
-// that portal, never by Checkout: once a customer holds any nonterminal
-// subscription, Checkout refuses a second one and points here instead (see
-// the "manage your existing subscription through billing" errors above).
-// Proration amounts are computed and charged by Stripe at change time; this
-// service never calculates or stores a proration figure. A period-end
-// downgrade or cancellation the customer schedules in the portal reaches us
-// as cancel_at_period_end=true with status remaining "active" (or "trialing")
-// until the provider's own transition to "canceled" at period end, which
-// ReconcileCustomer and Webhook already persist via the cancel_at_period_end
-// and status columns on every snapshot; no separate scheduling state is
-// needed here.
+// Portal returns a Stripe-hosted billing portal session URL. The provider's
+// portal configuration controls permitted price changes, proration, scheduled
+// downgrades and cancellations; creating a session does not configure them.
+// A scheduled price downgrade is distinct from cancel_at_period_end: entitlement
+// follows the current authoritative price until Stripe applies the new price.
+// Deployment must qualify the portal configuration and resulting lifecycle.
 func (s *Service) Portal(ctx context.Context, account string) (string, error) {
 	customer, err := s.customer(ctx, account)
 	if err != nil {
