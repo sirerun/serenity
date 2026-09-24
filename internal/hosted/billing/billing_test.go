@@ -565,3 +565,165 @@ func TestReconcileCustomerProviderOutageLeavesLocalStateUntouched(t *testing.T) 
 		t.Fatalf("outage mutated subscription status=%q err=%v", status, err)
 	}
 }
+
+// TestCloseBillingAccountResumesAfterAlreadyClosedProviderState covers
+// "resume after ambiguous provider success and local timeout": a prior call
+// reached provider closure (subscription canceled, session expired) but a
+// local checkout_attempts row is still present, as if the local commit that
+// should have cleared it never landed. A resumed call must certify closed
+// again, idempotently, without erroring on already-terminal provider state.
+func TestCloseBillingAccountResumesAfterAlreadyClosedProviderState(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	a, err := db.CreateAccount(ctx, "resume-close@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_resume',status='deleting' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `INSERT INTO checkout_attempts(account_id,id,price_id,session_id,created_at) VALUES(?,?,?,?,?)`, a.ID, "attempt-resume", "price_builder", "cs_resume", store.Stamp(time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == "GET" && r.URL.Path == "/subscriptions":
+			_, _ = w.Write([]byte(`{"data":[],"has_more":false}`))
+		case r.Method == "GET" && r.URL.Path == "/checkout/sessions/cs_resume":
+			_, _ = w.Write([]byte(`{"id":"cs_resume","status":"expired"}`))
+		default:
+			t.Errorf("unexpected provider request %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}}
+	first, err := s.CloseBillingAccount(ctx, a.ID)
+	if err != nil || first.Status != contracts.CloseStatusClosed {
+		t.Fatalf("first close=%+v err=%v", first, err)
+	}
+	second, err := s.CloseBillingAccount(ctx, a.ID)
+	if err != nil || second.Status != contracts.CloseStatusClosed {
+		t.Fatalf("resumed close=%+v err=%v", second, err)
+	}
+	var attempts int
+	if err = db.DB().QueryRowContext(ctx, `SELECT count(*) FROM checkout_attempts WHERE account_id=?`, a.ID).Scan(&attempts); err != nil || attempts != 0 {
+		t.Fatalf("stale checkout attempts=%d err=%v", attempts, err)
+	}
+}
+
+// TestWebhookUnknownPriceAcknowledgesWithoutGrantingAccess exercises the
+// webhook-side counterpart of the reconcile unknown-price rejection: a
+// subscription priced outside the two Serenity prices must fail closed
+// rather than silently mapping to a plan.
+func TestWebhookUnknownPriceAcknowledgesWithoutGrantingAccess(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	a, err := db.CreateAccount(ctx, "webhook-unknown-price@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_webhook_unknown' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"sub_webhook_unknown","customer":"cus_webhook_unknown","status":"active","items":{"data":[{"price":{"id":"price_other"},"current_period_start":0,"current_period_end":0}]}}`))
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{SecretKey: "test", WebhookSecret: "secret", BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}
+	body, _ := json.Marshal(map[string]any{"id": "evt_unknown_price", "type": "customer.subscription.updated", "created": time.Now().Unix(), "data": map[string]any{"object": map[string]any{"id": "sub_webhook_unknown", "status": "stale-untrusted"}}})
+	if err = s.Webhook(ctx, body, signature(body, "secret", time.Now())); err == nil || !strings.Contains(err.Error(), "not a Serenity price") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var plan string
+	if err = db.DB().QueryRowContext(ctx, `SELECT plan_id FROM accounts WHERE id=?`, a.ID).Scan(&plan); err != nil || plan != "free" {
+		t.Fatalf("unknown price changed plan=%q err=%v", plan, err)
+	}
+}
+
+// TestReconcileIncompleteSubscriptionGrantsNoAccess covers the required
+// "initial incomplete/failure" fixture state: a subscription still waiting
+// on its first payment attempt (real Stripe semantics: up to 23h before
+// incomplete_expired) must not be selected as the entitling subscription and
+// must not itself be treated as an error.
+func TestReconcileIncompleteSubscriptionGrantsNoAccess(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	a, err := db.CreateAccount(ctx, "incomplete@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_incomplete' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_incomplete","customer":"cus_incomplete","status":"incomplete","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}],"has_more":false}`, now.Unix(), now.Add(23*time.Hour).Unix())
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}}
+	got, err := s.ReconcileCustomer(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Eligible || got.PlanID != "" {
+		t.Fatalf("incomplete subscription granted access: %+v", got)
+	}
+	var plan string
+	if err = db.DB().QueryRowContext(ctx, `SELECT plan_id FROM accounts WHERE id=?`, a.ID).Scan(&plan); err != nil || plan != "free" {
+		t.Fatalf("incomplete subscription changed plan=%q err=%v", plan, err)
+	}
+}
+
+// TestReconcileScheduledCancellationPreservesAccessUntilPeriodEnd covers the
+// required "scheduled downgrade"/cancellation-at-period-end fixture state:
+// cancel_at_period_end must be recorded without revoking current access,
+// matching the documented Portal behavior above.
+func TestReconcileScheduledCancellationPreservesAccessUntilPeriodEnd(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	a, err := db.CreateAccount(ctx, "scheduled-cancel@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_scheduled' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_scheduled","customer":"cus_scheduled","status":"active","cancel_at_period_end":true,"items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}],"has_more":false}`, now.Unix(), now.Add(20*24*time.Hour).Unix())
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}}
+	got, err := s.ReconcileCustomer(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Eligible || got.PlanID != "builder" {
+		t.Fatalf("scheduled cancellation revoked access early: %+v", got)
+	}
+	var cancelAtPeriodEnd int
+	if err = db.DB().QueryRowContext(ctx, `SELECT cancel_at_period_end FROM subscriptions WHERE id='sub_scheduled'`).Scan(&cancelAtPeriodEnd); err != nil || cancelAtPeriodEnd != 1 {
+		t.Fatalf("cancel_at_period_end not recorded: %d err=%v", cancelAtPeriodEnd, err)
+	}
+}
