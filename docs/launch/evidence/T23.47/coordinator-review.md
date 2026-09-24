@@ -32,3 +32,7 @@ TestOldCheckoutRequiresConfirmedExpiration reproduced cleanup success for three 
 ## Deletion closure expiration proof
 
 TestClosureRequiresConfirmedExpiration reproduced a closed result for open/completed/wrong-session expiration replies. Closure now requires matching session ID and expired status after the expiration request, or returns pending while retaining the attempt. Shared fixture helper verifies both reconciliation and deletion paths. The default billing suite now has20 passing top-level tests under race detection; scoped lint zero issues. These20 billing tests differ from the earlier18 billing plus2 metering run. Grace-order qualification remains FAIL. No live provider calls or deployment.
+
+## Independent correctness fallback at37996b8
+
+Read-only review found no new regression in49590a8..37996b8, but identified an inherited P1 launch blocker: Checkout persists its attempt before provider creation and writes session_id afterward. Provider success followed by response loss or local save failure leaves an empty session_id. CloseBillingAccount skips that attempt, can see empty subscription lists, deletes the attempt and certifies closure without resolving the open checkout. The old-attempt reconciler likewise drops empty IDs after23h without provider evidence. This is code-path review, not an executed interruption fixture. Known-ID expiration tests do not cover it. Recovery must resolve or retain the ambiguous attempt; local age alone does not establish closure. No provider calls or test execution were performed by the independent reviewer.
