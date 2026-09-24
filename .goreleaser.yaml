@@ -30,8 +30,12 @@ checksum:
 changelog:
   use: github-native
 
+release:
+  prerelease: auto
+
 brews:
-  - repository:
+  - skip_upload: auto
+    repository:
       owner: sirerun
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
