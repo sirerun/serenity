@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/hosted/store"
+	corestore "github.com/sirerun/serenity/internal/store"
+	"github.com/sirerun/serenity/internal/writer"
 )
 
 // fakeJournal is a test-only DeletionJournal fixture. It never fabricates
@@ -222,6 +225,77 @@ func TestCreateRestoreRoundTrip(t *testing.T) {
 	}
 }
 
+// TestCreateRestoreRoundTripPreservesCanonicalMemoryFact proves the exact
+// fact-ID roundtrip claim against the product's real canonical write path
+// (internal/writer.MemoryFact backed by internal/store.SourceStore), not a
+// synthetic committed file: the restored brain must project the identical
+// content-addressed fact ID (its SHA256) with byte-identical payload, via
+// the same store.LoadMemoryProjection a live read path uses.
+func TestCreateRestoreRoundTripPreservesCanonicalMemoryFact(t *testing.T) {
+	dataDir, brainIDs := newTestDataDir(t, 1)
+	id := brainIDs[0]
+	root := filepath.Join(dataDir, "brains", id)
+
+	queue := writer.NewQueue(nil)
+	defer queue.Close()
+	sources := corestore.NewSourceStore(root)
+	mf := &writer.MemoryFact{Queue: queue, Sources: sources}
+	now := time.Now().UTC().Truncate(time.Second)
+	result, err := mf.Remember(writer.RememberInput{
+		OperationKey: "roundtrip-test-op",
+		Fact:         "the launch date is 2026-09-24",
+		Provenance:   "test-suite",
+		EntitySlug:   "launch",
+		EntityType:   "event",
+		Kind:         corestore.MemoryFactKindFact,
+		Visibility:   corestore.MemoryVisibilityPrivate,
+	}, now)
+	if err != nil {
+		t.Fatalf("Remember: %v", err)
+	}
+	if !result.Inserted {
+		t.Fatal("expected Remember to insert a new fact")
+	}
+	factID := result.Record.SHA256
+	if !corestore.ValidSourceSHA(factID) {
+		t.Fatalf("fact ID %q is not a valid source SHA256", factID)
+	}
+	committed, err := writer.Flush(queue, root)
+	if err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if !committed {
+		t.Fatal("expected Flush to commit the remembered fact")
+	}
+
+	snapshot := filepath.Join(t.TempDir(), "snapshot")
+	if err = Create(context.Background(), dataDir, snapshot, "test-build-sha", fakeJournal{}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	restored := filepath.Join(t.TempDir(), "restored")
+	if err = Restore(context.Background(), snapshot, restored); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+
+	restoredSources := corestore.NewSourceStore(filepath.Join(restored, "brains", id))
+	proj, err := corestore.LoadMemoryProjection(restoredSources)
+	if err != nil {
+		t.Fatalf("LoadMemoryProjection: %v", err)
+	}
+	rec, ok := proj.Get(factID)
+	if !ok {
+		t.Fatalf("restored projection has no fact with ID %q", factID)
+	}
+	if rec.Payload.Fact != "the launch date is 2026-09-24" || rec.Payload.Provenance != "test-suite" ||
+		rec.Payload.EntitySlug != "launch" || rec.Payload.Kind != corestore.MemoryFactKindFact ||
+		rec.Payload.Visibility != corestore.MemoryVisibilityPrivate {
+		t.Fatalf("restored fact payload = %+v, want the exact original payload", rec.Payload)
+	}
+	if !rec.Payload.CreatedAt.Equal(now) {
+		t.Fatalf("restored fact CreatedAt = %v, want %v", rec.Payload.CreatedAt, now)
+	}
+}
+
 // TestRoundTripPreservesEveryBranchAndTag proves the restore path restores
 // every ref a bundle carries, not only the default branch a plain `git
 // clone` checks out locally. A brain's canonical repository is never
@@ -285,37 +359,71 @@ func mustLocalHeads(t *testing.T, dir string) []contracts.BundleHead {
 	return heads
 }
 
-func TestCreateFlushesDirtyCanonicalStateBeforeBundling(t *testing.T) {
+func TestCreateRefusesDirtyCanonicalState(t *testing.T) {
 	dataDir, brainIDs := newTestDataDir(t, 1)
 	id := brainIDs[0]
 	root := filepath.Join(dataDir, "brains", id)
-	if err := os.WriteFile(filepath.Join(root, "brain.txt"), []byte("uncommitted change\n"), 0600); err != nil {
+	dirtyPath := filepath.Join(root, "brain.txt")
+	const dirtyContent = "uncommitted change\n"
+	if err := os.WriteFile(dirtyPath, []byte(dirtyContent), 0600); err != nil {
 		t.Fatal(err)
 	}
 	// Deliberately left uncommitted: `git bundle create --all` alone would
-	// silently exclude this. Create must flush it into a commit instead.
-	status, err := exec.Command("git", "-C", root, "status", "--porcelain").Output()
-	if err != nil || len(strings.TrimSpace(string(status))) == 0 {
-		t.Fatalf("test setup: expected a dirty working tree, got %q err=%v", status, err)
+	// silently exclude this, so Create must refuse rather than sweep it into
+	// canonical history itself. The live service already flushes queued
+	// writes via Pool.FlushAll before calling Create.
+	statusBefore, err := exec.Command("git", "-C", root, "status", "--porcelain").Output()
+	if err != nil || len(strings.TrimSpace(string(statusBefore))) == 0 {
+		t.Fatalf("test setup: expected a dirty working tree, got %q err=%v", statusBefore, err)
 	}
-
-	snapshot := filepath.Join(t.TempDir(), "snapshot")
-	if err = Create(context.Background(), dataDir, snapshot, "test-build-sha", fakeJournal{}); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	restored := filepath.Join(t.TempDir(), "restored")
-	if err = Restore(context.Background(), snapshot, restored); err != nil {
-		t.Fatalf("Restore: %v", err)
-	}
-	content, err := os.ReadFile(filepath.Join(restored, "brains", id, "brain.txt"))
+	headBefore, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(content) != "uncommitted change\n" {
-		t.Fatalf("restored content = %q, want the flushed dirty write preserved", content)
+	indexBefore, err := os.ReadFile(filepath.Join(root, ".git", "index"))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if remaining, e := exec.Command("git", "-C", root, "status", "--porcelain").Output(); e != nil || len(strings.TrimSpace(string(remaining))) != 0 {
-		t.Fatalf("source working tree should be clean after flush, got %q err=%v", remaining, e)
+
+	snapshot := filepath.Join(t.TempDir(), "snapshot")
+	err = Create(context.Background(), dataDir, snapshot, "test-build-sha", fakeJournal{})
+	if err == nil {
+		t.Fatal("expected Create to refuse a dirty canonical working tree")
+	}
+	if !strings.Contains(err.Error(), "dirty") {
+		t.Fatalf("error = %v, want a message naming the dirty working tree", err)
+	}
+	if _, statErr := os.Stat(snapshot); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("destination must not exist after a refused Create, stat err = %v", statErr)
+	}
+
+	statusAfter, err := exec.Command("git", "-C", root, "status", "--porcelain").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(statusAfter) != string(statusBefore) {
+		t.Fatalf("working tree dirty-status changed: before %q, after %q", statusBefore, statusAfter)
+	}
+	headAfter, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(headAfter) != string(headBefore) {
+		t.Fatalf("HEAD changed: before %q, after %q", headBefore, headAfter)
+	}
+	indexAfter, err := os.ReadFile(filepath.Join(root, ".git", "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(indexBefore, indexAfter) {
+		t.Fatal("git index bytes changed across a refused Create")
+	}
+	content, err := os.ReadFile(dirtyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != dirtyContent {
+		t.Fatalf("dirty file content changed: got %q, want %q", content, dirtyContent)
 	}
 }
 
@@ -631,6 +739,30 @@ func TestRestoreRevokesCredentialsAndOAuthState(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// Seed one row of every OAuth/session table freezeRestoredControlDB is
+	// claimed to clear, including a grant's cascade-dependent token/refresh
+	// rows, so the regression proves the fuller revocation claim rather than
+	// just client_credentials.
+	future := store.Stamp(time.Now().Add(time.Hour))
+	grantID := store.ID()
+	for _, stmt := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO oauth_grants(id,record,expires_at) VALUES(?,?,?)`, []any{grantID, "{}", future}},
+		{`INSERT INTO oauth_tokens(id,grant_id,record,expires_at) VALUES(?,?,?,?)`, []any{store.ID(), grantID, "{}", future}},
+		{`INSERT INTO oauth_refresh(id,grant_id,record,expires_at) VALUES(?,?,?,?)`, []any{store.ID(), grantID, "{}", future}},
+		{`INSERT INTO oauth_codes(id,record,expires_at) VALUES(?,?,?)`, []any{store.ID(), "{}", future}},
+		{`INSERT INTO oauth_consents(id,record,expires_at) VALUES(?,?,?)`, []any{store.ID(), "{}", future}},
+		{`INSERT INTO sessions(id,account_id,token_hash,created_at,expires_at,csrf_secret) VALUES(?,?,?,?,?,?)`,
+			[]any{store.ID(), accountID, store.Hash("session"), store.Stamp(time.Now()), future, "csrf-secret"}},
+		{`INSERT INTO login_tokens(id,email,token_hash,created_at,expires_at) VALUES(?,?,?,?,?)`,
+			[]any{store.ID(), "user@example.com", store.Hash("login"), store.Stamp(time.Now()), future}},
+	} {
+		if _, err = db.DB().ExecContext(ctx, stmt.sql, stmt.args...); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err = db.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -655,6 +787,15 @@ func TestRestoreRevokesCredentialsAndOAuthState(t *testing.T) {
 	}
 	if revokedAt == nil {
 		t.Fatal("restored credential must be revoked")
+	}
+	for _, table := range []string{"oauth_grants", "oauth_tokens", "oauth_refresh", "oauth_codes", "oauth_consents", "sessions", "login_tokens"} {
+		var count int
+		if err = restoredDB.DB().QueryRow(`SELECT count(*) FROM ` + table).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Fatalf("restored table %s has %d rows, want 0 (fully cleared)", table, count)
+		}
 	}
 	_ = snapshot
 }

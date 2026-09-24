@@ -319,7 +319,7 @@ func buildBrainArtifact(ctx context.Context, dataDir, staging, id string) (contr
 		return contracts.BrainArtifact{}, fmt.Errorf("hosted/backup: brain %s has an unsafe .git entry", id)
 	}
 
-	if err = flushDirtyCanonicalState(ctx, root); err != nil {
+	if err = requireCleanCanonicalState(ctx, root); err != nil {
 		return contracts.BrainArtifact{}, fmt.Errorf("hosted/backup: brain %s: %w", id, err)
 	}
 
@@ -350,31 +350,23 @@ func buildBrainArtifact(ctx context.Context, dataDir, staging, id string) (contr
 	}, nil
 }
 
-// flushDirtyCanonicalState commits any uncommitted change in root's working
-// tree before it is bundled, rather than letting `git bundle` -- which only
-// ever carries committed, ref-reachable history -- silently exclude it. Create
-// runs only under the caller's coordinated exclusivity (an offline lock or
-// the live service's maintenance window), so a dirty tree found here is
-// stable: it is either the working half of an operation that crashed before
-// its canonical write finished (never acknowledged to a client; safe to
-// include or lose either way) or a writer.Flush that has not yet run. Either
-// way, folding it into one extra commit means the snapshot always reflects a
-// real, self-consistent state of the brain -- never a bundle silently missing
-// files still sitting dirty on disk. If the flush itself fails, Create fails
-// rather than bundling an inconsistent tree.
-func flushDirtyCanonicalState(ctx context.Context, root string) error {
+// requireCleanCanonicalState refuses to bundle a brain whose canonical
+// working tree carries any uncommitted change, rather than silently folding
+// unrelated/unreviewed files into canonical history. `git bundle` only ever
+// carries committed, ref-reachable history, so a dirty tree found here means
+// either a writer.Flush that has not yet run (the live service's
+// Service.Backup already calls the owning Pool.FlushAll before Create) or an
+// operation that crashed before its canonical write finished. Either way,
+// Create must fail closed rather than guess: it never runs `git add`/`git
+// commit` against the source repository, and it never writes anything to
+// root.
+func requireCleanCanonicalState(ctx context.Context, root string) error {
 	status, err := exec.CommandContext(ctx, "git", "-C", root, "status", "--porcelain").Output()
 	if err != nil {
 		return fmt.Errorf("check canonical working tree: %w", err)
 	}
-	if len(strings.TrimSpace(string(status))) == 0 {
-		return nil
-	}
-	if output, e := exec.CommandContext(ctx, "git", "-C", root, "add", "-A").CombinedOutput(); e != nil {
-		return fmt.Errorf("stage dirty canonical state: %w: %s", e, output)
-	}
-	if output, e := exec.CommandContext(ctx, "git", "-C", root, "commit", "--quiet", "-m", "serenity: pre-backup flush").CombinedOutput(); e != nil {
-		return fmt.Errorf("commit dirty canonical state: %w: %s", e, output)
+	if len(strings.TrimSpace(string(status))) != 0 {
+		return fmt.Errorf("canonical working tree is dirty (uncommitted changes must be flushed before backup)")
 	}
 	return nil
 }
