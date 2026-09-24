@@ -31,6 +31,27 @@ func initializeCanonical(ctx context.Context, root string) error {
 		return errors.New("unsafe canonical Git directory")
 	}
 	if err = git("rev-parse", "--verify", "HEAD"); err == nil {
+		// A commit alone does not prove that initialization completed. Validate
+		// the exact committed baseline and its working file without repairing it.
+		path := filepath.Join(root, ".gitignore")
+		info, err := os.Lstat(path)
+		if err != nil {
+			return fmt.Errorf("canonical baseline missing: %w", err)
+		}
+		if !info.Mode().IsRegular() {
+			return errors.New("unsafe canonical baseline file")
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		committed, err := exec.CommandContext(ctx, "git", "-C", root, "show", "HEAD:.gitignore").Output()
+		if err != nil {
+			return fmt.Errorf("canonical baseline is not committed: %w", err)
+		}
+		if string(data) != ".serenity/\n" || string(committed) != string(data) {
+			return errors.New("canonical baseline differs from required contents")
+		}
 		return nil
 	}
 	// Permit retry after git init but before the initial commit. A detached or

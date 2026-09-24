@@ -202,3 +202,42 @@ func TestProvisionRefusesSymlinkedGit(t *testing.T) {
 		t.Fatalf("victim changed: %v %v", entries, err)
 	}
 }
+
+func TestProvisionRejectsExistingCommitWithoutBaseline(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	a, err := db.CreateAccount(ctx, "missing-baseline@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := store.ID()
+	if _, err = db.InsertBrain(ctx, a.ID, id, id, "allocating", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dir, "brains", id)
+	if err = os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"init", "--initial-branch=main"}, {"-c", "user.name=Fixture", "-c", "user.email=fixture@example.com", "commit", "--allow-empty", "-m", "unrelated commit"}} {
+		if out, err := exec.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git: %v %s", err, out)
+		}
+	}
+	p := &provision.Provisioner{Store: db, BrainsRoot: filepath.Join(dir, "brains")}
+	if _, err = p.Provision(ctx, a.ID); err == nil {
+		t.Fatal("commit without baseline marked ready")
+	}
+	var state string
+	if err = db.DB().QueryRowContext(ctx, `SELECT state FROM brains WHERE id=?`, id).Scan(&state); err != nil || state != "allocating" {
+		t.Fatalf("state=%s err=%v", state, err)
+	}
+}
