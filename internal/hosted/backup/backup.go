@@ -328,6 +328,9 @@ func buildBrainArtifact(ctx context.Context, dataDir, staging, id string) (contr
 	if output, e := exec.CommandContext(ctx, "git", "-C", root, "bundle", "create", bundlePath, "--all").CombinedOutput(); e != nil {
 		return contracts.BrainArtifact{}, fmt.Errorf("hosted/backup: bundle brain %s: %w: %s", id, e, output)
 	}
+	if err := syncFile(bundlePath); err != nil {
+		return contracts.BrainArtifact{}, fmt.Errorf("hosted/backup: sync brain %s bundle: %w", id, err)
+	}
 	heads, err := bundleHeads(ctx, bundlePath)
 	if err != nil {
 		return contracts.BrainArtifact{}, fmt.Errorf("hosted/backup: brain %s: %w", id, err)
@@ -522,6 +525,50 @@ func fsyncDir(path string) error {
 	}
 	defer func() { _ = d.Close() }()
 	return d.Sync()
+}
+
+// syncTree durably syncs every regular file under root, then root and every
+// directory under it, bottom-up: a subdirectory's own contents are synced
+// before it is, and root itself is synced last. fsyncDir(staging) alone (used
+// around the final publish) only makes staging's own directory entries
+// durable -- it says nothing about the file bytes or nested directory
+// entries git wrote underneath a cloned repository or a bundle file, which
+// are still safe to lose to a crash without this. A symlink's data is its
+// directory entry, already covered by its parent's own sync, so this does
+// not additionally open (and thereby follow) one.
+func syncTree(root string) error {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		path := filepath.Join(root, entry.Name())
+		if entry.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		if entry.IsDir() {
+			if err := syncTree(path); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := syncFile(path); err != nil {
+			return err
+		}
+	}
+	return fsyncDir(root)
+}
+
+func syncFile(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	if err = f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // resolveBuildSHA returns explicit if it names a real value, otherwise falls
@@ -873,6 +920,9 @@ func restoreBrain(ctx context.Context, root *os.Root, scratch, staging string, b
 	if !equalHeads(restored, b.Heads) {
 		return fmt.Errorf("hosted/backup: brain %s restored repository heads do not match the manifest", b.ID)
 	}
+	if err := syncTree(dest); err != nil {
+		return fmt.Errorf("hosted/backup: brain %s: sync restored repository: %w", b.ID, err)
+	}
 	return nil
 }
 
@@ -885,7 +935,7 @@ func freezeRestoredControlDB(ctx context.Context, db *store.Store) error {
 		for _, statement := range []string{
 			`DELETE FROM oauth_grants`, `DELETE FROM oauth_codes`, `DELETE FROM oauth_consents`,
 			`DELETE FROM sessions`, `DELETE FROM login_tokens`,
-			`UPDATE accounts SET status='restore_pending',plan_id='free'`,
+			`UPDATE accounts SET status='restore_pending',plan_id='free',plan_version=1`,
 			`UPDATE subscriptions SET status='restore_pending'`,
 		} {
 			if _, e := tx.ExecContext(ctx, statement); e != nil {

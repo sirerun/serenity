@@ -201,11 +201,12 @@ func TestCreateRestoreRoundTrip(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 	var status, planID string
-	if err = db.DB().QueryRow(`SELECT status,plan_id FROM accounts`).Scan(&status, &planID); err != nil {
+	var planVersion int
+	if err = db.DB().QueryRow(`SELECT status,plan_id,plan_version FROM accounts`).Scan(&status, &planID, &planVersion); err != nil {
 		t.Fatal(err)
 	}
-	if status != "restore_pending" || planID != "free" {
-		t.Fatalf("account status=%q plan=%q, want restore_pending/free", status, planID)
+	if status != "restore_pending" || planID != "free" || planVersion != 1 {
+		t.Fatalf("account status=%q plan=%q plan_version=%d, want restore_pending/free/1", status, planID, planVersion)
 	}
 	for _, id := range brainIDs {
 		content, err := os.ReadFile(filepath.Join(restored, "brains", id, "brain.txt"))
