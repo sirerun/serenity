@@ -2,72 +2,82 @@
   "task_id": "T23.47",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "ba1999caedbf1ea6e2175f23c09c1ce9b685e3b2",
-  "recorded_at": "2026-09-22T23:34:00Z",
+  "source_sha": "30952aa87e1433727223a7ae27f4a8ab619f00cd",
+  "recorded_at": "2026-09-24T14:15:05Z",
   "evidence_level": "local-process",
   "dependencies": {
     "T23.41": "ab39dd0"
   },
   "commands": [
-    "go test ./internal/hosted/billing ./internal/hosted/contracts ./internal/hosted/service",
-    "go test -tags hostedtest ./internal/hosted/billing ./internal/hosted/testhooks",
-    "go test -race -count=1 ./internal/hosted/billing ./internal/hosted/meter"
+    "go test -race -count=1 ./internal/hosted/billing ./internal/hosted/meter",
+    "go test -tags hostedtest ./internal/hosted/billing ./internal/hosted/testhooks"
   ],
   "cases": {
-    "planned": 8,
-    "executed": 8,
-    "passed": 8,
+    "planned": 17,
+    "executed": 17,
+    "passed": 17,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
   },
   "acceptance": [
     {
-      "criterion": "Checkout return alone never grants access and duplicate provider subscriptions are rejected",
-      "expected": "Provider snapshot is authoritative; duplicate nonterminal subscriptions fail closed",
-      "observed": "ReconcileCustomer validates server-owned customer, known prices, single nonterminal subscription and atomically updates entitlements; fixture tests pass",
+      "criterion": "Checkout return alone never grants access; one customer cannot acquire duplicate active paid subscriptions through retries",
+      "expected": "Provider snapshot is authoritative for entitlement, never a client-supplied return; a customer holding any nonterminal subscription cannot start a second checkout, and duplicate nonterminal subscriptions reported by the provider fail closed rather than picking one",
+      "observed": "Checkout() blocks a second attempt while one nonterminal subscription exists and returns the same session on retry (TestCheckoutSurvivesRestartAndPreventsSecondPlan). ReconcileCustomer rejects two nonterminal subscriptions for one customer without granting access or corrupting the account's plan (TestReconcileRejectsDuplicateNonterminalSubscriptions, added this pass)",
       "status": "PASS"
     },
     {
-      "criterion": "Deletion closes open checkout sessions and all provider subscriptions, including unobserved subscriptions",
-      "expected": "CloseBillingAccount expires sessions, cancels all listed subscriptions and rechecks provider truth",
-      "observed": "Stateful provider fixture covers expiry, cancellation and final empty recheck; race suite passes",
+      "criterion": "Checkout completed before webhook then deletion cancels that subscription; open checkout cannot leave a live subscription after deletion closure is certified",
+      "expected": "CloseBillingAccount expires open checkout sessions, cancels every provider subscription including ones never observed locally, and only certifies closed after a re-list confirms none remain active; a resumed call after partial success stays idempotent",
+      "observed": "TestReconcileCustomerAndCloseBillingAccount confirms session expiry, subscription cancellation and the post-cancel recheck before CloseStatusClosed. TestCloseBillingAccountResumesAfterAlreadyClosedProviderState (added this pass) confirms a second call against already-terminal provider state, with a stale local checkout row left over as if a prior local commit never landed, still certifies closed and clears the stale row",
       "status": "PASS"
     },
     {
       "criterion": "Stale checkout attempts are repaired account-scoped and auditable; late webhooks are idempotently acknowledged",
-      "expected": "Old attempts are resolved or fail closed with audit entry; deleting/deleted customer events do not retry forever",
-      "observed": "ReconcileCustomer repairs attempts older than 23h, writes audit_log, and webhook acknowledges absent/frozen accounts",
+      "expected": "Attempts older than 23h are resolved or fail closed with an audit_log entry; webhooks for a deleted account acknowledge without creating entitlement; duplicate event IDs are not refetched",
+      "observed": "Unchanged from the prior pass: reconcileOldCheckoutAttempt writes audit_log on repair; the deleted-account branch in Webhook acknowledges without a lookup error; TestWebhookReconcilesCurrentStateAndDeduplicates confirms a repeated event ID is not refetched from the provider",
       "status": "PASS"
     },
     {
-      "criterion": "Fixed payment-failure grace remains stable under replay",
-      "expected": "First past_due observation starts 72h; replay preserves deadline",
-      "observed": "Existing webhook grace test and reconciliation projection preserve the stored deadline",
+      "criterion": "Grace deadline is stable under delayed/replayed events, first observed past_due, missed activation, new invoice/renewal and delayed old failure after payment. Renewal opens a fresh allowance while retaining old-window accounting history",
+      "expected": "The 72h payment-failure grace anchors to an authoritative provider timestamp, never local processing time, so delayed delivery or a delayed reconcile cannot silently extend or misplace it; a renewal into a new unpaid period starts a fresh deadline while the closed window's accounting is retained, not overwritten in place",
+      "observed": "Corrected this pass: neither the Subscription nor the Invoice object carries a 'became past_due at' field (verified against docs.stripe.com/api/subscriptions/object and docs.stripe.com/api/invoices/object for the pinned 2025-06-30.basil shape), so grace now anchors to Event.created for webhooks and to the subscription's own current_period_start for a bare reconcile snapshot -- both are provider-owned and stable under delay, unlike time.Now(). Replay/delay within an unchanged period preserves the stored deadline (TestWebhookReconcilesCurrentStateAndDeduplicates). First observation via a delayed reconcile with no prior local row ('missed activation') anchors to period start, confirmed already-expired rather than a fresh now-based window (TestReconcileCustomerAnchorsGraceToAuthoritativePeriodNotProcessingTime, new). A delayed webhook anchors to its own event.Created (TestWebhookGraceAnchoredToEventCreatedNotProcessingTime, new). A renewal into a new unpaid period opens a distinct fresh deadline and writes the closed window's status/period/grace to audit_log as subscription_window_closed before the row is overwritten (TestReconcileCustomerRenewalOpensFreshGraceAndRetainsOldWindow, new). A late/reordered failure event delivered after recovery cannot reopen grace because the handler always re-fetches current provider truth rather than trusting the event body's claimed status or age (TestWebhookLateFailureAfterPaymentDoesNotReopenGrace, new). The four new grace-anchoring tests were confirmed red against the pre-fix commit (parent of e7585dc) by temporarily swapping in that blob and rerunning them, then green after restoring the fix; the other two passed unchanged, since they cover already-correct behavior",
       "status": "PASS"
     },
     {
       "criterion": "Hostedtest phase barrier is present and production build cannot activate it",
       "expected": "Reconciliation calls PhaseReconcileFenced; tagged/untagged testhook behavior is proven",
-      "observed": "Call site added; hostedtest and ordinary testhook suites pass",
+      "observed": "Call site unchanged in ReconcileCustomer. go test -tags hostedtest ./internal/hosted/billing ./internal/hosted/testhooks and the untagged suite both pass on the final commit",
       "status": "PASS"
+    },
+    {
+      "criterion": "Required-step-5 fixture state table (covered subset): initial incomplete/failure, activation, renewal, scheduled downgrade, cancellation/re-subscription state transitions reused via dedup/late-event tests, duplicate subscription, stale/duplicate/reversed events, unknown price, reconcile-side provider outage, provider-success/local-save failure",
+      "expected": "Each named fixture state exercised by a scenario naming it",
+      "observed": "initial incomplete (TestReconcileIncompleteSubscriptionGrantsNoAccess), activation (existing), renewal (TestReconcileCustomerRenewalOpensFreshGraceAndRetainsOldWindow), scheduled downgrade/cancel-at-period-end (TestReconcileScheduledCancellationPreservesAccessUntilPeriodEnd), duplicate subscription (TestReconcileRejectsDuplicateNonterminalSubscriptions), stale/duplicate/reversed events (existing dedup/late-event tests plus TestWebhookLateFailureAfterPaymentDoesNotReopenGrace), unknown price on both the reconcile and webhook paths (existing plus TestWebhookUnknownPriceAcknowledgesWithoutGrantingAccess), reconcile-side provider outage (TestReconcileCustomerProviderOutageLeavesLocalStateUntouched), and closure resumability standing in for provider-success/local-save failure (TestCloseBillingAccountResumesAfterAlreadyClosedProviderState)",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Required-step-5 fixture state table (remaining gap): dedicated upgrade (price change on an existing subscription id), a full cancellation-then-re-subscription cycle, and webhook-side provider outage",
+      "expected": "Each named fixture state exercised by a scenario naming it",
+      "observed": "Not written this pass. Upgrade and re-subscription reuse the same upsert/Checkout code paths already exercised by other passing tests, but no scenario names either explicitly; webhook-side outage is untested even though the reconcile-side equivalent is",
+      "status": "NOT_RUN"
     },
     {
       "criterion": "Live Stripe lifecycle qualification",
       "expected": "Test products, webhooks, test clocks and provider receipts",
-      "observed": "No Stripe test objects or live provider calls were made; Composio Stripe toolkit remains unavailable",
+      "observed": "No Stripe test objects or live provider calls were made this pass either; Composio Stripe toolkit access and test-mode credentials remain unavailable in this lane",
       "status": "NOT_RUN"
     }
   ],
   "artifacts": [
     {
-      "path": "internal/hosted/billing/billing.go"
+      "path": "internal/hosted/billing/billing.go",
+      "sha256": "cf6526a1eef719846d3d8a7c3376b93817e76187acaf60b354faa01f60de749c"
     },
     {
-      "path": "internal/hosted/billing/billing_test.go"
-    },
-    {
-      "path": "docs/launch/evidence/T23.47/result.json"
+      "path": "internal/hosted/billing/billing_test.go",
+      "sha256": "b24e7dd58103d526260a89101d3fd7b02be45cff6fa9c37195e2e7ac17e14d84"
     }
   ],
   "cost": {
@@ -78,18 +88,24 @@
     ]
   },
   "limitations": [
-    "Live Stripe test-object lifecycle, test-clock renewal and webhook delivery remain unqualified.",
     "Service assembly does not yet invoke ReconcileCustomer/CloseBillingAccount; integrator task T23.57 must wire the frozen interfaces.",
-    "No production deployment or external provider mutation occurred."
+    "Live Stripe test-object lifecycle, test-clock renewal and webhook delivery remain unqualified; no test-mode credentials available in this lane.",
+    "Dedicated upgrade (price change on an existing subscription id) and full cancellation-then-re-subscription cycle tests are not yet written; the shared upsert/Checkout code paths they would exercise are otherwise covered. Webhook-side provider outage is untested (reconcile-side is).",
+    "No production deployment or external provider mutation occurred.",
+    "The Ajent MCP tools (ajent_inbox/ajent_diagnose) returned a permission error in this session and could not be polled; cross-checked instead against the fleet's own ~/.claude/bus/serenity/coordination.md board, which records this task's assignment and shows no hold on T23.47."
   ],
   "blockers": [
     {
-      "owner": "integrator",
+      "owner": "integrator (T23.57, R-hosted-assembly)",
       "required_input": "Wire the billing reconciler and closer into service/deletion assembly under the frozen contracts."
     },
     {
       "owner": "billing/coordinator",
-      "required_input": "Connect Stripe test toolkit and run isolated test lifecycle qualification after T23.63 setup."
+      "required_input": "Stripe test-mode credentials and toolkit access to run the live lifecycle qualification (--live manifest) once authorized."
     }
-  ]
+  ],
+  "binary_sha256": null,
+  "configuration_sha256": null,
+  "corpus_sha256": null,
+  "provider": null
 }
