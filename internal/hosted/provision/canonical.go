@@ -30,6 +30,13 @@ func initializeCanonical(ctx context.Context, root string) error {
 	} else if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("unsafe canonical Git directory")
 	}
+	// Persist the identity for later writer.Flush commits, which do not carry
+	// command-local author overrides. This runs while provisioning owns the brain.
+	for _, pair := range [][2]string{{"user.name", "Serenity Hosted"}, {"user.email", "hosted@serenity.sire.run"}} {
+		if err = git("config", "--local", pair[0], pair[1]); err != nil {
+			return err
+		}
+	}
 	if err = git("rev-parse", "--verify", "HEAD"); err == nil {
 		// A commit alone does not prove that initialization completed. Validate
 		// the exact committed baseline and its working file without repairing it.
