@@ -1,7 +1,8 @@
 {
   "task": "T23.48",
   "outcome": "PARTIAL",
-  "checked_at": "2026-09-24T23:51:49Z",
+  "checked_at": "2026-09-24T23:55:15Z",
+  "verified_revision": "131148da050f3c224e190e922bc39af99274ab45",
   "source": "local isolated worktree, branch hosted/t23-49-20260924",
   "verification": {
     "passed": [
@@ -26,5 +27,5 @@
     "full phase-by-phase crash qualification and snapshot/delete/restore sibling-preservation scenarios remain for the hosted recovery qualification work"
   ],
   "production_merge_gate": "HOLD: deploy/hosted/stack.json and deploy/hosted/config.example.json do not yet supply the required dedicated deletion-journal bucket and runtime configuration. The existing backups bucket has an unscoped 30-day current and noncurrent lifecycle rule and must not be reused.",
-  "supersession": "No matching open PR for T23.49, hosted backup, or deletion journal was found on 2026-09-24."
+  "supersession": "PR #273 is the only matching open PR for T23.49, hosted backup, or deletion journal found on 2026-09-24; no separate newer replacement was found."
 }
