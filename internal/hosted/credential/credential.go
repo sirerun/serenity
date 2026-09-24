@@ -27,7 +27,13 @@ type Binding struct {
 	Generation                       int
 	Scopes                           []string
 }
-type Issuer struct{ Store *store.Store }
+type Issuer struct {
+	Store *store.Store
+	// OAuthVerify authenticates OAuth tokens against their authoritative grant
+	// and current account/brain state. It never accepts legacy tokens.
+	OAuthVerify func(context.Context, string) (Binding, error)
+	OAuthActive func(context.Context, string) (bool, error)
+}
 
 func generate(accountID, brainID string, scopes []string, generation int) (string, store.ClientCredential) {
 	prefixBytes := make([]byte, 4)
@@ -42,7 +48,7 @@ func (i *Issuer) Issue(ctx context.Context, brainID, accountID string, scopes []
 	raw, c := generate(accountID, brainID, scopes, 1)
 	if err := i.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		var count int
-		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM client_credentials WHERE account_id=? AND revoked_at IS NULL`, accountID).Scan(&count); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM client_credentials WHERE account_id=? AND revoked_at IS NULL)+(SELECT count(*) FROM oauth_grants WHERE json_extract(record,'$.subject')=? AND json_extract(record,'$.revoked_at') IS NULL AND expires_at>?)`, accountID, accountID, store.Stamp(time.Now())).Scan(&count); err != nil {
 			return err
 		}
 		if count >= MaxActivePerAccount {
@@ -56,6 +62,9 @@ func (i *Issuer) Issue(ctx context.Context, brainID, accountID string, scopes []
 }
 func (i *Issuer) Verify(ctx context.Context, raw string) (Binding, error) {
 	var b Binding
+	if !strings.HasPrefix(raw, "sk_live_") && i.OAuthVerify != nil {
+		return i.OAuthVerify(ctx, raw)
+	}
 	if len(raw) != 60 || !strings.HasPrefix(raw, "sk_live_") || raw[16] != '_' {
 		return b, ErrInvalidCredential
 	}
@@ -99,6 +108,9 @@ func (i *Issuer) Rotate(ctx context.Context, accountID, brainID string) (raw str
 		if e != nil {
 			return e
 		}
+		if e = store.RevokeOAuth(ctx, tx, accountID, brainID); e != nil {
+			return e
+		}
 		var c store.ClientCredential
 		raw, c = generate(accountID, brainID, strings.Split(scopes, ","), generation+1)
 		return store.InsertCredential(ctx, tx, c)
@@ -114,6 +126,9 @@ func (i *Issuer) Revoke(ctx context.Context, accountID, brainID string) error {
 	}
 	return i.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		_, e := tx.ExecContext(ctx, `UPDATE client_credentials SET revoked_at=? WHERE brain_id=? AND account_id=? AND revoked_at IS NULL`, store.Stamp(time.Now()), brainID, accountID)
-		return e
+		if e != nil {
+			return e
+		}
+		return store.RevokeOAuth(ctx, tx, accountID, brainID)
 	})
 }

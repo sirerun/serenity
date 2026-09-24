@@ -3,7 +3,7 @@
 Hosted project memory for coding agents, with a free preview and a secondary open-source installation path. Hosted preview is for non-sensitive test memories while qualification continues. Paid subscriptions are not enabled.
 
 - [Hosted plans](https://serenity.sire.run/pricing/): Free preview allowances and the planned Builder offer; not yet available for paid purchase.
-- [Connect your agent](https://serenity.sire.run/docs/connections/): Client-specific token setup and explicit web-integration limitations.
+- [Connect your agent](https://serenity.sire.run/docs/connections/): OAuth-first client setup, bearer token fallback, and explicit web-integration qualification status.
 - [Start free](https://serenity.sire.run/login): Email sign-in for a free hosted project memory.
 
 

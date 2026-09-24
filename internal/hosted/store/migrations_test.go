@@ -15,7 +15,7 @@ import (
 )
 
 func TestLegacySchemasUpgradeTwiceAndPreserveControlData(t *testing.T) {
-	for sourceVersion := 1; sourceVersion <= 3; sourceVersion++ {
+	for sourceVersion := 1; sourceVersion <= 4; sourceVersion++ {
 		t.Run(fmt.Sprintf("schema%d", sourceVersion), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "control.db")
 			prepareLegacyFixture(t, path, sourceVersion)
@@ -35,8 +35,8 @@ func TestLegacySchemasUpgradeTwiceAndPreserveControlData(t *testing.T) {
 				if err := s.db.QueryRow(`SELECT max(version),count(*) FROM schema_migrations`).Scan(&version, &count); err != nil {
 					t.Fatal(err)
 				}
-				if version != 4 || count != 4 {
-					t.Fatalf("migration versions max=%d count=%d, want 4/4", version, count)
+				if version != 5 || count != 5 {
+					t.Fatalf("migration versions max=%d count=%d, want 5/5", version, count)
 				}
 				if pass == 2 {
 					if err := assertOperationSchema(s.db); err != nil {
@@ -97,7 +97,7 @@ func TestFutureSchemaIsRejectedWithoutWriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec(`INSERT INTO schema_migrations(version,applied_at) VALUES(5,'future')`); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO schema_migrations(version,applied_at) VALUES(6,'future')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {
@@ -107,7 +107,7 @@ func TestFutureSchemaIsRejectedWithoutWriting(t *testing.T) {
 	if opened, err := Open(path); err == nil {
 		_ = opened.Close()
 		t.Fatal("future schema opened")
-	} else if got := err.Error(); got != "migrate hosted database: unsupported hosted schema version 5" {
+	} else if got := err.Error(); got != "migrate hosted database: unsupported hosted schema version 6" {
 		t.Fatalf("future schema error = %q", got)
 	}
 	if after := databaseFileHash(t, path); after != before {
@@ -157,6 +157,11 @@ func prepareLegacyFixture(t *testing.T, path string, version int) {
 			t.Fatal(err)
 		}
 		if _, err := db.Exec(`UPDATE subscriptions SET grace_until='grace' WHERE id='sub'`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if version >= 4 {
+		if _, err := db.Exec(migration4); err != nil {
 			t.Fatal(err)
 		}
 	}

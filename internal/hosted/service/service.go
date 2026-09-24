@@ -27,6 +27,7 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/gateway"
 	"github.com/sirerun/serenity/internal/hosted/identity"
 	"github.com/sirerun/serenity/internal/hosted/meter"
+	"github.com/sirerun/serenity/internal/hosted/oauth"
 	"github.com/sirerun/serenity/internal/hosted/operation"
 	"github.com/sirerun/serenity/internal/hosted/pool"
 	"github.com/sirerun/serenity/internal/hosted/provision"
@@ -262,7 +263,17 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 	dash := &dashboard.Dashboard{Gateway: g, Identity: id, Provision: provisioner, Issuer: issuer, Meter: metering, Origin: cfg.PublicOrigin, Dev: dev, Billing: cfg.BillingEnabled}
 	s := &Service{Store: db, Pool: p, Gateway: g, cfg: cfg, embedder: embedding}
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", g)
+	auth, err := oauth.New(db, id, provisioner, cfg.PublicOrigin, dev)
+	if err != nil {
+		return nil, errors.Join(err, p.Close())
+	}
+	issuer.OAuthVerify = auth.Verify
+	issuer.OAuthActive = auth.Active
+	mux.Handle("/mcp", auth.Challenge(g))
+	mux.Handle("/oauth/", auth.Handler())
+	mux.Handle("/.well-known/oauth-authorization-server", auth.Server.MetadataHandler())
+	mux.Handle("/.well-known/oauth-protected-resource", auth.Server.ProtectedResourceHandler())
+	mux.Handle("/.well-known/oauth-protected-resource/mcp", auth.Server.ProtectedResourceHandler())
 	if cfg.billingConfig != nil {
 		dash.BillingService = &billing.Service{Store: db, Identity: id, Config: *cfg.billingConfig}
 		mux.Handle("/billing/", dash.BillingService)

@@ -1,8 +1,9 @@
 module github.com/sirerun/serenity
 
-go 1.26
+go 1.26.0
 
 require (
+	github.com/ajent-social/go v0.0.0-20260924042100-b90bbb417d9d
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2

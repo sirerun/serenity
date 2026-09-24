@@ -63,3 +63,26 @@ CREATE INDEX operations_pending_review
  ON operations(account_id,brain_id,created_at) WHERE phase='pending_review';
 INSERT INTO schema_migrations(version,applied_at) VALUES(4,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 `
+
+// OAuth records share the control database snapshot/restore boundary. Only
+// secret digests are persisted; pending grants are independently one-time.
+const migration5 = `
+CREATE TABLE oauth_epochs(brain_id TEXT PRIMARY KEY REFERENCES brains(id),generation INTEGER NOT NULL);
+CREATE TABLE oauth_clients(id TEXT PRIMARY KEY,record TEXT NOT NULL CHECK(json_valid(record)),expires_at TEXT NOT NULL);
+CREATE TABLE oauth_consents(id TEXT PRIMARY KEY,record TEXT NOT NULL CHECK(json_valid(record)),expires_at TEXT NOT NULL);
+CREATE TABLE oauth_codes(id TEXT PRIMARY KEY,record TEXT NOT NULL CHECK(json_valid(record)),expires_at TEXT NOT NULL);
+CREATE TABLE oauth_grants(id TEXT PRIMARY KEY,record TEXT NOT NULL CHECK(json_valid(record)),expires_at TEXT NOT NULL);
+CREATE TABLE oauth_tokens(id TEXT PRIMARY KEY,grant_id TEXT NOT NULL REFERENCES oauth_grants(id) ON DELETE CASCADE,record TEXT NOT NULL CHECK(json_valid(record)),expires_at TEXT NOT NULL);
+CREATE TABLE oauth_refresh(id TEXT PRIMARY KEY,grant_id TEXT NOT NULL REFERENCES oauth_grants(id) ON DELETE CASCADE,record TEXT NOT NULL CHECK(json_valid(record)),expires_at TEXT NOT NULL);
+CREATE INDEX oauth_grants_expiry ON oauth_grants(expires_at);
+CREATE INDEX oauth_tokens_grant ON oauth_tokens(grant_id);
+CREATE INDEX oauth_refresh_grant ON oauth_refresh(grant_id);
+CREATE INDEX oauth_grants_client ON oauth_grants(json_extract(record,'$.client_id'),expires_at);
+CREATE INDEX oauth_consents_client ON oauth_consents(json_extract(record,'$.client_id'),expires_at);
+CREATE INDEX oauth_codes_client ON oauth_codes(json_extract(record,'$.client_id'),expires_at);
+CREATE INDEX oauth_clients_expiry ON oauth_clients(expires_at);
+CREATE INDEX oauth_consents_expiry ON oauth_consents(expires_at);
+CREATE INDEX oauth_codes_expiry ON oauth_codes(expires_at);
+CREATE INDEX oauth_tokens_expiry ON oauth_tokens(expires_at);
+INSERT INTO schema_migrations(version,applied_at) VALUES(5,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+`

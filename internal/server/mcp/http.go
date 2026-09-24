@@ -267,7 +267,9 @@ func (h *HTTPHandler) handlePost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	reply, pending, fatal := sess.HandleRequest(h.ctx, req)
+	// Preserve middleware authentication values without tying durable tool
+	// work to the HTTP connection lifetime. Cancellation still follows h.ctx.
+	reply, pending, fatal := sess.HandleRequest(requestValuesContext{Context: h.ctx, values: r.Context()}, req)
 	if fatal != nil {
 		if admitted {
 			<-h.callSlots
@@ -459,3 +461,12 @@ func writeJSON(w http.ResponseWriter, v response) {
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(data)
 }
+
+// requestValuesContext keeps transport shutdown cancellation while carrying
+// the identity authorized for this individual request (including token refresh).
+type requestValuesContext struct {
+	context.Context
+	values context.Context
+}
+
+func (c requestValuesContext) Value(key any) any { return c.values.Value(key) }

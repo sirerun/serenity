@@ -84,7 +84,7 @@ func TestMigrationAndRollback(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	if e = s.DB().QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&n); e != nil || n != 4 {
+	if e = s.DB().QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&n); e != nil || n != 5 {
 		t.Fatalf("migration count %d %v", n, e)
 	}
 }
