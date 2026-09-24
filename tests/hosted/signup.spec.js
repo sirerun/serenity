@@ -5,7 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 
-let service, provider, directory, origin, log = '';
+let service, provider, callbackServer, directory, origin, log = '';
+test.afterEach(async () => { if (callbackServer) { await close(callbackServer); callbackServer = null; } });
 const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
 const close = server => new Promise(resolve => server.close(resolve));
 
@@ -80,7 +81,7 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
   await expect(page.getByRole('heading', { name: 'Connect Rakazo', exact: true })).toHaveCount(0);
   await page.getByRole('link', { name: 'Choose your agent harness' }).click();
   await page.getByRole('link', { name: /ChatGPT/ }).click();
-  await expect(page.getByRole('heading', { name: 'Not ready to connect yet' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Qualification pending' })).toBeVisible();
   await page.getByRole('link', { name: 'Your memory', exact: true }).click();
   await expect(page).toHaveURL(`${origin}/dashboard`);
   await page.screenshot({ path: testInfo.outputPath('dashboard.png'), fullPage: true });
@@ -118,4 +119,46 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
   await expect(page.getByLabel('Email address')).toBeVisible();
   await page.goto(link);
   await expect(page.getByRole('heading', { name: 'This link is no longer available' })).toBeVisible();
+});
+
+test('OAuth login resumes consent and browser follows only the approved callback', async ({ page }, testInfo) => {
+  const crypto = require('node:crypto');
+  const verifier = 'v'.repeat(43);
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  let callbackURL = '';
+  callbackServer = http.createServer((request, response) => {
+    callbackURL = `http://${request.headers.host}${request.url}`;
+    response.writeHead(200, { 'Content-Type': 'text/html' });
+    response.end('<h1>Agent connected</h1>');
+  });
+  const callback = `http://127.0.0.1:${await listen(callbackServer)}/callback`;
+  const registration = await page.request.post(origin + '/oauth/register', { data: { client_name: 'Synthetic browser agent', redirect_uris: [callback], grant_types: ['authorization_code', 'refresh_token'], token_endpoint_auth_method: 'none' } });
+  expect(registration.status()).toBe(201);
+  const client = await registration.json();
+  const query = new URLSearchParams({ client_id: client.client_id, redirect_uri: callback, response_type: 'code', state: 'browser-state', code_challenge_method: 'S256', code_challenge: challenge, resource: origin + '/mcp', scope: 'memory:read memory:write' });
+  await page.goto(origin + '/oauth/authorize?' + query);
+  await expect(page.getByLabel('Email address')).toBeVisible();
+  const before = log.length;
+  await page.getByLabel('Email address').fill(`oauth-${testInfo.project.name}@example.test`);
+  await page.getByRole('button', { name: 'Send sign-in link' }).click();
+  await expect.poll(() => /Development login: (http:\/\/\S+)/.test(log.slice(before))).toBe(true);
+  await page.goto(log.slice(before).match(/Development login: (http:\/\/\S+)/)[1]);
+  await expect(page.getByRole('heading', { name: 'Connect your agent.', exact: true })).toBeVisible();
+  await expect(page.getByLabel('Read memories only')).toBeChecked();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('oauth-consent.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Connect agent', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Agent connected' })).toBeVisible();
+  const returned = new URL(callbackURL);
+  expect(returned.searchParams.get('state')).toBe('browser-state');
+  expect(returned.searchParams.get('code')).toBeTruthy();
+  const exchange = await page.request.post(origin + '/oauth/token', { form: { grant_type: 'authorization_code', client_id: client.client_id, redirect_uri: callback, code: returned.searchParams.get('code'), code_verifier: verifier, resource: origin + '/mcp' } });
+  expect(exchange.status()).toBe(200);
+  const tokens = await exchange.json();
+  expect(tokens.scope).toBe('memory:read');
+  expect(tokens.refresh_token).toBeTruthy();
+  await page.goto(origin + '/oauth/connections');
+  await expect(page.getByRole('heading', { name: 'Synthetic browser agent' })).toBeVisible();
+  await page.getByRole('button', { name: 'Disconnect agent' }).click();
+  await expect(page.getByText('No active OAuth connections.', { exact: false })).toBeVisible();
 });

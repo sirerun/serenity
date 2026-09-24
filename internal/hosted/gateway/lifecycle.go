@@ -100,6 +100,9 @@ func (g *Gateway) DeleteBrain(ctx context.Context, account, brain string, root s
 		if _, e := tx.ExecContext(ctx, `UPDATE client_credentials SET revoked_at=? WHERE account_id=? AND brain_id=?`, now, account, brain); e != nil {
 			return e
 		}
+		if e := hoststore.RevokeOAuth(ctx, tx, account, brain); e != nil {
+			return e
+		}
 		_, e := tx.ExecContext(ctx, `UPDATE brains SET state='deleted',deleted_at=? WHERE id=? AND account_id=?`, now, brain, account)
 		return e
 	})

@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -140,6 +141,14 @@ func (d *Dashboard) consume(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: "serenity_session", Value: raw, Path: "/", HttpOnly: true, Secure: !d.Dev, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 3600})
+	if resume, e := r.Cookie("serenity_oauth_resume"); e == nil {
+		http.SetCookie(w, &http.Cookie{Name: "serenity_oauth_resume", Value: "", Path: "/", HttpOnly: true, Secure: !d.Dev, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+		// A resume cookie is only an opaque handle, never a redirect destination.
+		if len(resume.Value) > 0 && len(resume.Value) <= 256 {
+			http.Redirect(w, r, "/oauth/authorize?request="+url.QueryEscape(resume.Value), http.StatusSeeOther)
+			return
+		}
+	}
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
 func (d *Dashboard) session(w http.ResponseWriter, r *http.Request, mutation bool) (identity.Session, bool) {

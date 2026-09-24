@@ -146,7 +146,7 @@ func Restore(ctx context.Context, snapshot, destination string) (err error) {
 	}
 	defer func() { err = errors.Join(err, db.Close()) }()
 	err = db.Transaction(ctx, func(tx *sql.Tx) error {
-		for _, statement := range []string{`DELETE FROM sessions`, `DELETE FROM login_tokens`, `UPDATE accounts SET status='restore_pending',plan_id='free'`, `UPDATE subscriptions SET status='restore_pending'`} {
+		for _, statement := range []string{`DELETE FROM oauth_grants`, `DELETE FROM oauth_codes`, `DELETE FROM oauth_consents`, `DELETE FROM sessions`, `DELETE FROM login_tokens`, `UPDATE accounts SET status='restore_pending',plan_id='free'`, `UPDATE subscriptions SET status='restore_pending'`} {
 			if _, e := tx.ExecContext(ctx, statement); e != nil {
 				return e
 			}

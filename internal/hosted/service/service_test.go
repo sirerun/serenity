@@ -326,7 +326,7 @@ func TestOperationKeysAreBrainScopedAndQuotaIsAccountScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc, err := service.Assemble(service.Config{DataDir: dir, MaxOpen: 2, MaxInFlight: 4, AccountCap: 100}, true, db, &sender{}, embedding{})
+	svc, err := service.Assemble(service.Config{DataDir: dir, PublicOrigin: "http://127.0.0.1", MaxOpen: 2, MaxInFlight: 4, AccountCap: 100}, true, db, &sender{}, embedding{})
 	if err != nil {
 		t.Fatal(err)
 	}

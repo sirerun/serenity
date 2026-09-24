@@ -22,7 +22,7 @@ func TestPublicFilesOnly(t *testing.T) {
 		{"/docs/connections/other-mcp/", 200, "Other MCP clients"},
 		{"/docs/connections/rakazo/", 200, "Rakazo"},
 		{"/docs/connections/claude-web/", 200, "Claude on the web"},
-		{"/docs/connections/chatgpt/", 200, "Not ready to connect yet"},
+		{"/docs/connections/chatgpt/", 200, "Qualification pending"},
 		{"/assets/hosted.css", 200, ".hosted-main"},
 		{"/assets/", 404, "404"},
 		{"/embed.go", 404, "404"},

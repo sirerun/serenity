@@ -28,6 +28,8 @@ import (
 	"github.com/sirerun/serenity/internal/server/mcp"
 )
 
+type requestCredentialKey struct{}
+
 type entry struct {
 	account string
 	handler *mcp.HTTPHandler
@@ -68,6 +70,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+	r = r.WithContext(context.WithValue(r.Context(), requestCredentialKey{}, raw))
 	if !g.admission.allow("account:"+binding.AccountID, 120, time.Now()) {
 		w.Header().Set("Retry-After", "60")
 		http.Error(w, "Account request rate exceeded", http.StatusTooManyRequests)
@@ -106,6 +109,15 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for id, item := range g.handlers {
 			var active int
 			queryErr := g.Issuer.Store.DB().QueryRowContext(r.Context(), `SELECT count(*) FROM client_credentials WHERE id=? AND revoked_at IS NULL`, id).Scan(&active)
+			if strings.HasPrefix(id, "oauth:") && g.Issuer.OAuthActive != nil {
+				var ok bool
+				ok, queryErr = g.Issuer.OAuthActive(r.Context(), strings.TrimPrefix(id, "oauth:"))
+				if ok {
+					active = 1
+				} else {
+					active = 0
+				}
+			}
 			if time.Since(item.last) > mcp.SessionIdleTimeout || (queryErr == nil && active == 0) {
 				item.handler.Close()
 				delete(g.handlers, id)
@@ -145,7 +157,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for idx := range tools {
 			name := tools[idx].Name
 			tools[idx].Handler = func(ctx context.Context, args json.RawMessage) (mcp.Result, error) {
-				return g.call(ctx, raw, name, args)
+				// A refreshed access token keeps the grant/session identity, but
+				// must use the current request token, never a captured old token.
+				current, _ := ctx.Value(requestCredentialKey{}).(string)
+				return g.call(ctx, current, name, args)
 			}
 		}
 		server, newErr := mcp.New("hosted-v1", tools)
@@ -461,7 +476,10 @@ func canonicalEvidenceRef(result mcp.Result, operationID string) string {
 
 // Call uses the same authorization and quota path for dashboard memory actions.
 func (g *Gateway) Call(ctx context.Context, raw, name string, args json.RawMessage) (mcp.Result, error) {
-	return g.call(ctx, raw, name, args)
+	// A refreshed access token keeps the grant/session identity, but
+	// must use the current request token, never a captured old token.
+	current, _ := ctx.Value(requestCredentialKey{}).(string)
+	return g.call(ctx, current, name, args)
 }
 func (g *Gateway) Close() {
 	g.mu.Lock()

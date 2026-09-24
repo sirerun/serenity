@@ -759,3 +759,28 @@ func TestHTTPAdmissionDoesNotReleaseBeforeWorkerReturns(t *testing.T) {
 		t.Fatalf("post-worker call was not admitted: status %d body %s", admitted.status, admitted.raw)
 	}
 }
+
+func TestHTTPMiddlewareValuesArePerRequest(t *testing.T) {
+	type key struct{}
+	srv, err := mcp.New("test", []mcp.Tool{{Name: "identity", InputSchema: json.RawMessage(`{"type":"object"}`), Handler: func(ctx context.Context, _ json.RawMessage) (mcp.Result, error) {
+		value, _ := ctx.Value(key{}).(string)
+		return mcp.Result{Content: []mcp.Content{{Type: "text", Text: value}}}, nil
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := mcp.NewHTTPHandler(srv)
+	defer h.Close()
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), key{}, r.Header.Get("X-Test-Identity"))))
+	}))
+	defer ts.Close()
+	c := &httpClient{t: t, srv: ts, client: ts.Client()}
+	c.initialize()
+	for _, identity := range []string{"first-access-token", "refreshed-access-token"} {
+		got := c.postRaw(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"identity","arguments":{}}}`, map[string]string{"X-Test-Identity": identity}, "application/json")
+		if !strings.Contains(string(got.raw), identity) {
+			t.Fatalf("request identity was lost: %s", got.raw)
+		}
+	}
+}
