@@ -37,7 +37,7 @@ No file this connector reads is ever a precept, and nothing it does can
 write one — `Poll` only reads bytes, and `ToSource` only builds a
 `domain.Source`. When a crawled file happens to decode, byte for byte, as
 a well-formed dira ledger entry (frontmatter valid against
-`internal/dira/ledger.Entry`, ADR 008's schema), the resulting source
+`github.com/kazi-org/dira/ledger.Entry`, ADR 008's schema), the resulting source
 carries a `precept_draft_candidate: true` metadata flag, so you can later
 choose to promote it through the disposition queue. That flag lives on
 the source's metadata; the connector has no code path that writes under

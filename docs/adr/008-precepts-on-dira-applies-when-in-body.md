@@ -42,7 +42,7 @@ schema-invalid to dira, failing the M3 AC.
   its lexical verdicts are surfaced as `notices`, never as violations.
 - dira kind `note` maps to the distill queue's "decaying note" disposition;
   Serenity never mints `note` entries from ingest.
-- Vendoring: `internal/dira` holds `schema/*.json`, `schema.go`, and the
+- Vendoring (superseded by ADR 014, 2026-09-23 -- dira is now imported as a module): `internal/dira` holds `schema/*.json`, `schema.go`, and the
   ledger reader/writer at the pinned commit, with dira's LICENSE and NOTICE
   copied verbatim; the pin is recorded in `internal/dira/PIN`. The upstream
   PR proposing an optional `applies_when` field is opened in parallel and

@@ -31,18 +31,9 @@ jobs:
         with:
           version: v2.11.4
 
-  dira-vendor-pin:
-    # T3.1: internal/dira/ must stay byte-identical to kazi-org/dira at the
-    # commit internal/dira/PIN records (no fork-and-edit, ADR 008). Separate
-    # from `test` because it needs network access to the real upstream repo.
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: internal/dira/verify-pin.sh
-
   dira-cli-conformance:
-    # T3.14: the real kazi-org/dira binary, installed unmodified at the pin in
-    # internal/dira/PIN, must still run `check`/`why`/`brief` against a fixture
+    # T3.14: the real kazi-org/dira binary, installed unmodified at the version
+    # go.mod requires (ADR 014), must still run `check`/`why`/`brief` against a fixture
     # ledger the way this repo depends on. Separate from `test` because it
     # needs network access to install the pinned upstream binary.
     runs-on: ubuntu-latest

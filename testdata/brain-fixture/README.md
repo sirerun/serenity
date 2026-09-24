@@ -2,7 +2,7 @@
 
 A `.dira` ledger for T3.14's CI conformance job (`docs/plans/E3-m3-direction.md`):
 proof that the real `dira` binary from `kazi-org/dira`, installed unmodified at
-the pin in `internal/dira/PIN`, still runs its `check`, `why`, and `brief`
+the version go.mod requires, still runs its `check`, `why`, and `brief`
 verbs the way this repo depends on. This is a CLI-conformance test of
 upstream dira, not a test of anything Serenity owns — Serenity's own plan
 checker (T3.5/T3.7) is a separate matcher over `internal/direction/`.

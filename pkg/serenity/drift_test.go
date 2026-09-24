@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kazi-org/dira/ledger"
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/conformance"
-	"github.com/sirerun/serenity/internal/dira/ledger"
 	"github.com/sirerun/serenity/pkg/serenity"
 )
 

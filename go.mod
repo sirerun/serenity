@@ -1,10 +1,11 @@
 module github.com/sirerun/serenity
 
-go 1.26
+go 1.26.5
 
 require (
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/kazi-org/dira v0.2.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.10.2
 	github.com/zalando/go-keyring v0.2.8

@@ -44,7 +44,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sirerun/serenity/internal/dira/ledger"
+	"github.com/kazi-org/dira/ledger"
 	coredirection "github.com/sirerun/serenity/internal/direction"
 	coredisp "github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/events"
