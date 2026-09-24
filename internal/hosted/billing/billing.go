@@ -901,6 +901,12 @@ func (s *Service) CloseBillingAccount(ctx context.Context, account string) (cont
 // CancelAccount cancels subscriptions attached to this account and is kept for
 // callers that predate the deletion-safe closure contract.
 func (s *Service) CancelAccount(ctx context.Context, account string) error {
-	_, err := s.closeBilling(ctx, account, false)
-	return err
+	result, err := s.closeBilling(ctx, account, false)
+	if err != nil {
+		return err
+	}
+	if result.Status != contracts.CloseStatusClosed {
+		return fmt.Errorf("%w: %s", contracts.ErrBillingProviderAmbiguous, result.PendingReason)
+	}
+	return nil
 }
