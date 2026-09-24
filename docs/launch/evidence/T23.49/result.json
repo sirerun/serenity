@@ -2,8 +2,8 @@
   "task_id": "T23.49",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "a9ce01fc8d1be2f8237ba8f76a99f654ccf2bccc",
-  "recorded_at": "2026-09-24T13:54:21Z",
+  "source_sha": "3f9a9fbbfe2550890c64ad7faeaa74733c9bcec9",
+  "recorded_at": "2026-09-24T14:00:00Z",
   "evidence_level": "local-process",
   "dependencies": {
     "T23.41": "ab39dd02cb227a08f6ab31bfe7f8d7fdf374357d"
@@ -14,17 +14,15 @@
     "gofmt -l internal/hosted/backup/",
     "golangci-lint run ./internal/hosted/backup/...",
     "go test -count=1 -v ./internal/hosted/backup/...",
-    "go test -race -count=1 ./internal/hosted/backup"
+    "go test -race -count=1 ./internal/hosted/backup (exit status checked directly, not inferred from a piped command)"
   ],
   "cases": {
-    "planned": 23,
-    "executed": 23,
-    "passed": 22,
+    "planned": 24,
+    "executed": 24,
+    "passed": 24,
     "failed": 0,
-    "skipped": 1,
-    "skip_reasons": [
-      "TestCreateFailsClosedWithoutBuildIdentity: this go test binary is itself built with the toolchain's default VCS stamping, so resolveBuildSHA's runtime-metadata fallback always succeeds here and the true fail-closed path (no explicit SHA and no embedded VCS revision) cannot be driven end-to-end in this environment; the fail-closed branch itself is short, direct code in resolveBuildSHA and is covered by the other Create tests exercising the non-empty-buildSHA path."
-    ]
+    "skipped": 0,
+    "skip_reasons": []
   },
   "acceptance": [
     {
@@ -36,7 +34,7 @@
     {
       "criterion": "Manifest roundtrip matches exact fact IDs and canonical bundle heads; restored raw credentials/sessions remain invalid.",
       "expected": "A create-then-restore round trip reproduces identical canonical content and exact bundle heads (including the bundle's own HEAD entry), and restored client_credentials/sessions/oauth_* state is revoked or cleared.",
-      "observed": "TestCreateRestoreRoundTrip verifies manifest brain IDs/heads and restored file content/heads match exactly (via git show-ref plus a resolved HEAD, matching git bundle list-heads' own HEAD+refs/heads/* shape). TestRestoreRevokesCredentialsAndOAuthState verifies a restored client_credentials row is revoked; existing oauth_grants/codes/consents/sessions/login_tokens clearing logic is unchanged from the prior implementation. Round-trip content used a representative committed file rather than the product's internal/writer.MemoryFact path (see limitations); bundling is content-agnostic so this is a reasonable proxy, not identical to the real remember pipeline.",
+      "observed": "TestCreateRestoreRoundTrip verifies manifest brain IDs/heads and restored file content/heads match exactly (via git show-ref filtered to refs/heads+refs/tags, plus a resolved HEAD, matching git bundle list-heads' own HEAD+refs/heads/*+refs/tags/* shape). TestRoundTripPreservesEveryBranchAndTag adds a second branch and a tag and verifies restore reproduces all of them as real local refs, not left as refs/remotes/origin/* tracking refs the way a plain `git clone` alone would leave every non-default branch (restoreAllBranches promotes them explicitly). TestRestoreRevokesCredentialsAndOAuthState verifies a restored client_credentials row is revoked; existing oauth_grants/codes/consents/sessions/login_tokens clearing logic is unchanged from the prior implementation. Round-trip content used a representative committed file rather than the product's internal/writer.MemoryFact path (see limitations); bundling is content-agnostic so this is a reasonable proxy, not identical to the real remember pipeline.",
       "status": "PASS"
     },
     {
@@ -49,7 +47,7 @@
   "artifacts": [
     {
       "path": "internal/hosted/backup/backup.go",
-      "sha256": "874b03f34de73b66814a865fcd8e208bc2a24ab018ef6e1f5ad962597fcf3fdb"
+      "sha256": "2376f6e2d295aef85de89c694924440d1a8dce990ee6bc9ccf605f232c191096"
     },
     {
       "path": "internal/hosted/backup/client.go",
@@ -57,7 +55,7 @@
     },
     {
       "path": "internal/hosted/backup/backup_test.go",
-      "sha256": "de513701eacf07fe0c19a4e4922828253ee88ea1325e223b41317a457528cdfc"
+      "sha256": "91eb9205158d2955b9631e378dc50e03cd99db4f121fff96469068655e619e4d"
     },
     {
       "path": "internal/hosted/backup/faultbarrier_test.go",
@@ -65,7 +63,7 @@
     },
     {
       "path": "internal/hosted/backup/testdata/backupprobe/main.go",
-      "sha256": "08bbd8a2ea07c804dd28552a2299300e831f3aeaaf21bb50343b9abe7728114a"
+      "sha256": "df68ee0ef5b2c43344066b57041b94d58aeba9089f0c24561aea9c3628d62655"
     }
   ],
   "cost": {
