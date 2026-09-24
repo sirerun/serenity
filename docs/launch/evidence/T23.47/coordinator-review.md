@@ -10,3 +10,11 @@ Sources reviewed:
 - https://docs.stripe.com/changelog/acacia/2024-10-28/customer-portal-schedule-downgrades
 
 Coordinator added race-tested lifecycle projection and webhook-outage/retry fixtures. Scheduled cancellation is not a scheduled price downgrade. Portal configuration, proration, Checkout-based re-subscription remain unqualified. An actual local transaction failure after provider cancellation is now injected and verified: pending response, unchanged local subscription, then fresh-Service retry completes without double cancellation. No provider calls, charges or deployment occurred.
+
+## Executed delivery-order regression
+
+On source ba9053808b64c0ab96fe08f575b0a426e8f2e794, the adjacent `grace_order_regression_test.go.txt` was temporarily installed as `internal/hosted/billing/grace_order_regression_test.go` and run with `go test -count=1 ./internal/hosted/billing -run TestGraceDeadlineIndependentOfDeliveryOrder`.
+
+It FAILS (exit 1): the same past-due subscription snapshot, invoice ID and subscription event produce `2026-09-14T00:00:00.000000000Z` when webhook delivery is first, versus `2026-09-04T00:00:00.000000000Z` when reconciliation is first. Both paths are executed in each case against fresh local databases. The fixture runs an HTTP test server only; no external provider is contacted. It asserts convergence, without selecting either incorrect timestamp as the desired deadline.
+
+The source is retained as an explicit failing qualification reproducer outside the default test set until the frozen failure-evidence decision is resolved. Existing 18 passing package tests do not include or override this FAIL. The future correction must move this test into the normal billing suite and provide any additional invoice/failure-history fixtures its implementation needs. No production behavior was changed by this verification.
