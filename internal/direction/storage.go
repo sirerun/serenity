@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/sirerun/serenity/internal/dira/ledger"
+	"github.com/kazi-org/dira/ledger"
 )
 
 // openEntries pins the ledger directory below the brain root. Symlinks are

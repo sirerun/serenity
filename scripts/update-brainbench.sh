@@ -4,7 +4,7 @@
 #
 # Usage: scripts/update-brainbench.sh <commit-sha>
 #
-# Unlike scripts/update-dira.sh, every vendored file here is data (JSON,
+# Every vendored file here is data (JSON,
 # Markdown) or a license text -- there are no import paths to rewrite, so
 # this is a plain byte-identical copy. Run evals/brainbench/verify-pin.sh
 # afterwards to confirm.

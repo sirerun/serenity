@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/sirerun/serenity/internal/dira/ledger"
-	diraschema "github.com/sirerun/serenity/internal/dira/schema"
+	"github.com/kazi-org/dira/ledger"
+	diraschema "github.com/kazi-org/dira/schema"
 	"github.com/sirerun/serenity/internal/writer"
 )
 

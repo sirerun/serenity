@@ -3,9 +3,9 @@
 # carry an unmodified copy of dndungu/gbrain's BrainBench corpus at the
 # commit recorded in evals/brainbench/PIN -- the acceptance bar for T1.21
 # (docs/plans/E1-m1-ingest.md) and the "no fork-and-edit" rule the same
-# T3.1/internal/dira/verify-pin.sh pattern established for vendored data.
+# pattern T3.1 established for vendored data (its Go counterpart was retired by ADR 014).
 #
-# Unlike internal/dira/verify-pin.sh, nothing vendored here is Go source
+# Nothing vendored here is Go source
 # (no import paths to rewrite) -- every vendored file must be byte-identical
 # to its upstream counterpart, full stop.
 #

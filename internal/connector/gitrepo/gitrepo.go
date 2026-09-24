@@ -15,7 +15,7 @@
 //     can write one. A crawled document is data: Poll only reads bytes and
 //     ToSource only builds a domain.Source. When a crawled file happens to
 //     be, byte for byte, a valid dira ledger entry (frontmatter decodes and
-//     validates against internal/dira/ledger.Entry -- ADR 008's schema), the
+//     validates against github.com/kazi-org/dira/ledger.Entry -- ADR 008's schema), the
 //     resulting Source carries a "precept_draft_candidate" meta flag so a
 //     human can later choose to promote it through the disposition queue.
 //     The flag is metadata on a source, not a write under .dira/ -- this
@@ -42,8 +42,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kazi-org/dira/ledger"
 	"github.com/sirerun/serenity/internal/connector"
-	"github.com/sirerun/serenity/internal/dira/ledger"
 	"github.com/sirerun/serenity/internal/domain"
 )
 

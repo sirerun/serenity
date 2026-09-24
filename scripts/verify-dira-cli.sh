@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# T3.14: proves the real kazi-org/dira CLI, installed unmodified at the pin in
-# internal/dira/PIN, still behaves the way this repo depends on when run
+# T3.14: proves the real kazi-org/dira CLI, installed unmodified at the version
+# go.mod requires (the same module Serenity imports, ADR 014), still behaves the way this repo depends on when run
 # against testdata/brain-fixture/ (see that directory's README.md for what the
 # fixture is and where it comes from).
 #
@@ -8,17 +8,17 @@
 # on Serenity's (unbuilt) `serenity check` — see docs/plans/E3-m3-direction.md
 # T3.14 and T3.7.
 #
-# Needs network access to install the pinned dira commit via `go install`. Run
+# Needs network access to install the required dira version via `go install`. Run
 # from the repo root:
 #   scripts/verify-dira-cli.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PIN="$(tr -d '[:space:]' <"$ROOT/internal/dira/PIN")"
+PIN="$(cd "$ROOT" && go list -m -f '{{.Version}}' github.com/kazi-org/dira)"
 FIXTURE="$ROOT/testdata/brain-fixture"
 
 if [[ -z "$PIN" ]]; then
-	echo "internal/dira/PIN is empty" >&2
+	echo "go.mod does not require github.com/kazi-org/dira" >&2
 	exit 1
 fi
 

@@ -115,7 +115,8 @@ func runServeStdio(cmd *cobra.Command) (runErr error) {
 }
 
 // runServeHTTP is `serenity serve --http` (T4.21): the authenticated MCP
-// Streamable HTTP transport at /mcp. It reuses internal/server's existing
+// Streamable HTTP transport at /mcp plus the existing DISPOSITION and
+// DIRECTION handlers. It reuses internal/server's existing
 // loopback-by-default listener with bearer auth and optional mTLS (RFC
 // 0001 section 14) wholesale -- no bespoke auth or listener path -- and
 // the exact same memoryTools registry construction --stdio uses, so a

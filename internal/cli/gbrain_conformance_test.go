@@ -39,7 +39,7 @@ import (
 // GBRAIN_CLI_DIR are both set. Not part of the plain `go test ./...` run
 // (no network there) -- the dedicated "gbrain-protocol-conformance" CI job
 // (.github/workflows/ci.yml) sets both, the same separate-job convention
-// internal/dira/verify-pin.sh and scripts/verify-dira-cli.sh already use
+// scripts/verify-dira-cli.sh already uses
 // for their own external-tool/network-requiring checks.
 func TestGbrainProtocolConformance(t *testing.T) {
 	if os.Getenv("SERENITY_GBRAIN_CONFORMANCE") != "1" {

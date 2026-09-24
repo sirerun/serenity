@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kazi-org/dira/ledger"
 	"github.com/sirerun/serenity/internal/config"
-	"github.com/sirerun/serenity/internal/dira/ledger"
 	"github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/domain"
