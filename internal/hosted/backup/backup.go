@@ -223,7 +223,9 @@ func Create(ctx context.Context, dataDir, destination, buildSHA string, journal 
 	if err = writeFileSynced(filepath.Join(staging, manifestFile), append(data, '\n'), 0600); err != nil {
 		return err
 	}
-	if err = fsyncDir(staging); err != nil {
+	// Sync the complete staging tree, including intermediate directories such
+	// as brains: syncing each repository and staging alone misses their parent.
+	if err = syncTree(staging); err != nil {
 		return err
 	}
 
@@ -529,8 +531,7 @@ func fsyncDir(path string) error {
 
 // syncTree durably syncs every regular file under root, then root and every
 // directory under it, bottom-up: a subdirectory's own contents are synced
-// before it is, and root itself is synced last. fsyncDir(staging) alone (used
-// around the final publish) only makes staging's own directory entries
+// before it is, and root itself is synced last. fsyncDir(staging) alone only makes staging's own directory entries
 // durable -- it says nothing about the file bytes or nested directory
 // entries git wrote underneath a cloned repository or a bundle file, which
 // are still safe to lose to a crash without this. A symlink's data is its
@@ -699,7 +700,9 @@ func Restore(ctx context.Context, snapshot, destination string) (err error) {
 		return err
 	}
 
-	if err = fsyncDir(staging); err != nil {
+	// Sync the complete staging tree, including intermediate directories such
+	// as brains: syncing each repository and staging alone misses their parent.
+	if err = syncTree(staging); err != nil {
 		return err
 	}
 	if _, statErr := os.Lstat(destination); statErr == nil {
