@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/billing"
+	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/hosted/meter"
 	"github.com/sirerun/serenity/internal/hosted/store"
 )
@@ -78,7 +80,7 @@ func TestWebhookReconcilesCurrentStateAndDeduplicates(t *testing.T) {
 	defer provider.Close()
 	s := &billing.Service{Store: db, Config: billing.Config{SecretKey: "test", WebhookSecret: "secret", BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}
 	apply := func(id string) {
-		body, _ := json.Marshal(map[string]any{"id": id, "type": "customer.subscription.updated", "data": map[string]any{"object": map[string]any{"id": "sub_test", "status": "stale-untrusted"}}})
+		body, _ := json.Marshal(map[string]any{"id": id, "type": "customer.subscription.updated", "created": time.Now().Unix(), "data": map[string]any{"object": map[string]any{"id": "sub_test", "status": "stale-untrusted"}}})
 		if e := s.Webhook(ctx, body, signature(body, "secret", time.Now())); e != nil {
 			t.Fatal(e)
 		}
@@ -288,5 +290,278 @@ func TestReconcileRejectsUnknownPriceWithoutGrantingAccess(t *testing.T) {
 	var plan string
 	if err = db.DB().QueryRowContext(ctx, `SELECT plan_id FROM accounts WHERE id=?`, a.ID).Scan(&plan); err != nil || plan != "free" {
 		t.Fatalf("unknown price changed plan=%q err=%v", plan, err)
+	}
+}
+
+// TestReconcileCustomerAnchorsGraceToAuthoritativePeriodNotProcessingTime
+// reproduces "missed activation": the account's past_due transition webhook
+// was never delivered, and a reconciliation poll days later is the first
+// observation. The Subscription and Invoice objects carry no "became
+// past_due at" field, so the only authoritative anchor available from a
+// snapshot fetch is the subscription's own current period start. Anchoring
+// to local processing time instead would let a stale/delayed reconcile
+// manufacture a fresh 72h grace window out of thin air.
+func TestReconcileCustomerAnchorsGraceToAuthoritativePeriodNotProcessingTime(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	a, err := db.CreateAccount(ctx, "missed-activation@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_missed' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	periodStart := time.Now().UTC().Add(-10 * 24 * time.Hour).Truncate(time.Second)
+	periodEnd := periodStart.Add(30 * 24 * time.Hour)
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_missed","customer":"cus_missed","status":"past_due","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}],"has_more":false}`, periodStart.Unix(), periodEnd.Unix())
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}}
+	got, err := s.ReconcileCustomer(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := periodStart.Add(72 * time.Hour)
+	if !got.GraceUntil.Equal(want) {
+		t.Fatalf("grace = %v, want %v (anchored to period start, not processing time)", got.GraceUntil, want)
+	}
+	if got.GraceUntil.After(time.Now()) {
+		t.Fatalf("grace %v should already be past for a period this old; processing-time anchoring would wrongly grant a fresh window", got.GraceUntil)
+	}
+}
+
+// TestReconcileCustomerRenewalOpensFreshGraceAndRetainsOldWindow reproduces
+// two reconciles of the same subscription across a renewal: the account
+// fails to pay again in a new billing period after already having a stored
+// grace deadline for the old one. Acceptance requires a fresh allowance for
+// the new window while the old window's accounting is retained, not
+// silently overwritten.
+func TestReconcileCustomerRenewalOpensFreshGraceAndRetainsOldWindow(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	a, err := db.CreateAccount(ctx, "renewal@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_renewal' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	base := time.Now().UTC().Truncate(time.Second)
+	p1Start, p1End := base.Add(-100*time.Hour), base.Add(-50*time.Hour)
+	p2Start, p2End := p1End, base.Add(20*time.Hour)
+	period := struct{ start, end time.Time }{p1Start, p1End}
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_renewal","customer":"cus_renewal","status":"past_due","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}],"has_more":false}`, period.start.Unix(), period.end.Unix())
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}}
+	got, err := s.ReconcileCustomer(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grace1 := got.GraceUntil
+	if want := p1Start.Add(72 * time.Hour); !grace1.Equal(want) {
+		t.Fatalf("first grace = %v, want %v", grace1, want)
+	}
+	period.start, period.end = p2Start, p2End
+	got, err = s.ReconcileCustomer(ctx, a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grace2 := got.GraceUntil
+	want2 := p2Start.Add(72 * time.Hour)
+	if !grace2.Equal(want2) {
+		t.Fatalf("renewed grace = %v, want %v", grace2, want2)
+	}
+	if grace2.Equal(grace1) {
+		t.Fatal("renewal did not open a fresh grace window")
+	}
+	var closed int
+	if err = db.DB().QueryRowContext(ctx, `SELECT count(*) FROM audit_log WHERE account_id=? AND action='subscription_window_closed'`, a.ID).Scan(&closed); err != nil || closed != 1 {
+		t.Fatalf("old window history entries=%d err=%v", closed, err)
+	}
+}
+
+// TestWebhookGraceAnchoredToEventCreatedNotProcessingTime reproduces a
+// webhook delivered hours after Stripe generated it (retry backoff after an
+// outage). Anchoring the grace deadline to local processing time would grant
+// a window that starts hours later than the provider actually granted.
+func TestWebhookGraceAnchoredToEventCreatedNotProcessingTime(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	a, err := db.CreateAccount(ctx, "delayed-webhook@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_delayed' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	periodStart := time.Now().Add(-time.Hour)
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"id":"sub_delayed","customer":"cus_delayed","status":"past_due","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}`, periodStart.Unix(), periodStart.Add(24*time.Hour).Unix())
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{SecretKey: "test", WebhookSecret: "secret", BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}
+	eventCreated := time.Now().Add(-6 * time.Hour).Truncate(time.Second)
+	body, _ := json.Marshal(map[string]any{"id": "evt_delayed", "type": "customer.subscription.updated", "created": eventCreated.Unix(), "data": map[string]any{"object": map[string]any{"id": "sub_delayed", "status": "past_due"}}})
+	if err = s.Webhook(ctx, body, signature(body, "secret", time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	var deadline string
+	if err = db.DB().QueryRowContext(ctx, `SELECT grace_until FROM subscriptions WHERE id='sub_delayed'`).Scan(&deadline); err != nil {
+		t.Fatal(err)
+	}
+	got, err := time.Parse(time.RFC3339Nano, deadline)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := eventCreated.Add(72 * time.Hour)
+	if !got.Equal(want) {
+		t.Fatalf("grace = %v, want %v (anchored to event.Created, not processing time)", got, want)
+	}
+}
+
+// TestWebhookLateFailureAfterPaymentDoesNotReopenGrace reproduces a
+// reordered/retried delivery of an old payment-failure event arriving after
+// the account already recovered. The webhook must trust only a fresh
+// provider fetch, never the event's own claimed status or age.
+func TestWebhookLateFailureAfterPaymentDoesNotReopenGrace(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	a, err := db.CreateAccount(ctx, "recovered@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_recovered' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	state := "active"
+	now := time.Now()
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"id":"sub_recovered","customer":"cus_recovered","status":%q,"items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}`, state, now.Unix(), now.Add(24*time.Hour).Unix())
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{SecretKey: "test", WebhookSecret: "secret", BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}
+	apply := func(id string, created time.Time) {
+		body, _ := json.Marshal(map[string]any{"id": id, "type": "customer.subscription.updated", "created": created.Unix(), "data": map[string]any{"object": map[string]any{"id": "sub_recovered", "status": "stale-untrusted"}}})
+		if e := s.Webhook(ctx, body, signature(body, "secret", time.Now())); e != nil {
+			t.Fatal(e)
+		}
+	}
+	failedAt := now.Add(-2 * time.Hour)
+	state = "past_due"
+	apply("evt_failed", failedAt)
+	recoveredAt := now.Add(-time.Hour)
+	state = "active"
+	apply("evt_recovered", recoveredAt)
+	var grace sql.NullString
+	if err = db.DB().QueryRowContext(ctx, `SELECT grace_until FROM subscriptions WHERE id='sub_recovered'`).Scan(&grace); err != nil || grace.Valid {
+		t.Fatalf("grace not cleared after payment: %q valid=%v err=%v", grace.String, grace.Valid, err)
+	}
+	m := &meter.Meter{Store: db}
+	ent, err := m.Entitlement(ctx, a.ID)
+	if err != nil || ent.Plan.ID != "builder" {
+		t.Fatalf("entitlement after recovery %+v %v", ent, err)
+	}
+	apply("evt_failed_retry", failedAt)
+	if err = db.DB().QueryRowContext(ctx, `SELECT grace_until FROM subscriptions WHERE id='sub_recovered'`).Scan(&grace); err != nil || grace.Valid {
+		t.Fatalf("late failure event reopened grace: %q valid=%v err=%v", grace.String, grace.Valid, err)
+	}
+	ent, err = m.Entitlement(ctx, a.ID)
+	if err != nil || ent.Plan.ID != "builder" {
+		t.Fatalf("entitlement after late failure event %+v %v", ent, err)
+	}
+}
+
+// TestReconcileRejectsDuplicateNonterminalSubscriptions covers the required
+// "duplicate subscription" fixture state: the provider reports two
+// nonterminal subscriptions for one customer, which must fail closed rather
+// than pick one arbitrarily.
+func TestReconcileRejectsDuplicateNonterminalSubscriptions(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	a, err := db.CreateAccount(ctx, "duplicate@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_duplicate' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		now := time.Now()
+		_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_a","customer":"cus_duplicate","status":"active","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}},{"id":"sub_b","customer":"cus_duplicate","status":"active","items":{"data":[{"price":{"id":"price_scale"},"current_period_start":%d,"current_period_end":%d}]}}],"has_more":false}`, now.Unix(), now.Add(time.Hour).Unix(), now.Unix(), now.Add(time.Hour).Unix())
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}}
+	if _, err = s.ReconcileCustomer(ctx, a.ID); err == nil || !strings.Contains(err.Error(), "duplicate nonterminal subscriptions") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var plan string
+	if err = db.DB().QueryRowContext(ctx, `SELECT plan_id FROM accounts WHERE id=?`, a.ID).Scan(&plan); err != nil || plan != "free" {
+		t.Fatalf("duplicate subscriptions changed plan=%q err=%v", plan, err)
+	}
+}
+
+// TestReconcileCustomerProviderOutageLeavesLocalStateUntouched covers the
+// required "provider outage" fixture state: a 5xx from the provider must
+// leave the account's existing entitlement and subscription rows exactly as
+// they were, never silently downgraded or upgraded.
+func TestReconcileCustomerProviderOutageLeavesLocalStateUntouched(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	a, err := db.CreateAccount(ctx, "outage@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_outage',plan_id='builder' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end) VALUES('sub_outage',?,'price_builder','builder','active',?,?)`, a.ID, store.Stamp(time.Now()), store.Stamp(time.Now().Add(time.Hour))); err != nil {
+		t.Fatal(err)
+	}
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}}
+	if _, err = s.ReconcileCustomer(ctx, a.ID); !errors.Is(err, contracts.ErrBillingProviderUnavailable) {
+		t.Fatalf("expected provider-unavailable error, got %v", err)
+	}
+	var plan, status string
+	if err = db.DB().QueryRowContext(ctx, `SELECT plan_id FROM accounts WHERE id=?`, a.ID).Scan(&plan); err != nil || plan != "builder" {
+		t.Fatalf("outage mutated plan=%q err=%v", plan, err)
+	}
+	if err = db.DB().QueryRowContext(ctx, `SELECT status FROM subscriptions WHERE id='sub_outage'`).Scan(&status); err != nil || status != "active" {
+		t.Fatalf("outage mutated subscription status=%q err=%v", status, err)
 	}
 }

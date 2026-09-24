@@ -179,6 +179,41 @@ func subscriptionEntitled(status string) bool {
 	return status == "active" || status == "trialing" || status == "past_due"
 }
 
+// graceDeadline decides the stored grace_until for a subscription's fresh
+// provider snapshot. Stripe's Subscription and Invoice objects carry no
+// "became past_due at" field (verified against the pinned API's primary
+// reference), so the only authoritative anchors available are the event that
+// reported the transition (webhooks: Event.created) and the subscription's
+// own current period start (reconciliation snapshots). Using local
+// processing time here would let delayed delivery or a delayed reconcile
+// pass silently extend the grace window past what the provider actually
+// granted. A replay or delayed re-observation of the same unpaid period
+// keeps its existing deadline; a genuinely new past_due state -- first
+// observation or a renewal into a new unpaid period -- starts a fresh 72h
+// window anchored to the authoritative timestamp.
+func graceDeadline(oldStatus, oldGrace string, periodChanged bool, newStatus string, anchor time.Time) string {
+	if newStatus != "past_due" {
+		return ""
+	}
+	if oldStatus == "past_due" && oldGrace != "" && !periodChanged {
+		return oldGrace
+	}
+	return store.Stamp(anchor.Add(72 * time.Hour))
+}
+
+// recordWindowClosed preserves the closing accounting window in the audit
+// log before a renewal's fresh row overwrites current_period_start/end and
+// grace_until in place. The subscriptions table holds only the live window;
+// this is the retained history of the one a renewal replaces.
+func recordWindowClosed(ctx context.Context, tx *sql.Tx, accountID, subscriptionID, status, periodStart, periodEnd, grace string) error {
+	if grace == "" {
+		grace = "none"
+	}
+	detail := fmt.Sprintf("subscription=%s status=%s period_start=%s period_end=%s grace_until=%s", subscriptionID, status, periodStart, periodEnd, grace)
+	_, err := tx.ExecContext(ctx, `INSERT INTO audit_log(account_id,actor,action,created_at,detail) VALUES(?,?,?,?,?)`, accountID, "billing-reconciler", "subscription_window_closed", store.Stamp(time.Now()), detail)
+	return err
+}
+
 // ReconcileCustomer fetches provider truth using only the customer recorded on
 // the account, then replaces the local subscription projection atomically.
 // Frozen accounts are reconciled for bookkeeping but never receive access.
@@ -246,17 +281,23 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 			item := sub.Items.Data[0]
 			plan := s.planForPrice(item.Price.ID)
 			seen[sub.ID] = true
-			grace := ""
-			var oldStatus, oldGrace string
-			_ = tx.QueryRowContext(ctx, `SELECT status,COALESCE(grace_until,'') FROM subscriptions WHERE id=? AND account_id=?`, sub.ID, accountID).Scan(&oldStatus, &oldGrace)
-			if sub.Status == "past_due" {
-				if oldStatus == "past_due" && oldGrace != "" {
-					grace = oldGrace
-				} else {
-					grace = store.Stamp(now.Add(72 * time.Hour))
+			var oldStatus, oldGrace, oldPeriodStart, oldPeriodEnd string
+			_ = tx.QueryRowContext(ctx, `SELECT status,COALESCE(grace_until,''),COALESCE(current_period_start,''),COALESCE(current_period_end,'') FROM subscriptions WHERE id=? AND account_id=?`, sub.ID, accountID).Scan(&oldStatus, &oldGrace, &oldPeriodStart, &oldPeriodEnd)
+			// The subscription's own current period start is the only
+			// authoritative provider timestamp available from a snapshot
+			// fetch; it anchors a fresh grace window without drifting with
+			// reconciliation delay (see graceDeadline).
+			anchor := time.Unix(item.CurrentPeriodStart, 0).UTC()
+			newPeriodStart := store.Stamp(anchor)
+			newPeriodEnd := store.Stamp(time.Unix(item.CurrentPeriodEnd, 0))
+			periodChanged := oldPeriodStart != "" && oldPeriodStart != newPeriodStart
+			if periodChanged {
+				if e = recordWindowClosed(ctx, tx, accountID, sub.ID, oldStatus, oldPeriodStart, oldPeriodEnd, oldGrace); e != nil {
+					return e
 				}
 			}
-			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_until) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end,grace_until=excluded.grace_until`, sub.ID, accountID, item.Price.ID, plan, sub.Status, store.Stamp(time.Unix(item.CurrentPeriodStart, 0)), store.Stamp(time.Unix(item.CurrentPeriodEnd, 0)), sub.CancelAtPeriodEnd, nullableString(grace))
+			grace := graceDeadline(oldStatus, oldGrace, periodChanged, sub.Status, anchor)
+			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_until) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end,grace_until=excluded.grace_until`, sub.ID, accountID, item.Price.ID, plan, sub.Status, newPeriodStart, newPeriodEnd, sub.CancelAtPeriodEnd, nullableString(grace))
 			if e != nil {
 				return e
 			}
@@ -457,6 +498,19 @@ func (s *Service) Checkout(ctx context.Context, account, plan string) (string, e
 	return result.URL, nil
 }
 
+// Portal returns a Stripe-hosted billing portal session URL. Plan changes,
+// proration, period-end downgrades and cancellations are all handled inside
+// that portal, never by Checkout: once a customer holds any nonterminal
+// subscription, Checkout refuses a second one and points here instead (see
+// the "manage your existing subscription through billing" errors above).
+// Proration amounts are computed and charged by Stripe at change time; this
+// service never calculates or stores a proration figure. A period-end
+// downgrade or cancellation the customer schedules in the portal reaches us
+// as cancel_at_period_end=true with status remaining "active" (or "trialing")
+// until the provider's own transition to "canceled" at period end, which
+// ReconcileCustomer and Webhook already persist via the cancel_at_period_end
+// and status columns on every snapshot; no separate scheduling state is
+// needed here.
 func (s *Service) Portal(ctx context.Context, account string) (string, error) {
 	customer, err := s.customer(ctx, account)
 	if err != nil {
@@ -538,6 +592,7 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 	}
 	var event struct {
 		ID, Type string
+		Created  int64
 		Data     struct{ Object json.RawMessage }
 	}
 	if err := json.Unmarshal(body, &event); err != nil {
@@ -545,6 +600,9 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 	}
 	if event.ID == "" {
 		return errors.New("missing event id")
+	}
+	if event.Created <= 0 {
+		return errors.New("missing event creation time")
 	}
 	// Serializing fetch + commit prevents a slower old fetch overwriting newer state.
 	s.mu.Lock()
@@ -616,7 +674,22 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 			if e != nil {
 				return e
 			}
-			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET grace_until=CASE WHEN excluded.status='past_due' AND subscriptions.status IN ('active','trialing') THEN ? WHEN excluded.status='past_due' AND subscriptions.status='past_due' THEN subscriptions.grace_until ELSE NULL END,price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end`, sub.ID, account, item.Price.ID, plan, sub.Status, store.Stamp(time.Unix(item.CurrentPeriodStart, 0)), store.Stamp(time.Unix(item.CurrentPeriodEnd, 0)), sub.CancelAtPeriodEnd, store.Stamp(time.Now().Add(72*time.Hour)))
+			var oldStatus, oldGrace, oldPeriodStart, oldPeriodEnd string
+			_ = tx.QueryRowContext(ctx, `SELECT status,COALESCE(grace_until,''),COALESCE(current_period_start,''),COALESCE(current_period_end,'') FROM subscriptions WHERE id=?`, sub.ID).Scan(&oldStatus, &oldGrace, &oldPeriodStart, &oldPeriodEnd)
+			// The event's own creation time is the authoritative provider
+			// timestamp for this transition; local processing time would let
+			// delayed webhook delivery silently extend the grace window.
+			anchor := time.Unix(event.Created, 0).UTC()
+			newPeriodStart := store.Stamp(time.Unix(item.CurrentPeriodStart, 0))
+			newPeriodEnd := store.Stamp(time.Unix(item.CurrentPeriodEnd, 0))
+			periodChanged := oldPeriodStart != "" && oldPeriodStart != newPeriodStart
+			if periodChanged {
+				if e = recordWindowClosed(ctx, tx, account, sub.ID, oldStatus, oldPeriodStart, oldPeriodEnd, oldGrace); e != nil {
+					return e
+				}
+			}
+			grace := graceDeadline(oldStatus, oldGrace, periodChanged, sub.Status, anchor)
+			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_until) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end,grace_until=excluded.grace_until`, sub.ID, account, item.Price.ID, plan, sub.Status, newPeriodStart, newPeriodEnd, sub.CancelAtPeriodEnd, nullableString(grace))
 			if e != nil {
 				return e
 			}
