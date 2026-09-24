@@ -1,0 +1,98 @@
+{
+  "task_id": "T23.49",
+  "profile": "paid",
+  "status": "PARTIAL",
+  "source_sha": "a9ce01fc8d1be2f8237ba8f76a99f654ccf2bccc",
+  "recorded_at": "2026-09-24T13:54:21Z",
+  "evidence_level": "local-process",
+  "dependencies": {
+    "T23.41": "ab39dd02cb227a08f6ab31bfe7f8d7fdf374357d"
+  },
+  "commands": [
+    "go build ./internal/hosted/backup/...",
+    "go vet ./internal/hosted/backup/...",
+    "gofmt -l internal/hosted/backup/",
+    "golangci-lint run ./internal/hosted/backup/...",
+    "go test -count=1 -v ./internal/hosted/backup/...",
+    "go test -race -count=1 ./internal/hosted/backup"
+  ],
+  "cases": {
+    "planned": 23,
+    "executed": 23,
+    "passed": 22,
+    "failed": 0,
+    "skipped": 1,
+    "skip_reasons": [
+      "TestCreateFailsClosedWithoutBuildIdentity: this go test binary is itself built with the toolchain's default VCS stamping, so resolveBuildSHA's runtime-metadata fallback always succeeds here and the true fail-closed path (no explicit SHA and no embedded VCS revision) cannot be driven end-to-end in this environment; the fail-closed branch itself is short, direct code in resolveBuildSHA and is covered by the other Create tests exercising the non-empty-buildSHA path."
+    ]
+  },
+  "acceptance": [
+    {
+      "criterion": "Truncated/tampered DB/bundle/manifest, duplicate/omitted/unknown brain, unsupported schema and unsafe path all fail before reactivation.",
+      "expected": "Every listed corruption/tamper class is rejected before any bytes are published to the restore destination.",
+      "observed": "Fixture tests cover: truncated/tampered control.db and bundle (checksum/length), truncated and legacy-v1 manifest, tampered bundle head recorded in the manifest, unknown brain (renamed ID) and omitted brain (dropped manifest entry) against the restored control database, schema-version mismatch between manifest and artifact (checked read-only before store.Open can migrate), and a symlinked control.db/bundle/manifest.json. Every case leaves no destination directory at all (os.Stat confirms ErrNotExist). Fixture/local-process evidence only.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Manifest roundtrip matches exact fact IDs and canonical bundle heads; restored raw credentials/sessions remain invalid.",
+      "expected": "A create-then-restore round trip reproduces identical canonical content and exact bundle heads (including the bundle's own HEAD entry), and restored client_credentials/sessions/oauth_* state is revoked or cleared.",
+      "observed": "TestCreateRestoreRoundTrip verifies manifest brain IDs/heads and restored file content/heads match exactly (via git show-ref plus a resolved HEAD, matching git bundle list-heads' own HEAD+refs/heads/* shape). TestRestoreRevokesCredentialsAndOAuthState verifies a restored client_credentials row is revoked; existing oauth_grants/codes/consents/sessions/login_tokens clearing logic is unchanged from the prior implementation. Round-trip content used a representative committed file rather than the product's internal/writer.MemoryFact path (see limitations); bundling is content-agnostic so this is a reasonable proxy, not identical to the real remember pipeline.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Live write during coordinated backup is either included consistently or excluded as a later operation; no acknowledged pre-snapshot write lost.",
+      "expected": "A dirty (uncommitted) canonical working tree at backup time is flushed into the snapshot rather than silently dropped by `git bundle`, or Create fails rather than bundling an inconsistent tree.",
+      "observed": "TestCreateFlushesDirtyCanonicalStateBeforeBundling leaves an uncommitted write in a brain's working tree, runs Create, and verifies the restored snapshot contains the flushed content and the source tree is clean afterward. Fixture/local-process evidence only; no live concurrent-writer race was exercised since no real service/gateway process was run.",
+      "status": "PASS"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "internal/hosted/backup/backup.go",
+      "sha256": "874b03f34de73b66814a865fcd8e208bc2a24ab018ef6e1f5ad962597fcf3fdb"
+    },
+    {
+      "path": "internal/hosted/backup/client.go",
+      "sha256": "2a76a8d017e478141915f6ab0b5237c168469a4aa4cfd45a6686a693d5141b12"
+    },
+    {
+      "path": "internal/hosted/backup/backup_test.go",
+      "sha256": "de513701eacf07fe0c19a4e4922828253ee88ea1325e223b41317a457528cdfc"
+    },
+    {
+      "path": "internal/hosted/backup/faultbarrier_test.go",
+      "sha256": "da2e24bc0d79f33b13e48e3b6599c94c93a2cad964a0ddeeb83d2482bb7d965d"
+    },
+    {
+      "path": "internal/hosted/backup/testdata/backupprobe/main.go",
+      "sha256": "08bbd8a2ea07c804dd28552a2299300e831f3aeaaf21bb50343b9abe7728114a"
+    }
+  ],
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": null,
+    "authorization_refs": []
+  },
+  "limitations": [
+    "buildSHA/journal wiring into internal/hosted/service/service.go and internal/cli/hosted.go is submitted as an integration request, not applied by this task (both files are outside R-hosted-backup's write scope).",
+    "No production contracts.DeletionJournal implementation exists yet (task48 is not started); Create/Request cannot be exercised against a real deletion journal, only the test-only fakeJournal fixture.",
+    "A ready brain with no canonical Git repository now fails backup as corruption unconditionally, including a freshly signed-up, never-connected brain -- today's provisioning (provision.finish) can produce exactly that state before pool.Acquire's lazy git-init ever runs. This is a cross-owner provisioning gap (T23.46/pool), recorded in integration-request.md, not something this task's write scope can fix.",
+    "Round-trip content tests use a representative committed file, not the product's real internal/writer.MemoryFact write/remember path.",
+    "All evidence is local fixture/process-level (go test, single package, no build-lease claim needed per the mini's multi-package threshold). No live AWS/S3 deletion-journal qualification, no deployed service, no real signup, no browser or end-to-end service test was run.",
+    "service.go's existing service_test.go/oauth_test.go call backup.Restore (unchanged signature) and would need a corresponding backup.Create/Request update wherever they or Service.Backup are exercised after the integrator applies the signature change; this task did not run those out-of-scope suites."
+  ],
+  "blockers": [
+    {
+      "owner": "integrator (R-hosted-assembly)",
+      "required_input": "Apply the exact backup.Create/backup.Request signature diff in integration-request.md to service.go and internal/cli/hosted.go, and decide/record what contracts.DeletionJournal to pass until task48 ships (block Service.Backup/CLI backup, or an explicitly reviewed interim adapter)."
+    },
+    {
+      "owner": "Durability48 (task48)",
+      "required_input": "Ship a production contracts.DeletionJournal adapter so Create's pre-copy watermark read reflects a real journal rather than an interim placeholder."
+    },
+    {
+      "owner": "Identity/provisioning owner (T23.46, R-hosted-identity/R-hosted-runtime)",
+      "required_input": "Create each brain's canonical baseline .git commit eagerly during the allocating-to-ready transition (or an equivalent fix) so a freshly-signed-up, never-connected brain is not rejected by backup as corruption."
+    }
+  ]
+}
