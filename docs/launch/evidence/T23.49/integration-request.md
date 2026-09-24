@@ -37,20 +37,10 @@ Reasons (both required per coordinator review, not optional hardening):
   does not exist yet**, so there is currently no legitimate value either
   caller can supply. This is the actual current state, not a testing gap:
   until task48 ships, `Service.Backup` and `serenity hosted backup` cannot
-  produce a manifest with a real watermark. Recommended interim options, in
-  order of preference:
-  1. Block `Service.Backup` / the CLI `backup` action from running until
-     task48's adapter is wired (return a clear "backup not yet available"
-     error at the call site) -- keeps this explicitly `BLOCKED`, matches the
-     dependency graph (`K[49] --> P[52]`, `D[48] --> P[52]`) already showing
-     48 gates the later purge/backup-ops task.
-  2. If David/coordinator wants `Create` exercisable in production before
-     task48 lands, an explicit, clearly-labeled "no deletions have ever run
-     on this host" journal implementation could be wired *by the integrator*
-     with a recorded, reviewed rationale -- this worker will not author that
-     implementation itself, since silently normalizing "no journal" to
-     "empty journal" from inside this package is exactly the fabrication the
-     coordinator's review flagged.
+  produce a manifest with a real watermark. Keep this draft unmerged until the
+  real adapter and call-site wiring are ready. Do not replace the journal with
+  a claimed empty history, and do not disable working production backups merely
+  to make this draft compile. A recorded rationale is not journal evidence.
 
 ### Suggested call-site diff
 
@@ -98,29 +88,17 @@ equivalent flush step today -- calling `backup.Request`/`Create` against a
 data directory with any brain mid-write (an unflushed `writer.Queue`) will
 fail for the same reason.
 
-## 2. Cross-owner provisioning gap (not a file this task can patch)
+## 2. Provisioning dependency resolved for new brains
 
-`internal/hosted/provision/provision.go`'s `Provisioner.finish` marks a brain
-`ready` right after creating its (empty) directory. `internal/hosted/pool`'s
-`Acquire` only initializes the canonical `.git` repository and its baseline
-commit the first time a brain is actually opened (lazily, on first gateway
-request). T23.49's accepted contract requires a ready brain missing its Git
-repository to fail backup as corruption, with no exception for an
-apparently-untouched directory (an emptied directory is not proof a brain
-was never used). This package now enforces that strictly
-(`buildBrainArtifact` in `internal/hosted/backup/backup.go`), which means:
-**a brand-new signup that has never connected/used its default brain will
-fail `backup.Create` today**, until provisioning is changed to create the
-canonical baseline eagerly (as part of the allocating-to-ready transition,
-under brain ownership) rather than lazily on first pool access.
+PR #275 merged as 06fcce44d83b0e451d599410949cb1c0d46c9ce4 and is included in
+this branch. Allocating brains now receive a committed canonical baseline before
+ready; runtime opening commits model-pinned configuration, including retries.
+`TestProvisionedBrainVersion2BackupRestore` verifies untouched and runtime-opened
+brains through real Create/Restore with exact HEAD and clean restored trees.
 
-This worker does not own `internal/hosted/provision/**` or
-`internal/hosted/pool/**` (R-hosted-identity / R-hosted-runtime) and has made
-no change there. Per the coordinator's own team-board plan (2026-09-24
-13:25Z/13:32Z entries), the fix belongs to the identity/provisioning owner
-(T23.46) with a shared baseline helper reused by `pool.Acquire`, plus a
-read-only legacy-brain inventory pass before any reconciliation. Recording
-here only so backup-v2 rollout is not scheduled ahead of that fix.
+Existing ready brains missing Git are still corruption. Inventory and explicitly
+reconcile those cases before rollout; never infer an untouched brain from an
+empty directory or silently recreate lost canonical history.
 
 ## Test-only fixtures added
 

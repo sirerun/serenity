@@ -2,8 +2,8 @@
   "task_id": "T23.49",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "d6212f83cfa0e84a63bce6d51e8f9f351af3b32d",
-  "recorded_at": "2026-09-24T14:32:44.111987Z",
+  "source_sha": "a6cc7753c33ae0d38d609846d258577f5729f272",
+  "recorded_at": "2026-09-24T15:00:31.039648Z",
   "evidence_level": "local-process",
   "dependencies": {
     "T23.41": "ab39dd02cb227a08f6ab31bfe7f8d7fdf374357d"
@@ -13,9 +13,9 @@
     "golangci-lint run ./internal/hosted/backup"
   ],
   "cases": {
-    "planned": 27,
-    "executed": 27,
-    "passed": 27,
+    "planned": 28,
+    "executed": 28,
+    "passed": 28,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
@@ -60,6 +60,10 @@
     {
       "path": "internal/hosted/backup/testdata/backupprobe/main.go",
       "sha256": "df68ee0ef5b2c43344066b57041b94d58aeba9089f0c24561aea9c3628d62655"
+    },
+    {
+      "path": "internal/hosted/backup/provision_integration_test.go",
+      "sha256": "99c0ca8b5c33fc80746d4501126ad9a9d3a7efe91b007854443165073580a928"
     }
   ],
   "cost": {
@@ -70,17 +74,17 @@
   "limitations": [
     "buildSHA/journal wiring into internal/hosted/service/service.go and internal/cli/hosted.go is submitted as an integration request, not applied by this task (both files are outside R-hosted-backup's write scope).",
     "No production contracts.DeletionJournal implementation exists yet (task48 is not started); Create/Request cannot be exercised against a real deletion journal, only the test-only fakeJournal fixture.",
-    "A ready brain with no canonical Git repository now fails backup as corruption unconditionally, including a freshly signed-up, never-connected brain -- today's provisioning (provision.finish) can produce exactly that state before pool.Acquire's lazy git-init ever runs. This is a cross-owner provisioning gap (T23.46/pool), recorded in integration-request.md, not something this task's write scope can fix.",
     "Create now refuses (fails closed) rather than flushes a dirty canonical working tree; this makes Service.Backup's existing Pool.FlushAll-before-Create sequencing load-bearing, and the offline CLI path has no equivalent flush step today (see integration-request.md).",
     "No genuinely concurrent writer racing with an in-progress bundle/backup was exercised; only a write already dirty when Create starts is covered, and only via provably lossless refusal, not inclusion.",
     "Create's bundle files and Restore's cloned brain repository trees are now explicitly fsynced (bottom-up for directories) before publication, closing a gap where fsyncDir(staging) alone only covered staging's own directory entries, not nested file/directory durability. Source inspection confirms explicit sync calls and error propagation; the full staging tree now includes intermediate parent directories. Passing roundtrip tests do not prove crash consistency or injected sync-error handling; those qualifications remain unrun.",
     "All evidence is local fixture/process-level (go test, single package, no build-lease claim needed per the mini's multi-package threshold). No live AWS/S3 deletion-journal qualification, no deployed service, no real signup, no browser or end-to-end service test was run.",
-    "service.go's existing service_test.go/oauth_test.go call backup.Restore (unchanged signature) and would need a corresponding backup.Create/Request update wherever they or Service.Backup are exercised after the integrator applies the signature change; this task did not run those out-of-scope suites."
+    "service.go's existing service_test.go/oauth_test.go call backup.Restore (unchanged signature) and would need a corresponding backup.Create/Request update wherever they or Service.Backup are exercised after the integrator applies the signature change; this task did not run those out-of-scope suites.",
+    "New-brain provisioning dependency resolved by merged PR275 and tested via Create/Restore; existing ready brains missing Git still require explicit reconciliation."
   ],
   "blockers": [
     {
       "owner": "integrator (R-hosted-assembly)",
-      "required_input": "Apply the exact backup.Create/backup.Request signature diff in integration-request.md to service.go and internal/cli/hosted.go, and decide/record what contracts.DeletionJournal to pass until task48 ships (block Service.Backup/CLI backup, or an explicitly reviewed interim adapter)."
+      "required_input": "Wire real build identity and production DeletionJournal into service/CLI. Keep draft unmerged until ready; do not fabricate empty history or disable working backups."
     },
     {
       "owner": "Durability48 (task48)",
@@ -88,7 +92,7 @@
     },
     {
       "owner": "Identity/provisioning owner (T23.46, R-hosted-identity/R-hosted-runtime)",
-      "required_input": "Create each brain's canonical baseline .git commit eagerly during the allocating-to-ready transition (or an equivalent fix) so a freshly-signed-up, never-connected brain is not rejected by backup as corruption."
+      "required_input": "Inventory and explicitly reconcile existing ready brains missing Git; new-brain provisioning is fixed and fixture-tested."
     },
     {
       "owner": "Integrator/service owner (R-hosted-assembly, R-hosted-runtime)",
