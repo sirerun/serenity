@@ -208,7 +208,7 @@ func TestReconcileCustomerAndCloseBillingAccount(t *testing.T) {
 	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_reconcile' WHERE id=?`, a.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.DB().ExecContext(ctx, `INSERT INTO checkout_attempts(account_id,id,price_id,created_at) VALUES(?,?,?,?)`, a.ID, "attempt", "price_builder", store.Stamp(time.Now())); err != nil {
+	if _, err = db.DB().ExecContext(ctx, `INSERT INTO checkout_attempts(account_id,id,price_id,session_id,created_at) VALUES(?,?,?,?,?)`, a.ID, "attempt", "price_builder", "cs_reconcile", store.Stamp(time.Now().Add(-25*time.Hour))); err != nil {
 		t.Fatal(err)
 	}
 	state := struct {

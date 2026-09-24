@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/billing"
 	"github.com/sirerun/serenity/internal/hosted/contracts"
@@ -15,6 +16,13 @@ import (
 )
 
 func TestClosureAfterCheckoutProviderSuccessLocalSaveFailure(t *testing.T) {
+	checkInterruptedCheckout(t, false)
+}
+func TestReconcileRetainsUnknownCheckoutWithUnrelatedSubscription(t *testing.T) {
+	checkInterruptedCheckout(t, true)
+}
+func checkInterruptedCheckout(t *testing.T, reconcileFirst bool) {
+	t.Helper()
 	ctx := context.Background()
 	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
 	if err != nil {
@@ -40,7 +48,11 @@ func TestClosureAfterCheckoutProviderSuccessLocalSaveFailure(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.Method + " " + r.URL.Path {
 		case "GET /subscriptions":
-			_, _ = fmt.Fprint(w, `{"data":[],"has_more":false}`)
+			if providerOpen && reconcileFirst {
+				_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_other","customer":"cus_interrupted","status":"active","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}],"has_more":false}`, time.Now().Unix(), time.Now().Add(24*time.Hour).Unix())
+			} else {
+				_, _ = fmt.Fprint(w, `{"data":[],"has_more":false}`)
+			}
 		case "POST /checkout/sessions":
 			providerOpen = true
 			_, _ = fmt.Fprint(w, `{"id":"cs_interrupted","url":"https://checkout.stripe.com/fixture","status":"open"}`)
@@ -64,6 +76,11 @@ func TestClosureAfterCheckoutProviderSuccessLocalSaveFailure(t *testing.T) {
 	}
 	if _, err = db.DB().ExecContext(ctx, `DROP TRIGGER fail_session_save`); err != nil {
 		t.Fatal(err)
+	}
+	if reconcileFirst {
+		if _, err = s.ReconcileCustomer(ctx, account.ID); !errors.Is(err, contracts.ErrBillingProviderAmbiguous) {
+			t.Fatalf("unrelated subscription erased ambiguity: %v", err)
+		}
 	}
 	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET status='deleting' WHERE id=?`, account.ID); err != nil {
 		t.Fatal(err)

@@ -115,14 +115,14 @@ func (s *Service) reconcileOldCheckoutAttempt(ctx context.Context, accountID str
 	if err != nil {
 		return err
 	}
+	if sessionID == "" {
+		return fmt.Errorf("%w: checkout creation outcome unresolved", contracts.ErrBillingProviderAmbiguous)
+	}
 	at, err := time.Parse(time.RFC3339Nano, created)
 	if err != nil || time.Since(at) <= 23*time.Hour {
 		return nil
 	}
 	state := "missing_session"
-	if sessionID == "" {
-		return fmt.Errorf("%w: checkout creation outcome unresolved", contracts.ErrBillingProviderAmbiguous)
-	}
 	if sessionID != "" {
 		if !strings.HasPrefix(sessionID, "cs_") || strings.ContainsAny(sessionID, "/?#") {
 			return fmt.Errorf("%w: invalid checkout session reference", contracts.ErrBillingProviderAmbiguous)
@@ -326,14 +326,6 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 		}
 		if e != nil {
 			return e
-		}
-		// An existing subscription supersedes the checkout attempt. An empty
-		// subscription list does not: an open checkout has no subscription yet.
-		// Older attempts are resolved explicitly by reconcileOldCheckoutAttempt.
-		if chosen != nil {
-			if _, e = tx.ExecContext(ctx, `DELETE FROM checkout_attempts WHERE account_id=?`, accountID); e != nil {
-				return e
-			}
 		}
 		_, e = tx.ExecContext(ctx, `INSERT INTO audit_log(account_id,actor,action,created_at,detail) VALUES(?,?,?,?,?)`, accountID, "billing-reconciler", "billing_reconciled", store.Stamp(now), fmt.Sprintf("subscriptions=%d", len(list.Data)))
 		return e
