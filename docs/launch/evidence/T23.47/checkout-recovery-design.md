@@ -75,9 +75,10 @@ It adds `request_version` (legacy default0) and `request_body` (nullable exact
 URL-encoded non-secret creation parameters). Version1 requests require a body.
 A trigger prevents rewriting the request for the same attempt ID, including
 inventing version1 data for an existing legacy attempt. Saving `session_id`
-remains allowed. Replacing an attempt ID requires a complete valid request
-shape; deciding whether replacement is safe remains the billing state machine's
-responsibility, not a claim this SQL enforces.
+remains allowed. Changing the attempt/account identity in place is rejected. Replacement requires
+an explicitly authorized delete and insert in one transaction with the new
+request version/body. The billing state machine must first prove replacement
+is safe; the schema does not supply that proof.
 
 The caller must validate the version1 parameter allowlist before persistence,
 exclude authorization headers and API keys, and replay the stored body without
@@ -93,3 +94,12 @@ These are SQL proposal checks, not Go migration tests, production application,
 provider qualification, or automatic recovery completion. The schema owner must
 also test current database upgrades and interaction with the updated billing
 insert/retry logic before accepting the patch.
+
+
+Independent review reproduced the historical UPSERT changing ID/price while
+inheriting a version1 body for the old attempt. The proposal now rejects identity
+updates. The integrator must not deploy this migration alone with the historical
+replacement UPSERT: it would fail closed when replacing an attempt. Ship updated
+billing replacement logic and the exact old-UPSERT regression together. Legacy
+retry cannot guarantee the original body after configuration changes; preserve
+that uncertainty rather than reconstructing and claiming an exact replay.
