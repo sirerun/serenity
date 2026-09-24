@@ -120,6 +120,9 @@ func (s *Service) reconcileOldCheckoutAttempt(ctx context.Context, accountID str
 		return nil
 	}
 	state := "missing_session"
+	if sessionID == "" {
+		return fmt.Errorf("%w: checkout creation outcome unresolved", contracts.ErrBillingProviderAmbiguous)
+	}
 	if sessionID != "" {
 		if !strings.HasPrefix(sessionID, "cs_") || strings.ContainsAny(sessionID, "/?#") {
 			return fmt.Errorf("%w: invalid checkout session reference", contracts.ErrBillingProviderAmbiguous)
@@ -845,9 +848,11 @@ func (s *Service) closeBilling(ctx context.Context, account string, requireDelet
 			_ = rows.Close()
 			return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "checkout lookup failed"}, err
 		}
-		if id != "" {
-			attempts = append(attempts, id)
+		if id == "" {
+			_ = rows.Close()
+			return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "checkout creation outcome unresolved"}, contracts.ErrBillingProviderAmbiguous
 		}
+		attempts = append(attempts, id)
 	}
 	if err = errors.Join(rows.Err(), rows.Close()); err != nil {
 		return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "checkout lookup failed"}, err
