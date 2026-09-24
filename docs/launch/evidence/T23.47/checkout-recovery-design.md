@@ -64,3 +64,32 @@ idempotency keys after at least24h and rejects changed parameters for a retained
 key: https://docs.stripe.com/api/idempotent_requests . These documented capabilities
 do not qualify our pinned API version, credentials or deployed recovery behavior.
 Only local HTTP fixtures have been used in this lane.
+
+## Exact proposed schema payload
+
+`checkout-request-schema-proposal.sql` is the requested shared-file handoff,
+not an applied migration. Integrator41/57 must assign its migration number,
+review compatibility, and add it to the store's migrations and tests.
+
+It adds `request_version` (legacy default0) and `request_body` (nullable exact
+URL-encoded non-secret creation parameters). Version1 requests require a body.
+A trigger prevents rewriting the request for the same attempt ID, including
+inventing version1 data for an existing legacy attempt. Saving `session_id`
+remains allowed. Replacing an attempt ID requires a complete valid request
+shape; deciding whether replacement is safe remains the billing state machine's
+responsibility, not a claim this SQL enforces.
+
+The caller must validate the version1 parameter allowlist before persistence,
+exclude authorization headers and API keys, and replay the stored body without
+reconstruction from changed configuration. Account/customer identity, price,
+return URLs, quantity, mode, and opaque attempt metadata belong in that body.
+Unknown versions fail closed. Future request versions require an explicit
+constraint migration; there is no permissive forward fallback.
+
+Executed isolated SQLite checks: existing legacy row remains `(0,NULL)`;
+version1 insertion succeeds; session-ID save succeeds; same-attempt body mutation,
+guessed legacy upgrade, and version1 replacement without a body all abort.
+These are SQL proposal checks, not Go migration tests, production application,
+provider qualification, or automatic recovery completion. The schema owner must
+also test current database upgrades and interaction with the updated billing
+insert/retry logic before accepting the patch.
