@@ -3,19 +3,19 @@
   "profile": "paid",
   "status": "PARTIAL",
   "source_sha": "874dd90ddd210ba1cb120f04af16b88e637fa3c8",
-  "recorded_at": "2026-09-24T15:13:59.596194+00:00",
+  "recorded_at": "2026-09-24T15:15:04.500939+00:00",
   "evidence_level": "local-process",
   "dependencies": {
     "T23.41": "ab39dd0"
   },
   "commands": [
-    "go test -race -count=1 -json ./internal/hosted/billing",
+    "go test -race -count=1 -json ./internal/hosted/billing ./internal/hosted/meter",
     "golangci-lint run ./internal/hosted/billing"
   ],
   "cases": {
-    "planned": 18,
-    "executed": 18,
-    "passed": 18,
+    "planned": 20,
+    "executed": 20,
+    "passed": 20,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
@@ -24,7 +24,7 @@
     {
       "criterion": "Checkout return alone never grants access; one customer cannot acquire duplicate active paid subscriptions through retries",
       "expected": "Provider snapshot is authoritative for entitlement, never a client-supplied return; a customer holding any nonterminal subscription cannot start a second checkout, and duplicate nonterminal subscriptions reported by the provider fail closed rather than picking one",
-      "observed": "Checkout() blocks a second attempt while one nonterminal subscription exists and returns the same session on retry (TestCheckoutSurvivesRestartAndPreventsSecondPlan). ReconcileCustomer rejects two nonterminal subscriptions for one customer without granting access or corrupting the account's plan (TestReconcileRejectsDuplicateNonterminalSubscriptions, added this pass)",
+      "observed": "Checkout() blocks a second attempt while one nonterminal subscription exists and returns the same session on retry (TestCheckoutSurvivesRestartAndPreventsSecondPlan). ReconcileCustomer rejects two nonterminal subscriptions for one customer without granting access or corrupting the account's plan (TestReconcileRejectsDuplicateNonterminalSubscriptions, added this pass) Coordinator regression now inserts reconciliation between initial checkout and fresh-Service retry. It failed before 874dd90 because empty subscription lists erased an open attempt. The corrected path retains it, rejects a different plan, and reuses the original session without a second creation.",
       "status": "PASS"
     },
     {
