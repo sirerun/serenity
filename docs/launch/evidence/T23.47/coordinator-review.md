@@ -9,4 +9,4 @@ Sources reviewed:
 - https://docs.stripe.com/api/events
 - https://docs.stripe.com/changelog/acacia/2024-10-28/customer-portal-schedule-downgrades
 
-Coordinator added race-tested lifecycle projection and webhook-outage/retry fixtures. Scheduled cancellation is not a scheduled price downgrade. Portal configuration, proration, Checkout-based re-subscription and injected local-save failure remain unqualified. No provider calls, charges or deployment occurred.
+Coordinator added race-tested lifecycle projection and webhook-outage/retry fixtures. Scheduled cancellation is not a scheduled price downgrade. Portal configuration, proration, Checkout-based re-subscription remain unqualified. An actual local transaction failure after provider cancellation is now injected and verified: pending response, unchanged local subscription, then fresh-Service retry completes without double cancellation. No provider calls, charges or deployment occurred.

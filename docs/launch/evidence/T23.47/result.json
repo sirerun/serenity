@@ -2,8 +2,8 @@
   "task_id": "T23.47",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "abb9eef1bdc8cf4ef2ccd2318a70038f0469c28c",
-  "recorded_at": "2026-09-24T14:26:47.271571Z",
+  "source_sha": "2274118ec60ef77015e74c8ed72b11e065b3a626",
+  "recorded_at": "2026-09-24T14:28:28.441583Z",
   "evidence_level": "local-process",
   "dependencies": {
     "T23.41": "ab39dd0"
@@ -13,9 +13,9 @@
     "golangci-lint run ./internal/hosted/billing"
   ],
   "cases": {
-    "planned": 17,
-    "executed": 17,
-    "passed": 17,
+    "planned": 18,
+    "executed": 18,
+    "passed": 18,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
@@ -30,7 +30,7 @@
     {
       "criterion": "Checkout completed before webhook then deletion cancels that subscription; open checkout cannot leave a live subscription after deletion closure is certified",
       "expected": "CloseBillingAccount expires open checkout sessions, cancels every provider subscription including ones never observed locally, and only certifies closed after a re-list confirms none remain active; a resumed call after partial success stays idempotent",
-      "observed": "TestReconcileCustomerAndCloseBillingAccount confirms session expiry, subscription cancellation and the post-cancel recheck before CloseStatusClosed. TestCloseBillingAccountResumesAfterAlreadyClosedProviderState (added this pass) confirms a second call against already-terminal provider state, with a stale local checkout row left over as if a prior local commit never landed, still certifies closed and clears the stale row",
+      "observed": "TestReconcileCustomerAndCloseBillingAccount confirms session expiry, subscription cancellation and the post-cancel recheck before CloseStatusClosed. TestCloseBillingAccountResumesAfterAlreadyClosedProviderState (added this pass) confirms a second call against already-terminal provider state, with a stale local checkout row left over as if a prior local commit never landed, still certifies closed and clears the stale row TestCloseBillingRetriesAfterProviderSuccessAndLocalCommitFailure now injects an actual SQLite transaction abort after successful provider cancellation, asserts pending and rollback, then retries through a fresh Service and proves local cancellation/free plan with exactly one provider cancellation.",
       "status": "PASS"
     },
     {
@@ -54,13 +54,13 @@
     {
       "criterion": "Required-step-5 fixture state table (covered subset): initial incomplete/failure, activation, renewal, scheduled downgrade, cancellation/re-subscription state transitions reused via dedup/late-event tests, duplicate subscription, stale/duplicate/reversed events, unknown price, reconcile-side provider outage, provider-success/local-save failure",
       "expected": "Each named fixture state exercised by a scenario naming it",
-      "observed": "Coordinator added TestWebhookPriceChangesCancellationAndResubscription (activation, same-subscription upgrade, applied downgrade, cancellation and new subscription) and TestWebhookProviderOutageLeavesEventRetryable (503 preserves free access and unprocessed event; retry grants access and marks processed). These passed with race detection. This does not prove portal scheduling, proration, Checkout-based re-subscription, or injected provider-success/local-save-failure; the complete matrix remains unqualified.",
+      "observed": "Coordinator added TestWebhookPriceChangesCancellationAndResubscription (activation, same-subscription upgrade, applied downgrade, cancellation and new subscription) and TestWebhookProviderOutageLeavesEventRetryable (503 preserves free access and unprocessed event; retry grants access and marks processed). These passed with race detection. This does not prove portal scheduling, proration, Checkout-based re-subscription, or full provider portal behavior; the complete matrix remains unqualified. Actual provider-success/local-commit-failure recovery is now separately proven by the injected-transaction test; the full remaining matrix is still not qualified.",
       "status": "NOT_RUN"
     },
     {
       "criterion": "Required-step-5 fixture state table (remaining gap): dedicated upgrade (price change on an existing subscription id), a full cancellation-then-re-subscription cycle, and webhook-side provider outage",
       "expected": "Each named fixture state exercised by a scenario naming it",
-      "observed": "Coordinator added TestWebhookPriceChangesCancellationAndResubscription (activation, same-subscription upgrade, applied downgrade, cancellation and new subscription) and TestWebhookProviderOutageLeavesEventRetryable (503 preserves free access and unprocessed event; retry grants access and marks processed). These passed with race detection. This does not prove portal scheduling, proration, Checkout-based re-subscription, or injected provider-success/local-save-failure; the complete matrix remains unqualified.",
+      "observed": "Coordinator added TestWebhookPriceChangesCancellationAndResubscription (activation, same-subscription upgrade, applied downgrade, cancellation and new subscription) and TestWebhookProviderOutageLeavesEventRetryable (503 preserves free access and unprocessed event; retry grants access and marks processed). These passed with race detection. This does not prove portal scheduling, proration, Checkout-based re-subscription, or full provider portal behavior; the complete matrix remains unqualified. Actual provider-success/local-commit-failure recovery is now separately proven by the injected-transaction test; the full remaining matrix is still not qualified.",
       "status": "NOT_RUN"
     },
     {
@@ -77,7 +77,7 @@
     },
     {
       "path": "internal/hosted/billing/billing_test.go",
-      "sha256": "7b955dd2b9113771ae6afa48495648dd2f9643644cd29f5feb4dc5db3ddb98fe"
+      "sha256": "895f59bf1b6c58ca7b0eafe7f5714d35f79cd517615dc30bc1b1e155a165bf9e"
     }
   ],
   "cost": {
@@ -91,7 +91,7 @@
     "Service assembly does not yet invoke ReconcileCustomer/CloseBillingAccount; integrator task T23.57 must wire the frozen interfaces.",
     "No production deployment or external provider mutation occurred.",
     "Payment-failure timing remains incorrect/unaccepted; see coordinator-review.md.",
-    "Local lifecycle fixtures do not configure or qualify provider portal policy, checkout re-subscription, proration or real provider-success/local-save failure."
+    "Local lifecycle fixtures do not configure or qualify provider portal policy, checkout re-subscription, proration ; injected local-save failure after provider success is now covered by a local fixture."
   ],
   "blockers": [
     {
