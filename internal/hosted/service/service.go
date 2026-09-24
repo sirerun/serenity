@@ -122,6 +122,10 @@ func (c *Config) Validate(dev bool) error {
 			return errors.New("embedding provider must use HTTPS")
 		}
 	}
+
+	if !dev && c.EmbeddingModel == "perplexity/pplx-embed-v1-0.6b" && c.EmbeddingBaseURL != "" && strings.TrimRight(c.EmbeddingBaseURL, "/") != "https://openrouter.ai/api/v1" {
+		return errors.New("approved hosted embedding model requires the OpenRouter endpoint")
+	}
 	if c.MaxOpen == 0 {
 		c.MaxOpen = 8
 	}
@@ -225,7 +229,7 @@ func New(cfg Config, dev bool, devOutput io.Writer) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	provider := &router.OpenAIEmbeddingsProvider{APIKey: embeddingKey, BaseURL: cfg.EmbeddingBaseURL, Model: cfg.EmbeddingModel, Version: cfg.EmbeddingVersion, HTTPClient: &http.Client{Timeout: 15 * time.Second}}
+	provider := newEmbeddingProvider(cfg, embeddingKey)
 	embedder := &embed.RouterEmbedder{Router: router.New(map[router.Tier]router.Provider{router.TierLocalCheap: provider}, ledger{db}), Pin: provider.ModelVersion()}
 	s, err := Assemble(cfg, dev, db, sender, embedder)
 	if err != nil {
@@ -332,4 +336,24 @@ func (s *Service) AdminHandler() http.Handler {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// newEmbeddingProvider carries the hosted privacy policy into every embedding
+// request, including readiness probes. Adapter support alone is insufficient.
+func newEmbeddingProvider(cfg Config, key string) *router.OpenAIEmbeddingsProvider {
+	p := &router.OpenAIEmbeddingsProvider{APIKey: key, BaseURL: cfg.EmbeddingBaseURL, Model: cfg.EmbeddingModel, Version: cfg.EmbeddingVersion, HTTPClient: &http.Client{Timeout: 15 * time.Second}}
+	approvedModel := cfg.EmbeddingModel == "perplexity/pplx-embed-v1-0.6b"
+	if approvedModel && p.BaseURL == "" {
+		p.BaseURL = "https://openrouter.ai/api/v1"
+	}
+	endpoint, _ := url.Parse(p.BaseURL)
+	if approvedModel || (endpoint != nil && strings.EqualFold(endpoint.Hostname(), "openrouter.ai")) {
+		p.ZDR = true
+		p.DataCollection = "deny"
+		p.HTTPClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
+	}
+	if approvedModel {
+		p.ProviderOnly = []string{"Perplexity"}
+	}
+	return p
 }
