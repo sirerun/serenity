@@ -56,14 +56,14 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
     window.cspViolations = [];
     document.addEventListener('securitypolicyviolation', event => window.cspViolations.push(event.violatedDirective));
   });
-  for (const route of ['/docs/', '/chat/', '/get-started/', '/product/', '/docs/connections/', '/docs/connections/claude-code/', '/docs/connections/codex/', '/docs/connections/other-mcp/', '/docs/connections/rakazo/', '/docs/connections/claude-web/', '/docs/connections/chatgpt/', '/']) {
+  for (const route of ['/docs/', '/chat/', '/get-started/', '/product/', '/pricing/', '/docs/connections/', '/docs/connections/claude-code/', '/docs/connections/codex/', '/docs/connections/other-mcp/', '/docs/connections/rakazo/', '/docs/connections/claude-web/', '/docs/connections/chatgpt/', '/']) {
     const response = await page.goto(origin + route);
     expect(response.status(), route).toBe(200);
     await page.evaluate(() => document.fonts.ready);
     expect(await page.evaluate(() => window.cspViolations)).toEqual([]);
   }
   await expect(page.locator('.dot-svg').first()).toBeAttached();
-  await page.getByRole('link', { name: 'Sign in ↗', exact: true }).click();
+  await page.getByRole('link', { name: 'Sign in', exact: true }).click();
   await expect(page).toHaveURL(`${origin}/login`);
   await expect(page.locator('.brand img')).toBeVisible();
   expect(await page.locator('body').evaluate(el => getComputedStyle(el).margin)).toBe('0px');

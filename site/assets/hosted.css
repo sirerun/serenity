@@ -10,3 +10,5 @@ body{background-color:var(--paper)}
 .danger-zone button:hover{color:#fff}
 
 .connection-guide pre{max-width:100%;overflow:auto;padding:1.25rem;border:1px solid var(--line);border-radius:12px}.connection-guide .link-item h2{font-size:1.3rem}.connection-guide dd{margin:0 0 1rem;overflow-wrap:anywhere}.connection-guide .link-grid{margin:2rem 0}
+
+.plan-card{padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}.plan-card h2{margin-top:0}.plan-price{font-size:2.5rem;color:var(--ink)}.plan-price span{font-size:1rem;color:var(--copy)}.plan-card .pill{display:inline-flex;margin-top:12px}

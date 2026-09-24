@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-//go:embed *.html assets brand chat docs get-started product content.json llms.txt robots.txt sitemap.xml
+//go:embed *.html assets brand chat docs get-started product pricing content.json llms.txt robots.txt sitemap.xml
 var files embed.FS
 
 // Handler serves only public files. Directory listings and Go sources are never exposed.

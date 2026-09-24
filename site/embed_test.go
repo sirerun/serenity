@@ -14,6 +14,7 @@ func TestPublicFilesOnly(t *testing.T) {
 		contains string
 	}{
 		{"/", 200, "keep your context"},
+		{"/pricing/", 200, "Not available for purchase"},
 		{"/docs/", 200, "<!doctype html>"},
 		{"/docs/connections/", 200, "Connect your agent"},
 		{"/docs/connections/claude-code/", 200, "Claude Code"},

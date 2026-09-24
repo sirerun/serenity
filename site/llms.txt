@@ -1,6 +1,11 @@
 # Serenity
 
-Memory and context for agents and embedded systems, in a brain Git repository you own. Start Codex CLI in that repository or integrate Serenity into your own system. No standalone Brain app is available today. Inspired by and building on Garry Tan’s gbrain. Current-source documentation; packaged release v0.1.1 differs.
+Hosted project memory for coding agents, with a free preview and a secondary open-source installation path. Hosted preview is for non-sensitive test memories while qualification continues. Paid subscriptions are not enabled.
+
+- [Hosted plans](https://serenity.sire.run/pricing/): Free preview allowances and the planned Builder offer; not yet available for paid purchase.
+- [Connect your agent](https://serenity.sire.run/docs/connections/): Client-specific token setup and explicit web-integration limitations.
+- [Start free](https://serenity.sire.run/login): Email sign-in for a free hosted project memory.
+
 
 - [Set up the brain. Work through your agent.](https://serenity.sire.run/get-started/): Install Serenity behind your agent or application. Start with a separate brain Git repository and a small set of sources.
 - [Create your agent’s brain.](https://serenity.sire.run/docs/quickstart/): Create a separate brain repository, verify a small set of sources, then open your agent in that repository.
