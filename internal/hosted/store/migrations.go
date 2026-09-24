@@ -109,3 +109,11 @@ CREATE TABLE billing_failures(
 CREATE INDEX billing_failures_account ON billing_failures(account_id,subscription_id);
 INSERT INTO schema_migrations(version,applied_at) VALUES(6,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 `
+
+// migration7 records which exact provider invoice established the current
+// past-due grace window. A second failed invoice in the same billing period
+// must not silently extend access.
+const migration7 = `
+ALTER TABLE subscriptions ADD COLUMN grace_invoice_id TEXT;
+INSERT INTO schema_migrations(version,applied_at) VALUES(7,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+`

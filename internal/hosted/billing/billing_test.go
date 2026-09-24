@@ -600,6 +600,55 @@ func TestGraceDeadlineIndependentOfWebhookAndReconciliationOrder(t *testing.T) {
 	}
 }
 
+func TestNewFailedInvoiceDoesNotExtendGraceWithinSameBillingPeriod(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	a, err := db.CreateAccount(ctx, "same-period-invoice@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET stripe_customer_id='cus_same_period' WHERE id=?`, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	periodStart := time.Now().UTC().Add(-24 * time.Hour).Truncate(time.Second)
+	firstFailure := time.Now().UTC().Add(-5 * time.Hour).Truncate(time.Second)
+	firstDeadline := store.Stamp(firstFailure.Add(72 * time.Hour))
+	if _, err = db.DB().ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_until,grace_invoice_id) VALUES('sub_same_period',?,'price_builder','builder','past_due',?,?,0,?,'in_old')`, a.ID, store.Stamp(periodStart), store.Stamp(periodStart.Add(30*24*time.Hour)), firstDeadline); err != nil {
+		t.Fatal(err)
+	}
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/subscriptions" {
+			_, _ = fmt.Fprintf(w, `{"data":[{"id":"sub_same_period","customer":"cus_same_period","status":"past_due","latest_invoice":"in_new","items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}],"has_more":false}`, periodStart.Unix(), periodStart.Add(30*24*time.Hour).Unix())
+			return
+		}
+		if !serveFailureHistory(t, w, r, "cus_same_period", "sub_same_period", map[string]failureFixture{"in_new": {InvoiceCreated: firstFailure.Add(-time.Hour), Events: []time.Time{firstFailure.Add(time.Hour)}}}) {
+			t.Errorf("unexpected request: %s", r.URL)
+			http.NotFound(w, r)
+		}
+	}))
+	defer provider.Close()
+	s := &billing.Service{Store: db, Config: billing.Config{BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}
+	if _, err = s.ReconcileCustomer(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	var gotGrace, gotInvoice string
+	if err = db.DB().QueryRowContext(ctx, `SELECT grace_until,grace_invoice_id FROM subscriptions WHERE id='sub_same_period'`).Scan(&gotGrace, &gotInvoice); err != nil {
+		t.Fatal(err)
+	}
+	if gotGrace != firstDeadline || gotInvoice != "in_old" {
+		t.Fatalf("new failed invoice extended existing period grace: deadline=%q invoice=%q, want %q and in_old", gotGrace, gotInvoice, firstDeadline)
+	}
+}
+
 // TestWebhookLateFailureAfterPaymentDoesNotReopenGrace reproduces a
 // reordered/retried delivery of an old payment-failure event arriving after
 // the account already recovered. The webhook must trust only a fresh

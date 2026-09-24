@@ -37,8 +37,8 @@ func TestLegacySchemasUpgradeTwiceAndPreserveControlData(t *testing.T) {
 				if err := s.db.QueryRow(`SELECT max(version),count(*) FROM schema_migrations`).Scan(&version, &count); err != nil {
 					t.Fatal(err)
 				}
-				if version != 6 || count != 6 {
-					t.Fatalf("migration versions max=%d count=%d, want 6/6", version, count)
+				if version != 7 || count != 7 {
+					t.Fatalf("migration versions max=%d count=%d, want 7/7", version, count)
 				}
 				if pass == 2 {
 					if err := assertOperationSchema(s.db); err != nil {
@@ -99,7 +99,7 @@ func TestFutureSchemaIsRejectedWithoutWriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec(`INSERT INTO schema_migrations(version,applied_at) VALUES(7,'future')`); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO schema_migrations(version,applied_at) VALUES(8,'future')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {
@@ -109,7 +109,7 @@ func TestFutureSchemaIsRejectedWithoutWriting(t *testing.T) {
 	if opened, err := Open(path); err == nil {
 		_ = opened.Close()
 		t.Fatal("future schema opened")
-	} else if got := err.Error(); got != "migrate hosted database: unsupported hosted schema version 7" {
+	} else if got := err.Error(); got != "migrate hosted database: unsupported hosted schema version 8" {
 		t.Fatalf("future schema error = %q", got)
 	}
 	if after := databaseFileHash(t, path); after != before {
