@@ -2,20 +2,21 @@
   "task_id": "T23.47",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "ee6b7f2617062c1276e91c873d6e0e85b8c25bac",
-  "recorded_at": "2026-09-24T15:24:41.071402+00:00",
+  "source_sha": "f339f034e5905fb220b794bdbc132ecfaebed613",
+  "recorded_at": "2026-09-24T15:30:25.369021+00:00",
   "evidence_level": "local-process",
   "dependencies": {
     "T23.41": "ab39dd0"
   },
   "commands": [
     "go test -race -count=1 ./internal/hosted/billing",
-    "golangci-lint run ./internal/hosted/billing"
+    "golangci-lint run ./internal/hosted/billing",
+    "go test -race -count=1 -tags hostedtest -json ./internal/hosted/billing ./internal/hosted/testhooks"
   ],
   "cases": {
-    "planned": 21,
-    "executed": 21,
-    "passed": 21,
+    "planned": 30,
+    "executed": 30,
+    "passed": 30,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
@@ -48,8 +49,8 @@
     {
       "criterion": "Hostedtest phase barrier is present and production build cannot activate it",
       "expected": "Reconciliation calls PhaseReconcileFenced; tagged/untagged testhook behavior is proven",
-      "observed": "Reconciliation retains PhaseReconcileFenced. Earlier tagged/untagged checks were recorded on prior source; no final-source tagged barrier qualification was executed in this update.",
-      "status": "NOT_RUN"
+      "observed": "On production sourcef339f03, the hostedtest-tagged race run passed22 billing and8 testhook top-level tests (30 distinct cases; billing also passes untagged). Testhooks explicitly builds and runs untagged and tagged probe binaries, verifies untagged control-pipe inertness, tagged crash/pause/release and concurrent phase behavior. The shared build lease was released. This proves the existing hooks/build barrier, not full billing fault injection or assembled deletion recovery.",
+      "status": "PASS"
     },
     {
       "criterion": "Required-step-5 fixture state table (covered subset): initial incomplete/failure, activation, renewal, scheduled downgrade, cancellation/re-subscription state transitions reused via dedup/late-event tests, duplicate subscription, stale/duplicate/reversed events, unknown price, reconcile-side provider outage, provider-success/local-save failure",
@@ -73,11 +74,11 @@
   "artifacts": [
     {
       "path": "internal/hosted/billing/billing.go",
-      "sha256": "1477373da562de0a8698ff2087ea963dc6005859024354e6f717c9b4bb222d9d"
+      "sha256": "03c7e0f053315481f71be07dbb2ed97e02923ea346d20f37c127f1c04389c4f8"
     },
     {
       "path": "internal/hosted/billing/billing_test.go",
-      "sha256": "a5cadc8dd1c02c86633e585cd6fad116503c164778f77b2f1bc3ad485dedd9d9"
+      "sha256": "10ed88c18b3f1ccc3b0129e60bb59b022f1fefc53f6977ab16de5610d9c76628"
     },
     {
       "path": "internal/hosted/billing/checkout_reconcile_test.go",
@@ -85,7 +86,7 @@
     },
     {
       "path": "internal/hosted/billing/checkout_interruption_test.go",
-      "sha256": "e4789fcbeda860b0fc3fed025078dc14e9f0a0b872d945dcef9e87654c241826"
+      "sha256": "9c0dacebfcaeabcc4ca31310688406d7cab5d9ef0c7e6b6240f72a2b43e4bb5d"
     }
   ],
   "cost": {
