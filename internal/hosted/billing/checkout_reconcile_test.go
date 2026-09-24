@@ -15,7 +15,10 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
-func TestOldCheckoutRequiresConfirmedExpiration(t *testing.T) {
+func TestOldCheckoutRequiresConfirmedExpiration(t *testing.T) { checkExpiration(t, false) }
+func TestClosureRequiresConfirmedExpiration(t *testing.T)     { checkExpiration(t, true) }
+func checkExpiration(t *testing.T, closing bool) {
+	t.Helper()
 	for _, tc := range []struct {
 		name, id, status string
 		accepted         bool
@@ -62,7 +65,21 @@ func TestOldCheckoutRequiresConfirmedExpiration(t *testing.T) {
 			}))
 			t.Cleanup(provider.Close)
 			s := &billing.Service{Store: db, Config: billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder"}}
-			_, err = s.ReconcileCustomer(ctx, a.ID)
+			if closing {
+				if _, err = db.DB().ExecContext(ctx, `UPDATE accounts SET status='deleting' WHERE id=?`, a.ID); err != nil {
+					t.Fatal(err)
+				}
+				var result contracts.CloseResult
+				result, err = s.CloseBillingAccount(ctx, a.ID)
+				if tc.accepted && result.Status != contracts.CloseStatusClosed {
+					t.Fatalf("closure=%+v", result)
+				}
+				if !tc.accepted && result.Status != contracts.CloseStatusPending {
+					t.Fatalf("unconfirmed closure=%+v", result)
+				}
+			} else {
+				_, err = s.ReconcileCustomer(ctx, a.ID)
+			}
 			if tc.accepted {
 				if err != nil {
 					t.Fatal(err)
@@ -78,7 +95,11 @@ func TestOldCheckoutRequiresConfirmedExpiration(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.accepted {
-				if attempts != 0 || audits != 1 {
+				wantAudits := 1
+				if closing {
+					wantAudits = 0
+				}
+				if attempts != 0 || audits != wantAudits {
 					t.Fatalf("attempts=%d audits=%d", attempts, audits)
 				}
 			} else if attempts != 1 || audits != 0 {

@@ -782,11 +782,21 @@ func (s *Service) expireCheckout(ctx context.Context, sessionID string) error {
 	if err := s.providerRequest(ctx, "GET", "/checkout/sessions/"+url.PathEscape(sessionID), nil, "", &session); err != nil {
 		return err
 	}
+	if session.ID != sessionID {
+		return fmt.Errorf("%w: checkout session identity mismatch", contracts.ErrBillingProviderAmbiguous)
+	}
 	switch session.Status {
 	case "expired", "complete":
 		return nil
 	case "open":
-		return s.providerRequest(ctx, "POST", "/checkout/sessions/"+url.PathEscape(sessionID)+"/expire", nil, "serenity-expire-"+sessionID, &session)
+		session.ID, session.Status = "", ""
+		if err := s.providerRequest(ctx, "POST", "/checkout/sessions/"+url.PathEscape(sessionID)+"/expire", nil, "serenity-expire-"+sessionID, &session); err != nil {
+			return err
+		}
+		if session.ID != sessionID || session.Status != "expired" {
+			return fmt.Errorf("%w: checkout expiration not confirmed", contracts.ErrBillingProviderAmbiguous)
+		}
+		return nil
 	default:
 		return fmt.Errorf("%w: checkout session %s unresolved", contracts.ErrBillingProviderAmbiguous, sessionID)
 	}
