@@ -62,3 +62,15 @@ The legacy closure regression now invokes the real dashboard handler with a vali
 ## Latest consolidated verification
 
 On source 9c6b88a75bcfcd477b3e8e6804659b0aed31fc94, tagged race verification passed23 billing plus8 testhook top-level cases (31 distinct cases), with zero failures. Scoped billing lint reports zero issues. The shared build lease was acquired and released. This consolidates the legacy dashboard correction into the structured receipt; it does not resolve the separately recorded grace-order FAIL or automatic checkout recovery gap.
+
+## Ordinary Checkout retry identity validation
+
+TestCheckoutRetryRejectsUnmatchedSession failed before correction in both cases:
+provider returned another session as open and Checkout exposed that URL; provider
+returned another session as expired and Checkout created a replacement. Checkout
+now requires the retrieved ID to match its stored session ID before inspecting
+status. Both cases return an error without a URL, issue no replacement creation,
+and preserve the original attempt/session. The full billing package race suite
+passes (24 top-level tests); scoped lint zero issues. This is a local HTTP fixture,
+not provider qualification. The consolidated tagged receipt predates this fix and
+does not claim verification of it. Grace and automatic recovery remain open.

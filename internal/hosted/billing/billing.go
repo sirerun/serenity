@@ -443,6 +443,9 @@ func (s *Service) Checkout(ctx context.Context, account, plan string) (string, e
 		if err = s.request(ctx, "GET", "/checkout/sessions/"+url.PathEscape(sessionID), nil, "", &result); err != nil {
 			return "", err
 		}
+		if result.ID != sessionID {
+			return "", fmt.Errorf("%w: checkout session identity mismatch", contracts.ErrBillingProviderAmbiguous)
+		}
 		if result.Status == "open" {
 			if pendingPrice != price {
 				return "", errors.New("finish or let your existing checkout expire before choosing another plan")
