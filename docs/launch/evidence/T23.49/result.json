@@ -2,15 +2,15 @@
   "task_id": "T23.49",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "a6cc7753c33ae0d38d609846d258577f5729f272",
-  "recorded_at": "2026-09-24T15:00:31.039648Z",
+  "source_sha": "95cdfb01c84b8fdf42870735c3d53b8faa9575af",
+  "recorded_at": "2026-09-24T15:08:12.532299+00:00",
   "evidence_level": "local-process",
   "dependencies": {
     "T23.41": "ab39dd02cb227a08f6ab31bfe7f8d7fdf374357d"
   },
   "commands": [
-    "go test -race -count=1 -json ./internal/hosted/backup",
-    "golangci-lint run ./internal/hosted/backup"
+    "go test -race -count=1 ./internal/hosted/backup",
+    "golangci-lint run ./internal/hosted/backup/..."
   ],
   "cases": {
     "planned": 28,
@@ -30,7 +30,7 @@
     {
       "criterion": "Manifest roundtrip matches exact fact IDs and canonical bundle heads; restored raw credentials/sessions remain invalid.",
       "expected": "A create-then-restore round trip reproduces identical canonical content and exact bundle heads (including the bundle's own HEAD entry), and restored client_credentials/sessions/oauth_* state is revoked or cleared.",
-      "observed": "TestCreateRestoreRoundTripPreservesCanonicalMemoryFact drives the product's real internal/writer.MemoryFact write path (backed by internal/store.SourceStore, the same store.LoadMemoryProjection a live read path uses) and proves the restored brain projects the identical content-addressed fact ID (SHA256) with byte-identical payload (fact text, provenance, entity slug, kind, visibility, created_at) -- not a brain.txt proxy. TestCreateRestoreRoundTrip and TestRoundTripPreservesEveryBranchAndTag verify exact manifest/bundle heads including multiple branches and a tag are restored as real local refs, not left as refs/remotes/origin/* tracking refs. TestRestoreRevokesCredentialsAndOAuthState seeds one row each of oauth_grants (plus its cascade-owned oauth_tokens/oauth_refresh), oauth_codes, oauth_consents, sessions, login_tokens and a client_credentials row, then asserts all seven tables are fully cleared/revoked after restore, not just client_credentials. All fixture/local-process evidence; no live service/gateway process was run.",
+      "observed": "TestCreateRestoreRoundTripPreservesCanonicalMemoryFact drives the product's real internal/writer.MemoryFact write path (backed by internal/store.SourceStore, the same store.LoadMemoryProjection a live read path uses) and proves the restored brain projects the identical content-addressed fact ID (SHA256) with byte-identical payload (fact text, provenance, entity slug, kind, visibility, created_at) -- not a brain.txt proxy. TestCreateRestoreRoundTrip and TestRoundTripPreservesEveryBranchAndTag verify exact manifest/bundle heads including multiple branches and a tag are restored as real local refs, not left as refs/remotes/origin/* tracking refs. TestRestoreRevokesCredentialsAndOAuthState seeds one row each of oauth_grants (plus its cascade-owned oauth_tokens/oauth_refresh), oauth_codes, oauth_consents, sessions, login_tokens and a client_credentials row, then asserts all seven tables are fully cleared/revoked after restore, not just client_credentials. All fixture/local-process evidence; no live service/gateway process was run. Extended provisioning roundtrip covers a real remember/flush after restore in both untouched and runtime-opened cases. Before the fix it committed with machine fallback identity; after configuring repository-local hosted identity before sync/publication, both cases pass. Initialization performs no embedding requests; the later write uses deterministic synthetic fixture embeddings. Accounts remain restore_pending; this is storage-only verification.",
       "status": "PASS"
     },
     {
@@ -43,7 +43,7 @@
   "artifacts": [
     {
       "path": "internal/hosted/backup/backup.go",
-      "sha256": "1640479220ea333e0a0e62f3f1c4a24d1a017d0a304257173faf3f3ba9fd221c"
+      "sha256": "f8a8a7c35a2c2d3c6ecc3bb17ffc128f09f27dc9a5ec203d3284492b3b0a8861"
     },
     {
       "path": "internal/hosted/backup/client.go",
@@ -63,7 +63,7 @@
     },
     {
       "path": "internal/hosted/backup/provision_integration_test.go",
-      "sha256": "99c0ca8b5c33fc80746d4501126ad9a9d3a7efe91b007854443165073580a928"
+      "sha256": "bd972d8355f2ea028aa5ba44f200139ae39ca156197880a8a4292ce7f6f8f4d8"
     }
   ],
   "cost": {
