@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/store"
+	"github.com/sirerun/serenity/internal/writer"
 )
 
 type Provisioner struct {
@@ -62,6 +63,15 @@ func (p *Provisioner) finish(ctx context.Context, b store.Brain) (_ store.Brain,
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return b, errors.New("unsafe brain directory")
 	}
+	owner, err := writer.AcquireBrain(path)
+	if err != nil {
+		return b, err
+	}
+	defer func() { err = errors.Join(err, owner.Close()) }()
+	if err = initializeCanonical(ctx, path); err != nil {
+		return b, err
+	}
+
 	err = p.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		r, e := tx.ExecContext(ctx, `UPDATE brains SET state='ready',ready_at=? WHERE id=? AND account_id=? AND state='allocating'`, store.Stamp(time.Now()), b.ID, b.AccountID)
 		if e != nil {

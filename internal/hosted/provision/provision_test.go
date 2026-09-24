@@ -2,7 +2,10 @@ package provision_test
 
 import (
 	"context"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -48,6 +51,9 @@ func TestConcurrentProvisionAndRecovery(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+	if out, err := exec.CommandContext(ctx, "git", "-C", filepath.Join(p.BrainsRoot, id), "rev-parse", "--verify", "HEAD").CombinedOutput(); err != nil {
+		t.Fatalf("ready brain has no canonical commit: %v %s", err, out)
+	}
 	var n int
 	if e = s.DB().QueryRow(`SELECT count(*) FROM brains WHERE account_id=?`, a.ID).Scan(&n); e != nil || n != 1 {
 		t.Fatalf("brain count %d %v", n, e)
@@ -94,5 +100,105 @@ func TestRecoverAdditionalAllocation(t *testing.T) {
 	}
 	if _, err = p.Additional(ctx, "missing-account", 3); err == nil {
 		t.Fatal("allocated for missing account")
+	}
+}
+
+func TestInterruptedCanonicalInitializationPreservesOtherFiles(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	a, err := db.CreateAccount(ctx, "initialization@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := store.ID()
+	if _, err = db.InsertBrain(ctx, a.ID, id, id, "allocating", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dir, "brains", id)
+	if err = os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) string {
+		t.Helper()
+		out, err := exec.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+		return string(out)
+	}
+	git("init", "--initial-branch=main")
+	if err = os.WriteFile(filepath.Join(root, "unrelated.txt"), []byte("preserve me"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "--", "unrelated.txt")
+	p := &provision.Provisioner{Store: db, BrainsRoot: filepath.Join(dir, "brains")}
+	b, err := p.Provision(ctx, a.ID)
+	if err != nil || b.State != "ready" {
+		t.Fatalf("brain=%+v err=%v", b, err)
+	}
+	files := git("ls-tree", "--name-only", "HEAD")
+	if strings.TrimSpace(files) != ".gitignore" {
+		t.Fatalf("committed unrelated data: %q", files)
+	}
+	if status := git("status", "--porcelain"); !strings.Contains(status, "A  unrelated.txt") {
+		t.Fatalf("lost staged file: %q", status)
+	}
+	head := git("rev-parse", "HEAD")
+	if _, err = p.Provision(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	if next := git("rev-parse", "HEAD"); next != head {
+		t.Fatal("retry changed canonical history")
+	}
+}
+
+func TestProvisionRefusesSymlinkedGit(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	db, err := store.Open(filepath.Join(dir, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	a, err := db.CreateAccount(ctx, "unsafe-init@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := store.ID()
+	if _, err = db.InsertBrain(ctx, a.ID, id, id, "allocating", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dir, "brains", id)
+	if err = os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	victim := t.TempDir()
+	if err = os.Symlink(victim, filepath.Join(root, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	p := &provision.Provisioner{Store: db, BrainsRoot: filepath.Join(dir, "brains")}
+	if _, err = p.Provision(ctx, a.ID); err == nil {
+		t.Fatal("unsafe Git accepted")
+	}
+	var state string
+	if err = db.DB().QueryRowContext(ctx, `SELECT state FROM brains WHERE id=?`, id).Scan(&state); err != nil || state != "allocating" {
+		t.Fatalf("state=%s err=%v", state, err)
+	}
+	entries, err := os.ReadDir(victim)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("victim changed: %v %v", entries, err)
 	}
 }
