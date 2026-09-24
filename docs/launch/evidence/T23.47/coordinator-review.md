@@ -74,3 +74,12 @@ and preserve the original attempt/session. The full billing package race suite
 passes (24 top-level tests); scoped lint zero issues. This is a local HTTP fixture,
 not provider qualification. The consolidated tagged receipt predates this fix and
 does not claim verification of it. Grace and automatic recovery remain open.
+
+## Independent review of retry identity and proposed schema
+
+Read-only correctness fallback reviewed450cb2a and found no new findings in the
+scoped corrections. It confirmed that Checkout checks session identity before
+URL/replacement decisions and that the proposal rejects stale-body inheritance
+through identity updates. No tests were rerun by the reviewer. The schema is
+still unapplied; transactional replacement logic and full automatic recovery must
+ship with it. No paid-readiness acceptance follows from this scoped review.
