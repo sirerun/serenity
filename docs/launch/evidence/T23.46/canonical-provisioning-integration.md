@@ -1,15 +1,16 @@
-# Canonical provisioning correction — integration pending
+# Canonical provisioning integration — recovery qualification pending
 
-Source: ed42c1cbce8d6ad3c352659d07a176d50476acbe.
+Source: 1a59bfe130cc051ae88bb2d575d221291d70a5f1.
 
-The concurrent allocation/recovery regression failed on main because a ready brain had no Git HEAD. Provisioning now takes brain ownership, initializes a minimal committed `.gitignore` baseline for allocating brains, and only then updates the database to ready. It does not recreate existing ready brains. Interrupted initialization preserves unrelated staged files; a symlinked `.git` is rejected without changing its target or marking ready.
+Provisioning creates a committed cache-exclusion baseline under exclusive brain ownership before marking an allocating brain ready. It preserves unrelated staged work and rejects unsafe Git/baseline paths. Existing ready brains are not recreated. The runtime commits its model-pinned configuration even when provisioning already created HEAD, including a retry after config was written but not committed. Commits use exact paths rather than incorporating unrelated staged work.
 
-`go test -race -count=1 -json ./internal/hosted/provision`: exit 0, 5 tests passed. `golangci-lint run ./internal/hosted/provision`: exit 0, zero issues. These are package fixtures, not complete identity or hosted recovery qualification.
+Red-before-green regressions:
+- Ready brain without Git HEAD (main).
+- Existing unrelated HEAD mistaken for completed baseline (initial draft).
+- First runtime open and interrupted config initialization leave config outside HEAD (before runtime integration).
 
-## Required runtime integration before merge
+Final combined command: `go test -race -count=1 -json ./internal/hosted/provision ./internal/hosted/pool ./internal/hosted/identity ./internal/hosted/credential` exited 0; 13 top-level tests passed, no failures/skips. Scoped lint of provision/pool exited 0 with zero issues. The combined check held and released the shared build lease.
 
-`pool.open` currently writes its model-pinned config before testing for Git HEAD and commits config only when HEAD is absent. After this baseline exists, first open must still commit its newly created config under runtime ownership, using exact paths and preserving unrelated staged work. The initialization retry must also recover a config written before a failed commit. Do not broadly stage the directory. Preserve embedding-pin validation and avoid embedding calls during provisioning.
+Runtime ownership was acquired atomically after authenticated transport and current vacant-ref verification; no existing claim was removed or overwritten.
 
-Runtime resource acquisition returned LOST with no visible holder. No runtime code was edited. Coordinate that ownership before applying the change. Verify first runtime open leaves canonical config tracked and the tree clean, then create/restore a version-2 backup of both untouched and first-open brains. Existing ready brains missing Git need explicit reconciliation; no legacy repair is authorized by this change.
-
-Additional retry regression: an allocating brain with an unrelated existing commit but no baseline was incorrectly marked ready. The new test failed before the correction and passes afterward. Existing HEAD now requires the exact baseline in both committed content and its regular working file; no silent repair occurs.
+Remaining acceptance: version-2 create/restore of untouched and first-open brains, full repository CI/review, and explicit treatment of existing ready brains missing Git. No legacy repair, production deployment or complete identity-task acceptance is claimed. Backup-v2 also requires its separately tracked service/journal integrations.
