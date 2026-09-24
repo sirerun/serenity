@@ -117,11 +117,9 @@ func requireRealDir(path string) error {
 // it after could let a snapshot silently miss a deletion). Create never
 // substitutes a fabricated empty watermark for a missing journal -- a zero
 // watermark is only ever what journal itself reports for an actually empty
-// journal. Until task48 ships a production DeletionJournal adapter, callers
-// must supply an explicit implementation (see
-// docs/launch/evidence/T23.49/integration-request.md); passing one that
-// silently claims emptiness without checking a real journal is a caller
-// error this package has no way to detect.
+// journal. Production service assembly supplies T23.48's S3-backed
+// implementation, development assembly supplies its explicit filesystem
+// fake, and offline CLI backup requires the caller to select one explicitly.
 func Create(ctx context.Context, dataDir, destination, buildSHA string, journal contracts.DeletionJournal) (err error) {
 	if journal == nil {
 		return errors.New("hosted/backup: a deletion-journal reader is required to record the pre-copy watermark")

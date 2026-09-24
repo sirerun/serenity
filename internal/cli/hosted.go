@@ -14,6 +14,8 @@ import (
 	"github.com/sirerun/serenity/internal/writer"
 
 	"github.com/sirerun/serenity/internal/hosted/backup"
+	"github.com/sirerun/serenity/internal/hosted/contracts"
+	"github.com/sirerun/serenity/internal/hosted/deletion"
 	"github.com/sirerun/serenity/internal/hosted/plans"
 	"github.com/sirerun/serenity/internal/hosted/service"
 	"github.com/spf13/cobra"
@@ -34,6 +36,9 @@ func newHostedCmd() *cobra.Command {
 		cfg, err := service.Load(path)
 		if err != nil {
 			return err
+		}
+		if cfg.BuildIdentity == "" {
+			cfg.BuildIdentity = Version
 		}
 		if err = cfg.Validate(os.Getenv("SERENITY_HOSTED_DEV") == "1"); err != nil {
 			return err
@@ -110,15 +115,44 @@ func newHostedCmd() *cobra.Command {
 	}
 	cmd.AddCommand(serve)
 	for _, action := range []string{"backup", "restore"} {
-		var dataDir, snapshot string
+		var dataDir, snapshot, journalBucket, journalRegion, journalDir string
+		var journalGeneration int64
 		child := &cobra.Command{Use: action, Short: action + " a hosted control snapshot and brain bundles", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 			if action == "backup" {
-				return backup.Request(cmd.Context(), dataDir, snapshot)
+				var journal contracts.DeletionJournal
+				_, socketErr := os.Stat(filepath.Join(dataDir, ".hosted-admin.sock"))
+				if errors.Is(socketErr, os.ErrNotExist) {
+					switch {
+					case journalDir != "":
+						var err error
+						journal, err = deletion.NewFilesystemJournal(journalDir, "", journalGeneration, nil)
+						if err != nil {
+							return err
+						}
+					case journalBucket != "" && journalRegion != "":
+						var err error
+						journal, err = deletion.NewAWSJournal(cmd.Context(), journalBucket, journalRegion, "", journalGeneration)
+						if err != nil {
+							return err
+						}
+					default:
+						return errors.New("offline hosted backup requires --journal-dir or both --journal-bucket and --journal-region")
+					}
+				} else if socketErr != nil {
+					return socketErr
+				}
+				return backup.Request(cmd.Context(), dataDir, snapshot, Version, journal)
 			}
 			return backup.Restore(cmd.Context(), snapshot, dataDir)
 		}}
 		child.Flags().StringVar(&dataDir, "data-dir", "", "hosted data directory")
 		child.Flags().StringVar(&snapshot, "snapshot", "", "local snapshot directory")
+		if action == "backup" {
+			child.Flags().StringVar(&journalBucket, "journal-bucket", "", "production deletion journal S3 bucket (offline backup only)")
+			child.Flags().StringVar(&journalRegion, "journal-region", "", "AWS region for the deletion journal bucket")
+			child.Flags().StringVar(&journalDir, "journal-dir", "", "explicit local filesystem deletion journal (development only)")
+			child.Flags().Int64Var(&journalGeneration, "journal-generation", 1, "active deletion journal generation")
+		}
 		if err := child.MarkFlagRequired("data-dir"); err != nil {
 			panic(err)
 		}

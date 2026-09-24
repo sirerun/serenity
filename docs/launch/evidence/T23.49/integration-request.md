@@ -1,9 +1,20 @@
-# T23.49 integration request
+# T23.49 integration record
 
-Scope: `internal/hosted/backup/**` only (R-hosted-backup). The changes below
-touch `internal/hosted/service/service.go` and `internal/cli/hosted.go`,
-both outside this task's write scope (R-hosted-assembly / integrator-owned).
-This file is the exact patch request; the integrator applies it.
+The original caller request below has been implemented in the T23.49 working
+branch: `Service.Backup` passes the configured journal and build identity;
+the service uses the production S3 journal or the explicit local filesystem
+journal; and offline CLI backup requires an explicit journal location.
+
+Production deployment wiring remains open. The current stack exposes only the
+backup bucket, whose unscoped 30-day lifecycle rule would also expire journal
+objects. It also lacks conditional-write enforcement, delete denial, and
+`s3:ListBucketVersions`. The hosted config has no journal bucket/region yet.
+Do not configure the existing backup bucket as the production journal until
+the T23.48 infrastructure request adds a protected journal bucket and supplies
+its bucket and region to service config.
+
+The request details below are retained as implementation history and resolved
+interface context.
 
 ## 1. `backup.Create` and `backup.Request` gained two required parameters
 
@@ -33,16 +44,14 @@ Reasons (both required per coordinator review, not optional hardening):
 - **journal**: interfaces.md decision 3 rule 6 requires the deletion-journal
   watermark to be read *before* any data is copied. `Create` never
   substitutes a fabricated empty watermark for a missing journal -- passing
-  `nil` is now a hard error. **Task48's production `DeletionJournal` adapter
-  does not exist yet**, so there is currently no legitimate value either
-  caller can supply. This is the actual current state, not a testing gap:
-  until task48 ships, `Service.Backup` and `serenity hosted backup` cannot
-  produce a manifest with a real watermark. Keep this draft unmerged until the
-  real adapter and call-site wiring are ready. Do not replace the journal with
-  a claimed empty history, and do not disable working production backups merely
-  to make this draft compile. A recorded rationale is not journal evidence.
+  `nil` is now a hard error. This paragraph originally recorded that the
+  task48 adapter and callers were missing. T23.48 now provides the S3 adapter
+  and service/CLI wiring. Production use still waits on T23.54's dedicated
+  protected bucket and delivered config. Do not replace the journal with a
+  claimed empty history or point it at the current 30-day Backups bucket.
+  A recorded rationale is not journal evidence.
 
-### Suggested call-site diff
+### Original call-site sketch (implemented in the working branch)
 
 `internal/hosted/service/service.go` (`Service.Backup`, line ~329 on base
 `055eed446`):
@@ -58,10 +67,9 @@ func (s *Service) Backup(ctx context.Context, destination string) error {
 }
 ```
 
-where `cliVersion` is whatever release-identity string the service already
-carries (empty string is acceptable; `Create` falls back to VCS metadata),
-and `journal` is a `contracts.DeletionJournal` -- see the blocker above for
-what to pass until task48 exists.
+where `cliVersion` is whatever release-identity string the service carries
+(empty string is acceptable; `Create` falls back to VCS metadata), and
+`journal` is the configured `contracts.DeletionJournal`.
 
 `internal/cli/hosted.go` (`backup`/`restore` subcommands, line ~116 on base
 `055eed446`):

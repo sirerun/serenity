@@ -40,17 +40,22 @@ type sessionBinding struct {
 	last       time.Time
 }
 type Gateway struct {
-	admission    limiter
-	Maintenance  sync.RWMutex
-	accountLocks [64]sync.Mutex
-	Issuer       *credential.Issuer
-	Pool         *pool.Pool
-	Meter        *meter.Meter
-	Operations   *operation.Ledger
-	mu           sync.Mutex
-	handlers     map[string]*entry
-	sessions     map[string]sessionBinding
-	closed       bool
+	admission     limiter
+	Maintenance   sync.RWMutex
+	accountLocks  [64]sync.Mutex
+	Issuer        *credential.Issuer
+	Pool          *pool.Pool
+	Meter         *meter.Meter
+	Operations    *operation.Ledger
+	Journal       contracts.DeletionJournal
+	BillingCloser interface {
+		CloseBillingAccount(context.Context, string) (contracts.CloseResult, error)
+	}
+	BillingRequired bool
+	mu              sync.Mutex
+	handlers        map[string]*entry
+	sessions        map[string]sessionBinding
+	closed          bool
 }
 
 func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
