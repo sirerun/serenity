@@ -1,13 +1,20 @@
 // Command backupprobe is backup's own black-box proof fixture: it builds a
 // minimal but real hosted data directory (one account, one ready brain with
 // an actual committed canonical repository) and calls the real backup.Create
-// path, then reports whether the destination was published. Built twice by
-// backup_test.go, with and without -tags hostedtest, to prove the fault
-// barrier at testhooks.PhaseBackupManifestWritten -- called from Create,
-// this package's own code, not testhooks' generic self-test -- only
-// activates in a tagged binary with a real armed control pipe, and that it
-// fires strictly after every artifact is staged but strictly before the
-// destination becomes visible.
+// path, then reports whether the destination was published. Used two ways:
+//
+//   - Built with and without -tags hostedtest (backupprobe's default
+//     "probe-build-sha" argument) to prove the fault barrier at
+//     testhooks.PhaseBackupManifestWritten -- called from Create, this
+//     package's own code, not testhooks' generic self-test -- only activates
+//     in a tagged binary with a real armed control pipe, and that it fires
+//     strictly after every artifact is staged but strictly before the
+//     destination becomes visible.
+//   - Built with -buildvcs=false (no embedded VCS revision) and an explicit
+//     empty build-sha argument, to prove Create's fail-closed behavior when
+//     neither an explicit build identity nor runtime VCS metadata is
+//     available -- deterministically, not by relying on this environment's
+//     own toolchain VCS stamping happening to be absent.
 package main
 
 import (
@@ -37,11 +44,15 @@ func (emptyJournal) Seal(context.Context, int64) (contracts.DeletionWatermark, e
 }
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Println("usage: backupprobe <base-dir>")
+	if len(os.Args) < 2 || len(os.Args) > 3 {
+		fmt.Println("usage: backupprobe <base-dir> [build-sha]")
 		os.Exit(2)
 	}
 	base := os.Args[1]
+	buildSHA := "probe-build-sha"
+	if len(os.Args) == 3 {
+		buildSHA = os.Args[2] // may be "" to exercise Create's own resolution/fail-closed path
+	}
 	dataDir := filepath.Join(base, "data")
 	dest := filepath.Join(base, "snapshot")
 	must(os.MkdirAll(dataDir, 0700))
@@ -65,7 +76,7 @@ func main() {
 	runGit(root, "add", "-A")
 	runGit(root, "commit", "--quiet", "-m", "init")
 
-	err = backup.Create(ctx, dataDir, dest, "probe-build-sha", emptyJournal{})
+	err = backup.Create(ctx, dataDir, dest, buildSHA, emptyJournal{})
 	if err != nil {
 		fmt.Println("create-error")
 		return

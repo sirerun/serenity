@@ -222,6 +222,69 @@ func TestCreateRestoreRoundTrip(t *testing.T) {
 	}
 }
 
+// TestRoundTripPreservesEveryBranchAndTag proves the restore path restores
+// every ref a bundle carries, not only the default branch a plain `git
+// clone` checks out locally. A brain's canonical repository is never
+// expected to hold more than one branch today (pool.Acquire only ever
+// creates "main"), but ManifestV2.BundleHead's own Ref field is documented
+// to allow any "refs/..." name, and a restore that silently dropped
+// secondary branches into remote-tracking refs instead of real local
+// branches would be exactly the "incomplete valid-backup" case reported
+// only as a quiet success. This exercises that general case directly rather
+// than only ever testing the single-branch shape the product happens to
+// produce today.
+func TestRoundTripPreservesEveryBranchAndTag(t *testing.T) {
+	dataDir, brainIDs := newTestDataDir(t, 1)
+	id := brainIDs[0]
+	root := filepath.Join(dataDir, "brains", id)
+	runGit(t, root, "checkout", "-b", "feature", "--quiet")
+	if err := os.WriteFile(filepath.Join(root, "feature.txt"), []byte("feature work\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, root, "add", "-A")
+	runGit(t, root, "commit", "--quiet", "-m", "feature work")
+	runGit(t, root, "checkout", "main", "--quiet")
+	runGit(t, root, "tag", "v1")
+
+	snapshot := filepath.Join(t.TempDir(), "snapshot")
+	if err := Create(context.Background(), dataDir, snapshot, "test-build-sha", fakeJournal{}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	manifest := readManifestFile(t, snapshot)
+	for _, want := range []string{"HEAD", "refs/heads/main", "refs/heads/feature", "refs/tags/v1"} {
+		if !hasHeadRef(manifest.Brains[0].Heads, want) {
+			t.Fatalf("manifest heads = %+v, missing %s", manifest.Brains[0].Heads, want)
+		}
+	}
+
+	restored := filepath.Join(t.TempDir(), "restored")
+	if err := Restore(context.Background(), snapshot, restored); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	restoredRoot := filepath.Join(restored, "brains", id)
+	for _, want := range []string{"HEAD", "refs/heads/main", "refs/heads/feature", "refs/tags/v1"} {
+		if !hasHeadRef(mustLocalHeads(t, restoredRoot), want) {
+			t.Fatalf("restored heads = %+v, missing %s", mustLocalHeads(t, restoredRoot), want)
+		}
+	}
+	featureContent, err := exec.Command("git", "-C", restoredRoot, "show", "refs/heads/feature:feature.txt").Output()
+	if err != nil {
+		t.Fatalf("restored feature branch content: %v", err)
+	}
+	if string(featureContent) != "feature work\n" {
+		t.Fatalf("restored feature branch content = %q", featureContent)
+	}
+}
+
+func mustLocalHeads(t *testing.T, dir string) []contracts.BundleHead {
+	t.Helper()
+	heads, err := localHeads(context.Background(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return heads
+}
+
 func TestCreateFlushesDirtyCanonicalStateBeforeBundling(t *testing.T) {
 	dataDir, brainIDs := newTestDataDir(t, 1)
 	id := brainIDs[0]
@@ -311,13 +374,31 @@ func TestCreateRequiresJournal(t *testing.T) {
 	}
 }
 
+// TestCreateFailsClosedWithoutBuildIdentity proves Create's fail-closed
+// behavior deterministically: a probe binary built with -buildvcs=false (no
+// embedded VCS revision at all) and given an explicit empty build-sha must
+// refuse Create outright and publish nothing. This test binary's own VCS
+// metadata (this environment's go test always embeds one) cannot be used to
+// exercise this path, so it drives a purpose-built subprocess instead of
+// skipping when the fallback happens to succeed.
 func TestCreateFailsClosedWithoutBuildIdentity(t *testing.T) {
-	// go test binaries embed a real vcs.revision, so the runtime fallback
-	// alone would mask this path; this only proves an explicit empty string
-	// does not get written through as a literal value without going through
-	// resolveBuildSHA's fallback-or-fail contract.
-	if _, err := resolveBuildSHA(""); err != nil {
-		t.Skip("this test binary has no embedded VCS revision to fall back to; resolveBuildSHA already fails closed as required")
+	out := filepath.Join(t.TempDir(), "backupprobe-novcs")
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", out, "./testdata/backupprobe")
+	cmd.Dir = "."
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build no-vcs probe: %v: %s", err, output)
+	}
+	base := t.TempDir()
+	probe := exec.Command(out, base, "")
+	stdout, err := probe.Output()
+	if err != nil {
+		t.Fatalf("probe should exit 0 after refusing Create, got %v", err)
+	}
+	if got := string(stdout); got != "create-error\n" {
+		t.Fatalf("probe output = %q, want %q (Create must refuse without any build identity)", got, "create-error\n")
+	}
+	if _, statErr := os.Stat(filepath.Join(base, "snapshot")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("destination must not exist after Create refuses for lack of build identity, stat err = %v", statErr)
 	}
 }
 

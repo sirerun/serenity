@@ -393,18 +393,19 @@ func bundleHeads(ctx context.Context, bundlePath string) ([]contracts.BundleHead
 	return parseRefLines(string(output))
 }
 
-// localHeads lists the local branch heads (refs/heads/*) a restored working
+// localHeads lists every refs/heads/* and refs/tags/* ref a restored working
 // repository carries, plus the symbolic HEAD pointer itself, in the same
-// (objectID, ref) shape bundleHeads reports. `git bundle create --all` on
-// this system's single-checked-out-branch repositories always records both
-// the named branch ref and a duplicate "HEAD" entry (contracts.BundleHead's
-// Ref field is documented to allow exactly this); a plain `git clone` does
-// not reproduce a "HEAD" entry in `show-ref`'s output, so it is resolved
-// separately here to compare like for like. refs/remotes/origin/* tracking
-// refs an ordinary clone also creates are excluded: those mirror, rather
-// than replace, the bundle's own heads.
+// (objectID, ref) shape bundleHeads reports. `git bundle create --all` on a
+// repo with branches and tags records the branch and tag refs plus a
+// duplicate "HEAD" entry (contracts.BundleHead's Ref field is documented to
+// allow exactly this); `show-ref` does not report a "HEAD" line, so it is
+// resolved separately here to compare like for like. refs/remotes/origin/*
+// tracking refs an ordinary clone also creates are excluded: those mirror,
+// rather than replace, the bundle's own heads, and restoreAllBranches has
+// already promoted every one of them that a plain clone left out of
+// refs/heads/* into a real local branch before this is called.
 func localHeads(ctx context.Context, dir string) ([]contracts.BundleHead, error) {
-	output, err := exec.CommandContext(ctx, "git", "-C", dir, "show-ref", "--heads").Output()
+	output, err := exec.CommandContext(ctx, "git", "-C", dir, "show-ref").Output()
 	var heads []contracts.BundleHead
 	if err != nil {
 		var exitErr *exec.ExitError
@@ -412,14 +413,64 @@ func localHeads(ctx context.Context, dir string) ([]contracts.BundleHead, error)
 			return nil, fmt.Errorf("list restored refs: %w", err)
 		}
 		// show-ref exits 1 with no output when there are no matching refs.
-	} else if heads, err = parseRefLines(string(output)); err != nil {
-		return nil, err
+	} else {
+		all, perr := parseRefLines(string(output))
+		if perr != nil {
+			return nil, perr
+		}
+		for _, h := range all {
+			if strings.HasPrefix(h.Ref, "refs/heads/") || strings.HasPrefix(h.Ref, "refs/tags/") {
+				heads = append(heads, h)
+			}
+		}
 	}
 	if headSHA, e := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--verify", "HEAD").Output(); e == nil {
 		heads = append(heads, contracts.BundleHead{ObjectID: strings.TrimSpace(string(headSHA)), Ref: "HEAD"})
 	}
 	sort.Slice(heads, func(i, j int) bool { return heads[i].Ref < heads[j].Ref })
 	return heads, nil
+}
+
+// restoreAllBranches promotes every refs/remotes/origin/<branch> ref an
+// ordinary `git clone` creates into a real local refs/heads/<branch>. Plain
+// clone only ever checks out and locally branches the bundle's *default*
+// branch; every other branch the bundle carried survives only as a
+// remote-tracking ref, which localHeads deliberately excludes (it mirrors,
+// rather than is, the original branch). Without this step a bundle with more
+// than one branch would restore incompletely -- silently, since clone itself
+// exits zero -- and the exact-heads comparison after cloning is what turns
+// that gap into a hard failure instead of an unnoticed partial restore. Tags
+// need no such fixup: clone already creates refs/tags/* directly.
+func restoreAllBranches(ctx context.Context, dest string) error {
+	output, err := exec.CommandContext(ctx, "git", "-C", dest, "for-each-ref", "--format=%(refname:short) %(objectname)", "refs/remotes/origin").Output()
+	if err != nil {
+		return fmt.Errorf("list cloned remote branches: %w", err)
+	}
+	for _, line := range strings.Split(strings.TrimRight(string(output), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			return fmt.Errorf("unexpected remote ref line: %q", line)
+		}
+		name, sha := fields[0], fields[1]
+		// refname:short renders the remote's own symbolic HEAD as the bare
+		// name "origin" (no slash), not "origin/HEAD"; requiring the prefix
+		// here excludes it rather than mistaking it for a branch literally
+		// named "origin".
+		branch, ok := strings.CutPrefix(name, "origin/")
+		if !ok || branch == "HEAD" {
+			continue
+		}
+		if _, e := exec.CommandContext(ctx, "git", "-C", dest, "show-ref", "--verify", "--quiet", "refs/heads/"+branch).Output(); e == nil {
+			continue // already a local branch: the default branch clone already checked out
+		}
+		if out, e := exec.CommandContext(ctx, "git", "-C", dest, "branch", branch, sha).CombinedOutput(); e != nil {
+			return fmt.Errorf("restore branch %s: %w: %s", branch, e, out)
+		}
+	}
+	return nil
 }
 
 func parseRefLines(output string) ([]contracts.BundleHead, error) {
@@ -800,6 +851,9 @@ func restoreBrain(ctx context.Context, root *os.Root, scratch, staging string, b
 	}
 	if output, e := exec.CommandContext(ctx, "git", "clone", "--quiet", "--", bundlePath, dest).CombinedOutput(); e != nil {
 		return fmt.Errorf("hosted/backup: restore brain %s: %w: %s", b.ID, e, output)
+	}
+	if err := restoreAllBranches(ctx, dest); err != nil {
+		return fmt.Errorf("hosted/backup: brain %s: %w", b.ID, err)
 	}
 	restored, err := localHeads(ctx, dest)
 	if err != nil {
