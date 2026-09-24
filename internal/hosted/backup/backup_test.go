@@ -652,6 +652,38 @@ func TestRestoreRejectsOmittedBrainInManifest(t *testing.T) {
 	}
 }
 
+// TestRestoreRejectsReadyBrainMarkedEmptyInManifest reproduces a real
+// demonstrated data-loss path: a structurally valid manifest that keeps a
+// ready brain's own ID but flips it to Empty=true with a zeroed
+// ArtifactRef/Heads passes ManifestV2.Validate (an empty entry is
+// structurally self-consistent) and named exactly the IDs the control
+// database still expects, so the old verifyBrainInventory (ID-set
+// comparison only) let it through -- and restoreBrain then created a bare
+// empty directory in place of the brain's real canonical content. Every
+// brain this package's manifests name is a ready brain, and a ready brain
+// is never legitimately empty, so this must be rejected before any
+// destination is published, not discovered later as a silently empty brain.
+func TestRestoreRejectsReadyBrainMarkedEmptyInManifest(t *testing.T) {
+	_, snapshot, brainIDs := freshSnapshot(t, 2)
+	m := readManifestFile(t, snapshot)
+	for i := range m.Brains {
+		if m.Brains[i].ID == brainIDs[0] {
+			m.Brains[i].ArtifactRef = contracts.ArtifactRef{}
+			m.Brains[i].Heads = nil
+			m.Brains[i].Empty = true
+		}
+	}
+	writeManifestFile(t, snapshot, m)
+	restored := filepath.Join(t.TempDir(), "restored")
+	err := Restore(context.Background(), snapshot, restored)
+	if !errors.Is(err, ErrManifestInventoryMismatch) {
+		t.Fatalf("err = %v, want ErrManifestInventoryMismatch", err)
+	}
+	if _, statErr := os.Stat(restored); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("destination must not exist after a ready brain is tampered into an empty claim")
+	}
+}
+
 func TestRestoreRejectsSchemaMismatch(t *testing.T) {
 	_, snapshot, _ := freshSnapshot(t, 0)
 	m := readManifestFile(t, snapshot)

@@ -783,7 +783,16 @@ func verifyAndCopy(root *os.Root, ref contracts.ArtifactRef, destPath string) er
 // restored control database's own ready-brain set. ManifestV2.Validate
 // already proves the manifest's own list is sorted and duplicate-free; this
 // proves it is also the *right* list -- neither missing a brain the database
-// expects nor naming one the database does not have.
+// expects nor naming one the database does not have -- and that none of them
+// have been corrupted into a false "empty" success. Every ID this package
+// ever places in a manifest names a brain buildBrainArtifact already proved
+// ready with a real canonical repository (contracts.BrainArtifact's own doc:
+// "a ready brain missing its repository ... is never representable as an
+// empty success"), so any manifest entry naming a ready brain with Empty
+// true is corruption -- most likely tampering after Create -- not a
+// legitimate state restoreBrain may act on. Rejecting it here, before
+// restoreBrain runs for any brain, is what stops that tampering from
+// silently producing an empty directory instead of the brain's real content.
 func verifyBrainInventory(ctx context.Context, db *store.Store, brains []contracts.BrainArtifact) error {
 	rows, err := db.DB().QueryContext(ctx, `SELECT id FROM brains WHERE state='ready' AND deleted_at IS NULL ORDER BY id`)
 	if err != nil {
@@ -812,6 +821,11 @@ func verifyBrainInventory(ctx context.Context, db *store.Store, brains []contrac
 	if !slices.Equal(expected, got) {
 		return fmt.Errorf("%w: database expects %v, manifest names %v", ErrManifestInventoryMismatch, expected, got)
 	}
+	for _, b := range brains {
+		if b.Empty {
+			return fmt.Errorf("%w: brain %s is recorded ready but the manifest marks it empty (a ready brain is never empty)", ErrManifestInventoryMismatch, b.ID)
+		}
+	}
 	return nil
 }
 
@@ -828,7 +842,12 @@ func verifyBrainInventory(ctx context.Context, db *store.Store, brains []contrac
 func restoreBrain(ctx context.Context, root *os.Root, scratch, staging string, b contracts.BrainArtifact) error {
 	dest := filepath.Join(staging, "brains", b.ID)
 	if b.Empty {
-		return os.Mkdir(dest, 0700)
+		// verifyBrainInventory must reject every Empty brain before this runs
+		// (every brain this package's manifests name is a ready brain, and a
+		// ready brain is never legitimately empty): silently `os.Mkdir`-ing an
+		// empty directory here for a tampered manifest is exactly the data-loss
+		// path a corrupted Empty=true entry must never reach.
+		return fmt.Errorf("hosted/backup: brain %s: internal invariant violated: restoreBrain called for an empty brain", b.ID)
 	}
 	bundlePath := filepath.Join(scratch, b.ID+".bundle")
 	if err := verifyAndCopy(root, b.ArtifactRef, bundlePath); err != nil {
