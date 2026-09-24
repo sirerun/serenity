@@ -85,6 +85,19 @@ if action == "backup" {
 `backup.Restore`'s signature is unchanged (`Restore(ctx, snapshot,
 destination string) error`); no caller of `Restore` needs any change.
 
+**Dirty canonical state is refused, not flushed, by `Create` itself.**
+Per coordinator review, `Create` never runs `git add`/`git commit` against a
+brain's canonical working tree (that would sweep unrelated/unreviewed files
+into canonical history). It fails closed with a clear error if any brain's
+working tree is dirty when bundling starts. This makes the existing
+`Service.Backup` sequencing above load-bearing: `Pool.FlushAll()` must
+actually complete (queued writer commits landed) before `backup.Create`
+runs, or a pending write will make `Create` fail outright rather than
+silently being flushed on its behalf. The offline CLI path has no
+equivalent flush step today -- calling `backup.Request`/`Create` against a
+data directory with any brain mid-write (an unflushed `writer.Queue`) will
+fail for the same reason.
+
 ## 2. Cross-owner provisioning gap (not a file this task can patch)
 
 `internal/hosted/provision/provision.go`'s `Provisioner.finish` marks a brain
