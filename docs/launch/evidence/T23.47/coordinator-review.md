@@ -58,3 +58,7 @@ Dashboard DeleteAccount calls CancelAccount and proceeds to Gateway.DeleteAccoun
 ## Dashboard route exercised
 
 The legacy closure regression now invokes the real dashboard handler with a valid stored session and CSRF-protected POST /account/delete. Both pending-provider cases produce503 with the cancellation-pending response; account status remains active, paid plan unchanged, and the session remains valid. The fixture uses no brain and does not claim memory-file retention or full deletion recovery. Targeted test passes with race detection; scoped lint zero issues. Initial fixture token length was invalid and produced a login redirect; it was corrected to the identity API43-character format before obtaining the passing route result. No production changes in this test-only update.
+
+## Latest consolidated verification
+
+On source 9c6b88a75bcfcd477b3e8e6804659b0aed31fc94, tagged race verification passed23 billing plus8 testhook top-level cases (31 distinct cases), with zero failures. Scoped billing lint reports zero issues. The shared build lease was acquired and released. This consolidates the legacy dashboard correction into the structured receipt; it does not resolve the separately recorded grace-order FAIL or automatic checkout recovery gap.

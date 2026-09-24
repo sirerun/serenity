@@ -2,21 +2,20 @@
   "task_id": "T23.47",
   "profile": "paid",
   "status": "PARTIAL",
-  "source_sha": "f339f034e5905fb220b794bdbc132ecfaebed613",
-  "recorded_at": "2026-09-24T15:30:25.369021+00:00",
+  "source_sha": "9c6b88a75bcfcd477b3e8e6804659b0aed31fc94",
+  "recorded_at": "2026-09-24T16:04:41.097388+00:00",
   "evidence_level": "local-process",
   "dependencies": {
     "T23.41": "ab39dd0"
   },
   "commands": [
-    "go test -race -count=1 ./internal/hosted/billing",
-    "golangci-lint run ./internal/hosted/billing",
-    "go test -race -count=1 -tags hostedtest -json ./internal/hosted/billing ./internal/hosted/testhooks"
+    "go test -race -count=1 -tags hostedtest -json ./internal/hosted/billing ./internal/hosted/testhooks",
+    "golangci-lint run ./internal/hosted/billing"
   ],
   "cases": {
-    "planned": 30,
-    "executed": 30,
-    "passed": 30,
+    "planned": 31,
+    "executed": 31,
+    "passed": 31,
     "failed": 0,
     "skipped": 0,
     "skip_reasons": []
@@ -43,13 +42,13 @@
     {
       "criterion": "Grace deadline is stable under delayed/replayed events, first observed past_due, missed activation, new invoice/renewal and delayed old failure after payment. Renewal opens a fresh allowance while retaining old-window accounting history",
       "expected": "The 72h payment-failure grace anchors to an authoritative provider timestamp, never local processing time, so delayed delivery or a delayed reconcile cannot silently extend or misplace it; a renewal into a new unpaid period starts a fresh deadline while the closed window's accounting is retained, not overwritten in place",
-      "observed": "Coordinator source review rejects the timestamp semantics: subscription period start need not equal payment failure, and an old event can trigger a fetch of a newer past_due snapshot. Webhook event.created then does not identify that current failure. The paths can produce different initial deadlines depending on arrival order. Existing passing fixtures encode the disputed anchors and do not prove this full criterion. Invoice-bound failure identity and durable timing evidence remain required. Executed delivery-order reproducer on ba90538 yielded September14 versus September4 for the same provider state. Its source is retained separately as an explicitly failing qualification reproducer; the21 default tests do not include it.",
+      "observed": "Coordinator source review rejects the timestamp semantics: subscription period start need not equal payment failure, and an old event can trigger a fetch of a newer past_due snapshot. Webhook event.created then does not identify that current failure. The paths can produce different initial deadlines depending on arrival order. Existing passing fixtures encode the disputed anchors and do not prove this full criterion. Invoice-bound failure identity and durable timing evidence remain required. Executed delivery-order reproducer on ba90538 yielded September14 versus September4 for the same provider state. Its source is retained separately as an explicitly failing qualification reproducer; the passing default tests do not include it.",
       "status": "FAIL"
     },
     {
       "criterion": "Hostedtest phase barrier is present and production build cannot activate it",
       "expected": "Reconciliation calls PhaseReconcileFenced; tagged/untagged testhook behavior is proven",
-      "observed": "On production sourcef339f03, the hostedtest-tagged race run passed22 billing and8 testhook top-level tests (30 distinct cases; billing also passes untagged). Testhooks explicitly builds and runs untagged and tagged probe binaries, verifies untagged control-pipe inertness, tagged crash/pause/release and concurrent phase behavior. The shared build lease was released. This proves the existing hooks/build barrier, not full billing fault injection or assembled deletion recovery.",
+      "observed": "Latest tagged race verification passed 23 billing and 8 testhook top-level tests, including the real dashboard pending-deletion route fixture. Production/tagged probe behavior remains covered by the testhook suite. Build lease released; lint zero issues. This does not qualify automatic checkout recovery, grace timing, or assembled deletion.",
       "status": "PASS"
     },
     {
@@ -74,19 +73,23 @@
   "artifacts": [
     {
       "path": "internal/hosted/billing/billing.go",
-      "sha256": "03c7e0f053315481f71be07dbb2ed97e02923ea346d20f37c127f1c04389c4f8"
+      "sha256": "93bc7ebe8c7c3b35687e95364b33b56af5c1cf0b3b88027becf7de65002b4e21"
     },
     {
       "path": "internal/hosted/billing/billing_test.go",
       "sha256": "10ed88c18b3f1ccc3b0129e60bb59b022f1fefc53f6977ab16de5610d9c76628"
     },
     {
+      "path": "internal/hosted/billing/checkout_interruption_test.go",
+      "sha256": "9c0dacebfcaeabcc4ca31310688406d7cab5d9ef0c7e6b6240f72a2b43e4bb5d"
+    },
+    {
       "path": "internal/hosted/billing/checkout_reconcile_test.go",
       "sha256": "19b570f5d8681f51720355ddf7eb3686d897c38f31a5e1a801accd4d3b9cce78"
     },
     {
-      "path": "internal/hosted/billing/checkout_interruption_test.go",
-      "sha256": "9c0dacebfcaeabcc4ca31310688406d7cab5d9ef0c7e6b6240f72a2b43e4bb5d"
+      "path": "internal/hosted/billing/legacy_closure_test.go",
+      "sha256": "e4ef4065942903cf35ff616d8a37ceefbe06d4881efadf86474f464be423b36c"
     }
   ],
   "cost": {
@@ -100,7 +103,8 @@
     "Service assembly does not yet invoke ReconcileCustomer/CloseBillingAccount; integrator task T23.57 must wire the frozen interfaces.",
     "No production deployment or external provider mutation occurred.",
     "Payment-failure timing remains incorrect/unaccepted; see coordinator-review.md.",
-    "Local lifecycle fixtures do not configure or qualify provider portal policy, checkout re-subscription, proration ; injected local-save failure after provider success is now covered by a local fixture."
+    "Local lifecycle fixtures do not configure or qualify provider portal policy, checkout re-subscription, proration ; injected local-save failure after provider success is now covered by a local fixture.",
+    "Latest verification includes legacy CancelAccount pending propagation and dashboard 503/account-plan-session retention; no brain exists in that fixture, so memory-file retention is not proven."
   ],
   "blockers": [
     {
