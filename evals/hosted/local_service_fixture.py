@@ -691,7 +691,7 @@ class LocalHostedService:
             raise FixtureRefused(f"consuming the login link answered {status} without a session")
         self.redactor.add(f"{label}-session", cookie)
         account = Account(label=label, email=email, cookie=cookie, csrf="")
-        page = self._dashboard_get(account, "/")
+        page = self._dashboard_get(account, "/dashboard")
         account.csrf = _first(r'name="csrf" value="([^"]+)"', page, "csrf token")
         self.redactor.add(f"{label}-csrf", account.csrf)
         account.brain_id = _first(r'name="brain_id" value="([0-9a-zA-Z_-]{16,})"', page, "brain id")
@@ -718,7 +718,7 @@ class LocalHostedService:
 
     def live_memories(self, account: Account) -> dict:
         """The dashboard's own count: Gateway.Inventory on the server clock."""
-        page = self._dashboard_get(account, "/")
+        page = self._dashboard_get(account, "/dashboard")
         m = re.search(r"<tr><td>Live memories</td><td>(\d+)</td><td>(\d+)</td>", page)
         if not m:
             raise FixtureRefused("the dashboard shows no Live memories row")

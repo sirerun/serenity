@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   if (window.serenityAdoption) return;
-  const names = ['install_cta', 'docs_open', 'chat_started', 'chat_answered', 'chat_failed'];
+  const names = ['hosted_signup_cta', 'plans_cta', 'install_cta', 'docs_open', 'chat_started', 'chat_answered', 'chat_failed'];
   const counts = Object.fromEntries(names.map(name => [name, 0]));
   function pageKind() {
     const path = location.pathname;
@@ -28,6 +28,8 @@
     try { target = new URL(link.href); } catch { return; }
     if (target.origin !== location.origin) return;
     if (target.pathname === '/get-started/') emit('install_cta');
+    if (target.pathname === '/login' && link.hasAttribute('data-hosted-signup')) emit('hosted_signup_cta');
+    if (target.pathname === '/pricing/') emit('plans_cta');
   });
   // A document opening is measured once, including direct links and reloads.
   // It is not a unique visitor count and does not include the URL or referrer.

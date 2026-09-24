@@ -4,7 +4,7 @@ const report = JSON.parse(fs.readFileSync('test-results/site-results.json', 'utf
 assert.equal(report.stats.unexpected, 0, 'unexpected browser failures');
 assert.equal(report.stats.skipped, 0, 'browser tests must execute');
 assert.equal(report.stats.flaky, 0, 'retries must not hide failures');
-assert.equal(report.stats.expected, 28, 'seven flows must pass at four viewports');
+assert.equal(report.stats.expected, 36, 'nine flows must pass at four viewports');
 const counts = new Map();
 function visit(suite) {
   for (const spec of suite.specs || []) for (const test of spec.tests) {
@@ -18,5 +18,5 @@ function visit(suite) {
 }
 for (const suite of report.suites) visit(suite);
 assert.deepEqual([...counts.keys()].sort(), ['laptop', 'mobile', 'ultrawide', 'wide']);
-for (const [project, names] of counts) assert.equal(names.size, 7, project + ' missing a flow');
-console.log('Adoption browser suite: 28 passed, 7 distinct flows × 4 viewports, 0 skipped');
+for (const [project, names] of counts) assert.equal(names.size, 9, project + ' missing a flow');
+console.log('Adoption browser suite: 36 passed, 9 distinct flows × 4 viewports, 0 skipped');

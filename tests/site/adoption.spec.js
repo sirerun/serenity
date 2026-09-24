@@ -16,10 +16,14 @@ async function noOverflow(page) {
   expect(size.scroll).toBeLessThanOrEqual(size.width + 1);
 }
 
-test('landing install CTA and docs navigation emit only fixed events', async ({ page }) => {
+test('landing makes hosted signup primary and retains secondary DIY navigation', async ({ page }) => {
   const events = await observe(page);
   await page.goto('/?private_query=NEVER-IN-EVENT');
-  await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: /^Install/ }).click();
+  const primary = page.locator('.intro-actions .pill');
+  await expect(primary).toHaveText('Start free ↗');
+  await expect(primary).toHaveAttribute('href', '/login');
+  await expect(page.getByRole('navigation').getByRole('link', { name: /^Start free/ })).toBeVisible();
+  await page.getByRole('link', { name: 'Install open source' }).click();
   await expect(page).toHaveURL(/\/get-started\/$/);
   await expect(page.getByRole('heading', { name: /Choose your install/ })).toBeVisible();
   await expect.poll(() => events.map(x => x.name)).toEqual(['install_cta', 'docs_open']);
@@ -103,13 +107,13 @@ test('event API drops arbitrary names and payloads and sends no analytics reques
   await expect.poll(() => events.length).toBe(2);
   expect(events).toEqual([{ version: 1, name: 'chat_failed', page: 'chat', outcome: 'unknown' }, { version: 1, name: 'chat_answered', page: 'chat', outcome: 'answer' }]);
   expect(outgoing).toEqual([]);
-  expect(await page.evaluate(() => serenityAdoption.counts())).toEqual({ install_cta: 0, docs_open: 0, chat_started: 0, chat_answered: 1, chat_failed: 1 });
+  expect(await page.evaluate(() => serenityAdoption.counts())).toEqual({ hosted_signup_cta: 0, plans_cta: 0, install_cta: 0, docs_open: 0, chat_started: 0, chat_answered: 1, chat_failed: 1 });
 });
 
 test('responsive layout preserves navigation, long answers and reduced motion', async ({ page }, testInfo) => {
   await page.goto('/');
   await noOverflow(page);
-  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: /^Install/ })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: /^Start free/ })).toBeVisible();
   expect(await page.locator('video').evaluateAll(videos => videos.every(v => v.paused))).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('home.png'), fullPage: true });
   await stub(page, { ...answer, answer: 'A long public explanation. '.repeat(100) + answer.answer });
@@ -120,4 +124,24 @@ test('responsive layout preserves navigation, long answers and reduced motion', 
   await noOverflow(page);
   await expect(page.getByRole('button', { name: 'Send question' })).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath('chat.png'), fullPage: true });
+});
+
+ test('plans distinguish free signup from unavailable paid purchase', async ({ page }) => {
+  const events = await observe(page);
+  await page.goto('/');
+  await page.getByRole('link', { name: 'See plans', exact: true }).click();
+  await expect(page).toHaveURL(/\/pricing\/$/);
+  await expect(page.getByText('Planned · Not available for purchase', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Start free ↗', exact: true })).toHaveAttribute('href', '/login');
+  await expect(page.locator('a[href*="checkout"], form[action*="checkout"]')).toHaveCount(0);
+  await expect.poll(() => events.map(x => x.name)).toEqual(['plans_cta']);
+  await noOverflow(page);
+});
+
+test('hosted signup CTA emits no identifiers', async ({ page }) => {
+ const events=await observe(page);
+ await page.route('**/login', route=>route.fulfill({status:200,contentType:'text/html',body:'<h1>Sign in</h1>'}));
+ await page.goto('/?secret=NEVER-COLLECT');
+ await page.locator('.intro-actions .pill').click();
+ await expect.poll(()=>events).toEqual([{version:1,name:'hosted_signup_cta',page:'home'}]);
 });
