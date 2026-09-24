@@ -1,0 +1,31 @@
+{
+  "task": "T23.48",
+  "outcome": "PARTIAL",
+  "checked_at": "2026-09-24T23:55:15Z",
+  "verified_revision": "131148da050f3c224e190e922bc39af99274ab45",
+  "source": "local isolated worktree, branch hosted/t23-49-20260924",
+  "verification": {
+    "passed": [
+      "go test -race -count=1 ./internal/hosted/gateway ./internal/hosted/service",
+      "go test ./...",
+      "golangci-lint run ./internal/hosted/... ./internal/cli",
+      "disposable S3 qualification: docs/launch/evidence/T23.48/s3-qualification.json"
+    ],
+    "s3_qualification": "PASS; isolated versioned bucket and policy created and deleted by the qualification test",
+    "independent_review": "GPT-6-Luna review found no remaining code issue after the recovery and one-read fixes; it confirmed the deployment integration blocker."
+  },
+  "implemented": [
+    "S3 object-store adapter with conditional create, verified ambiguous-write recovery, version/delete-marker listing, and pagination",
+    "hash-chained deletion journal adapter and explicit filesystem fake",
+    "hosted service and offline CLI wiring",
+    "deletion intent before purge, billing-closure ordering, fail-closed retries, and recovery of missing outcomes",
+    "recovery verifies the journal once per pass and reuses that verified index"
+  ],
+  "remaining": [
+    "T23.47 remains partial; live billing closure is not qualified",
+    "T23.54 must provision and qualify a dedicated retained journal bucket, its least-privilege IAM and policies, and the service configuration before production startup",
+    "full phase-by-phase crash qualification and snapshot/delete/restore sibling-preservation scenarios remain for the hosted recovery qualification work"
+  ],
+  "production_merge_gate": "HOLD: deploy/hosted/stack.json and deploy/hosted/config.example.json do not yet supply the required dedicated deletion-journal bucket and runtime configuration. The existing backups bucket has an unscoped 30-day current and noncurrent lifecycle rule and must not be reused.",
+  "supersession": "PR #273 is the only matching open PR for T23.49, hosted backup, or deletion journal found on 2026-09-24; no separate newer replacement was found."
+}

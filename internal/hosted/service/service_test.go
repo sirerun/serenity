@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -36,6 +37,31 @@ func (embedding) ModelVersion() string { return "test@v1" }
 func (embedding) Embed(_ context.Context, text string) ([]float32, error) {
 	return []float32{1, float32(len(text)%7 + 1), 1}, nil
 }
+
+type deletionOrderObserver struct {
+	journal contracts.DeletionJournal
+	called  bool
+	account string
+}
+
+func (o *deletionOrderObserver) CloseBillingAccount(ctx context.Context, account string) (contracts.CloseResult, error) {
+	read, err := o.journal.ReadThrough(ctx, contracts.DeletionWatermark{})
+	if err != nil {
+		return contracts.CloseResult{}, err
+	}
+	intent, brainPurged := false, false
+	for _, entry := range read.Entries {
+		intent = intent || (entry.SubjectType == contracts.DeletionSubjectAccount && entry.SubjectID == account && entry.Outcome == contracts.DeletionIntentRequested)
+		brainPurged = brainPurged || (entry.SubjectType == contracts.DeletionSubjectBrain && entry.Outcome == contracts.DeletionOutcomePurged)
+	}
+	if !intent || brainPurged {
+		return contracts.CloseResult{}, errors.New("billing closure called outside journal-before-purge order")
+	}
+	o.called = true
+	o.account = account
+	return contracts.CloseResult{Status: contracts.CloseStatusClosed}, nil
+}
+
 func TestHostedJourneyAndIsolation(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, "brains"), 0700); err != nil {
@@ -254,6 +280,9 @@ func TestHostedJourneyAndIsolation(t *testing.T) {
 		t.Fatalf("revoked established session status %d", status)
 	}
 	newToken := string(regexp.MustCompile(`sk_live_[a-f0-9]{8}_[A-Za-z0-9_-]{43}`).Find(body))
+	closer := &deletionOrderObserver{journal: svc.Journal}
+	svc.Gateway.BillingCloser = closer
+	svc.Gateway.BillingRequired = true
 	resp, e = a.PostForm(server.URL+"/account/delete", url.Values{"csrf": {csrf}, "confirm": {"DELETE"}})
 	if e != nil {
 		t.Fatal(e)
@@ -262,8 +291,26 @@ func TestHostedJourneyAndIsolation(t *testing.T) {
 	if resp.StatusCode != 200 {
 		t.Fatalf("delete status %d", resp.StatusCode)
 	}
+	if !closer.called {
+		t.Fatal("account deletion did not close billing after durable intent")
+	}
+	deletions, e := svc.Journal.ReadThrough(context.Background(), contracts.DeletionWatermark{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	seen := map[string]bool{}
+	hasBrainPurged := false
+	for _, entry := range deletions.Entries {
+		if entry.Outcome == contracts.DeletionOutcomePurged {
+			seen[string(entry.SubjectType)+":"+entry.SubjectID] = true
+			hasBrainPurged = hasBrainPurged || entry.SubjectType == contracts.DeletionSubjectBrain
+		}
+	}
 	if _, e = svc.Gateway.Issuer.Verify(context.Background(), newToken); e == nil {
 		t.Fatal("deleted account credential works")
+	}
+	if !seen["account:"+closer.account] || !hasBrainPurged {
+		t.Fatalf("deletion outcomes missing from independent journal: %v", seen)
 	}
 	_, freshToken, _ := login("a@example.com")
 	freshSession := initialize(freshToken)

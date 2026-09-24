@@ -1,0 +1,102 @@
+{
+  "task_id": "T23.49",
+  "profile": "paid",
+  "status": "PARTIAL",
+  "source_sha": "95cdfb01c84b8fdf42870735c3d53b8faa9575af",
+  "recorded_at": "2026-09-24T15:08:12.532299+00:00",
+  "evidence_level": "local-process",
+  "dependencies": {
+    "T23.41": "ab39dd02cb227a08f6ab31bfe7f8d7fdf374357d"
+  },
+  "commands": [
+    "go test -race -count=1 ./internal/hosted/backup",
+    "golangci-lint run ./internal/hosted/backup/..."
+  ],
+  "cases": {
+    "planned": 28,
+    "executed": 28,
+    "passed": 28,
+    "failed": 0,
+    "skipped": 0,
+    "skip_reasons": []
+  },
+  "acceptance": [
+    {
+      "criterion": "Truncated/tampered DB/bundle/manifest, duplicate/omitted/unknown brain, unsupported schema and unsafe path all fail before reactivation.",
+      "expected": "Every listed corruption/tamper class is rejected before any bytes are published to the restore destination.",
+      "observed": "Fixture tests cover: truncated/tampered control.db and bundle (checksum/length), truncated and legacy-v1 manifest, tampered bundle head recorded in the manifest, unknown brain (renamed ID) and omitted brain (dropped manifest entry) against the restored control database, a ready brain tampered into a false manifest Empty claim (TestRestoreRejectsReadyBrainMarkedEmptyInManifest -- reproduces a real data-loss path the coordinator demonstrated: a structurally valid manifest keeping a ready brain's ID but zeroing its artifact/heads and setting Empty=true previously passed inventory verification and restoreBrain silently created an empty directory in its place; confirmed this test fails against the prior code and passes against the fix), schema-version mismatch between manifest and artifact (checked read-only before store.Open can migrate), and a symlinked control.db/bundle/manifest.json. Every case leaves no destination directory at all (os.Stat confirms ErrNotExist). Fixture/local-process evidence only. TestRestoreRejectsDuplicateInventoryAndUnsafePaths explicitly rejects duplicate brain IDs, control/bundle parent traversal, absolute control paths and nested bundle paths through Restore with ErrManifestInvalid and no destination publication.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Manifest roundtrip matches exact fact IDs and canonical bundle heads; restored raw credentials/sessions remain invalid.",
+      "expected": "A create-then-restore round trip reproduces identical canonical content and exact bundle heads (including the bundle's own HEAD entry), and restored client_credentials/sessions/oauth_* state is revoked or cleared.",
+      "observed": "TestCreateRestoreRoundTripPreservesCanonicalMemoryFact drives the product's real internal/writer.MemoryFact write path (backed by internal/store.SourceStore, the same store.LoadMemoryProjection a live read path uses) and proves the restored brain projects the identical content-addressed fact ID (SHA256) with byte-identical payload (fact text, provenance, entity slug, kind, visibility, created_at) -- not a brain.txt proxy. TestCreateRestoreRoundTrip and TestRoundTripPreservesEveryBranchAndTag verify exact manifest/bundle heads including multiple branches and a tag are restored as real local refs, not left as refs/remotes/origin/* tracking refs. TestRestoreRevokesCredentialsAndOAuthState seeds one row each of oauth_grants (plus its cascade-owned oauth_tokens/oauth_refresh), oauth_codes, oauth_consents, sessions, login_tokens and a client_credentials row, then asserts all seven tables are fully cleared/revoked after restore, not just client_credentials. All fixture/local-process evidence; no live service/gateway process was run. Extended provisioning roundtrip covers a real remember/flush after restore in both untouched and runtime-opened cases. Before the fix it committed with machine fallback identity; after configuring repository-local hosted identity before sync/publication, both cases pass. Initialization performs no embedding requests; the later write uses deterministic synthetic fixture embeddings. Accounts remain restore_pending; this is storage-only verification.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Live write during coordinated backup is either included consistently or excluded as a later operation; no acknowledged pre-snapshot write lost.",
+      "expected": "A write present when Create runs is either included in the snapshot consistently, or Create fails in a way that provably loses nothing, deferring the write to a subsequent, successful backup.",
+      "observed": "Per coordinator review, Create no longer flushes a dirty canonical tree into an extra commit of its own (that risked sweeping unrelated/unreviewed files into canonical history); it now only ever runs a read-only `git status --porcelain` check and fails closed on any dirty brain. TestCreateRefusesDirtyCanonicalState proves this refusal is lossless and side-effect-free: after a failed Create, the source file's bytes, the git index bytes, HEAD, and the working tree's dirty-status output are all asserted byte-for-byte unchanged, and no destination is published. This is real coverage of one sub-case (a write already dirty when Create starts is never silently lost -- it is refused and left exactly as-is for a later, successful backup after a flush), and it proves live Service.Backup's existing Pool.FlushAll-before-Create sequencing is load-bearing (documented in integration-request.md). It does NOT exercise a genuinely concurrent writer racing with an in-progress `git bundle` call during the backup window -- that requires a live service/gateway process and is explicitly out of scope for this fixture-level lane. The schema's acceptance-status enum has no PARTIAL value; this criterion's full 'assembled, concurrent acknowledged write' scope is recorded NOT_RUN rather than overstated as PASS, notwithstanding the real lossless-refusal sub-case above.",
+      "status": "NOT_RUN"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "internal/hosted/backup/backup.go",
+      "sha256": "f8a8a7c35a2c2d3c6ecc3bb17ffc128f09f27dc9a5ec203d3284492b3b0a8861"
+    },
+    {
+      "path": "internal/hosted/backup/client.go",
+      "sha256": "2a76a8d017e478141915f6ab0b5237c168469a4aa4cfd45a6686a693d5141b12"
+    },
+    {
+      "path": "internal/hosted/backup/backup_test.go",
+      "sha256": "27fbdb55c739b3d2b5e8ec8ca7c0fdc3b0e669e9a2771069abf22c0b8671d80b"
+    },
+    {
+      "path": "internal/hosted/backup/faultbarrier_test.go",
+      "sha256": "da2e24bc0d79f33b13e48e3b6599c94c93a2cad964a0ddeeb83d2482bb7d965d"
+    },
+    {
+      "path": "internal/hosted/backup/testdata/backupprobe/main.go",
+      "sha256": "df68ee0ef5b2c43344066b57041b94d58aeba9089f0c24561aea9c3628d62655"
+    },
+    {
+      "path": "internal/hosted/backup/provision_integration_test.go",
+      "sha256": "bd972d8355f2ea028aa5ba44f200139ae39ca156197880a8a4292ce7f6f8f4d8"
+    }
+  ],
+  "cost": {
+    "actual_usd": 0,
+    "approved_max_usd": null,
+    "authorization_refs": []
+  },
+  "limitations": [
+    "buildSHA/journal wiring into internal/hosted/service/service.go and internal/cli/hosted.go is submitted as an integration request, not applied by this task (both files are outside R-hosted-backup's write scope).",
+    "No production contracts.DeletionJournal implementation exists yet (task48 is not started); Create/Request cannot be exercised against a real deletion journal, only the test-only fakeJournal fixture.",
+    "Create now refuses (fails closed) rather than flushes a dirty canonical working tree; this makes Service.Backup's existing Pool.FlushAll-before-Create sequencing load-bearing, and the offline CLI path has no equivalent flush step today (see integration-request.md).",
+    "No genuinely concurrent writer racing with an in-progress bundle/backup was exercised; only a write already dirty when Create starts is covered, and only via provably lossless refusal, not inclusion.",
+    "Create's bundle files and Restore's cloned brain repository trees are now explicitly fsynced (bottom-up for directories) before publication, closing a gap where fsyncDir(staging) alone only covered staging's own directory entries, not nested file/directory durability. Source inspection confirms explicit sync calls and error propagation; the full staging tree now includes intermediate parent directories. Passing roundtrip tests do not prove crash consistency or injected sync-error handling; those qualifications remain unrun.",
+    "All evidence is local fixture/process-level (go test, single package, no build-lease claim needed per the mini's multi-package threshold). No live AWS/S3 deletion-journal qualification, no deployed service, no real signup, no browser or end-to-end service test was run.",
+    "service.go's existing service_test.go/oauth_test.go call backup.Restore (unchanged signature) and would need a corresponding backup.Create/Request update wherever they or Service.Backup are exercised after the integrator applies the signature change; this task did not run those out-of-scope suites.",
+    "New-brain provisioning dependency resolved by merged PR275 and tested via Create/Restore; existing ready brains missing Git still require explicit reconciliation."
+  ],
+  "blockers": [
+    {
+      "owner": "integrator (R-hosted-assembly)",
+      "required_input": "Wire real build identity and production DeletionJournal into service/CLI. Keep draft unmerged until ready; do not fabricate empty history or disable working backups."
+    },
+    {
+      "owner": "Durability48 (task48)",
+      "required_input": "Ship a production contracts.DeletionJournal adapter so Create's pre-copy watermark read reflects a real journal rather than an interim placeholder."
+    },
+    {
+      "owner": "Identity/provisioning owner (T23.46, R-hosted-identity/R-hosted-runtime)",
+      "required_input": "Inventory and explicitly reconcile existing ready brains missing Git; new-brain provisioning is fixed and fixture-tested."
+    },
+    {
+      "owner": "Integrator/service owner (R-hosted-assembly, R-hosted-runtime)",
+      "required_input": "Add a live regression exercising a genuinely concurrent acknowledged write racing an in-progress Service.Backup, to qualify the assembled (not fixture-level) 'no acknowledged pre-snapshot write lost' concurrency claim."
+    }
+  ]
+}
