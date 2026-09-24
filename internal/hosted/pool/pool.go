@@ -182,14 +182,32 @@ func open(ctx context.Context, cfg Config, id string) (*Runtime, error) {
 	} else if err != nil {
 		return fail(err)
 	}
-	if _, err := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--verify", "HEAD").Output(); err != nil {
-		if output, e := exec.CommandContext(ctx, "git", "-C", root, "add", "--", config.FileName, ".gitignore").CombinedOutput(); e != nil {
+	// Provisioning may already have committed a baseline before runtime config
+	// exists. Check committed content, not merely HEAD or whether Save ran in
+	// this process, so a retry after writing config also completes its commit.
+	paths := []string{config.FileName, ".gitignore"}
+	if _, headErr := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--verify", "HEAD").Output(); headErr == nil {
+		tracked, listErr := exec.CommandContext(ctx, "git", "-C", root, "ls-tree", "--name-only", "HEAD", "--", config.FileName).Output()
+		if listErr != nil {
+			return fail(fmt.Errorf("inspect committed brain config: %w", listErr))
+		}
+		if len(tracked) != 0 {
+			paths = nil
+		} else {
+			paths = []string{config.FileName}
+		}
+	}
+	if len(paths) != 0 {
+		args := append([]string{"-C", root, "add", "--"}, paths...)
+		if output, e := exec.CommandContext(ctx, "git", args...).CombinedOutput(); e != nil {
 			return fail(fmt.Errorf("stage brain baseline: %w: %s", e, output))
 		}
-		if output, e := exec.CommandContext(ctx, "git", "-C", root, "commit", "-m", "Initialize hosted brain").CombinedOutput(); e != nil {
+		args = append([]string{"-C", root, "-c", "user.name=Serenity Hosted", "-c", "user.email=hosted@serenity.sire.run", "commit", "--only", "-m", "Initialize hosted brain configuration", "--"}, paths...)
+		if output, e := exec.CommandContext(ctx, "git", args...).CombinedOutput(); e != nil {
 			return fail(fmt.Errorf("commit brain baseline: %w: %s", e, output))
 		}
 	}
+
 	eng, err := providers.OpenIndex(root)
 	if err != nil {
 		return fail(err)
