@@ -83,6 +83,7 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
   let frame;
   for (const route of ['/dashboard', '/dashboard/connections', '/dashboard/memories', '/dashboard/usage', '/dashboard/settings', '/login', '/docs/', '/pricing/', '/oauth/connections']) {
     await page.goto(origin + route);
+    if (route.startsWith("/dashboard/")) await page.screenshot({ path: testInfo.outputPath(route.split("/").pop() + ".png"), fullPage: true });
     const geometry = await page.locator('main').evaluate(el => {
       const r = el.getBoundingClientRect();
       return { x: r.x, width: r.width };

@@ -24,7 +24,18 @@ Claude web connectors like Blink.
 - Dashboard package compiles; the full hosted service test package passes.
 - OAuth consent/MCP/revocation integration test passes for both loopback and
   Claude HTTPS callbacks.
-- Full hosted browser checks and release remain pending the shared build lease.
+- Six hosted browser tests passed across dark, desktop and mobile layouts,
+  including exact outer-frame width checks, account actions, and OAuth login.
+  The binary was built with a single command-package build; the multi-package
+  build lease was not needed.
+- Dashboard, OAuth and service lint checks passed with zero issues. Site Go
+  tests passed. Screenshots reviewed for all five account sections.
+- Release/deployment is blocked: GitHub CI run 36234724173 did not start any
+  job because the account is locked due to a billing issue. PR 278 remains
+  draft until the release checks can run.
+- Foundation PR 253 codifies the live DNS change. Its workflow needs a
+  production Cloudflare API token; repository and production environment
+  secret inventories contain no such token. IaC adoption is not yet applied.
 - Actual Claude web connection remains unqualified: the signed-in Claude
   account displays a disabled Add custom connector control. Blink already
   appears in its connector list. No new Claude grant or tool roundtrip occurred.
