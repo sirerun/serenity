@@ -106,7 +106,8 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
   const marker = 'My browser verification marker is amber heron.';
   await page.getByLabel('What should your agent remember?').fill(marker);
   await page.getByRole('button', { name: 'Save memory', exact: true }).click();
-  await expect(page).toHaveURL(`${origin}/dashboard/memories`);
+  await expect(page).toHaveURL(`${origin}/dashboard/memories?saved=1`);
+  await expect(page.getByRole("status")).toContainText("Memory saved");
   await page.goto(`${origin}/dashboard/usage`);
   for (const label of ['Writes', 'Recalls', 'Input tokens', 'Brains', 'Live memories', 'Storage (bytes, including history)']) {
     await expect(page.getByRole('rowheader', { name: label, exact: true })).toBeVisible();
@@ -124,6 +125,7 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
   await page.goto(`${origin}/dashboard/settings`);
   await page.getByText('Replace or revoke project credentials', {exact:true}).click();
   await page.getByRole('button', { name: 'Revoke access', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Access revoked');
   const denied = await fetch(`${origin}/mcp`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}' });
   expect(denied.status).toBe(401);
   await page.getByRole('button', { name: 'Sign out', exact: true }).click();
