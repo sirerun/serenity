@@ -40,3 +40,29 @@ Claude web connectors like Blink.
   account displays a disabled Add custom connector control. Blink already
   appears in its connector list. No new Claude grant or tool roundtrip occurred.
 - Paid activation and unrelated backup/deletion work remain outside this change.
+
+## Second refinement and release review
+
+The owner requested another design pass, review, merge and deployment after
+being informed of the hosted-runner billing lock. This pass adds an inventory
+summary, compact project labels, grouped usage numbers and explicit save/revoke
+confirmations, with quieter onboarding and consistent mobile navigation.
+
+Review covered route dispatch, session/CSRF enforcement, selected-project
+binding, one-time token rendering, escaped template helpers, redirects and
+responsive page geometry. No blocking defect was found. Graph review did not
+map changed functions in this worktree; source review and executable checks
+were used instead.
+
+Validation: `go vet ./...`, `go test -timeout 600s ./...`, changed hosted-package
+lint, six hosted browser cases, and the race-enabled release adversarial gate
+passed. The seeded vulnerable gate failed as required. Desktop and mobile
+screenshots were inspected. The shared build lease was acquired and released
+for multi-package validation.
+
+GitHub reports no effective rules for main. For the owner's renewed merge and
+deploy instruction, the candidate can use these local release checks and the
+existing checksum-pinned SSM deployment while hosted runners remain locked;
+no repository protections are changed. This is a hosted prerelease, not paid
+activation. The previous binary and Caddy configuration must remain available
+for rollback, and readiness plus canonical routes must be verified afterward.

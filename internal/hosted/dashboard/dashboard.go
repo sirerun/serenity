@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -228,7 +229,14 @@ func (d *Dashboard) home(w http.ResponseWriter, r *http.Request) {
 		section = "usage"
 	}
 	titles := map[string]string{"overview": "Your memory, at a glance", "connections": "Connect your agents", "memories": "Your project memories", "usage": "Usage and plan", "settings": "Account settings"}
-	render(w, 200, view{Page: section, Usage: usage, Reset: ent.ResetAt.UTC().Format("2 Jan 2006 15:04 UTC"), OperationKey: store.ID(), Connected: connected > 0, MemorySaved: saved > 0, Brains: brains, CanAddBrain: int64(len(brains)) < ent.Plan.Brains, Title: titles[section], SignedIn: true, Billing: d.Billing, CSRF: s.CSRF, BrainID: brain.ID, Endpoint: d.Origin + "/mcp", Plan: strings.ToUpper(ent.Plan.ID[:1]) + ent.Plan.ID[1:]})
+	message := ""
+	if section == "memories" && r.URL.Query().Get("saved") == "1" {
+		message = "Memory saved. Your connected agents can recall it now."
+	}
+	if section == "settings" && r.URL.Query().Get("revoked") == "1" {
+		message = "Access revoked. This project's previous connections no longer work."
+	}
+	render(w, 200, view{Message: message, Page: section, Usage: usage, Reset: ent.ResetAt.UTC().Format("2 Jan 2006 15:04 UTC"), OperationKey: store.ID(), Connected: connected > 0, MemorySaved: saved > 0, Brains: brains, CanAddBrain: int64(len(brains)) < ent.Plan.Brains, Title: titles[section], SignedIn: true, Billing: d.Billing, CSRF: s.CSRF, BrainID: brain.ID, Endpoint: d.Origin + "/mcp", Plan: strings.ToUpper(ent.Plan.ID[:1]) + ent.Plan.ID[1:]})
 }
 func (d *Dashboard) issue(w http.ResponseWriter, r *http.Request) {
 	s, ok := d.session(w, r, true)
@@ -275,7 +283,7 @@ func (d *Dashboard) revoke(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Connection not found", http.StatusNotFound)
 		return
 	}
-	http.Redirect(w, r, "/dashboard/settings", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard/settings?revoked=1", http.StatusSeeOther)
 }
 func (d *Dashboard) logout(w http.ResponseWriter, r *http.Request) {
 	_, ok := d.session(w, r, true)
@@ -298,7 +306,21 @@ func (d *Dashboard) logout(w http.ResponseWriter, r *http.Request) {
 //go:embed page.html
 var pageHTML string
 
-var page = template.Must(template.New("page").Parse(pageHTML))
+var page = template.Must(template.New("page").Funcs(template.FuncMap{
+	"count": func(n int64) string {
+		value := strconv.FormatInt(n, 10)
+		for i := len(value) - 3; i > 0 && value[i-1] != '-'; i -= 3 {
+			value = value[:i] + "," + value[i:]
+		}
+		return value
+	},
+	"project": func(id string) string {
+		if len(id) > 8 {
+			id = id[len(id)-8:]
+		}
+		return "Memory " + id
+	},
+}).Parse(pageHTML))
 
 func (d *Dashboard) addBrain(w http.ResponseWriter, r *http.Request) {
 	s, ok := d.session(w, r, true)
@@ -332,7 +354,7 @@ func (d *Dashboard) remember(w http.ResponseWriter, r *http.Request) {
 		render(w, 409, view{Title: "Memory was not saved", Message: "Check your memory size and plan limits, then try again."})
 		return
 	}
-	http.Redirect(w, r, "/dashboard/memories", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard/memories?saved=1", http.StatusSeeOther)
 }
 
 func (d *Dashboard) export(w http.ResponseWriter, r *http.Request) {
