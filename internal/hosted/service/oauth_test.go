@@ -22,6 +22,12 @@ import (
 )
 
 func TestOAuthBrowserConsentMCPAndRevocation(t *testing.T) {
+	for _, callback := range []string{"http://127.0.0.1:49871/callback", "https://claude.ai/api/mcp/auth_callback"} {
+		t.Run(callback, func(t *testing.T) { testOAuthBrowserConsentMCPAndRevocation(t, callback) })
+	}
+}
+
+func testOAuthBrowserConsentMCPAndRevocation(t *testing.T, callback string) {
 	dir := t.TempDir()
 	db, err := store.Open(filepath.Join(dir, "control.db"))
 	if err != nil {
@@ -86,7 +92,7 @@ func TestOAuthBrowserConsentMCPAndRevocation(t *testing.T) {
 		}
 		return v[1]
 	}
-	r, e := http.Post(origin+"/oauth/register", "application/json", strings.NewReader(`{"client_name":"Synthetic test agent","redirect_uris":["http://127.0.0.1:49871/callback"],"grant_types":["authorization_code"],"token_endpoint_auth_method":"none"}`))
+	r, e := http.Post(origin+"/oauth/register", "application/json", strings.NewReader(`{"client_name":"Synthetic test agent","redirect_uris":["`+callback+`"],"grant_types":["authorization_code"],"token_endpoint_auth_method":"none"}`))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -100,7 +106,7 @@ func TestOAuthBrowserConsentMCPAndRevocation(t *testing.T) {
 	verifier := strings.Repeat("v", 43)
 	hash := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
-	params := url.Values{"response_type": {"code"}, "client_id": {client.ID}, "redirect_uri": {"http://127.0.0.1:49871/callback"}, "state": {"synthetic-state"}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}, "resource": {origin + "/mcp"}, "scope": {"memory:read memory:write"}}
+	params := url.Values{"response_type": {"code"}, "client_id": {client.ID}, "redirect_uri": {callback}, "state": {"synthetic-state"}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}, "resource": {origin + "/mcp"}, "scope": {"memory:read memory:write"}}
 	r = get("/oauth/authorize?" + params.Encode())
 	body = read(r)
 	if !strings.Contains(body, "Email address") {
@@ -146,7 +152,7 @@ func TestOAuthBrowserConsentMCPAndRevocation(t *testing.T) {
 	if code == "" || target.Query().Get("state") != "synthetic-state" {
 		t.Fatal("missing bound authorization code")
 	}
-	values := url.Values{"grant_type": {"authorization_code"}, "client_id": {client.ID}, "redirect_uri": {"http://127.0.0.1:49871/callback"}, "code": {code}, "code_verifier": {verifier}, "resource": {origin + "/mcp"}}
+	values := url.Values{"grant_type": {"authorization_code"}, "client_id": {client.ID}, "redirect_uri": {callback}, "code": {code}, "code_verifier": {verifier}, "resource": {origin + "/mcp"}}
 	r = post("/oauth/token", values, browser)
 	body = read(r)
 	var token struct {

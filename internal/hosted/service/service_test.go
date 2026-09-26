@@ -230,13 +230,13 @@ func TestHostedJourneyAndIsolation(t *testing.T) {
 		t.Fatalf("restart recall %s", body)
 	}
 	// Cookie jars are host-scoped and survive a changed local port.
-	resp, e = a.Get(server.URL + "/dashboard")
+	resp, e = a.Get(server.URL + "/dashboard/settings")
 	if e != nil {
 		t.Fatal(e)
 	}
 	body, _ = io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	brain := regexp.MustCompile(`name="brain_id" value="([^"]+)"`).FindSubmatch(body)
+	brain := regexp.MustCompile(`<option value="([^"]+)"`).FindSubmatch(body)
 	if len(brain) != 2 {
 		t.Fatalf("brain missing %s", body)
 	}
