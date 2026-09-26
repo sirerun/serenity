@@ -75,20 +75,26 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
   await expect.poll(() => /Development login: (http:\/\/\S+)/.test(log)).toBe(true);
   const link = log.match(/Development login: (http:\/\/\S+)/)[1];
   await page.goto(link);
-  await expect(page.getByRole('heading', { name: 'Your private memory' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your memory, at a glance' })).toBeVisible();
   await expect(page).toHaveURL(`${origin}/dashboard`);
-  await expect(page.getByRole('heading', { name: 'Connect your agent', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Connect Rakazo', exact: true })).toHaveCount(0);
-  await page.getByRole('link', { name: 'Choose your agent harness' }).click();
-  await page.getByRole('link', { name: /ChatGPT/ }).click();
-  await expect(page.getByRole('heading', { name: 'Qualification pending' })).toBeVisible();
-  await page.getByRole('link', { name: 'Your memory', exact: true }).click();
-  await expect(page).toHaveURL(`${origin}/dashboard`);
+  await expect(page.getByRole('link', { name: 'Overview', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByRole('button', { name: 'Delete my account', exact: true })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('dashboard.png'), fullPage: true });
-  const deletion = page.getByRole('button', { name: 'Delete my account', exact: true });
-  await deletion.hover();
-  const dangerColors = await deletion.evaluate(el => ({ color: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor }));
-  expect(dangerColors.color).not.toBe(dangerColors.background);
+  let frame;
+  for (const route of ['/dashboard', '/dashboard/connections', '/dashboard/memories', '/dashboard/usage', '/dashboard/settings', '/login', '/docs/', '/pricing/', '/oauth/connections']) {
+    await page.goto(origin + route);
+    if (route.startsWith("/dashboard/")) await page.screenshot({ path: testInfo.outputPath(route.split("/").pop() + ".png"), fullPage: true });
+    const geometry = await page.locator('main').evaluate(el => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x, width: r.width };
+    });
+    if (!frame) frame = geometry;
+    expect(geometry, route).toEqual(frame);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), route).toBe(true);
+  }
+  await page.goto(origin + '/dashboard/connections');
+  await expect(page.getByRole('heading', { name: 'Connect Claude on the web' })).toBeVisible();
+  await page.getByText('Manual connection tokens', {exact:true}).click();
   await page.getByRole('button', { name: 'Create connection token' }).click();
   const token = await page.getByLabel('Bearer token — shown once').inputValue();
   expect(token).toMatch(/^sk_live_[a-f0-9]{8}_[A-Za-z0-9_-]{43}$/);
@@ -96,22 +102,27 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
   await expect(page.getByRole('button', { name: 'Copied', exact: true })).toBeVisible();
   await page.goto(`${origin}/dashboard`);
   await expect(page.getByLabel('Bearer token — shown once')).toHaveCount(0);
+  await page.goto(`${origin}/dashboard/memories`);
   const marker = 'My browser verification marker is amber heron.';
   await page.getByLabel('What should your agent remember?').fill(marker);
   await page.getByRole('button', { name: 'Save memory', exact: true }).click();
-  await expect(page.getByText('First memory saved.', { exact: false })).toBeVisible();
+  await expect(page).toHaveURL(`${origin}/dashboard/memories`);
+  await page.goto(`${origin}/dashboard/usage`);
   for (const label of ['Writes', 'Recalls', 'Input tokens', 'Brains', 'Live memories', 'Storage (bytes, including history)']) {
-    await expect(page.getByRole('cell', { name: label, exact: true })).toBeVisible();
+    await expect(page.getByRole('rowheader', { name: label, exact: true })).toBeVisible();
   }
   await expect(page.getByRole('columnheader', { name: 'Remaining' })).toBeVisible();
   const sizes = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));
   expect(sizes.scroll).toBeLessThanOrEqual(sizes.width + 1);
+  await page.goto(`${origin}/dashboard/memories`);
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('link', { name: 'Export memory' }).click();
   const download = await downloadPromise;
   const downloaded = await download.path();
   const facts = execFileSync('python3', ['-c', 'import zipfile,sys; z=zipfile.ZipFile(sys.argv[1]); assert "brain.bundle" in z.namelist(); print(z.read("facts.json").decode())', downloaded], { encoding: 'utf8' });
   expect(facts).toContain(marker);
+  await page.goto(`${origin}/dashboard/settings`);
+  await page.getByText('Replace or revoke project credentials', {exact:true}).click();
   await page.getByRole('button', { name: 'Revoke access', exact: true }).click();
   const denied = await fetch(`${origin}/mcp`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}' });
   expect(denied.status).toBe(401);
