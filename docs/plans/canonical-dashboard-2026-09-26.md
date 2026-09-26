@@ -66,3 +66,16 @@ existing checksum-pinned SSM deployment while hosted runners remain locked;
 no repository protections are changed. This is a hosted prerelease, not paid
 activation. The previous binary and Caddy configuration must remain available
 for rollback, and readiness plus canonical routes must be verified afterward.
+
+## Production cache qualification
+
+PR 278 merged and candidate 0.1.11 deployed successfully. Live browser inspection
+then found new HTML paired with a previously cached hosted stylesheet. The
+origin revalidates assets, but Cloudflare's returned browser max-age was four
+hours. Purging the two stylesheet URLs fixes edge copies, not browsers that
+already hold them. The follow-up versions stylesheet URLs by content digest
+in both static pages and Go-rendered account/consent templates, extending the
+existing site asset-versioning script. Browser coverage now requires a versioned
+hosted stylesheet URL. The site link checker also recognizes the new account
+routes. This fixes the release behavior for returning users without clearing
+browser data or weakening caching globally.

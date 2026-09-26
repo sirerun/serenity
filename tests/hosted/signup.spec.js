@@ -80,6 +80,8 @@ test('signup, one-time credential, save, export, revoke, logout and expired link
   await expect(page.getByRole('link', { name: 'Overview', exact: true })).toHaveAttribute('aria-current', 'page');
   await expect(page.getByRole('button', { name: 'Delete my account', exact: true })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('dashboard.png'), fullPage: true });
+  const cssVersion = require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(__dirname, '../../site/assets/hosted.css'))).digest('hex').slice(0, 10);
+  await expect(page.locator('link[href*="/assets/hosted.css"]')).toHaveAttribute('href', `/assets/hosted.css?v=${cssVersion}`);
   let frame;
   for (const route of ['/dashboard', '/dashboard/connections', '/dashboard/memories', '/dashboard/usage', '/dashboard/settings', '/login', '/docs/', '/pricing/', '/oauth/connections']) {
     await page.goto(origin + route);
