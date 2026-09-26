@@ -54,6 +54,7 @@ type view struct {
 	CanAddBrain                                          bool
 	Billing                                              bool
 	Title, Message, CSRF, BrainID, Endpoint, Token, Plan string
+	Page                                                 string
 	SignedIn                                             bool
 }
 
@@ -68,6 +69,9 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("GET /login/consume", d.consume)
 	mux.Handle("GET /", website.Handler())
 	mux.HandleFunc("GET /dashboard", d.home)
+	for _, path := range []string{"connections", "memories", "usage", "settings"} {
+		mux.HandleFunc("GET /dashboard/"+path, d.home)
+	}
 	mux.HandleFunc("GET /billing", d.home)
 	mux.HandleFunc("POST /credentials", d.issue)
 	mux.HandleFunc("POST /brains", d.addBrain)
@@ -216,7 +220,15 @@ func (d *Dashboard) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	usage = append(usage, usageRow{Name: "Brains", Used: inventory.Brains, Limit: ent.Plan.Brains}, usageRow{Name: "Live memories", Used: inventory.Memories, Limit: ent.Plan.Memories}, usageRow{Name: "Storage (bytes, including history)", Used: inventory.StorageBytes, Limit: ent.Plan.StorageBytes})
-	render(w, 200, view{Usage: usage, Reset: ent.ResetAt.UTC().Format("2 Jan 2006 15:04 UTC"), OperationKey: store.ID(), Connected: connected > 0, MemorySaved: saved > 0, Brains: brains, CanAddBrain: int64(len(brains)) < ent.Plan.Brains, Title: "Your private memory", SignedIn: true, Billing: d.Billing, CSRF: s.CSRF, BrainID: brain.ID, Endpoint: d.Origin + "/mcp", Plan: strings.ToUpper(ent.Plan.ID[:1]) + ent.Plan.ID[1:]})
+	section := strings.TrimPrefix(r.URL.Path, "/dashboard/")
+	if r.URL.Path == "/dashboard" {
+		section = "overview"
+	}
+	if r.URL.Path == "/billing" {
+		section = "usage"
+	}
+	titles := map[string]string{"overview": "Your memory, at a glance", "connections": "Connect your agents", "memories": "Your project memories", "usage": "Usage and plan", "settings": "Account settings"}
+	render(w, 200, view{Page: section, Usage: usage, Reset: ent.ResetAt.UTC().Format("2 Jan 2006 15:04 UTC"), OperationKey: store.ID(), Connected: connected > 0, MemorySaved: saved > 0, Brains: brains, CanAddBrain: int64(len(brains)) < ent.Plan.Brains, Title: titles[section], SignedIn: true, Billing: d.Billing, CSRF: s.CSRF, BrainID: brain.ID, Endpoint: d.Origin + "/mcp", Plan: strings.ToUpper(ent.Plan.ID[:1]) + ent.Plan.ID[1:]})
 }
 func (d *Dashboard) issue(w http.ResponseWriter, r *http.Request) {
 	s, ok := d.session(w, r, true)
@@ -240,7 +252,7 @@ func (d *Dashboard) issue(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to create connection", http.StatusServiceUnavailable)
 		return
 	}
-	render(w, 200, view{Title: "Connect your agent", SignedIn: true, CSRF: s.CSRF, BrainID: brain.ID, Endpoint: d.Origin + "/mcp", Token: raw, Message: "Copy this token now. It is shown only once. Keep it private."})
+	render(w, 200, view{Page: "connections", Title: "Your connection token", SignedIn: true, CSRF: s.CSRF, BrainID: brain.ID, Endpoint: d.Origin + "/mcp", Token: raw, Message: "Copy this token now. It is shown only once. Keep it private."})
 }
 func (d *Dashboard) rotate(w http.ResponseWriter, r *http.Request) {
 	s, ok := d.session(w, r, true)
@@ -252,7 +264,7 @@ func (d *Dashboard) rotate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Connection not found", http.StatusNotFound)
 		return
 	}
-	render(w, 200, view{Title: "Connection replaced", SignedIn: true, CSRF: s.CSRF, BrainID: r.FormValue("brain_id"), Endpoint: d.Origin + "/mcp", Token: raw, Message: "The old credentials no longer work. Copy this new token now."})
+	render(w, 200, view{Page: "connections", Title: "Connection replaced", SignedIn: true, CSRF: s.CSRF, BrainID: r.FormValue("brain_id"), Endpoint: d.Origin + "/mcp", Token: raw, Message: "The old credentials no longer work. Copy this new token now."})
 }
 func (d *Dashboard) revoke(w http.ResponseWriter, r *http.Request) {
 	s, ok := d.session(w, r, true)
@@ -263,7 +275,7 @@ func (d *Dashboard) revoke(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Connection not found", http.StatusNotFound)
 		return
 	}
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard/settings", http.StatusSeeOther)
 }
 func (d *Dashboard) logout(w http.ResponseWriter, r *http.Request) {
 	_, ok := d.session(w, r, true)
@@ -302,7 +314,7 @@ func (d *Dashboard) addBrain(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to add a brain. Check your plan limit.", http.StatusConflict)
 		return
 	}
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard/memories", http.StatusSeeOther)
 }
 
 func (d *Dashboard) remember(w http.ResponseWriter, r *http.Request) {
@@ -320,7 +332,7 @@ func (d *Dashboard) remember(w http.ResponseWriter, r *http.Request) {
 		render(w, 409, view{Title: "Memory was not saved", Message: "Check your memory size and plan limits, then try again."})
 		return
 	}
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard/memories", http.StatusSeeOther)
 }
 
 func (d *Dashboard) export(w http.ResponseWriter, r *http.Request) {
@@ -351,7 +363,7 @@ func (d *Dashboard) deleteBrain(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to delete brain", http.StatusConflict)
 		return
 	}
-	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
+	http.Redirect(w, r, "/dashboard/memories", http.StatusSeeOther)
 }
 
 func (d *Dashboard) deleteAccount(w http.ResponseWriter, r *http.Request) {
