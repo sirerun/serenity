@@ -266,8 +266,13 @@ Deletion semantics are contractual, and the chain runs in one direction only:
 **source → observations → claims → rebuild**
 
 1. **Source.** Deleting a source is a tombstone operation on
-   `brain/sources/<sha256>/`. The tombstone is what cascades the rest of the
-   chain — nothing downstream is deleted directly.
+   `brain/sources/<sha256>/` (ADR 019). In one writer-queue job it records a
+   `source_tombstone` event (its bytes name only the target SHA-256, never the
+   content or URI), removes the source's `bytes` and `meta.yaml` from the
+   working tree, and deletes the source's own FTS and vector rows; the next
+   flush commits the removal and the event together. The tombstone is what
+   cascades the rest of the chain — claims and observations are not deleted
+   directly.
 2. **Observations.** Every observation is immutably tied to one source span.
    A tombstoned source invalidates every observation extracted from it.
 3. **Claims.** The tombstone cascades to claim retraction proposals for every
@@ -280,13 +285,26 @@ Deletion semantics are contractual, and the chain runs in one direction only:
    and derived pages (summaries, timelines) regenerate from the rewritten
    fences.
 
+**Forgetting a memory fact** (`forget`) follows the same rule (ADR 019): in
+one writer-queue job it writes a `memory_expiry` event (target SHA-256 and the
+optional reason, never the fact text), deletes the fact's FTS and vector rows,
+and removes the fact's `bytes` and `meta.yaml` from the working tree; the next
+flush commits the removal and the event together. A fact that carried an
+operation key also gets a cancellation fence, so a retried `remember` under
+that key is refused with `operation_canceled` rather than writing the text
+back. Re-forgetting an erased fact by its opaque id succeeds with
+`expired: false`; its legacy numeric id no longer resolves. Index rebuild and
+hosted recovery keep no rows for expired or erased facts.
+
 This chain is honest about its limit: git history is the operator's to
 rewrite or accept. A git-canonical brain remembers unless the operator
 rewrites history — deleting a source removes it from the *current* state of
 the brain and from every future rebuild, but a prior commit that still
 contains the original bytes is recoverable from `git log` until the operator
 prunes it. Serenity documents this rather than pretending deletion is
-retroactive.
+retroactive. Rewriting brain history on forget is tracked separately
+(T24.22); until it lands, the history limit above applies to forgotten facts
+and tombstoned sources alike.
 
 ## Durability
 

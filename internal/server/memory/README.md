@@ -17,8 +17,12 @@ Each fact is a versioned JSON payload inside the existing content-addressed
 `brain/sources` store. The payload contains its semantic metadata and a persistent,
 random positive 53-bit numeric ID. Its full SHA-256 is the opaque protocol ID.
 Allocation checks existing IDs; projection also rejects collisions after Git
-merges. `forget` adds an immutable expiry source targeting that SHA. It preserves
-the original bytes and returns `expired: false` on a repeated request. Generic
+merges. `forget` adds an immutable expiry source targeting that SHA as the audit record
+(never the fact text), then erases the fact: its FTS and vector rows and its
+`bytes` and `meta.yaml` go in the same writer job, so one flush commits the
+removal with the expiry (ADR 019). A keyed fact also gets a format v2
+cancellation fence so a retried remember cannot write it back. A repeated
+request by opaque id returns `expired: false`. Generic
 imports cannot create the reserved fact or expiry kinds.
 
 The writer queue serializes allocation, duplicate checks, publication, and expiry

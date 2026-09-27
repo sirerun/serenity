@@ -273,6 +273,7 @@ type MemoryProjection struct {
 	canceled  map[string]string
 	lifecycle map[string]bool
 	indexOnly map[string]bool
+	erased    map[string]string // forgotten target SHA -> first expiry SHA, fact bytes removed
 }
 
 // LoadMemoryProjection reads every source ss has ever recorded and resolves
@@ -285,7 +286,7 @@ func LoadMemoryProjection(ss *SourceStore) (*MemoryProjection, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: load memory projection: %w", err)
 	}
-	p := &MemoryProjection{canceled: make(map[string]string), bySHA: make(map[string]*MemoryFactRecord), lifecycle: make(map[string]bool), indexOnly: make(map[string]bool)}
+	p := &MemoryProjection{canceled: make(map[string]string), bySHA: make(map[string]*MemoryFactRecord), lifecycle: make(map[string]bool), indexOnly: make(map[string]bool), erased: make(map[string]string)}
 	legacy := make(map[int64]string)
 	operations := make(map[string]string)
 
@@ -345,7 +346,15 @@ func LoadMemoryProjection(ss *SourceStore) (*MemoryProjection, error) {
 		}
 		rec, ok := p.bySHA[target]
 		if !ok {
-			continue // an expiry citing an unknown/private-to-another-brain target is inert
+			// Forget removes the fact's own directory (ADR 019), so its
+			// targeted expiry is the only trace left; record it so forget
+			// stays idempotent. Otherwise such an expiry is inert.
+			if e.pl.OperationKey == "" {
+				if prior := p.erased[target]; prior == "" || e.sha < prior {
+					p.erased[target] = e.sha
+				}
+			}
+			continue
 		}
 		if rec.ExpiredAt == nil || e.pl.ExpiredAt.Before(*rec.ExpiredAt) {
 			// The FIRST expiry event wins (deterministic under concurrent
@@ -435,6 +444,13 @@ func (p *MemoryProjection) NextLegacyID() (int64, error) {
 		}
 	}
 	return 0, fmt.Errorf("store: memory identity collision retry limit")
+}
+
+// ErasedExpiry reports the expiry event of a fact whose bytes forget already
+// removed: the target SHA-256 is no longer a record, only an audit trace.
+func (p *MemoryProjection) ErasedExpiry(sha string) (string, bool) {
+	e, ok := p.erased[sha]
+	return e, ok
 }
 
 // IsLifecycle identifies immutable expiry events, which are never evidence.
