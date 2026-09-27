@@ -8,7 +8,10 @@ package connector
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"path/filepath"
 	"time"
 
 	"github.com/sirerun/serenity/internal/domain"
@@ -30,6 +33,24 @@ type RawItem struct {
 	Bytes      []byte
 	OccurredAt time.Time
 	Meta       map[string]string
+	// LocalPath is the item's absolute filesystem path, for connectors that
+	// read local files. It is local-only (PRIV-03): ToSource never copies it
+	// into the committed Source, and the sync pipeline records it only in
+	// the derived index, keyed by Meta[MetaPathHash].
+	LocalPath string
+}
+
+// MetaPathHash is the source meta key holding PathHash of a local file
+// source's absolute path. It lets a local index map a committed source
+// back to its file without the committed record naming the path.
+const MetaPathHash = "path_hash"
+
+// PathHash returns the lowercase hex sha256 of abs in cleaned,
+// forward-slash form, the stable de-duplication identifier a file-backed
+// source carries in place of its absolute path.
+func PathHash(abs string) string {
+	sum := sha256.Sum256([]byte(filepath.ToSlash(filepath.Clean(abs))))
+	return hex.EncodeToString(sum[:])
 }
 
 // Connector is the pluggable ingest boundary (RFC §10.1). Poll must be

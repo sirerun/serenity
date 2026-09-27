@@ -90,8 +90,8 @@ func TestGoldenKindsAndURIs(t *testing.T) {
 	sort.Slice(got, func(i, j int) bool { return got[i].uri < got[j].uri })
 
 	want := []pair{
-		{"file", "file://" + filepath.ToSlash(filepath.Join(dir, "exports/report.pdf"))},
-		{"file", "file://" + filepath.ToSlash(filepath.Join(dir, "notes.txt"))},
+		{"file", "file:exports/report.pdf"},
+		{"file", "file:notes.txt"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %d items, want %d: %+v", len(got), len(want), got)
@@ -119,7 +119,7 @@ func TestEditorTempFilesIgnored(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("got %d items, want 1 (temp files must be ignored): %+v", len(items), items)
 	}
-	if items[0].URI != "file://"+filepath.ToSlash(filepath.Join(dir, "draft.txt")) {
+	if items[0].URI != "file:draft.txt" {
 		t.Fatalf("unexpected surviving item: %+v", items[0])
 	}
 }
@@ -225,7 +225,7 @@ func TestPollModeDebounceWithFakeClock(t *testing.T) {
 	if len(items) != 1 {
 		t.Fatalf("past the debounce window got %d items, want 1", len(items))
 	}
-	if items[0].URI != "file://"+filepath.ToSlash(abs) {
+	if items[0].URI != "file:note.txt" || items[0].LocalPath != abs {
 		t.Fatalf("unexpected item: %+v", items[0])
 	}
 }
@@ -254,7 +254,7 @@ func TestWatchModeDeliversCreatedFile(t *testing.T) {
 			t.Fatalf("Poll: %v", err)
 		}
 		if len(items) == 1 {
-			if items[0].URI != "file://"+filepath.ToSlash(abs) {
+			if items[0].URI != "file:live.txt" || items[0].LocalPath != abs {
 				t.Fatalf("unexpected item: %+v", items[0])
 			}
 			return
@@ -274,7 +274,7 @@ func TestWatchModeDeliversCreatedFile(t *testing.T) {
 // the bytes given, never trusting the caller (internal/store/source.go).
 func TestToSourceLeavesSHA256ForTheStoreToCompute(t *testing.T) {
 	c := file.NewPoll(t.TempDir())
-	src, err := c.ToSource(connector.RawItem{Kind: "file", URI: "file:///x", Bytes: []byte("x")})
+	src, err := c.ToSource(connector.RawItem{Kind: "file", URI: "file:x", Bytes: []byte("x")})
 	if err != nil {
 		t.Fatalf("ToSource: %v", err)
 	}
