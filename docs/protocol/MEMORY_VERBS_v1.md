@@ -60,12 +60,17 @@ packs into whatever budget remains (`budget_tokens`, a char/4 estimator).
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `query` | string | no | Hybrid-searches the brain's pages; omit to skip the search arm. |
+| `query` | string | no | Hybrid-searches the brain's pages; omit to skip the search arm. At most 4096 bytes (UTF-8). |
 | `entity` | string | no | Scopes the facts arm to one entity (name or `type/slug`). |
 | `budget_tokens` | integer ≥ 0 | no | Server-side char/4 packing budget; facts pack first. |
 | `since` | string | no | ISO 8601 date/datetime — filters the facts arm only. |
 | `session_id` | string | no | |
-| `limit` | integer ≥ 0 | no | Per-arm cap on candidates. |
+| `limit` | integer 0–100 | no | Per-arm cap on candidates. Defaults to 50. |
+
+A `query` longer than 4096 bytes or a `limit` above 100 is rejected with
+`invalid_params`, and the message names the exceeded limit. Both checks run
+before the brain is read and before any embedding-provider call, so an
+oversize request costs no embedding spend.
 
 **Response** — [`memory_verbs_recall_response.schema.json`](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_verbs_recall_response.schema.json)
 
