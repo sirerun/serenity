@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -155,7 +156,13 @@ func runServeHTTP(cmd *cobra.Command, profile string, hasProfile bool) (runErr e
 		tokenSource = secrets.DaemonToken
 	}
 
-	serverConfig := loadServerConfig(flagRoot)
+	serverConfig, err := loadServerConfig(flagRoot)
+	if err != nil {
+		return err
+	}
+	if err := refuseNonLoopbackBind(serverConfig, stderr); err != nil {
+		return err
+	}
 	cfg := server.FromBrainConfig(serverConfig)
 	cfg.TokenSource = tokenSource
 	srv := server.New(cfg)
@@ -190,15 +197,51 @@ func runServeHTTP(cmd *cobra.Command, profile string, hasProfile bool) (runErr e
 
 // loadServerConfig loads serenity.yml's server: section for --http's
 // listener config. Mirrors memoryTools' own "not a brain repo" tolerance
-// (T4.1's bare-transport-smoke-test posture): outside a brain repo, or
-// with no server: section, --http still starts, on the transport's own
-// secure loopback-port-zero default.
-func loadServerConfig(root string) config.Server {
+// (T4.1's bare-transport-smoke-test posture): outside a brain repo (no
+// serenity.yml at all), or with no server: section, --http still starts,
+// on the transport's own secure loopback-port-zero default. A serenity.yml
+// that exists but fails config.Load's strict decode (T24.8: an unknown
+// key, a malformed document) is a hard error, not a silent fallback to
+// defaults: a synced config the operator cannot see the effect of is the
+// exact trust gap ADR 018 closes.
+func loadServerConfig(root string) (config.Server, error) {
 	cfg, err := config.Load(filepath.Join(root, config.FileName))
-	if err != nil {
-		return config.Server{}
+	if errors.Is(err, os.ErrNotExist) {
+		return config.Server{}, nil
 	}
-	return cfg.Server
+	if err != nil {
+		return config.Server{}, fmt.Errorf("serve --http: %w", err)
+	}
+	return cfg.Server, nil
+}
+
+// refuseNonLoopbackBind is `serve --http`'s own check that server.bind
+// resolves to a loopback address unless server.allow_lan is set (RFC 0001
+// section 14; ADR 018 decision 3). internal/server.Listen enforces the
+// same rule as a last line of defense; checking here as well means the
+// refusal is logged to stderr naming the bind and the missing key before
+// any listener, TLS config or route is built, and the returned error
+// wraps server.ErrNonLoopbackBindRefused so callers can match it.
+func refuseNonLoopbackBind(sc config.Server, stderr io.Writer) error {
+	if sc.AllowLAN {
+		return nil
+	}
+	bind := sc.Bind
+	if bind == "" {
+		bind = server.DefaultBind
+	}
+	host, _, err := net.SplitHostPort(bind)
+	if err != nil {
+		return fmt.Errorf("serve --http: parse server.bind %q: %w", bind, err)
+	}
+	if host == "localhost" {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	_, _ = fmt.Fprintf(stderr, "serve --http: refusing to bind %q: server.bind is not a loopback address and server.allow_lan is not set in %s (RFC 0001 section 14)\n", bind, config.FileName)
+	return fmt.Errorf("serve --http: %w: %q (set server.allow_lan: true in %s to expose the daemon beyond loopback)", server.ErrNonLoopbackBindRefused, bind, config.FileName)
 }
 
 // memoryTools builds MEMORY_VERBS v1's five tool registrations
@@ -220,9 +263,15 @@ func loadServerConfig(root string) config.Server {
 // error, the same posture internal/cli/ask.go's own runAsk takes.
 func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, *index.SQLite, *writer.Queue, error) {
 	_, err := config.Load(filepath.Join(root, config.FileName))
-	if err != nil {
+	if errors.Is(err, os.ErrNotExist) {
 		_, _ = fmt.Fprintf(stderr, "serve: %s is not a brain repo -- serving MCP transport with no MEMORY_VERBS tools\n", root)
 		return nil, nil, nil, nil, nil
+	}
+	if err != nil {
+		// A serenity.yml that exists but fails the strict decode (T24.8)
+		// is a real configuration error; degrading to "no tools" would
+		// hide the named unknown key the operator needs to see.
+		return nil, nil, nil, nil, fmt.Errorf("serve: %w", err)
 	}
 
 	owner, err := writer.AcquireBrain(root)

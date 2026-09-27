@@ -102,12 +102,9 @@ func runConnectorsAuthIMAP(cmd *cobra.Command, root string) error {
 	if err != nil {
 		return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
 	}
-	if cfg.Connectors == nil {
-		cfg.Connectors = map[string]any{}
-	}
 	// Only the account address is non-secret; the password never touches
 	// serenity.yml or any other file (ADR 001: keychain only).
-	cfg.Connectors["imap"] = map[string]any{"account": email}
+	cfg.Connectors.IMAP = &config.IMAPConnector{Account: email}
 	if err := cfg.Save(cfgPath); err != nil {
 		return fmt.Errorf("save %s: %w", config.FileName, err)
 	}

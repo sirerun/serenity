@@ -2,8 +2,9 @@ package cli
 
 import (
 	"fmt"
-
-	"gopkg.in/yaml.v3"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/connector"
@@ -13,10 +14,17 @@ import (
 )
 
 // buildConnectors constructs one connector.Connector per entry under
-// serenity.yml's `connectors:` map (T1.15 -- the config schema below is new;
-// `serenity connectors auth imap` (T1.4) already writes the `imap` shape).
-// Connectors with no configured entry are simply absent from the result --
-// a brain repo with nothing configured yet polls nothing, not an error.
+// serenity.yml's typed `connectors:` section (T1.15; typed and contained
+// by T24.8 / ADR 018). Connectors with no configured entry are simply
+// absent from the result -- a brain repo with nothing configured yet polls
+// nothing, not an error.
+//
+// Every connector `path` is resolved to an absolute, cleaned path and must
+// lie under one of the allowlisted roots -- the user's home directory, plus
+// whatever `connectors.roots` adds (see connectorRoots). serenity.yml is
+// synced through the brain remote, so a path it carries is not first-party
+// input: an escaping path fails here, naming the path, before it is ever
+// handed to git or walked as a directory (SEC-H05, config half).
 //
 // file: a single watched directory (RFC section 10.1's file-watcher
 // connector). Always constructed in poll mode (fileconn.NewPoll), never
@@ -43,63 +51,95 @@ import (
 func buildConnectors(root string, cfg *config.Config) ([]connector.Connector, error) {
 	var cs []connector.Connector
 
-	if raw, ok := cfg.Connectors["imap"]; ok {
-		var c struct {
-			Account string `yaml:"account"`
-		}
-		if err := decodeConnectorConfig(raw, &c); err != nil {
-			return nil, fmt.Errorf("connectors.imap: %w", err)
-		}
+	roots, err := connectorRoots(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	if c := cfg.Connectors.IMAP; c != nil {
 		if c.Account == "" {
 			return nil, fmt.Errorf("connectors.imap: account is required")
 		}
 		cs = append(cs, imapconn.NewGmail(c.Account))
 	}
 
-	if raw, ok := cfg.Connectors["file"]; ok {
-		var c struct {
-			Path string `yaml:"path"`
-		}
-		if err := decodeConnectorConfig(raw, &c); err != nil {
-			return nil, fmt.Errorf("connectors.file: %w", err)
-		}
+	if c := cfg.Connectors.File; c != nil {
 		if c.Path == "" {
 			return nil, fmt.Errorf("connectors.file: path is required")
 		}
-		cs = append(cs, fileconn.NewPoll(c.Path))
+		path, err := containConnectorPath("connectors.file.path", c.Path, roots)
+		if err != nil {
+			return nil, err
+		}
+		cs = append(cs, fileconn.NewPoll(path))
 	}
 
-	if raw, ok := cfg.Connectors["git_repo"]; ok {
-		var list []struct {
-			Path string `yaml:"path"`
+	for i, c := range cfg.Connectors.GitRepo {
+		if c.Path == "" {
+			return nil, fmt.Errorf("connectors.git_repo[%d]: path is required", i)
 		}
-		if err := decodeConnectorConfig(raw, &list); err != nil {
-			return nil, fmt.Errorf("connectors.git_repo: %w", err)
+		path, err := containConnectorPath(fmt.Sprintf("connectors.git_repo[%d].path", i), c.Path, roots)
+		if err != nil {
+			return nil, err
 		}
-		for i, c := range list {
-			if c.Path == "" {
-				return nil, fmt.Errorf("connectors.git_repo[%d]: path is required", i)
-			}
-			cs = append(cs, gitrepo.New(gitrepo.Config{RepoRoot: c.Path, BrainRoot: root}))
-		}
+		cs = append(cs, gitrepo.New(gitrepo.Config{RepoRoot: path, BrainRoot: root}))
 	}
 
 	return cs, nil
 }
 
-// decodeConnectorConfig re-decodes one `connectors.<name>` entry (loaded by
-// config.Load as `any`, since Config.Connectors is intentionally untyped
-// -- serenity.yml's vocabulary of connector kinds grows independently of
-// internal/config) into a typed shape, via a YAML round-trip rather than a
-// reflection-based mapstructure dependency: yaml.v3 already unmarshals
-// mapping nodes into map[string]any (string keys, not v2's
-// map[interface{}]interface{}), so re-marshaling that and unmarshaling
-// into out is a small, dependency-free, already-imported-package way to
-// get a typed struct back out of an any.
-func decodeConnectorConfig(raw any, out any) error {
-	b, err := yaml.Marshal(raw)
+// connectorRoots returns the cleaned allowlist of directories a connector
+// path may resolve under: the user's home directory (always), followed by
+// every `connectors.roots` entry. Each configured root is validated the
+// same way a connector path is -- it must be absolute -- and is cleaned,
+// so a relative or traversal-shaped root cannot widen the allowlist to
+// somewhere the operator did not name.
+func connectorRoots(cfg *config.Config) ([]string, error) {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("connectors: resolve home directory for the path allowlist: %w", err)
 	}
-	return yaml.Unmarshal(b, out)
+	roots := []string{filepath.Clean(home)}
+	for i, r := range cfg.Connectors.Roots {
+		if r == "" {
+			return nil, fmt.Errorf("connectors.roots[%d]: root is empty", i)
+		}
+		if !filepath.IsAbs(r) {
+			return nil, fmt.Errorf("connectors.roots[%d]: %q is not an absolute path", i, r)
+		}
+		roots = append(roots, filepath.Clean(r))
+	}
+	return roots, nil
+}
+
+// containConnectorPath resolves p to an absolute, cleaned path (a relative
+// p is resolved against the process working directory, as filepath.Abs
+// does) and requires the result to be under one of roots. It returns the
+// resolved path, or an error naming key and the escaping path.
+func containConnectorPath(key, p string, roots []string) (string, error) {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", fmt.Errorf("%s: resolve %q: %w", key, p, err)
+	}
+	abs = filepath.Clean(abs)
+	for _, root := range roots {
+		if pathUnder(abs, root) {
+			return abs, nil
+		}
+	}
+	return "", fmt.Errorf("%s: %q is outside every allowed root (%s); add its root under connectors.roots to allow it", key, abs, strings.Join(roots, ", "))
+}
+
+// pathUnder reports whether the cleaned absolute path p equals root or is
+// lexically inside it. The comparison is on path components, so
+// "/home/alice-other" is not under "/home/alice".
+func pathUnder(p, root string) bool {
+	if p == root {
+		return true
+	}
+	prefix := root
+	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
+		prefix += string(filepath.Separator)
+	}
+	return strings.HasPrefix(p, prefix)
 }

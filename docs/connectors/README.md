@@ -28,6 +28,8 @@ ingests what it finds (plan T1.15):
 
 ```yaml
 connectors:
+  roots:
+    - /srv/shared                  # optional: extra directories a path may live under
   imap:
     account: you@gmail.com        # written by `serenity connectors auth imap`
   file:
@@ -36,6 +38,15 @@ connectors:
     - path: /path/to/repo-one      # one entry per repository -- crawl 5 repos with 5 entries
     - path: /path/to/repo-two
 ```
+
+Every `path` must resolve, after cleaning, to somewhere under your home
+directory or under one of the absolute directories listed in
+`connectors.roots`; anything else fails `serenity sync` at connector build
+with the path named. `serenity.yml` is synced through the brain remote,
+so a path it carries is not trusted to point the process at an arbitrary
+repository (ADR 018). Connector kinds other than `imap`, `file` and
+`git_repo` are unknown keys and fail the load. See the
+[serenity.yml reference](../operator/config.md#connectors).
 
 The file watcher always runs in poll mode from `sync` (`file.NewPoll`), not
 watch mode: `sync` is a one-shot CLI invocation, and watch mode's

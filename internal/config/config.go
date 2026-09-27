@@ -5,9 +5,14 @@
 package config
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"reflect"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -89,6 +94,49 @@ type Server struct {
 	MaxInFlightCalls int `yaml:"max_in_flight_calls,omitempty"`
 }
 
+// Connectors is serenity.yml's typed `connectors:` section (ADR 018
+// decision 3, SEC-H05). It used to be an untyped map so connector kinds
+// could grow without touching this package; that also meant a synced
+// serenity.yml could carry any key and any shape unchecked. Every kind
+// the CLI can build is now named here, so an unknown kind fails Load
+// with the key named instead of being silently ignored, and the shape
+// each kind decodes into is fixed at the schema rather than re-decoded
+// at build time.
+type Connectors struct {
+	// Roots extends the allowlist of directories a connector `path` may
+	// resolve under. The user's home directory is always allowed; each
+	// entry here must be an absolute path and is cleaned before use. A
+	// connector path (file.path, git_repo[].path) whose cleaned absolute
+	// form lies outside every root fails connector build naming the path,
+	// so a serenity.yml delivered through the brain remote cannot point
+	// the process at an arbitrary repository.
+	Roots  []string `yaml:"roots,omitempty"`
+	Redact Redact   `yaml:"redact,omitempty"`
+	// IMAP is the single Gmail mailbox `serenity connectors auth imap`
+	// writes; the app password lives in the OS keychain, never here.
+	IMAP *IMAPConnector `yaml:"imap,omitempty"`
+	// File is the single watched directory (docs/connectors/file.md).
+	File *FileConnector `yaml:"file,omitempty"`
+	// GitRepo lists repositories to crawl, one entry each
+	// (docs/connectors/gitrepo.md).
+	GitRepo []GitRepoConnector `yaml:"git_repo,omitempty"`
+}
+
+// IMAPConnector is the `connectors.imap` entry.
+type IMAPConnector struct {
+	Account string `yaml:"account"`
+}
+
+// FileConnector is the `connectors.file` entry.
+type FileConnector struct {
+	Path string `yaml:"path"`
+}
+
+// GitRepoConnector is one `connectors.git_repo[]` entry.
+type GitRepoConnector struct {
+	Path string `yaml:"path"`
+}
+
 // Redact configures the redaction pass internal/router applies to every
 // provider egress (ADR 021). The built-in table (API-key shapes, card
 // and account numbers) always runs; this section can only extend it.
@@ -128,9 +176,9 @@ type Config struct {
 	Models     Models            `yaml:"models"`
 	Index      Index             `yaml:"index"`
 	Server     Server            `yaml:"server,omitempty"`
-	Redact     Redact            `yaml:"redact,omitempty"`
 	Families   map[string]Family `yaml:"families"`
-	Connectors map[string]any    `yaml:"connectors,omitempty"`
+	Connectors Connectors        `yaml:"connectors,omitempty"`
+	Redact     Redact            `yaml:"redact,omitempty"`
 	// Ladder is the earned-automation ladder policy object (RFC §10.3,
 	// T2.10). config.Default seeds the RFC's published priors; T2.11's
 	// calibration sweep replaces them with evidence-backed defaults before
@@ -185,13 +233,32 @@ func Default() *Config {
 	}
 }
 
+// Load reads and strictly decodes a serenity.yml. serenity.yml is committed
+// into the brain and synced through the brain remote, so it is not
+// first-party input (ADR 018, SEC-H05): any key the schema does not know,
+// at any nesting level, fails Load with an error of the form
+// `unknown key <dotted.path>` naming the first offender and its line.
+// Strictness is enforced twice on purpose: unknownKeys walks the parsed
+// document against the Config type to produce the named-path error, and
+// the decoder's own KnownFields(true) backstops anything the walk does
+// not model (a field with a custom unmarshaler, say) so a miss can never
+// degrade to silent acceptance.
 func Load(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(b, &doc); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	if err := unknownKeys(&doc, reflect.TypeFor[Config](), ""); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
 	var c Config
-	if err := yaml.Unmarshal(b, &c); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(b))
+	dec.KnownFields(true)
+	if err := dec.Decode(&c); err != nil && !errors.Is(err, io.EOF) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	// A bad redaction rule is a config error at load time, never a
@@ -200,6 +267,153 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &c, nil
+}
+
+// yamlUnmarshalerType is the interface yaml.v3 consults before its
+// reflective decode; a type implementing it owns its own key vocabulary,
+// so the strict walk stops at it and leaves KnownFields to the decoder.
+var yamlUnmarshalerType = reflect.TypeFor[yaml.Unmarshaler]()
+
+// unknownKeys walks node against t and returns the first mapping key that
+// has no yaml-tagged field to land in, as `unknown key <path> (line N)`.
+// Structs are checked key by key; maps recurse into their values with the
+// key appended to the path; sequences recurse with the index appended.
+// Aliases are followed and `<<` merge keys are validated against the
+// same type as the mapping they merge into. Scalar mismatches are not
+// this walk's job -- the decoder reports those.
+func unknownKeys(node *yaml.Node, t reflect.Type, path string) error {
+	if node == nil {
+		return nil
+	}
+	switch node.Kind {
+	case yaml.DocumentNode:
+		if len(node.Content) == 0 {
+			return nil
+		}
+		return unknownKeys(node.Content[0], t, path)
+	case yaml.AliasNode:
+		return unknownKeys(node.Alias, t, path)
+	}
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if reflect.PointerTo(t).Implements(yamlUnmarshalerType) {
+		return nil
+	}
+	switch t.Kind() {
+	case reflect.Struct:
+		if node.Kind != yaml.MappingNode {
+			return nil
+		}
+		fields := yamlFields(t)
+		return walkMapping(node, path, func(key string) (reflect.Type, bool) {
+			ft, ok := fields[key]
+			return ft, ok
+		})
+	case reflect.Map:
+		if node.Kind != yaml.MappingNode {
+			return nil
+		}
+		elem := t.Elem()
+		return walkMapping(node, path, func(string) (reflect.Type, bool) { return elem, true })
+	case reflect.Slice, reflect.Array:
+		if node.Kind != yaml.SequenceNode {
+			return nil
+		}
+		for i, item := range node.Content {
+			if err := unknownKeys(item, t.Elem(), fmt.Sprintf("%s[%d]", path, i)); err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		return nil
+	}
+}
+
+// walkMapping checks each key of a mapping node with lookup and recurses
+// into each value with the type lookup returns. Merge keys (`<<`) are
+// expanded against the same lookup so a merged mapping cannot smuggle a
+// key past the check.
+func walkMapping(node *yaml.Node, path string, lookup func(key string) (reflect.Type, bool)) error {
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		keyNode, valNode := node.Content[i], node.Content[i+1]
+		if keyNode.Tag == "!!merge" || keyNode.Value == "<<" {
+			if err := walkMerge(valNode, path, lookup); err != nil {
+				return err
+			}
+			continue
+		}
+		key := keyNode.Value
+		ft, ok := lookup(key)
+		if !ok {
+			return fmt.Errorf("unknown key %s (line %d)", joinPath(path, key), keyNode.Line)
+		}
+		if err := unknownKeys(valNode, ft, joinPath(path, key)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func walkMerge(val *yaml.Node, path string, lookup func(key string) (reflect.Type, bool)) error {
+	if val.Kind == yaml.AliasNode {
+		val = val.Alias
+	}
+	switch val.Kind {
+	case yaml.MappingNode:
+		return walkMapping(val, path, lookup)
+	case yaml.SequenceNode:
+		for _, item := range val.Content {
+			if err := walkMerge(item, path, lookup); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func joinPath(path, key string) string {
+	if path == "" {
+		return key
+	}
+	return path + "." + key
+}
+
+// yamlFields maps each yaml key a struct type accepts to the field type
+// it decodes into, following yaml.v3's tag rules: the tag name wins, `-`
+// skips, an untagged exported field is its lowercased name, and `inline`
+// hoists an embedded struct's keys to this level.
+func yamlFields(t reflect.Type) map[string]reflect.Type {
+	out := map[string]reflect.Type{}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		tag := f.Tag.Get("yaml")
+		name, opts, _ := strings.Cut(tag, ",")
+		if name == "-" {
+			continue
+		}
+		if strings.Contains(","+opts+",", ",inline,") {
+			ft := f.Type
+			for ft.Kind() == reflect.Pointer {
+				ft = ft.Elem()
+			}
+			if ft.Kind() == reflect.Struct {
+				for k, v := range yamlFields(ft) {
+					out[k] = v
+				}
+			}
+			continue
+		}
+		if name == "" {
+			name = strings.ToLower(f.Name)
+		}
+		out[name] = f.Type
+	}
+	return out
 }
 
 func (c *Config) Save(path string) error {

@@ -61,7 +61,13 @@ server:
 ```
 
 Without `allow_lan: true`, the daemon refuses to start rather than
-silently exposing itself.
+silently exposing itself: `serve --http` logs
+`refusing to bind "0.0.0.0:8443": server.bind is not a loopback address
+and server.allow_lan is not set` to stderr and exits with a
+`non-loopback bind refused` error before any listener is built. Because
+`serenity.yml` is synced through the brain remote, this is what keeps a
+shared or compromised brain from exposing your daemon (ADR 018). The full
+key list is in the [serenity.yml reference](config.md).
 
 `max_in_flight_calls` is optional. It sets the concurrent `tools/call` budget
 for this daemon's MCP HTTP handler; omitted or zero uses the default budget
