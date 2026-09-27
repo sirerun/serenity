@@ -21,6 +21,7 @@ import (
 	"github.com/sirerun/serenity/internal/neutralize"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/reconcile"
+	"github.com/sirerun/serenity/internal/spend"
 	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/supersede"
 	"github.com/sirerun/serenity/internal/writer"
@@ -127,7 +128,7 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 	default:
 		q := writer.NewQueue(nil)
 		defer q.Close()
-		sw := &inboxPublisher{writer: supersede.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg)}
+		sw := &inboxPublisher{writer: supersede.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg), spend: spend.New(eng, dispStore, spend.DefaultConfig())}
 		defer func() {
 			if !sw.published {
 				return
@@ -149,6 +150,10 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 			id, err := applyInboxDecision(ctx, sw, dirStore, dispStore, item, now)
 			if err != nil {
 				return fmt.Errorf("inbox: publication incomplete for %s: %w; resolve the target and retry with inbox --apply %s", item.ID, err, item.ID)
+			}
+			if item.Kind == disposition.KindEffect {
+				_, _ = fmt.Fprintf(out, "applied %s -> spend row %s recorded\n", item.ID, id)
+				return nil
 			}
 			kind := "claim"
 			switch item.Kind {
@@ -193,7 +198,40 @@ type reconcilePublisher interface {
 
 type inboxPublisher struct {
 	writer    *supersede.Writer
+	spend     *spend.Checker
 	published bool
+}
+
+// effectApplier applies an accepted KindEffect item. inboxPublisher
+// implements it through spend.Checker, whose ApplyDisposedEffect gates on
+// kind, disposed state and accept verdict before recording anything.
+type effectApplier interface {
+	ApplyDisposedEffect(context.Context, disposition.Item) (string, error)
+}
+
+// ApplyDisposedEffect records the spend row an accepted effect item held
+// back and returns that row's id. The spend ledger is derived runtime
+// state, so this is not a brain-repo publication.
+func (p *inboxPublisher) ApplyDisposedEffect(ctx context.Context, item disposition.Item) (string, error) {
+	if err := p.spend.ApplyDisposedEffect(ctx, item); err != nil {
+		return "", err
+	}
+	var payload spend.EffectPayload
+	if err := json.Unmarshal(item.Payload, &payload); err != nil {
+		return "", fmt.Errorf("inbox: decode effect payload: %w", err)
+	}
+	return payload.Row.ID, nil
+}
+
+// applyEffect applies an accepted effect item through sw when it can.
+// A publisher without a spend checker refuses rather than leaving an
+// accepted effect silently unapplied.
+func applyEffect(ctx context.Context, sw reconcilePublisher, item disposition.Item) (string, error) {
+	ea, ok := sw.(effectApplier)
+	if !ok {
+		return "", fmt.Errorf("inbox: no spend checker configured to apply effect item %s", item.ID)
+	}
+	return ea.ApplyDisposedEffect(ctx, item)
 }
 
 func (p *inboxPublisher) ApplyAndCommitReconcile(ctx context.Context, ds *disposition.Store, item disposition.Item, now time.Time) (string, error) {
@@ -257,6 +295,9 @@ func applyInboxDecision(ctx context.Context, sw reconcilePublisher, dirStore *di
 	if item.Kind == disposition.KindClaimCandidate {
 		return sw.ApplyAndCommitClaimCandidate(ctx, ds, item, now)
 	}
+	if item.Kind == disposition.KindEffect {
+		return applyEffect(ctx, sw, item)
+	}
 	return sw.ApplyAndCommitReconcile(ctx, ds, item, now)
 }
 
@@ -311,7 +352,7 @@ func itemFamily(item disposition.Item) (string, bool) {
 // kind-specific payload where this package knows the shape (reconcile,
 // distill, dirty_edit, precept_draft -- the kinds anything in this repo
 // actually stages today) and falling back to a bare kind+id line for any
-// other kind (effect, tombstone -- staged by no shipped code yet).
+// other kind (effect, staged by spend.Checker.CheckAndRecord; tombstone).
 func itemSummary(item disposition.Item) string {
 	switch item.Kind {
 	case disposition.KindReconcile:
@@ -623,6 +664,12 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 						return fmt.Errorf("inbox: ledger publication incomplete for %s: %w; retry with inbox --apply %s", it.ID, aerr, it.ID)
 					}
 					_, _ = fmt.Fprintf(out, "applied %s -> %s written to ledger and committed (%s)\n", it.ID, entry.ID, neutralize.Text(entry.Title))
+				case verdict == disposition.VerdictAccept && res.Item.Verdict == disposition.VerdictAccept && it.Kind == disposition.KindEffect:
+					rowID, aerr := applyEffect(ctx, sw, res.Item)
+					if aerr != nil {
+						return fmt.Errorf("inbox: effect %s accepted but not applied: %w; retry with inbox --apply %s", it.ID, aerr, it.ID)
+					}
+					_, _ = fmt.Fprintf(out, "applied %s -> spend row %s recorded\n", it.ID, rowID)
 				}
 			}
 			if advance() {

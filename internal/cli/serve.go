@@ -170,7 +170,11 @@ func runServeHTTP(cmd *cobra.Command, profile string, hasProfile bool) (runErr e
 	srv.Handle("/mcp", httpHandler)
 	if eng != nil && q != nil {
 		dispositionStore := coredisposition.NewStore(eng)
-		serverdirection.New(direction.NewStore(flagRoot, q), dispositionStore, flagRoot).Register(srv)
+		directionOpts, err := checkPlanOptions(flagRoot, eng, stderr)
+		if err != nil {
+			return err
+		}
+		serverdirection.New(direction.NewStore(flagRoot, q), dispositionStore, flagRoot, directionOpts...).Register(srv)
 		serverdisposition.New(dispositionStore, events.NewStore(eng)).Register(srv)
 	}
 	if err := srv.Listen(); err != nil {
@@ -193,6 +197,26 @@ func runServeHTTP(cmd *cobra.Command, profile string, hasProfile bool) (runErr e
 		return serveErr
 	}
 	return nil
+}
+
+// checkPlanOptions wires DIRECTION check_plan's free-text classification
+// router from root's serenity.yml. Classification is a local-cheap task
+// class (RFC 0001 section 9) and serenity.yml has no separate
+// classification pin, so it runs on the brain's pinned local-cheap chat
+// model, models.extraction, and asserts that pin on every call. With no
+// usable pin the router stays nil and free-text plans report unverified,
+// noted once on stderr; structured actions are matched either way.
+func checkPlanOptions(root string, eng *index.SQLite, stderr io.Writer) ([]serverdirection.Option, error) {
+	cfg, err := config.Load(filepath.Join(root, config.FileName))
+	if err != nil {
+		return nil, fmt.Errorf("serve --http: load config for check_plan: %w", err)
+	}
+	rtr, ok, note := providers.BuildExtractionRouter(cfg, &providers.IndexSpendLedger{Eng: eng})
+	if !ok {
+		_, _ = fmt.Fprintf(stderr, "serve: check_plan has no classification model (%s) -- free-text plans report unverified\n", note)
+		return nil, nil
+	}
+	return []serverdirection.Option{serverdirection.WithRouter(rtr), serverdirection.WithModelVersion(cfg.Models.Extraction)}, nil
 }
 
 // loadServerConfig loads serenity.yml's server: section for --http's

@@ -148,6 +148,11 @@ func (c *Checker) CheckAndRecord(ctx context.Context, row index.SpendRow, now ti
 // specific overage. Held under the same mutex as CheckAndRecord so an
 // accept cannot interleave with a concurrent CheckAndRecord's own
 // read-check-write.
+//
+// Applying is idempotent: a row whose id is already in the ledger means
+// an earlier apply of this same item already landed (an `inbox --apply`
+// retry after an interrupted session), so it returns nil without
+// recording twice.
 func (c *Checker) ApplyDisposedEffect(ctx context.Context, item disposition.Item) error {
 	if item.Kind != disposition.KindEffect {
 		return fmt.Errorf("spend: apply disposed effect: item %s is kind %q, not %q", item.ID, item.Kind, disposition.KindEffect)
@@ -163,6 +168,15 @@ func (c *Checker) ApplyDisposedEffect(ctx context.Context, item disposition.Item
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	rows, err := c.Index.SpendRows(ctx)
+	if err != nil {
+		return fmt.Errorf("spend: apply disposed effect: read ledger: %w", err)
+	}
+	for _, r := range rows {
+		if r.ID == payload.Row.ID {
+			return nil
+		}
+	}
 	if err := c.Index.RecordSpend(ctx, payload.Row); err != nil {
 		return fmt.Errorf("spend: apply disposed effect: record: %w", err)
 	}
