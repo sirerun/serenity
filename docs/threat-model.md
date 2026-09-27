@@ -334,6 +334,38 @@ retroactive. Rewriting brain history on forget is tracked separately
 (T24.22); until it lands, the history limit above applies to forgotten facts
 and tombstoned sources alike.
 
+## Git subprocesses: one hardened runner
+
+A git repository's own configuration can name programs for git to run:
+`core.fsmonitor` on every index-refreshing subcommand (`ls-files --others`,
+`status`, `diff`), hooks on writes, `ext::` transports on fetch. Any
+repository whose state an attacker controls -- a crawled connector target, an
+imported brain, a brain synced from a shared or compromised remote -- is
+therefore a code-execution vector for whatever process runs git inside it
+(deep review 001, SEC-H05).
+
+Every git subprocess the local product spawns runs through
+`internal/gitrun` ([ADR 018](adr/018-hardened-git-runner-and-synced-config-trust.md));
+no other local package calls `exec.Command("git", ...)`, and a test in that
+package fails the build if one appears. The runner has two trust levels:
+
+- `gitrun.Brain(dir)`, for the brain repository the process owns, passes
+  `-c core.fsmonitor=false -c protocol.ext.allow=never`. Repository hooks
+  stay enabled because `serenity init` installs the post-commit auto-push
+  hook that the durability floor relies on.
+- `gitrun.Foreign(dir)`, for every repository the process does not own,
+  additionally passes `-c core.hooksPath=/dev/null`, sets
+  `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1` and
+  `GIT_OPTIONAL_LOCKS=0`, and refuses any subcommand outside a read-only
+  allowlist (`rev-parse`, `log`, `ls-files`, `show`, `status`, `diff`, ...).
+
+Both scrub the inherited environment: every `GIT_*` variable is dropped
+except `GIT_SSH_COMMAND`, `GIT_TERMINAL_PROMPT` is pinned to `0`, and
+callers cannot pass the global options that would redirect or reconfigure
+the runner (`-c`, `-C`, `--git-dir`, `--work-tree`, `--exec-path`,
+`--config-env`). The hosted service's git call sites migrate to the same
+runner under their own file claims (ADR 018, consequences).
+
 ## Durability
 
 Backups are `git push` — configured and monitored per RFC §7.7 (`serenity
