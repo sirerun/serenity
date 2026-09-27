@@ -135,6 +135,48 @@ func TestBuildComposerRouterOpenRouterProvider(t *testing.T) {
 	if oc.BaseURL != "https://openrouter.ai/api/v1" {
 		t.Fatalf("BaseURL = %q, want %q", oc.BaseURL, "https://openrouter.ai/api/v1")
 	}
+	if oc.MaxTokens != composerMaxTokens {
+		t.Fatalf("composer MaxTokens = %d, want %d (AI-04: the OpenAI-compatible synthesize path must bound its completion)", oc.MaxTokens, composerMaxTokens)
+	}
+}
+
+// TestBuildComposerRouterBoundsOpenAICompatibleCompletion (T24.13, AI-04):
+// every OpenAI-compatible composer provider BuildComposerRouter hands out
+// -- OpenRouter or a direct/local OpenAI-compatible server -- carries a
+// max_tokens bound; the extraction router is left exactly as it was (its
+// chunked JSON output was measured under a Qwen3 thinking trace and is
+// not re-bounded here).
+func TestBuildComposerRouterBoundsOpenAICompatibleCompletion(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_BASE_URL", "http://127.0.0.1:9/v1")
+
+	cfg := &config.Config{Models: config.Models{Provider: "openai", Composer: "qwen3.8-27b@v1", Extraction: "qwen3.8-27b@v1"}}
+
+	r, ok, note := BuildComposerRouter(cfg, &fakeLedger{})
+	if !ok {
+		t.Fatalf("BuildComposerRouter ok = false, want true (note: %s)", note)
+	}
+	p, _ := r.Provider(router.TierJudgment)
+	oc, ok := p.(*router.OpenAICompatibleProvider)
+	if !ok {
+		t.Fatalf("provider type = %T, want *router.OpenAICompatibleProvider", p)
+	}
+	if oc.MaxTokens != composerMaxTokens {
+		t.Fatalf("composer MaxTokens = %d, want %d", oc.MaxTokens, composerMaxTokens)
+	}
+
+	er, ok, note := BuildExtractionRouter(cfg, &fakeLedger{})
+	if !ok {
+		t.Fatalf("BuildExtractionRouter ok = false, want true (note: %s)", note)
+	}
+	ep, _ := er.Provider(router.TierLocalCheap)
+	eoc, ok := ep.(*router.OpenAICompatibleProvider)
+	if !ok {
+		t.Fatalf("extraction provider type = %T, want *router.OpenAICompatibleProvider", ep)
+	}
+	if eoc.MaxTokens != 0 {
+		t.Fatalf("extraction MaxTokens = %d, want 0 (unchanged request shape)", eoc.MaxTokens)
+	}
 }
 
 // TestBuildExtractionRouterSubstringInferenceUnchanged pins down that the

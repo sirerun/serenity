@@ -76,3 +76,14 @@ func TestBuildProviderOpenAIPinsTemperatureZero(t *testing.T) {
 		t.Fatalf("ExtraBody = %#v, want %#v", oc.ExtraBody, want)
 	}
 }
+
+// TestDefaultLiveModelIsPriced (T24.13): the -model default this runner
+// ships with must be in internal/router's price table, otherwise every
+// nightly-eval call would be "unpriced" (+Inf) and the very first call
+// would trip SERENITY_EVAL_BUDGET_USD -- fail closed is right for an
+// unknown model, wrong for the one this workflow runs by default.
+func TestDefaultLiveModelIsPriced(t *testing.T) {
+	if _, ok := router.PriceFor(defaultLiveModel); !ok {
+		t.Fatalf("default -model %q is missing from internal/router's price table (prices.go)", defaultLiveModel)
+	}
+}

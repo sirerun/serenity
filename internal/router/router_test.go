@@ -3,6 +3,9 @@ package router
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -207,8 +210,18 @@ func TestNonIndexOnlyPromptReachesProvider(t *testing.T) {
 	}
 }
 
+// pricedModelVersion is a model id that prices.go lists ($1.00 per
+// million input tokens, $5.00 per million output tokens), pinned the
+// way a real provider's ModelVersion() reports it. The fake providers
+// below report token counts ONLY -- no Usage.CostUSD -- exactly like
+// AnthropicProvider/OpenAICompatibleProvider did before T24.13 (lore
+// L-0008), so the budget checks here prove the router prices the call
+// itself rather than trusting an injected number.
+const pricedModelVersion = "claude-haiku-4-5-20251001@v1"
+
 func TestBudgetExceededFlagsResultButStillRecordsSpend(t *testing.T) {
-	fp := &fakeProvider{name: "fake", modelVersion: "fake@v1", resp: Response{Text: "ok", Usage: Usage{CostUSD: 5.00}}}
+	// 5,000,000 input tokens at $1.00/M = $5.00 against a $1.00 cap.
+	fp := &fakeProvider{name: "fake", modelVersion: pricedModelVersion, resp: Response{Text: "ok", Usage: Usage{InputTokens: 5_000_000}}}
 	ledger := &fakeLedger{}
 	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
 
@@ -217,13 +230,20 @@ func TestBudgetExceededFlagsResultButStillRecordsSpend(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !result.BudgetExceeded {
-		t.Fatal("BudgetExceeded = false, want true")
+		t.Fatalf("BudgetExceeded = false, want true: 5M input tokens on %s is $5.00 against a $1.00 cap (Usage = %+v)", pricedModelVersion, result.Usage)
 	}
-	if len(ledger.entries) != 1 || ledger.entries[0].CostUSD != 5.00 {
+	if math.Abs(result.Usage.CostUSD-5.00) > 1e-9 {
+		t.Fatalf("Result.Usage.CostUSD = %v, want 5.00 priced from the token counts", result.Usage.CostUSD)
+	}
+	if len(ledger.entries) != 1 || math.Abs(ledger.entries[0].CostUSD-5.00) > 1e-9 {
 		t.Fatalf("spend ledger did not record the full cost of an over-budget call: %+v", ledger.entries)
 	}
+	if ledger.entries[0].Unpriced {
+		t.Fatal("spend ledger row marked Unpriced for a model the price table lists")
+	}
 
-	fpUnder := &fakeProvider{name: "fake", modelVersion: "fake@v1", resp: Response{Text: "ok", Usage: Usage{CostUSD: 0.50}}}
+	// 500,000 input tokens = $0.50, under the $1.00 cap.
+	fpUnder := &fakeProvider{name: "fake", modelVersion: pricedModelVersion, resp: Response{Text: "ok", Usage: Usage{InputTokens: 500_000}}}
 	ledgerUnder := &fakeLedger{}
 	rUnder := New(map[Tier]Provider{TierLocalCheap: fpUnder}, ledgerUnder)
 	resultUnder, err := rUnder.Complete(context.Background(), TaskClassSummarization, Prompt{Text: "x"}, Budget{MaxUSD: 1.00})
@@ -231,10 +251,11 @@ func TestBudgetExceededFlagsResultButStillRecordsSpend(t *testing.T) {
 		t.Fatal(err)
 	}
 	if resultUnder.BudgetExceeded {
-		t.Fatal("BudgetExceeded = true, want false (under budget)")
+		t.Fatalf("BudgetExceeded = true, want false (under budget: Usage = %+v)", resultUnder.Usage)
 	}
 
-	fpUnlimited := &fakeProvider{name: "fake", modelVersion: "fake@v1", resp: Response{Text: "ok", Usage: Usage{CostUSD: 100.00}}}
+	// 100,000,000 input tokens = $100.00, but Budget{} means unlimited.
+	fpUnlimited := &fakeProvider{name: "fake", modelVersion: pricedModelVersion, resp: Response{Text: "ok", Usage: Usage{InputTokens: 100_000_000}}}
 	ledgerUnlimited := &fakeLedger{}
 	rUnlimited := New(map[Tier]Provider{TierLocalCheap: fpUnlimited}, ledgerUnlimited)
 	resultUnlimited, err := rUnlimited.Complete(context.Background(), TaskClassSummarization, Prompt{Text: "x"}, Budget{})
@@ -244,6 +265,189 @@ func TestBudgetExceededFlagsResultButStillRecordsSpend(t *testing.T) {
 	if resultUnlimited.BudgetExceeded {
 		t.Fatal("BudgetExceeded = true, want false (Budget{} with MaxUSD 0 means unlimited)")
 	}
+}
+
+// TestBudgetMaxUSDTripsFromTokenCountsAlone is T24.13's genuine-red test:
+// a provider that reports token counts and nothing else (the shape both
+// real adapters had before this task) must still trip Budget.MaxUSD,
+// because the router prices the call from prices.go. Against the
+// pre-T24.13 router this fails with BudgetExceeded = false and CostUSD = 0.
+func TestBudgetMaxUSDTripsFromTokenCountsAlone(t *testing.T) {
+	// 200,000 output tokens at $5.00/M = $1.00 against a $0.50 cap.
+	fp := &fakeProvider{name: "fake", modelVersion: pricedModelVersion, resp: Response{Text: "ok", Usage: Usage{InputTokens: 10, OutputTokens: 200_000}}}
+	ledger := &fakeLedger{}
+	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
+
+	result, err := r.Complete(context.Background(), TaskClassSummarization, Prompt{Text: "x"}, Budget{MaxUSD: 0.50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.BudgetExceeded {
+		t.Fatalf("BudgetExceeded = false, want true: the provider reported 200,000 output tokens on %s ($1.00) against MaxUSD 0.50, but the router saw CostUSD = %v", pricedModelVersion, result.Usage.CostUSD)
+	}
+	if len(ledger.entries) != 1 || ledger.entries[0].CostUSD <= 0 {
+		t.Fatalf("spend ledger row carries CostUSD %v, want the real priced cost (> 0): %+v", ledger.entries[0].CostUSD, ledger.entries)
+	}
+}
+
+// TestUnlistedModelCostIsInfiniteAndTripsBudget: a model the price table
+// does not list fails closed -- its cost is +Inf, so any positive MaxUSD
+// trips; the ledger row stays finite (a JSON-persisted ledger cannot carry
+// +Inf) but is marked Unpriced; and the router warns exactly once per
+// model id, not once per call.
+func TestUnlistedModelCostIsInfiniteAndTripsBudget(t *testing.T) {
+	fp := &fakeProvider{name: "fake", modelVersion: "model-nobody-priced@v9", resp: Response{Text: "ok", Usage: Usage{InputTokens: 1, OutputTokens: 1}}}
+	ledger := &fakeLedger{}
+	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
+	var warnings []string
+	r.warn = func(format string, args ...any) { warnings = append(warnings, fmt.Sprintf(format, args...)) }
+
+	for i := 0; i < 2; i++ {
+		result, err := r.Complete(context.Background(), TaskClassSummarization, Prompt{Text: "x"}, Budget{MaxUSD: 1_000_000})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.BudgetExceeded {
+			t.Fatalf("call %d: BudgetExceeded = false, want true -- an unlisted model must fail closed against any MaxUSD (CostUSD = %v)", i, result.Usage.CostUSD)
+		}
+		if !math.IsInf(result.Usage.CostUSD, 1) {
+			t.Fatalf("call %d: Result.Usage.CostUSD = %v, want +Inf for an unlisted model", i, result.Usage.CostUSD)
+		}
+	}
+	if len(ledger.entries) != 2 {
+		t.Fatalf("spend ledger has %d entries, want 2 -- an unpriced call is still recorded", len(ledger.entries))
+	}
+	for _, e := range ledger.entries {
+		if !e.Unpriced {
+			t.Fatalf("spend ledger row not marked Unpriced: %+v", e)
+		}
+		if math.IsInf(e.CostUSD, 0) || math.IsNaN(e.CostUSD) {
+			t.Fatalf("spend ledger row CostUSD = %v, want a finite value (the index ledger JSON-encodes rows)", e.CostUSD)
+		}
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("router warned %d times for one unlisted model over two calls, want exactly 1: %q", len(warnings), warnings)
+	}
+	if !strings.Contains(warnings[0], "model-nobody-priced") {
+		t.Fatalf("warning does not name the unlisted model id: %q", warnings[0])
+	}
+}
+
+// TestUnlistedModelWithoutMaxUSDIsNotExceeded: Budget{} is unlimited, so
+// an unpriced model does not flag BudgetExceeded -- fail closed applies to
+// a ceiling that exists, it does not invent one.
+func TestUnlistedModelWithoutMaxUSDIsNotExceeded(t *testing.T) {
+	fp := &fakeProvider{name: "fake", modelVersion: "model-nobody-priced@v9", resp: Response{Text: "ok", Usage: Usage{InputTokens: 1, OutputTokens: 1}}}
+	ledger := &fakeLedger{}
+	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
+	r.warn = func(string, ...any) {}
+
+	result, err := r.Complete(context.Background(), TaskClassSummarization, Prompt{Text: "x"}, Budget{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.BudgetExceeded {
+		t.Fatal("BudgetExceeded = true with Budget{} (unlimited), want false")
+	}
+}
+
+// TestCompleteReturnsCtxErrImmediatelyWhenCancelled: a context that is
+// already done never reaches the provider and never sleeps -- Complete
+// returns ctx.Err() at once, with nothing billed.
+func TestCompleteReturnsCtxErrImmediatelyWhenCancelled(t *testing.T) {
+	fp := &fakeProvider{name: "fake", modelVersion: pricedModelVersion, resp: Response{Text: "ok"}}
+	ledger := &fakeLedger{}
+	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
+	r.wait = func(context.Context, time.Duration) error {
+		t.Fatal("retry backoff wait was entered for a cancelled context")
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := r.Complete(ctx, TaskClassSummarization, Prompt{Text: "x"}, Budget{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Complete on a cancelled context returned %v, want context.Canceled", err)
+	}
+	if fp.calls != 0 {
+		t.Fatalf("provider Send was called %d times on a cancelled context, want 0", fp.calls)
+	}
+	if len(ledger.entries) != 0 {
+		t.Fatalf("spend ledger has %d entries, want 0", len(ledger.entries))
+	}
+}
+
+// TestRetryStopsWhenContextCancelledDuringBackoff: cancellation that
+// lands while the router is waiting between attempts ends the retry loop
+// with ctx.Err() -- the backoff is a ctx-aware wait, not a bare sleep.
+func TestRetryStopsWhenContextCancelledDuringBackoff(t *testing.T) {
+	fp := &retryFakeProvider{
+		name:         "fake",
+		modelVersion: pricedModelVersion,
+		failWith:     &fakeNetError{msg: "connection reset by peer"},
+		failCount:    1000,
+	}
+	ledger := &fakeLedger{}
+	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	waits := 0
+	r.wait = func(ctx context.Context, _ time.Duration) error {
+		waits++
+		cancel() // the caller gives up mid-backoff
+		return ctx.Err()
+	}
+
+	_, err := r.Complete(ctx, TaskClassSummarization, Prompt{Text: "x"}, Budget{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Complete returned %v, want context.Canceled from the backoff wait", err)
+	}
+	if fp.calls != 1 {
+		t.Fatalf("provider Send was called %d times, want 1 -- no retry after the context was cancelled", fp.calls)
+	}
+	if waits != 1 {
+		t.Fatalf("backoff wait entered %d times, want 1", waits)
+	}
+}
+
+// TestRetryDoesNotRetryContextCanceledFromProvider: a provider error that
+// wraps context.Canceled (net/http returns it as a *url.Error, which is
+// also a net.Error) is the caller's own cancellation, never a transient
+// network fault to retry.
+func TestRetryDoesNotRetryContextCanceledFromProvider(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	fp := &cancellingFakeProvider{modelVersion: pricedModelVersion, cancel: cancel}
+	ledger := &fakeLedger{}
+	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
+	r.wait = func(context.Context, time.Duration) error {
+		t.Fatal("retry backoff wait was entered after the provider reported the caller's own cancellation")
+		return nil
+	}
+
+	_, err := r.Complete(ctx, TaskClassSummarization, Prompt{Text: "x"}, Budget{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Complete returned %v, want context.Canceled", err)
+	}
+	if fp.calls != 1 {
+		t.Fatalf("provider Send was called %d times, want 1", fp.calls)
+	}
+}
+
+// cancellingFakeProvider cancels the caller's context from inside Send
+// and returns the net/http-shaped error a cancelled request produces.
+// Test-file only, per the zero-stub policy.
+type cancellingFakeProvider struct {
+	modelVersion string
+	cancel       context.CancelFunc
+	calls        int
+}
+
+func (f *cancellingFakeProvider) Name() string         { return "fake" }
+func (f *cancellingFakeProvider) ModelVersion() string { return f.modelVersion }
+func (f *cancellingFakeProvider) Send(_ context.Context, _ string) (Response, error) {
+	f.calls++
+	f.cancel()
+	return Response{}, &url.Error{Op: "Post", URL: "http://127.0.0.1:9/v1/chat/completions", Err: context.Canceled}
 }
 
 func TestTierForUnknownTaskClass(t *testing.T) {
@@ -263,10 +467,10 @@ func TestCompleteFailsWhenLedgerAppendFails(t *testing.T) {
 	}
 }
 
-// noSleep replaces Router.sleep in tests so retry backoff never actually
+// noWait replaces Router.wait in tests so retry backoff never actually
 // waits real wall-clock time, regardless of the production base/max delay
 // constants.
-func noSleep(time.Duration) {}
+func noWait(context.Context, time.Duration) error { return nil }
 
 func TestCompleteRetriesTransientErrorThenSucceeds(t *testing.T) {
 	fp := &retryFakeProvider{
@@ -278,7 +482,7 @@ func TestCompleteRetriesTransientErrorThenSucceeds(t *testing.T) {
 	}
 	ledger := &fakeLedger{}
 	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
-	r.sleep = noSleep
+	r.wait = noWait
 
 	result, err := r.Complete(context.Background(), TaskClassSummarization, Prompt{Text: "x"}, Budget{})
 	if err != nil {
@@ -304,7 +508,7 @@ func TestCompleteFailsClearlyAfterBoundedRetriesWhenAlwaysFailing(t *testing.T) 
 	}
 	ledger := &fakeLedger{}
 	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
-	r.sleep = noSleep
+	r.wait = noWait
 
 	_, err := r.Complete(context.Background(), TaskClassSummarization, Prompt{Text: "x"}, Budget{})
 	if err == nil {
@@ -327,7 +531,7 @@ func TestCompleteDoesNotRetryNonTransientError(t *testing.T) {
 	}
 	ledger := &fakeLedger{}
 	r := New(map[Tier]Provider{TierLocalCheap: fp}, ledger)
-	r.sleep = noSleep
+	r.wait = noWait
 
 	_, err := r.Complete(context.Background(), TaskClassSummarization, Prompt{Text: "x"}, Budget{})
 	if err == nil {

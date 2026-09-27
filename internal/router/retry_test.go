@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"syscall"
 	"testing"
 	"time"
@@ -83,6 +84,8 @@ func TestIsTransientNetworkErrorClassification(t *testing.T) {
 		{"ECONNREFUSED", syscall.ECONNREFUSED, true},
 		{"EPIPE", syscall.EPIPE, true},
 		{"context.DeadlineExceeded", context.DeadlineExceeded, true},
+		{"context.Canceled (caller gave up, never retry)", context.Canceled, false},
+		{"url.Error wrapping context.Canceled (net/http shape)", &url.Error{Op: "Post", URL: "http://127.0.0.1:9/", Err: context.Canceled}, false},
 		{"application-level status error", errors.New("openai_compatible: status 500: internal server error"), false},
 		{"malformed body error", errors.New("openai_compatible: decode response: unexpected end of JSON input"), false},
 	}
@@ -91,5 +94,33 @@ func TestIsTransientNetworkErrorClassification(t *testing.T) {
 		if got != c.want {
 			t.Fatalf("isTransientNetworkError(%v) [%s] = %v, want %v", c.err, c.name, got, c.want)
 		}
+	}
+}
+
+// TestWaitBackoffReturnsCtxErrWhenDone: the production backoff wait is
+// ctx-aware -- a done context ends it immediately with ctx.Err() instead
+// of sleeping out the full delay.
+func TestWaitBackoffReturnsCtxErrWhenDone(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	err := waitBackoff(ctx, time.Hour)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("waitBackoff(cancelled ctx) = %v, want context.Canceled", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("waitBackoff on a cancelled context took %v, want an immediate return", elapsed)
+	}
+}
+
+// TestWaitBackoffSleepsOutTheDelayWhenLive: with a live context the wait
+// returns nil once the delay elapses (a short one here).
+func TestWaitBackoffSleepsOutTheDelayWhenLive(t *testing.T) {
+	start := time.Now()
+	if err := waitBackoff(context.Background(), 10*time.Millisecond); err != nil {
+		t.Fatalf("waitBackoff(live ctx) = %v, want nil", err)
+	}
+	if elapsed := time.Since(start); elapsed < 10*time.Millisecond {
+		t.Fatalf("waitBackoff returned after %v, want at least the 10ms delay", elapsed)
 	}
 }

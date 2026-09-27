@@ -3,10 +3,42 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+// TestAnthropicProviderPopulatesCostUSDFromPriceTable: the adapter prices
+// the API's own usage block against prices.go (lore L-0008 closure) --
+// 1000 input + 500 output tokens on claude-haiku-4-5 at $1.00/$5.00 per
+// million is $0.0035 -- and a model the table does not list comes back
+// as +Inf so any MaxUSD trips.
+func TestAnthropicProviderPopulatesCostUSDFromPriceTable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1000,"output_tokens":500}}`))
+	}))
+	defer server.Close()
+
+	p := &AnthropicProvider{BaseURL: server.URL, APIKey: "k", Model: "claude-haiku-4-5-20251001", Version: "v1"}
+	resp, err := p.Send(context.Background(), "hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(resp.Usage.CostUSD-0.0035) > 1e-9 {
+		t.Fatalf("Usage.CostUSD = %v, want 0.0035 (1000 in at $1/M + 500 out at $5/M)", resp.Usage.CostUSD)
+	}
+
+	unlisted := &AnthropicProvider{BaseURL: server.URL, APIKey: "k", Model: "claude-not-in-table", Version: "v1"}
+	resp, err = unlisted.Send(context.Background(), "hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !math.IsInf(resp.Usage.CostUSD, 1) {
+		t.Fatalf("Usage.CostUSD for an unlisted model = %v, want +Inf (fail closed)", resp.Usage.CostUSD)
+	}
+}
 
 // TestAnthropicProviderSendsMessagesRequestOverHTTP stands a real
 // net/http test server in for the Anthropic API (no real API key, no
