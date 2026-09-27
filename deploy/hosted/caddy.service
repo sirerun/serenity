@@ -5,8 +5,23 @@ Wants=network-online.target
 
 [Service]
 Type=notify
+# Unprivileged edge (ADR 020, deep review 001 SEC-H01): a dedicated user with
+# only the bind capability for ports 80/443, a read-only system view, and
+# state under /var/lib/caddy so nothing lives in root's home.
+User=caddy
+Group=caddy
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RuntimeDirectory=caddy
+StateDirectory=caddy
+Environment=XDG_DATA_HOME=/var/lib/caddy XDG_CONFIG_HOME=/var/lib/caddy/config
 ExecStart=/usr/local/bin/caddy run --environ --config /etc/caddy/Caddyfile
-ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile
+# The admin API is a 0600 unix socket (Caddyfile global block), not TCP :2019.
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --address unix//run/caddy/admin.sock
 Restart=on-failure
 LimitNOFILE=1048576
 
