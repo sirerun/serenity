@@ -15,14 +15,16 @@
 //   - A question with no matching eligible evidence returns a non-empty gap
 //     statement based only on evidence the caller may see, instead
 //     of a fabricated answer or a silent empty result.
-//   - RFC §14's redaction pass runs on the composed prompt before it ever
-//     reaches Completer.Complete, unconditionally (T4.11): internal/redact.
-//     Apply strips account-number, card-number, and API-key-shaped spans
-//     from buildPrompt's output before it is wrapped in a router.Prompt.
-//     This is in addition to, not instead of, router.Router.Complete's own
-//     existing IndexOnly refusal (ErrIndexOnlyEgress) -- that check stops
-//     an index_only-sourced prompt from reaching a cloud provider at all;
-//     redaction protects everything else that IS allowed to egress, since
+//   - RFC §14's redaction pass runs on the composed prompt before it
+//     reaches any provider, unconditionally -- but not here. ADR 021 moved
+//     it to the one egress chokepoint, router.Router.Complete, which
+//     strips account-number, card-number, and API-key-shaped spans from
+//     every prompt for every task class; this package hands buildPrompt's
+//     output to Complete as-is and relies on that (redact_test.go proves
+//     the text crossing the provider boundary is redacted). The router's
+//     IndexOnly refusal (ErrIndexOnlyEgress) is separate: it stops an
+//     index_only-sourced prompt from reaching a cloud provider at all,
+//     while redaction protects everything that IS allowed to egress, since
 //     a live claim's own Object text can still carry a sensitive-shaped
 //     value a source never marked index_only.
 //
@@ -52,7 +54,6 @@ import (
 	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/embed"
 	"github.com/sirerun/serenity/internal/index"
-	"github.com/sirerun/serenity/internal/redact"
 	"github.com/sirerun/serenity/internal/router"
 	"github.com/sirerun/serenity/internal/search"
 	"github.com/sirerun/serenity/internal/store"
@@ -281,7 +282,7 @@ func (c *Composer) AskWithOptions(ctx context.Context, query string, opts AskOpt
 		return Answer{}, fmt.Errorf("compose: no synthesis provider configured")
 	}
 	result, err := c.Router.Complete(ctx, router.TaskClassComposerSynthesis,
-		router.Prompt{Text: redact.Apply(prompt, redact.Options{})}, router.Budget{})
+		router.Prompt{Text: prompt}, router.Budget{})
 	if err != nil {
 		return Answer{}, fmt.Errorf("compose: synthesis: %w", err)
 	}

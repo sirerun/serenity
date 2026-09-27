@@ -9,6 +9,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/index"
+	"github.com/sirerun/serenity/internal/redact"
 	"github.com/sirerun/serenity/internal/router"
 )
 
@@ -174,7 +175,7 @@ func BuildExtractionRouter(cfg *config.Config, ledger router.SpendLedger) (r *ro
 	if !ok {
 		return nil, false, note
 	}
-	return router.New(map[router.Tier]router.Provider{router.TierLocalCheap: p}, ledger), true, ""
+	return withRedaction(cfg, router.New(map[router.Tier]router.Provider{router.TierLocalCheap: p}, ledger), "extraction skipped")
 }
 
 // BuildEmbeddingRouter constructs a *router.Router whose local-cheap
@@ -197,7 +198,7 @@ func BuildEmbeddingRouter(cfg *config.Config, ledger router.SpendLedger) (r *rou
 		return nil, false, "models.embedding is pinned but neither OPENAI_API_KEY nor OPENAI_EMBEDDINGS_BASE_URL (local server) is set; embedding skipped"
 	}
 	p := &router.OpenAIEmbeddingsProvider{APIKey: key, BaseURL: baseURL, Model: model, Version: version}
-	return router.New(map[router.Tier]router.Provider{router.TierLocalCheap: p}, ledger), true, ""
+	return withRedaction(cfg, router.New(map[router.Tier]router.Provider{router.TierLocalCheap: p}, ledger), "embedding skipped")
 }
 
 // BuildComposerRouter constructs a *router.Router whose judgment-tier
@@ -221,7 +222,22 @@ func BuildComposerRouter(cfg *config.Config, ledger router.SpendLedger) (r *rout
 	if !ok {
 		return nil, false, note
 	}
-	return router.New(map[router.Tier]router.Provider{router.TierJudgment: p}, ledger), true, ""
+	return withRedaction(cfg, router.New(map[router.Tier]router.Provider{router.TierJudgment: p}, ledger), "ask skipped")
+}
+
+// withRedaction installs serenity.yml's `redact.patterns` on r (ADR 021)
+// so the router's egress chokepoint applies the operator's rules on top
+// of the built-in table. config.Load already rejects an invalid rule,
+// but a Config assembled in-process bypasses Load, so a compile failure
+// is reported through the same explicit-skip contract the credential
+// checks use rather than building a router that silently drops the rule.
+func withRedaction(cfg *config.Config, r *router.Router, skipSuffix string) (*router.Router, bool, string) {
+	patterns, err := cfg.Redact.Compile()
+	if err != nil {
+		return nil, false, fmt.Sprintf("%v; %s", err, skipSuffix)
+	}
+	r.SetRedaction(redact.Options{Patterns: patterns})
+	return r, true, ""
 }
 
 // OpenIndex opens (creating if needed) root's derived SQLite index at

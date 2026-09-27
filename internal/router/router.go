@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/sirerun/serenity/internal/redact"
 )
 
 // TaskClass names one unit of routed work. The fixed set below mirrors
@@ -84,8 +86,10 @@ func TierFor(tc TaskClass) (Tier, bool) {
 // superset of "refuse when redaction is disabled but index_only content
 // is present" (T1.19's egress acceptance line): the RFC states the
 // index_only rule without a redaction-enabled precondition, so Complete
-// enforces it that way regardless of any future redaction pass. This
-// package deliberately has no dependency on a redaction implementation.
+// enforces it that way regardless of the redaction pass. Text that is
+// allowed to egress is then redacted by Complete itself (internal/redact,
+// ADR 021) before any provider request body is built: the router is the
+// one chokepoint, so callers never redact.
 type Prompt struct {
 	Text      string
 	IndexOnly bool
@@ -144,6 +148,11 @@ type Router struct {
 	retryBaseDelay time.Duration
 	retryMaxDelay  time.Duration
 	sleep          func(time.Duration)
+
+	// redact is applied to every prompt at the egress chokepoint in
+	// Complete (ADR 021). The zero value runs the built-in table;
+	// SetRedaction (redaction.go) adds serenity.yml's redact.patterns.
+	redact redact.Options
 }
 
 // New builds a Router over the given per-tier providers and spend
@@ -209,7 +218,9 @@ func (r *Router) Complete(ctx context.Context, tc TaskClass, p Prompt, b Budget)
 		return Result{}, fmt.Errorf("%w: task class %q requires %s tier", ErrTierUnavailable, tc, tier)
 	}
 
-	resp, err := r.sendWithRetry(ctx, provider, p.Text)
+	// Redaction chokepoint (ADR 021): the only place text is redacted
+	// before it leaves the machine, for every task class and provider.
+	resp, err := r.sendWithRetry(ctx, provider, redact.Apply(p.Text, r.redact))
 	if err != nil {
 		return Result{}, fmt.Errorf("router: %s provider: %w", provider.Name(), err)
 	}

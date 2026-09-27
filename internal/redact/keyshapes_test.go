@@ -49,3 +49,24 @@ func TestRedactApplyModernKeyShapeFixture(t *testing.T) {
 		})
 	}
 }
+
+// TestBuiltinKeyTableRowsAreAllExercised proves no row of the built-in
+// table is dead: every regex matches at least one fixture key, so a row
+// that drifts away from a vendor's real shape is caught here rather
+// than discovered at egress.
+func TestBuiltinKeyTableRowsAreAllExercised(t *testing.T) {
+	fixture := syntheticKeyFixture()
+	fineGrained := "github_pat_TEST" + strings.Repeat("0", 60)
+	for _, shape := range apiKeyShapes {
+		matched := shape.re.MatchString(fineGrained)
+		for _, tc := range fixture {
+			if shape.re.MatchString(tc.key) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			t.Fatalf("built-in key shape %q matches no fixture key", shape.vendor)
+		}
+	}
+}

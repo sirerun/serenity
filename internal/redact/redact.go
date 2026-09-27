@@ -2,17 +2,22 @@
 // numbers, card numbers, API-key shapes, and — on request — email
 // addresses) and replaces each match with a typed placeholder. RFC
 // 0001 §14 requires a redaction pass to run on every prompt before it
-// leaves the machine for a cloud model; this package is that pass.
+// leaves the machine for a cloud model; this package is that pass, and
+// internal/router.Router.Complete is the one place it runs (ADR 021):
+// every Complete and Embed call on every provider passes through it.
 //
 // Patterns are applied in a fixed order so spans never double-match:
-// API-key shapes first, then card numbers (Luhn-gated), then account
-// numbers (keyword-gated), then emails (only when Options.RedactEmails
-// is set). A placeholder always covers the entire matched span — it
-// never retains any fragment of the original value, e.g. a last-4
-// digit reveal.
+// the built-in API-key table first, then card numbers (Luhn-gated),
+// then account numbers (keyword-gated), then emails (only when
+// Options.RedactEmails is set), then operator-configured patterns
+// (Options.Patterns, serenity.yml `redact.patterns`). A placeholder
+// always covers the entire matched span — it never retains any
+// fragment of the original value, e.g. a last-4 digit reveal.
 package redact
 
 import (
+	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -30,9 +35,80 @@ const (
 // Options controls which optional patterns Apply enables. Account
 // numbers, card numbers, and API-key shapes are always redacted;
 // emails are redacted only when explicitly requested (RFC 0001 §14
-// names email as the on-request pattern).
+// names email as the on-request pattern). Patterns extends the
+// built-in set and can never remove any part of it.
 type Options struct {
 	RedactEmails bool
+	// Patterns are operator-configured rules (serenity.yml
+	// `redact.patterns`, ADR 021), applied after every built-in rule.
+	// Build them with NewPattern; the zero Pattern matches nothing.
+	Patterns []Pattern
+}
+
+// Pattern is one named, operator-supplied regex. A match is replaced by
+// "[REDACTED:<NAME>]" with Name upper-cased. Construct with NewPattern
+// so the name and regex are validated once, at config load, rather than
+// on the egress path.
+type Pattern struct {
+	Name string
+	re   *regexp.Regexp
+}
+
+// patternNameExpr keeps configured names placeholder-safe: a placeholder
+// is "[REDACTED:<NAME>]", so the name may not contain whitespace or
+// brackets.
+const patternNameExpr = `^[A-Za-z][A-Za-z0-9_-]*$`
+
+var patternNamePattern = regexp.MustCompile(patternNameExpr)
+
+// NewPattern validates and compiles one configured rule. Every error
+// names the pattern (or says the name is missing) so config.Load can
+// surface it verbatim.
+func NewPattern(name, expr string) (Pattern, error) {
+	if name == "" {
+		return Pattern{}, errors.New("redact: pattern name is required")
+	}
+	if !patternNamePattern.MatchString(name) {
+		return Pattern{}, fmt.Errorf("redact: pattern %q: name must match %s", name, patternNameExpr)
+	}
+	if expr == "" {
+		return Pattern{}, fmt.Errorf("redact: pattern %q: regex is required", name)
+	}
+	re, err := regexp.Compile(expr)
+	if err != nil {
+		return Pattern{}, fmt.Errorf("redact: pattern %q: %w", name, err)
+	}
+	return Pattern{Name: name, re: re}, nil
+}
+
+func (p Pattern) placeholder() string {
+	return placeholder(PlaceholderType(strings.ToUpper(p.Name)))
+}
+
+// keyShape is one row of the built-in API-key table.
+type keyShape struct {
+	vendor string
+	re     *regexp.Regexp
+}
+
+// apiKeyShapes is the built-in API-key table (deep review 001, AI-02).
+// Order matters: the vendor-prefixed sk- shapes precede the legacy bare
+// sk-<alnum> shape so a modern key is matched whole. Each row is a
+// real-shaped prefix plus a bounded body; every row is exercised by the
+// synthetic fixture in keyshapes_test.go. Nothing in Options can remove
+// a row.
+var apiKeyShapes = []keyShape{
+	{"anthropic", regexp.MustCompile(`\bsk-ant-[A-Za-z0-9_-]{20,}`)},
+	{"openai project", regexp.MustCompile(`\bsk-proj-[A-Za-z0-9_-]{20,}`)},
+	{"openai service account", regexp.MustCompile(`\bsk-svcacct-[A-Za-z0-9_-]{20,}`)},
+	{"openrouter", regexp.MustCompile(`\bsk-or-[A-Za-z0-9_-]{20,}`)},
+	{"openai legacy", regexp.MustCompile(`\bsk-[A-Za-z0-9]{20,}\b`)},
+	{"github token", regexp.MustCompile(`\bgh[pousr]_[A-Za-z0-9]{20,}\b`)},
+	{"github fine-grained token", regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{22,}\b`)},
+	{"slack token", regexp.MustCompile(`\bxox[abpsr]-[A-Za-z0-9-]{10,}`)},
+	{"google api key", regexp.MustCompile(`\bAIza[A-Za-z0-9_-]{35}\b`)},
+	{"stripe secret or restricted key", regexp.MustCompile(`\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}\b`)},
+	{"aws access key id", regexp.MustCompile(`\bAKIA[A-Z0-9]{16}\b`)},
 }
 
 // accountKeywords gate account-number detection so a bare long digit
@@ -45,10 +121,6 @@ var accountKeywords = []string{"account", "acct", "routing", "iban"}
 const accountKeywordWindow = 24
 
 var (
-	// API-key shapes: an sk-prefixed opaque token (Anthropic/OpenAI-
-	// style secret keys) or an AKIA-prefixed AWS access key id.
-	apiKeyPattern = regexp.MustCompile(`\bsk-[A-Za-z0-9]{20,}\b|\bAKIA[A-Z0-9]{16}\b`)
-
 	// A candidate digit run: a digit followed by any number of
 	// (single-space-or-hyphen, digit) groups. Whether it becomes a
 	// CARD_NUMBER, ACCOUNT_NUMBER, or is left alone is decided per
@@ -64,12 +136,21 @@ func placeholder(t PlaceholderType) string {
 
 // Apply returns text with every seeded pattern replaced by a typed
 // placeholder. It never returns any substring of the original matched
-// value.
+// value. Built-in rules run first, in full, regardless of opts;
+// opts.Patterns run last and can only add placeholders.
 func Apply(text string, opts Options) string {
-	text = apiKeyPattern.ReplaceAllString(text, placeholder(PlaceholderAPIKey))
+	for _, shape := range apiKeyShapes {
+		text = shape.re.ReplaceAllString(text, placeholder(PlaceholderAPIKey))
+	}
 	text = redactDigitRuns(text)
 	if opts.RedactEmails {
 		text = emailPattern.ReplaceAllString(text, placeholder(PlaceholderEmail))
+	}
+	for _, p := range opts.Patterns {
+		if p.re == nil {
+			continue
+		}
+		text = p.re.ReplaceAllString(text, p.placeholder())
 	}
 	return text
 }
