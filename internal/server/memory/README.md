@@ -41,8 +41,12 @@ Entity cards use current public canonical evidence, omitting cached summaries
 and timeline entries whose privacy attribution cannot be established. Synthesis
 uses the shared composer with separate source citations and claim citations. Date
 bounds filter evidence before the prompt. Missing providers produce
-`unavailable`; unknown usage is null, and a reported provider model takes
-precedence over the configured model. Legacy fence files do not retain all
+`unavailable`; unknown usage is null (including `usd_estimate` for a model the
+router's price table does not list), and a reported provider model takes
+precedence over the configured model. Synthesis is limited to 60 well-formed
+calls per account per minute; the 61st answers `rate_limited` before any
+retrieval or completion runs, and the composer's OpenAI-compatible path is
+bounded by `max_tokens` (`docs/operator/spend.md`). Legacy fence files do not retain all
 visibility and provenance metadata; this repair cannot reconstruct metadata
 absent from those files.
 

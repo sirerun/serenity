@@ -231,8 +231,9 @@ func TestRunCachedFailsOnTamperedCorpus(t *testing.T) {
 // fakeProvider is a router.Provider test double that always returns the
 // same canned response and a caller-controlled CostUSD, so
 // TestRunLiveStopsAtBudget can prove the aggregate-cap mechanism trips
-// correctly -- independent of whether a real provider ever populates
-// CostUSD (it doesn't today; see ledger.go's doc comment).
+// correctly. The real providers populate CostUSD from the price table
+// since T24.13; ledger_test.go's tokensOnlyProvider covers that path
+// (token counts only, no injected cost).
 type fakeProvider struct {
 	response  router.Response
 	err       error
