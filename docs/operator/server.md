@@ -8,7 +8,8 @@ contract this implements.
 
 `serenity serve --http` wires `/mcp` (MEMORY_VERBS v1 over MCP's Streamable
 HTTP), `/direction/brief`, `/direction/check_plan`, `/direction/propose`, and
-the DISPOSITION `/disposition/*` routes. Every route is registered through
+the DISPOSITION `/disposition/*` routes. It starts no scheduled jobs; see
+[what `serve` starts and does not start](mcp.md#what-serve-starts-and-does-not-start). Every route is registered through
 `Server.Handle`, so the authentication and listener rules below apply
 uniformly.
 

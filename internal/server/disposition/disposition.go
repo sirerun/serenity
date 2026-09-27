@@ -20,10 +20,9 @@
 // docs/protocol/DISPOSITION_v1.md (T4.16) has not shipped yet, so this
 // package defines its own JSON request/response shapes, documented
 // per-handler below, rather than waiting on a spec that does not exist.
-// Not wired into a live `serenity serve` command yet -- T4.1 (`serenityd`
-// core) has not shipped, so there is no daemon process to register these
-// routes into in production; this mirrors T4.3/T4.10/T4.12's own
-// disclosed "package-complete, not yet live-wired" scope. subscribe's
+// `serenity serve --http` (internal/cli/serve.go) registers these routes.
+// dispose records a verdict only; applying an accepted item is `serenity
+// inbox`'s job. subscribe's
 // long-poll fallback and SSE both poll internal/events.Store on a fixed
 // interval rather than an event-driven wakeup (no pub/sub primitive
 // exists in this codebase yet) -- correct or a caller reads the exact

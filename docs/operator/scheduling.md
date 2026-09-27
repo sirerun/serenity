@@ -152,9 +152,9 @@ systemctl --user start serenity-cron-sweep.service
 journalctl --user -u serenity-cron-sweep.service -n 20
 ```
 
-## M4 note
+## `serve` does not schedule jobs
 
-`serenityd` (plan T4.1) will embed these same job functions on an internal
-ticker so a running daemon needs no external timer at all (ADR 006).
-Until then, `serenity cron` plus the units above is the supported way to
-run scheduled work.
+`serenity serve` does not run these jobs: it has no internal ticker.
+`serenity cron` plus the units above is the supported way to run scheduled
+work. The Go package `internal/server` contains a job-ticker type
+(`Daemon`, plan T4.1) that no command starts (ADR 006).

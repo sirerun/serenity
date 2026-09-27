@@ -12,6 +12,10 @@
 // Daemon therefore owns no job logic of its own -- every tick calls
 // cron.Run(ctx, job, root, clock) unchanged, so a bug fix or new job lands
 // in internal/cron once and both entry points pick it up.
+//
+// No command constructs a Daemon today: `serenity serve` starts no job
+// ticker, and scheduled work runs through `serenity cron <job>` under an
+// external timer (docs/operator/scheduling.md).
 package server
 
 import (
