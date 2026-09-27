@@ -1,5 +1,6 @@
 """Operational behavior against the actual packaged handler and AWS request seam."""
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -107,23 +108,103 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(records[0]['ChatErrors'], 1)
         self.assertNotIn(secret, json.dumps(records) + response['body'])
 
+    def aws(self, salt='invented-unit-test-salt-0123456789abcdef'):
+        calls, reads = [], []
+        dynamodb = SimpleNamespace(transact_write_items=lambda **kw: calls.append(kw))
+        def get_secret_value(SecretId):
+            reads.append(SecretId)
+            return {'SecretString': salt}
+        secrets = SimpleNamespace(get_secret_value=get_secret_value)
+        clients = {'dynamodb': dynamodb, 'secretsmanager': secrets}
+        return SimpleNamespace(client=lambda service: clients.get(service) or self.fail(service)), calls, reads
+
     def test_real_limiter_builds_one_atomic_private_transaction(self):
-        calls = []
-        client = SimpleNamespace(transact_write_items=lambda **kw: calls.append(kw))
-        sdk = SimpleNamespace(client=lambda service: client if service == 'dynamodb' else self.fail(service))
-        with patch.dict(sys.modules, {'boto3': sdk}), patch.dict(os.environ, {'RATE_TABLE': 'test-table', 'RATE_SALT': 'invented-unit-test-salt'}), patch.object(m.time, 'time', return_value=360000):
+        sdk, calls, reads = self.aws()
+        env = {'RATE_TABLE': 'test-table', 'RATE_SALT_SECRET_ARN': 'arn:aws:secretsmanager:us-west-2:000000000000:secret:test-salt'}
+        with patch.dict(sys.modules, {'boto3': sdk}), patch.dict(os.environ, env), patch.object(m, 'SALT', None, create=True), patch.object(m.time, 'time', return_value=360000):
+            os.environ.pop('RATE_SALT', None)
             m.limit('192.0.2.44')
-        self.assertEqual(len(calls), 1)
+            m.limit('192.0.2.44')
+        self.assertEqual(reads, [env['RATE_SALT_SECRET_ARN']])  # read once, then cached
+        self.assertEqual(len(calls), 2)
         updates = [x['Update'] for x in calls[0]['TransactItems']]
-        self.assertEqual(len(updates), 2)
-        self.assertEqual([u['ExpressionAttributeValues'][':cap']['N'] for u in updates], ['20', '200'])
-        self.assertEqual(updates[1]['Key']['pk']['S'], 'global:4')
-        self.assertRegex(updates[0]['Key']['pk']['S'], r'^ip:[0-9a-f]{64}:100$')
+        self.assertEqual(len(updates), 3)
+        self.assertEqual([u['ExpressionAttributeValues'][':cap']['N'] for u in updates], ['20', '50', '200'])
+        anonymous = hashlib.sha256(('invented-unit-test-salt-0123456789abcdef' + '192.0.2.44').encode()).hexdigest()
+        self.assertEqual(updates[0]['Key']['pk']['S'], 'ip:' + anonymous + ':100')
+        self.assertEqual(updates[1]['Key']['pk']['S'], 'ipday:' + anonymous + ':4')
+        self.assertEqual(updates[2]['Key']['pk']['S'], 'global:4')
         for update in updates:
             self.assertEqual(update['ConditionExpression'], 'attribute_not_exists(requests) OR requests < :cap')
             self.assertEqual(update['ExpressionAttributeValues'][':ttl']['N'], '450000')
         self.assertNotIn('192.0.2.44', json.dumps(calls))
         self.assertNotIn('invented-unit-test-salt', json.dumps(calls))
+
+    def test_single_ip_is_capped_per_day_below_global_cap(self):
+        # Emulate the table's conditional writes: one IP spreading requests over
+        # every hour of a day stays under 20/hour but must stop at 50/day,
+        # leaving the rest of the 200/day service budget for other visitors.
+        counters = {}
+        class Cancelled(Exception):
+            response = {'Error': {'Code': 'TransactionCanceledException'}}
+        def transact_write_items(TransactItems):
+            updates = [x['Update'] for x in TransactItems]
+            keys = [u['Key']['pk']['S'] for u in updates]
+            if any(counters.get(k, 0) >= int(u['ExpressionAttributeValues'][':cap']['N']) for k, u in zip(keys, updates)):
+                raise Cancelled()
+            for k in keys:
+                counters[k] = counters.get(k, 0) + 1
+        sdk, _, _ = self.aws()
+        sdk.client('dynamodb').transact_write_items = transact_write_items
+        allowed = 0
+        env = {'RATE_TABLE': 'test-table', 'RATE_SALT_SECRET_ARN': 'arn:aws:secretsmanager:us-west-2:000000000000:secret:test-salt'}
+        with patch.dict(sys.modules, {'boto3': sdk}), patch.dict(os.environ, env), patch.object(m, 'SALT', None, create=True):
+            os.environ.pop('RATE_SALT', None)
+            for hour in range(24):
+                for _ in range(5):
+                    with patch.object(m.time, 'time', return_value=86400 * 10 + 3600 * hour):
+                        try:
+                            m.limit('192.0.2.44')
+                            allowed += 1
+                        except Cancelled:
+                            pass
+            with patch.object(m.time, 'time', return_value=86400 * 10 + 3600 * 23):
+                m.limit('192.0.2.45')  # another visitor still has budget
+        self.assertEqual(allowed, 50)
+
+    def test_plain_env_salt_is_refused(self):
+        sdk, calls, reads = self.aws()
+        for env in ({'RATE_TABLE': 'test-table', 'RATE_SALT': 'plaintext-salt-in-lambda-environment'},
+                    {'RATE_TABLE': 'test-table', 'RATE_SALT': 'plaintext-salt-in-lambda-environment',
+                     'RATE_SALT_SECRET_ARN': 'arn:aws:secretsmanager:us-west-2:000000000000:secret:test-salt'},
+                    {'RATE_TABLE': 'test-table'}):
+            with self.subTest(env=sorted(env)), patch.dict(sys.modules, {'boto3': sdk}), patch.dict(os.environ, env, clear=True), patch.object(m, 'SALT', None, create=True):
+                with self.assertRaises(RuntimeError):
+                    m.limit('192.0.2.44')
+        self.assertEqual(calls, [])
+
+    def test_short_secret_salt_is_refused(self):
+        sdk, calls, _ = self.aws(salt='short')
+        env = {'RATE_TABLE': 'test-table', 'RATE_SALT_SECRET_ARN': 'arn:aws:secretsmanager:us-west-2:000000000000:secret:test-salt'}
+        with patch.dict(sys.modules, {'boto3': sdk}), patch.dict(os.environ, env, clear=True), patch.object(m, 'SALT', None, create=True):
+            with self.assertRaises(RuntimeError):
+                m.limit('192.0.2.44')
+        self.assertEqual(calls, [])
+
+    def test_template_reads_salt_from_generated_secret_not_env(self):
+        template = json.loads(Path(__file__).with_name('stack.json').read_text())
+        resources = template['Resources']
+        self.assertNotIn('RateSalt', template.get('Parameters', {}))
+        variables = resources['Function']['Properties']['Environment']['Variables']
+        self.assertNotIn('RATE_SALT', variables)
+        self.assertEqual(variables['RATE_SALT_SECRET_ARN'], {'Ref': 'RateSaltSecret'})
+        secret = resources['RateSaltSecret']
+        self.assertEqual(secret['Type'], 'AWS::SecretsManager::Secret')
+        self.assertNotIn('SecretString', secret['Properties'])
+        self.assertGreaterEqual(secret['Properties']['GenerateSecretString']['PasswordLength'], 32)
+        statements = resources['Role']['Properties']['Policies'][0]['PolicyDocument']['Statement']
+        reads = [s for s in statements if isinstance(s, dict) and s.get('Action') == ['secretsmanager:GetSecretValue']]
+        self.assertEqual([s['Resource'] for s in reads], [{'Ref': 'RateSaltSecret'}])
 
     def test_packaged_handler_has_same_health_and_monitoring_behavior(self):
         template = json.loads(Path(__file__).with_name('stack.json').read_text())
