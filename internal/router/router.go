@@ -19,6 +19,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/sirerun/serenity/internal/redact"
@@ -140,14 +142,23 @@ type Router struct {
 	newID     func() string
 
 	// Retry policy for a failed provider.Send call (retry.go). Exported
-	// only via New's defaults -- tests in this package override sleep
+	// only via New's defaults -- tests in this package override wait
 	// directly (unexported-field access, same package) to avoid real
 	// waiting rather than through a public option, since no production
-	// caller needs a different policy today.
+	// caller needs a different policy today. wait is the ctx-aware
+	// backoff sleep (waitBackoff): it returns ctx.Err() the moment the
+	// context is done.
 	retryAttempts  int
 	retryBaseDelay time.Duration
 	retryMaxDelay  time.Duration
-	sleep          func(time.Duration)
+	wait           func(ctx context.Context, d time.Duration) error
+
+	// warn logs an operator-facing warning (slog.Warn by default; tests
+	// capture it). unpricedWarned remembers which model ids have already
+	// been warned about so an unlisted model is logged once per Router,
+	// not once per call.
+	warn           func(format string, args ...any)
+	unpricedWarned sync.Map
 
 	// redact is applied to every prompt at the egress chokepoint in
 	// Complete (ADR 021). The zero value runs the built-in table;
@@ -168,7 +179,8 @@ func New(providers map[Tier]Provider, ledger SpendLedger) *Router {
 		retryAttempts:  defaultRetryAttempts,
 		retryBaseDelay: defaultRetryBaseDelay,
 		retryMaxDelay:  defaultRetryMaxDelay,
-		sleep:          time.Sleep,
+		wait:           waitBackoff,
+		warn:           func(format string, args ...any) { slog.Warn(fmt.Sprintf(format, args...)) },
 	}
 }
 
@@ -226,8 +238,18 @@ func (r *Router) Complete(ctx context.Context, tc TaskClass, p Prompt, b Budget)
 	}
 
 	conf := NewConfidence(resp.Confidence, tier)
+	resp.Usage.CostUSD = r.priceUsage(provider, resp.Usage)
+	unpriced := Unpriced(resp.Usage.CostUSD)
 	exceeded := b.MaxUSD > 0 && resp.Usage.CostUSD > b.MaxUSD
 
+	// The ledger row's CostUSD is always finite: index.SpendRow is
+	// JSON-encoded and +Inf has no JSON encoding, so an unpriced call is
+	// recorded at $0 with Unpriced = true rather than failing the record
+	// (which would fail the call after the provider already answered).
+	ledgerCost := resp.Usage.CostUSD
+	if unpriced {
+		ledgerCost = 0
+	}
 	entry := SpendEntry{
 		ID:                r.newID(),
 		TaskClass:         tc,
@@ -236,7 +258,8 @@ func (r *Router) Complete(ctx context.Context, tc TaskClass, p Prompt, b Budget)
 		ModelVersion:      provider.ModelVersion(),
 		InputTokens:       resp.Usage.InputTokens,
 		OutputTokens:      resp.Usage.OutputTokens,
-		CostUSD:           resp.Usage.CostUSD,
+		CostUSD:           ledgerCost,
+		Unpriced:          unpriced,
 		Confidence:        conf.Value,
 		ConfidenceClamped: conf.Clamped,
 		OccurredAt:        r.now(),
@@ -256,6 +279,29 @@ func (r *Router) Complete(ctx context.Context, tc TaskClass, p Prompt, b Budget)
 	}, nil
 }
 
+// priceUsage returns the USD cost of one call. A provider that priced
+// its own usage (AnthropicProvider/OpenAICompatibleProvider, from the
+// same prices.go table) is taken at its word; a provider that reported
+// token counts but no cost -- any third-party Provider, or a test double
+// -- is priced here from prices.go against the bare model id in its
+// ModelVersion(), so Budget.MaxUSD is enforced on every provider, not
+// only the two adapters in this package. Zero tokens is a real $0. An
+// unlisted model prices at +Inf (CostUSD's fail-closed contract) and is
+// warned about once per model id per Router.
+func (r *Router) priceUsage(provider Provider, u Usage) float64 {
+	cost := u.CostUSD
+	if cost == 0 && (u.InputTokens > 0 || u.OutputTokens > 0) {
+		cost = CostUSD(modelFromVersion(provider.ModelVersion()), u.InputTokens, u.OutputTokens)
+	}
+	if Unpriced(cost) {
+		model := modelFromVersion(provider.ModelVersion())
+		if _, seen := r.unpricedWarned.LoadOrStore(model, struct{}{}); !seen {
+			r.warn("router: model %q is not in the price table (internal/router/prices.go, dated %s): its calls count as over any MaxUSD budget and are recorded in the spend ledger at $0 with Unpriced=true; add a priced row to make its spend real", model, PriceTableDate)
+		}
+	}
+	return cost
+}
+
 // sendWithRetry calls provider.Send, retrying up to r.retryAttempts total
 // attempts (the first call plus bounded retries -- never an unbounded
 // loop) when the failure is a transient, connection-level error
@@ -264,18 +310,32 @@ func (r *Router) Complete(ctx context.Context, tc TaskClass, p Prompt, b Budget)
 // first attempt -- retrying cannot fix those. Found running T1.23's live
 // eval, which hit real dropped-connection failures under DGX host CPU
 // contention with no retry anywhere in this call chain.
+//
+// The loop is context-aware (T24.13, AI-04): a context that is already
+// done returns ctx.Err() before any Send, a Send that fails because the
+// caller cancelled returns ctx.Err() rather than being retried, and the
+// backoff between attempts is r.wait (waitBackoff), which ends the moment
+// the context is done instead of sleeping out the full delay.
 func (r *Router) sendWithRetry(ctx context.Context, provider Provider, prompt string) (Response, error) {
 	var resp Response
 	var err error
 	for attempt := 0; attempt < r.retryAttempts; attempt++ {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return Response{}, ctxErr
+		}
 		resp, err = provider.Send(ctx, prompt)
 		if err == nil {
 			return resp, nil
 		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return Response{}, ctxErr
+		}
 		if attempt == r.retryAttempts-1 || !isTransientNetworkError(err) {
 			return Response{}, err
 		}
-		r.sleep(retryBackoff(attempt, r.retryBaseDelay, r.retryMaxDelay))
+		if waitErr := r.wait(ctx, retryBackoff(attempt, r.retryBaseDelay, r.retryMaxDelay)); waitErr != nil {
+			return Response{}, waitErr
+		}
 	}
 	return Response{}, err
 }

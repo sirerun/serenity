@@ -222,6 +222,9 @@ func BuildComposerRouter(cfg *config.Config, ledger router.SpendLedger) (r *rout
 	if !ok {
 		return nil, false, note
 	}
+	if oc, isOpenAI := p.(*router.OpenAICompatibleProvider); isOpenAI {
+		oc.MaxTokens = composerMaxTokens
+	}
 	return withRedaction(cfg, router.New(map[router.Tier]router.Provider{router.TierJudgment: p}, ledger), "ask skipped")
 }
 
@@ -239,6 +242,16 @@ func withRedaction(cfg *config.Config, r *router.Router, skipSuffix string) (*ro
 	r.SetRedaction(redact.Options{Patterns: patterns})
 	return r, true, ""
 }
+
+// composerMaxTokens bounds one composer (ask/synthesize) completion on
+// the OpenAI-compatible path (T24.13, AI-04): before it, that path sent
+// no max_tokens at all, so a runaway synthesis had no ceiling but the
+// server's own. 4096 matches AnthropicProvider's built-in default, which
+// the same composer prompts already run under on the Anthropic path. The
+// extraction router is deliberately NOT bounded here: its output was
+// measured under a Qwen3 thinking trace (docs/devlog.md 2026-09-06) and
+// re-bounding it is a separate, measured change.
+const composerMaxTokens = 4096
 
 // OpenIndex opens (creating if needed) root's derived SQLite index at
 // root/.serenity/index.db -- derived state, never canonical (RFC §7.5),

@@ -49,6 +49,17 @@ type OpenAICompatibleProvider struct {
 	// a hard 400 on OpenAI's/OpenRouter's own APIs, which this same
 	// adapter also serves.
 	ExtraBody map[string]any
+	// MaxTokens, when > 0, is sent as the chat-completions max_tokens
+	// field, bounding one completion's output (T24.13, AI-04: the
+	// composer/synthesize path previously sent no bound at all, so a
+	// runaway completion had no ceiling but the server's own). 0 omits
+	// the field, keeping every request that does not opt in
+	// byte-identical to before this field existed -- the extraction
+	// path is deliberately left at 0 (internal/providers wires the
+	// composer only). Unlike AnthropicProvider there is no built-in
+	// default here: the Anthropic API requires max_tokens, an
+	// OpenAI-compatible one does not.
+	MaxTokens int
 }
 
 var _ Provider = (*OpenAICompatibleProvider)(nil)
@@ -88,6 +99,9 @@ func (p *OpenAICompatibleProvider) Send(ctx context.Context, prompt string) (Res
 	fields := map[string]any{
 		"model":    p.Model,
 		"messages": []openAIMessage{{Role: "user", Content: prompt}},
+	}
+	if p.MaxTokens > 0 {
+		fields["max_tokens"] = p.MaxTokens
 	}
 	for k, v := range p.ExtraBody {
 		fields[k] = v
@@ -130,11 +144,15 @@ func (p *OpenAICompatibleProvider) Send(ctx context.Context, prompt string) (Res
 		text = parsed.Choices[0].Message.Content
 	}
 
+	// CostUSD is priced from the API's own usage block against
+	// prices.go (T24.13, closing lore L-0008); an unlisted Model prices
+	// at +Inf so any Budget.MaxUSD trips.
 	return Response{
 		Text: text,
 		Usage: Usage{
 			InputTokens:  parsed.Usage.PromptTokens,
 			OutputTokens: parsed.Usage.CompletionTokens,
+			CostUSD:      CostUSD(p.Model, parsed.Usage.PromptTokens, parsed.Usage.CompletionTokens),
 		},
 	}, nil
 }

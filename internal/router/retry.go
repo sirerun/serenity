@@ -65,6 +65,26 @@ func retryBackoff(attempt int, base, max time.Duration) time.Duration {
 	return d
 }
 
+// waitBackoff is the ctx-aware sleep between retry attempts: it returns
+// nil once d elapses, or ctx.Err() the moment ctx is done -- a caller
+// that gave up mid-backoff is not kept waiting out a 30s delay, and the
+// retry loop stops instead of issuing another attempt against a dead
+// context. Router.wait defaults to this; tests replace it to avoid
+// wall-clock waits.
+func waitBackoff(ctx context.Context, d time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
 // isTransientNetworkError reports whether err is a connection-level
 // failure worth retrying -- a dropped connection, a dial failure, a
 // transport-level timeout, or a truncated response -- as opposed to an
@@ -80,6 +100,13 @@ func retryBackoff(attempt int, base, max time.Duration) time.Duration {
 // implementation that returns an unwrapped underlying error directly.
 func isTransientNetworkError(err error) bool {
 	if err == nil {
+		return false
+	}
+	// The caller's own cancellation is never a network fault: net/http
+	// wraps it in a *url.Error (which also satisfies net.Error), so this
+	// must be checked before the net.Error path or a cancelled request
+	// would be retried against a context that is already done.
+	if errors.Is(err, context.Canceled) {
 		return false
 	}
 	var netErr net.Error

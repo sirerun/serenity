@@ -3,11 +3,72 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"sort"
+	"sync"
+	"time"
 
 	"github.com/sirerun/serenity/internal/compose"
+	"github.com/sirerun/serenity/internal/router"
 	"github.com/sirerun/serenity/internal/server/mcp"
 )
+
+// synthesizeCallsPerMinute bounds how many well-formed synthesize calls
+// one account is served per minute (T24.13, AI-04: the local synthesize
+// path had no rate or budget limit at all, and every call is an LLM
+// completion). The 61st call in a window answers rate_limited; the window
+// is fixed, one minute from the first admitted call.
+const synthesizeCallsPerMinute = 60
+
+// synthesizeLimiter is a fixed-window, per-key call counter. The key is
+// the account (synthesizeAccountKey). Kept package-local and
+// standard-library only; it is deliberately not the hosted OAuth layer's
+// per-IP limiter (internal/hosted/oauth), which guards a different edge.
+type synthesizeLimiter struct {
+	limit  int
+	window time.Duration
+
+	mu      sync.Mutex
+	windows map[string]*synthesizeWindow
+}
+
+type synthesizeWindow struct {
+	start time.Time
+	count int
+}
+
+func newSynthesizeLimiter(limit int, window time.Duration) *synthesizeLimiter {
+	return &synthesizeLimiter{limit: limit, window: window, windows: make(map[string]*synthesizeWindow)}
+}
+
+// allow admits one call for key at now, or refuses it once limit calls
+// have been admitted in the current window. Expired windows are reset on
+// their next call, so the map never grows past the number of distinct
+// keys seen.
+func (l *synthesizeLimiter) allow(key string, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	w := l.windows[key]
+	if w == nil || now.Sub(w.start) >= l.window {
+		w = &synthesizeWindow{start: now}
+		l.windows[key] = w
+	}
+	if w.count >= l.limit {
+		return false
+	}
+	w.count++
+	return true
+}
+
+// synthesizeAccountKey identifies the account a synthesize call is
+// counted against. One Handlers serves exactly one brain root, and one
+// brain is one account (the local daemon has no other identity: RFC 0001
+// section 14's bearer token authenticates the process, not a user), so
+// the root is the key. A hosted deployment that built one Handlers per
+// account inherits per-account limiting from this without change.
+func (h *Handlers) synthesizeAccountKey() string {
+	return h.deps.Root
+}
 
 type synthesizeRequest struct {
 	Question string `json:"question"`
@@ -77,6 +138,16 @@ func (h *Handlers) synthesize(ctx context.Context, args json.RawMessage) (any, b
 		return verbError(ErrCodeInvalidParams, "since must not be later than until", "provide an ordered date window"), true, nil
 	}
 
+	// Rate limit ahead of any composer work, so an over-limit caller
+	// costs nothing (no retrieval, no completion) -- and after
+	// validation, so a malformed request is answered as malformed and is
+	// not counted.
+	if !h.synthLimiter.allow(h.synthesizeAccountKey(), h.deps.now()) {
+		return verbError(ErrCodeRateLimited,
+			fmt.Sprintf("synthesize: more than %d calls in one minute for this account", synthesizeCallsPerMinute),
+			"wait for the minute to roll over and retry; use recall for lookups that do not need cross-page reasoning"), true, nil
+	}
+
 	if h.deps.Composer == nil {
 		note := h.deps.ComposerUnavailableNote
 		if note == "" {
@@ -102,7 +173,13 @@ func (h *Handlers) synthesize(ctx context.Context, args json.RawMessage) (any, b
 		in, out, usd := answer.Usage.InputTokens, answer.Usage.OutputTokens, answer.Usage.CostUSD
 		resp.Cost.InputTokens = &in
 		resp.Cost.OutputTokens = &out
-		resp.Cost.UsdEstimate = &usd
+		// An unlisted model's cost is +Inf inside the router (fail
+		// closed against MaxUSD); JSON cannot carry +Inf, so the
+		// estimate is reported as null -- unknown -- never a fabricated
+		// zero. The token counts above are still real and still shown.
+		if !router.Unpriced(usd) {
+			resp.Cost.UsdEstimate = &usd
+		}
 	}
 
 	if answer.Gap != "" {
