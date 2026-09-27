@@ -1,14 +1,16 @@
 package writer
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/sirerun/serenity/internal/gitrun"
 )
 
 // ErrDirtyTree is returned by Fence/Shard when the target file carries an
@@ -46,9 +48,7 @@ func PendingPath(root, key string) string {
 // clean -- the guard only blocks writes it can positively identify as
 // conflicting, never ones it merely cannot evaluate.
 func dirty(root, path string) bool {
-	cmd := exec.Command("git", "status", "--porcelain", "--", path)
-	cmd.Dir = root
-	out, err := cmd.Output()
+	out, err := gitrun.Brain(root).Output(context.Background(), "status", "--porcelain", "--", path)
 	if err != nil {
 		return false
 	}

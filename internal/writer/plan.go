@@ -2,13 +2,15 @@ package writer
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/sirerun/serenity/internal/gitrun"
 )
 
 // SnapshotFiles reads exact canonical paths, rejecting symlinks and non-files.
@@ -197,9 +199,7 @@ func checkSnapshot(root string, snapshot map[string][]byte, reviewed string, hum
 		if !sameFileBytes(actual, raw) {
 			return fmt.Errorf("writer: canonical file changed while planning: %s", path)
 		}
-		cmd := exec.Command("git", "--literal-pathspecs", "status", "--porcelain", "--", path)
-		cmd.Dir = root
-		out, err := cmd.Output()
+		out, err := gitrun.Brain(root).Output(context.Background(), "--literal-pathspecs", "status", "--porcelain", "--", path)
 		if err != nil {
 			return fmt.Errorf("writer: cannot verify canonical Git state: %w", err)
 		}

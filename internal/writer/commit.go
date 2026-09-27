@@ -1,13 +1,15 @@
 package writer
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/sirerun/serenity/internal/gitrun"
 )
 
 // Flush commits every path the queue has written since the last Flush,
@@ -147,17 +149,17 @@ func CommitPath(root, path, message string) (bool, error) {
 }
 
 func runGit(root string, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = root
-	return cmd.CombinedOutput()
+	return gitrun.Brain(root).CombinedOutput(context.Background(), args...)
 }
 
 // runGitStdin is runGit plus a stdin pipe, for the one git invocation
 // (`add --pathspec-from-file=-`) that takes its argument list over stdin
 // instead of argv.
 func runGitStdin(root, stdin string, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = root
+	cmd, err := gitrun.Brain(root).Command(context.Background(), args...)
+	if err != nil {
+		return nil, err
+	}
 	cmd.Stdin = strings.NewReader(stdin)
 	return cmd.CombinedOutput()
 }
