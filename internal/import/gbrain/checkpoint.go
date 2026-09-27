@@ -12,10 +12,11 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
+
+	"github.com/sirerun/serenity/internal/gitrun"
 )
 
 type pageCheckpoint struct {
@@ -197,9 +198,7 @@ func checkpointComplete(ctx context.Context, target string, root *os.Root, actua
 	if contentHash(raw) != expected.TargetSHA256 {
 		return false, fmt.Errorf("gbrain checkpoint: canonical page changed: %s", expected.Target)
 	}
-	cmd := exec.CommandContext(ctx, "git", "show", "HEAD:"+filepath.ToSlash(expected.Target))
-	cmd.Dir = target
-	committed, err := cmd.Output()
+	committed, err := gitrun.Brain(target).Output(ctx, "show", "HEAD:"+filepath.ToSlash(expected.Target))
 	if err != nil {
 		if ctx.Err() != nil {
 			return false, ctx.Err()
