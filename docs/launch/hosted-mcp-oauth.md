@@ -36,9 +36,15 @@ and S256 PKCE is mandatory. No client metadata URLs are fetched.
   uses the current request's token. Revoked sessions are evicted from the cache.
 - Reauthorizing the same client for the same project replaces its old grant
   atomically. Active OAuth and manual credentials share the 16-connection cap.
-- Public registration and token requests are rate-limited. Each transient table
-  is capped at 10,000 rows. Unused registrations live one hour; pending flows
-  and grants extend retention. Capacity eviction protects referenced clients.
+- Every `/oauth` request is rate-limited per source prefix first (/24 for
+  IPv4, /56 for IPv6; 120 per minute, 10 for registration, 30 for token and
+  revoke). A global ceiling of 5,000 per minute covers only the unauthenticated
+  state-creating paths, registration and authorize; token refresh and revoke
+  are never refused by it, so a flood from a few prefixes cannot disconnect
+  every tenant's agents. Pending consents are capped at 500 live per client,
+  not per table; the other transient tables are capped at 10,000 rows. Unused
+  registrations live one hour; pending flows and grants extend retention.
+  Capacity eviction protects referenced clients.
 - Restore deletes OAuth grants (cascading tokens), authorization codes and
   consent records before serving. A backup must never resurrect old tokens.
 - Production proxy identity is trusted only from a loopback peer whose

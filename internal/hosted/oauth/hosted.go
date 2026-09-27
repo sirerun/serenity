@@ -26,6 +26,7 @@ type Hosted struct {
 	Provision *provision.Provisioner
 	Origin    string
 	Dev       bool
+	limits    rateLimits
 }
 
 func New(db *store.Store, id *identity.Service, p *provision.Provisioner, origin string, dev bool) (*Hosted, error) {
@@ -34,7 +35,7 @@ func New(db *store.Store, id *identity.Service, p *provision.Provisioner, origin
 	if err != nil {
 		return nil, err
 	}
-	return &Hosted{Server: server, Store: st, Identity: id, Provision: p, Origin: origin, Dev: dev}, nil
+	return &Hosted{Server: server, Store: st, Identity: id, Provision: p, Origin: origin, Dev: dev, limits: defaultRateLimits()}, nil
 }
 func (h *Hosted) Verify(ctx context.Context, raw string) (credential.Binding, error) {
 	ident, err := h.Server.Verify(ctx, raw)
@@ -56,8 +57,12 @@ func (h *Hosted) Verify(ctx context.Context, raw string) (credential.Binding, er
 func (h *Hosted) Handler() http.Handler {
 	mux := http.NewServeMux()
 	authorize := h.Server.AuthorizeHandler(h.consent)
-	mux.HandleFunc("GET /oauth/authorize", func(w http.ResponseWriter, r *http.Request) {
-		if handle := r.URL.Query().Get("request"); handle != "" {
+	// SEC-H02: every path is judged per source prefix before anything else.
+	// The global ceiling covers only the unauthenticated state-creating paths
+	// (register, authorize), so a flood there never refuses a token refresh.
+	stateCreating := newLimiter(0, h.limits.StateCreating, time.Minute)
+	mux.Handle("/oauth/authorize", withRateLimit(stateCreating, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if handle := r.URL.Query().Get("request"); r.Method == http.MethodGet && handle != "" {
 			req, err := h.Server.Consent(r.Context(), handle)
 			if err != nil {
 				http.Error(w, "This connection request expired. Start again in your agent.", 400)
@@ -67,14 +72,14 @@ func (h *Hosted) Handler() http.Handler {
 			return
 		}
 		authorize.ServeHTTP(w, r)
-	})
+	})))
 	mux.HandleFunc("POST /oauth/consent", h.approve)
-	mux.Handle("/oauth/register", withRateLimit(newIPRateLimiter(10, 100, time.Minute), h.Server.RegisterHandler()))
-	mux.Handle("/oauth/token", withRateLimit(newIPRateLimiter(30, 1000, time.Minute), h.Server.TokenHandler()))
-	mux.Handle("/oauth/revoke", withRateLimit(newIPRateLimiter(30, 1000, time.Minute), h.Server.RevokeHandler()))
+	mux.Handle("/oauth/register", withRateLimit(newLimiter(h.limits.Register, 0, time.Minute), withRateLimit(stateCreating, h.Server.RegisterHandler())))
+	mux.Handle("/oauth/token", withRateLimit(newLimiter(h.limits.Token, 0, time.Minute), h.Server.TokenHandler()))
+	mux.Handle("/oauth/revoke", withRateLimit(newLimiter(h.limits.Token, 0, time.Minute), h.Server.RevokeHandler()))
 	mux.HandleFunc("GET /oauth/connections", h.connections)
 	mux.HandleFunc("POST /oauth/disconnect", h.disconnect)
-	return withRateLimit(newIPRateLimiter(120, 2000, time.Minute), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return withRateLimit(newLimiter(h.limits.PerPrefix, 0, time.Minute), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		// Preserve same-origin form Origin for CSRF checks; never disclose
 		// the consent handle to a cross-origin OAuth callback.
