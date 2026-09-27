@@ -166,8 +166,10 @@ violation. An empty or unrelated ledger returns `no_applicable_constraints`.
 | `2` | `violated`. |
 | `1` | `unverified` or an error. |
 
-Free-text plan checks currently return `unverified` because the CLI has no
-classification provider wired in. See the
+Free-text plan checks from `serenity check` return `unverified` because the
+CLI has no classification provider wired in. DIRECTION `check_plan` under
+`serenity serve --http` classifies free text with the pinned
+`models.extraction` model. See the
 [plan-check contract](docs/adr/010-plan-check-exit-codes-transport-and-docs-toolchain.md)
 for details.
 
@@ -181,6 +183,9 @@ for details.
   and hook installation are not implemented. `serenity connect` reports token
   status, and token rotation is available through
   `serenity connect --rotate-token`.
+- `serenity serve` does not run scheduled jobs. Use `serenity cron` with a
+  timer ([scheduling](docs/operator/scheduling.md)); see
+  [what `serve` starts](docs/operator/mcp.md#what-serve-starts-and-does-not-start).
 - `serenity migrate --models` handles model-pin changes; it does not import a
   gbrain repository. Re-extraction through reconciliation remains unfinished.
 - The full human-review queue and earned-automation workflow described in the

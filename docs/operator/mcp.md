@@ -83,6 +83,35 @@ the authenticated DISPOSITION and DIRECTION protocol routes from the same
 brain index and writer queue. The protocol handlers retain their own wire
 contracts; this command only assembles them onto the shared transport.
 
+### What `serve` starts and does not start
+
+`serenity serve --http` starts exactly these, on one listener:
+
+- `/mcp`: the MEMORY_VERBS v1 tool registry.
+- `/direction/brief`, `/direction/check_plan`, `/direction/propose`.
+  `check_plan` classifies free-text plans with the brain's pinned
+  local-cheap chat model, `models.extraction`, and asserts that pin on every
+  call (serenity.yml has no separate classification pin). With no usable
+  pin or credential, `serve` notes it once on stderr and free-text plans
+  report `unverified`; structured `actions` are matched either way.
+- `/disposition/*`: the DISPOSITION queue routes.
+
+The DIRECTION and DISPOSITION routes are registered only when `-C` names a
+brain repo. `serenity serve --stdio` serves `/mcp`'s tool registry only, with
+no protocol routes.
+
+`serve` does not start:
+
+- Scheduled jobs. `serve` runs no internal ticker, so `sweep`,
+  `consolidate`, `decay` and `slo` do not run while it serves. Scheduled
+  work runs through `serenity cron <job>` driven by an external timer
+  ([scheduling](scheduling.md), ADR 006). Stop `serve` before a cron job
+  runs, because both need the brain's writer lock.
+- Application of accepted proposals. DISPOSITION's `dispose` records a
+  verdict. `serenity inbox` applies accepted items, including an accepted
+  `effect` item, whose held-back spend row it records through the spend
+  checker; `serenity inbox --apply <id>` retries one.
+
 ### Upstream conformance
 
 Every push and PR runs the `gbrain-protocol-conformance` CI job

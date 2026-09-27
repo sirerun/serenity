@@ -43,13 +43,11 @@
 // candidates and T2.15/T4.10's own metric formulas already set in this
 // codebase.
 //
-// Not wired into a live `serenity serve` command yet: T4.1 (`serenityd`
-// core) ships the daemon's ticker/pidfile/shutdown skeleton but does not
-// itself register any protocol routes (that is each protocol package's own
-// Register method, called by whatever assembles the daemon's route table).
-// Registrar mirrors internal/server/disposition.Registrar exactly, so a
-// future daemon-assembly task wires both packages onto the same
-// *internal/server.Server identically.
+// `serenity serve --http` (internal/cli/serve.go) registers these routes on
+// its *internal/server.Server, alongside internal/server/disposition's, and
+// passes WithRouter/WithModelVersion from the brain's pinned local-cheap
+// chat model. Registrar mirrors internal/server/disposition.Registrar
+// exactly, so both packages mount identically.
 package direction
 
 import (
@@ -137,12 +135,10 @@ type Handlers struct {
 type Option func(*Handlers)
 
 // WithRouter wires a live router for check_plan's free-text classification
-// stage. The default (no option) leaves it nil, mirroring
-// internal/cli.runCheck's own disclosed nil-router precedent: no
-// provider-from-config wiring exists yet, so a nil router is not a stub --
-// it is exactly the "no model configured" condition
-// check.Classifier.MatchFreeText already documents as one of the two
-// conditions that yield StatusUnverified.
+// stage; `serenity serve --http` passes one built from serenity.yml. The
+// default (no option) leaves it nil, which is not a stub -- it is exactly
+// the "no model configured" condition check.Classifier.MatchFreeText
+// documents as one of the two conditions that yield StatusUnverified.
 func WithRouter(rtr *router.Router) Option { return func(h *Handlers) { h.router = rtr } }
 
 // WithModelVersion pins the classification model check_plan's free-text

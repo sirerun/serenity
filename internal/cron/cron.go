@@ -3,9 +3,10 @@
 // run concurrently with the interactive CLI because every canonical write a
 // job makes goes through the writer queue (ADR 004) and the dirty-tree
 // guard inside the same process — the same invariant every other write
-// path in this repo already relies on. In M4, `serenityd` embeds these same
-// job functions on an internal ticker (ADR 006); `serenity cron` remains
-// the manual operation and test entry point.
+// path in this repo already relies on. `serenity cron` is the scheduled
+// entry point (ADR 006): `serenity serve` runs no job ticker, and
+// internal/server.Daemon, which would embed these same job functions, is
+// started by no command.
 //
 // Each job is registered here as a Job function that takes an injected
 // Clock, so scheduled behavior is testable without real sleeps or
