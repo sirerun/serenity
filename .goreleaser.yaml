@@ -2,10 +2,6 @@ version: 2
 
 project_name: serenity
 
-before:
-  hooks:
-    - go mod tidy
-
 builds:
   - main: ./cmd/serenity
     binary: serenity
