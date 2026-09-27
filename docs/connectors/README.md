@@ -63,6 +63,44 @@ configured yet runs `sync` as a no-op. `serenity extract` (or
 embedding over every source `sync` has ever ingested; see
 [the extraction and embedding section](#extraction-and-embedding) below.
 
+## Trust classes
+
+Every connector is `trusted` or `untrusted`
+([ADR 022](../adr/022-untrusted-content-trust-boundary.md)). Mail and crawled
+repositories carry text other people wrote, so they are untrusted by default;
+a watched directory of your own files is trusted:
+
+| Connector | Source kind | Default trust |
+|---|---|---|
+| `imap` | `email` | `untrusted` |
+| `git_repo` | `git_repo` | `untrusted` |
+| `file` | `file` | `trusted` |
+| `voice` | `voice` | `trusted` |
+
+Any other source kind is untrusted. Override the default per connector with
+`trust:`; any value other than `trusted` or `untrusted` makes config load fail:
+
+```yaml
+connectors:
+  imap:
+    account: you@gmail.com
+    trust: trusted                 # your own mailbox, and you accept the risk
+  git_repo:
+    - path: /path/to/your-repo
+      trust: trusted               # git_repo is trusted only when every entry says so
+    - path: /path/to/vendored-repo
+```
+
+What trust changes: when `serenity extract` finds a claim from an untrusted
+connector that is new (no live claim agrees with it) and does not conflict,
+it writes the claim with `state: pending` and adds a `claim_candidate` item to
+`serenity inbox`. Until you accept it, `ask` and MCP `synthesize` never see
+or cite the claim. Accepting activates it with you as the actor. Claims from
+trusted connectors become active straight away, as before. The extract
+summary line `untrusted: N first-seen claim(s) held pending` reports what
+waited. For review steps, see
+[the operator inbox guide](../operator/inbox.md#accept-claims-from-untrusted-connectors).
+
 ## Extraction and embedding
 
 `serenity extract` needs a pinned model plus a credential to do anything —

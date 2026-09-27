@@ -30,6 +30,28 @@ recovering an interrupted review. It can contain private canonical content and
 must remain excluded from Git, like the disposition database itself. Deleting
 runtime state is not a way to recover an unfinished publication.
 
+## Accept claims from untrusted connectors
+
+A `claim_candidate` row is a machine claim from an untrusted connector (by
+default `imap` and `git_repo`; see
+[connector trust classes](../connectors/README.md#trust-classes)) that has not
+been seen before. It is already in the canonical files with `state: pending`,
+but nothing cites it yet. The row shows the claim, its confidence, the
+connector, the trust class, the source URI and hash, the byte span and the
+extraction model, so you can open the source before deciding:
+
+- Space accepts: the claim becomes `active` with actor `human:<you>` and is
+  committed before the next row. Its trust stays `untrusted`, so `ask` still
+  labels it `[actor=human:<you> trust=untrusted]`. If a conflicting live claim
+  appeared since extraction, or the pending row was edited, the accept is
+  refused and the item stays pending.
+- `r` rejects with a note and `d` defers. Both leave the claim pending and
+  uncited; a later extraction does not stage it again.
+- `serenity inbox --bulk-defer family=<family>` defers every candidate of one
+  family, for example after a busy mailbox sync.
+- A stopped activation is listed by `--unapplied` and retried with
+  `--apply ITEM_ID`, like a reconciliation.
+
 ## Resolve a stopped publication
 
 An uncommitted edit to a target page or shard pauses publication. Preserve and
