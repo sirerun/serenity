@@ -10,13 +10,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/domain"
+	"github.com/sirerun/serenity/internal/gitrun"
 	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
 )
@@ -274,9 +274,7 @@ func (w *Writer) preparePublication(a, b domain.Claim) ([]writer.FileChange, err
 		return nil, fmt.Errorf("reconcile: prior canonical claim is missing")
 	}
 	for path := range snapshot {
-		cmd := exec.Command("git", "status", "--porcelain", "--", path)
-		cmd.Dir = root
-		out, err := cmd.Output()
+		out, err := gitrun.Brain(root).Output(context.Background(), "status", "--porcelain", "--", path)
 		if err != nil {
 			return nil, fmt.Errorf("reconcile: cannot verify canonical Git state: %w", err)
 		}
