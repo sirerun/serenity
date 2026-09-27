@@ -623,10 +623,20 @@ func TestInboxCommittedApprovalReportsIndexFailure(t *testing.T) {
 	ctx := context.Background()
 	item := seedReconcileItem(t, ds, ctx, inboxFixedNow, "demo-person", "works_at", "New company", "Old company", "")
 	seedInboxCanonical(t, root, item)
-	// An unrelated invalid page prevents derived rebuilding, after the target's
-	// exact-path commit succeeds. It must not be swept into that commit.
+	// An unrelated invalid page is quarantined by the rebuild (T24.5), so it
+	// no longer fails derived rebuilding on its own; a stray non-prefix file
+	// under brain/sources still does (SourceStore.All refuses it), after the
+	// target's exact-path commit succeeds. Neither unrelated file may be
+	// swept into that commit.
 	broken := filepath.Join(root, "brain/entities/topic/broken.md")
 	if err := os.WriteFile(broken, []byte("not an entity page\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	stray := filepath.Join(root, "brain/sources/stray")
+	if err := os.MkdirAll(filepath.Dir(stray), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stray, []byte("not a source prefix\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
@@ -646,9 +656,9 @@ func TestInboxCommittedApprovalReportsIndexFailure(t *testing.T) {
 	if raw, err := cmd.CombinedOutput(); err != nil || len(raw) != 0 {
 		t.Fatalf("canonical target was not committed: %v %s", err, raw)
 	}
-	cmd = exec.Command("git", "ls-files", "--", "brain/entities/topic/broken.md")
+	cmd = exec.Command("git", "ls-files", "--", "brain/entities/topic/broken.md", "brain/sources/stray")
 	cmd.Dir = root
 	if raw, err := cmd.CombinedOutput(); err != nil || len(raw) != 0 {
-		t.Fatalf("unrelated invalid page entered commit: %v %s", err, raw)
+		t.Fatalf("unrelated invalid file entered commit: %v %s", err, raw)
 	}
 }
