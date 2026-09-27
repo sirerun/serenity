@@ -143,6 +143,13 @@ func pollConnectors(ctx context.Context, root string, cfg *config.Config, eng *i
 			if err != nil {
 				return fmt.Errorf("sync: %s: write source: %w", c.Name(), err)
 			}
+			// The absolute path stays in the local index only (PRIV-03);
+			// the committed record carries a root-relative uri and its hash.
+			if h := item.Meta[connector.MetaPathHash]; h != "" && item.LocalPath != "" {
+				if err := eng.RecordSourcePath(ctx, h, item.LocalPath); err != nil {
+					return fmt.Errorf("sync: %s: %w", c.Name(), err)
+				}
+			}
 			if isNew {
 				newCount++
 				for _, p := range sourceGitPaths(ss, written) {

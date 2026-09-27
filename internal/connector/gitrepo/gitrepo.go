@@ -189,9 +189,11 @@ func (c *Connector) Poll(ctx context.Context, cursor connector.Cursor) ([]connec
 			return nil, cursor, fmt.Errorf("gitrepo: read %s: %w", rel, err)
 		}
 
+		abs := filepath.Join(toplevel, filepath.FromSlash(rel))
 		meta := map[string]string{
-			"repo": repoName,
-			"path": rel,
+			"repo":                 repoName,
+			"path":                 rel,
+			connector.MetaPathHash: connector.PathHash(abs),
 		}
 		if isDiraPattern(data) {
 			meta[PreceptDraftCandidateMeta] = "true"
@@ -208,6 +210,7 @@ func (c *Connector) Poll(ctx context.Context, cursor connector.Cursor) ([]connec
 			Bytes:      data,
 			OccurredAt: occurredAt,
 			Meta:       meta,
+			LocalPath:  abs,
 		})
 	}
 

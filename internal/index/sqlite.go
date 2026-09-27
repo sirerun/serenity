@@ -171,6 +171,7 @@ func (s *SQLite) migrate() error {
 			model TEXT NOT NULL,
 			vec BLOB NOT NULL,
 			PRIMARY KEY (chunk_ref, model))`,
+		sourcePathsSchema,
 	}
 	// Schema shells for runtime-only state (see RuntimeTables): generic
 	// enough to hold a row today, replaced with a real schema by whichever

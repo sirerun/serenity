@@ -236,14 +236,16 @@ func (c *Connector) buildItem(rel string, state cursorState) (connector.RawItem,
 	}
 
 	return connector.RawItem{
-		URI:        uriFor(abs),
+		URI:        uriFor(rel),
 		Kind:       "file",
 		Bytes:      data,
 		OccurredAt: info.ModTime(),
 		Meta: map[string]string{
-			"path": rel,
-			"size": strconv.FormatInt(info.Size(), 10),
+			"path":                 rel,
+			"size":                 strconv.FormatInt(info.Size(), 10),
+			connector.MetaPathHash: connector.PathHash(abs),
 		},
+		LocalPath: abs,
 	}, true, nil
 }
 
@@ -405,7 +407,11 @@ func isEditorTemp(name string) bool {
 	return false
 }
 
-func uriFor(abs string) string { return "file://" + filepath.ToSlash(abs) }
+// uriFor names a file by its root-relative slash path, never its absolute
+// location (PRIV-03): source records are committed and auto-pushed, and an
+// absolute path would reveal the user's directory layout. The absolute
+// path survives only as RawItem.LocalPath and the path_hash meta key.
+func uriFor(rel string) string { return "file:" + rel }
 
 // ToSource converts one settled file into the domain.Source the store's
 // content-address dedup runs on. SHA256 is left unset -- SourceStore.Write
