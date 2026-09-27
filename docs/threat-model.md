@@ -47,9 +47,11 @@ Every extraction and synthesis call sends brain content to a model provider.
 That provider's own data handling — retention, training use, employee
 access — is outside Serenity's control once a request leaves the machine.
 
-**Mitigation.** Minimize what leaves at all: only composed briefs and chunks
-are sent, never raw source files; a configurable redaction pass runs first
-(see [Redaction contract](#redaction-contract)); `serenity.yml` records the
+**Mitigation.** Minimize what leaves at all: only composed briefs, chunks,
+and query text are sent, never raw source files; every prompt and every
+embedding input passes through the redaction pass at the model router
+first, and operator rules can extend it (see
+[Redaction contract](#redaction-contract)); `serenity.yml` records the
 exact pinned model set in use so the operator knows precisely which
 provider(s) see brain content and can choose local models for sensitive
 domains.
@@ -60,11 +62,13 @@ Ingested repos and files can contain committed secrets — API keys, credentials
 tokens — that were never meant to leave their original repo, let alone be
 extracted into claims or sent to a cloud model as part of a chunk.
 
-**Mitigation.** The same redaction pass that runs before cloud egress applies
-pattern- and entity-type rules (account numbers, key-shaped strings, and
-operator-configured patterns) to chunks before they leave the machine.
-Sensitive or large sources can be marked `index_only` in `serenity.yml`:
-their bytes stay on disk, out of git and out of any outbound request.
+**Mitigation.** The same redaction pass that runs before any provider egress
+applies its built-in pattern table (API-key shapes for the major vendors,
+card numbers, keyword-gated account numbers) plus any operator-configured
+`redact.patterns` to every prompt and embedding input before it leaves the
+machine. Sensitive or large sources can be marked `index_only` in
+`serenity.yml`: their bytes stay on disk, out of git and out of any
+outbound request.
 
 ### Adversary 5: local attacker on the index or key material
 
@@ -99,7 +103,7 @@ flowchart LR
     INDEX[("Derived index: SQLite + vector store")]
     KEYCHAIN[("OS keychain: model API keys, connector OAuth tokens")]
     DAEMON["serenityd (loopback, bearer token required)"]
-    REDACT["Redaction pass (patterns + entity-type rules)"]
+    REDACT["Model router chokepoint: redaction pass (built-in key and number patterns + redact.patterns)"]
   end
   MCPCLIENT["MCP / protocol client"]
   CLOUDMODEL["Cloud model provider"]
@@ -126,16 +130,43 @@ confidence attached), it does not hand out raw source bytes or key material.
 
 ## Redaction contract
 
-Prompts to cloud models carry only composed briefs and chunks — never raw
-source files, never the whole brain. Before any such prompt reaches a cloud
-model, a configurable redaction pass runs: pattern rules (account numbers and
-similar structured secrets) plus entity-type rules (operator-configured,
-e.g. "redact all `has_balance` objects") strip or mask sensitive spans from
-the composed text. This pass is configuration, not a suggestion — it runs
-unconditionally on the cloud-egress path, and `index_only` sources are
-excluded from composition entirely, so they cannot reach the redaction pass
-in the first place because they never reach the brief-composition step at
-all.
+Prompts to model providers carry only composed briefs, chunks, and query
+text — never raw source files, never the whole brain. Every such prompt, and
+every embedding input, passes through one redaction pass at the model router
+(`internal/router.Router.Complete`, [ADR 021](adr/021-redaction-at-the-provider-egress-chokepoint.md))
+immediately before the provider request body is built. There is no other
+egress path: extraction, composition, embedding (local and hosted),
+classification, and every other task class go through the same call, so no
+caller can forget to redact and a new provider adapter inherits the pass.
+The pass runs whether the provider is a cloud API or a local endpoint.
+
+The pass has two parts:
+
+- **Built-in pattern rules**, always on, with no configuration that turns
+  any of them off: API-key shapes for the major vendors (Anthropic
+  `sk-ant-`; OpenAI `sk-proj-`, `sk-svcacct-` and legacy `sk-`; OpenRouter
+  `sk-or-`; GitHub `ghp_`-style and `github_pat_`; Slack `xox?-`; Google
+  `AIza`; Stripe `sk_live_`/`rk_live_`; AWS `AKIA`), Luhn-valid card
+  numbers, and keyword-gated account numbers. Each match is replaced whole
+  by a typed placeholder such as `[REDACTED:API_KEY]`; no fragment of the
+  value survives.
+- **Operator-configured patterns**, `redact.patterns` in `serenity.yml`: a
+  list of named Go (RE2) regular expressions that extend the built-in set.
+  A match becomes `[REDACTED:<NAME>]`. An invalid regex or a missing name
+  fails config load with the pattern named.
+
+```yaml
+redact:
+  patterns:
+    - name: employee_id
+      regex: 'EMP-[0-9]{6}'
+```
+
+There are no entity-type rules (for example "redact all `has_balance`
+objects"); an earlier version of this document promised them and they were
+never built. `index_only` sources are excluded from composition entirely,
+so they cannot reach the redaction pass in the first place because they
+never reach the brief-composition step at all.
 
 The contract is intentionally narrow in scope: redaction protects what
 crosses the machine boundary to a model provider. It does not change what is

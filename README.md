@@ -107,9 +107,28 @@ serenity extract
 serenity ask "What are my current project priorities?"
 ```
 
-Replace the placeholders with the model pins you intend to use. Model calls send
-source or query context to the configured provider. Credentials come from the
-process environment, not `serenity.yml`.
+Replace the placeholders with the model pins you intend to use. Credentials
+come from the process environment, not `serenity.yml`.
+
+What leaves the machine: every extraction prompt (source chunks), every
+composer prompt (retrieved claims and source evidence), and every embedding
+input (chunk or query text) is sent to the provider you configure, whether
+that is a cloud API or a local endpoint. Each one passes through a single
+redaction pass in the model router first, which masks API-key shapes for the
+major vendors, card numbers, and keyword-gated account numbers. Stored facts
+are not redacted at rest; only what leaves is. Add your own rules under
+`redact.patterns` in `serenity.yml`; they extend the built-in set and cannot
+turn it off:
+
+```yaml
+redact:
+  patterns:
+    - name: employee_id
+      regex: 'EMP-[0-9]{6}'
+```
+
+The [threat model](docs/threat-model.md#redaction-contract) describes the
+full contract.
 
 Embedding configuration is separate and uses an OpenAI-compatible endpoint.
 See [model providers](docs/providers.md) for credentials, model pins, and local
