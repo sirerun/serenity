@@ -96,11 +96,14 @@ outbound request.
 
 Anyone with access to the machine — a co-worker, malware, another local
 process — is a threat to the derived index (`.serenity/`) and to the key
-material (model API keys, connector OAuth tokens) Serenity holds on the
-operator's behalf.
+material Serenity uses on the operator's behalf: model provider API keys
+(read from environment variables), the daemon bearer token, and connector
+credentials (held in the OS keychain).
 
-**Mitigation.** Keys and tokens never touch disk as files; they live only in
-the OS keychain (see [Keys and tokens](#keys-and-tokens)). The daemon does
+**Mitigation.** Serenity never writes keys or tokens to disk as files:
+provider keys come from the process environment and stored credentials live
+in the OS keychain, whose items on macOS carry an access control list naming
+only the serenity binary (see [Keys and tokens](#keys-and-tokens)). The daemon does
 not trust local process identity: loopback binds still require a bearer
 token (see
 [Daemon exposure](#daemon-exposure-loopback-authenticated-by-default)). The
@@ -123,7 +126,8 @@ flowchart LR
     CLAIMS["Claims (fences + shards)"]
     PRE[".dira/entries/ (precepts)"]
     INDEX[("Derived index: SQLite + vector store")]
-    KEYCHAIN[("OS keychain: model API keys, connector OAuth tokens")]
+    KEYCHAIN[("OS keychain: daemon bearer token, connector credentials")]
+    ENV[("Process environment: model provider API keys")]
     DAEMON["serenityd (loopback, bearer token required)"]
     REDACT["Model router chokepoint: redaction pass (built-in key and number patterns + redact.patterns)"]
   end
@@ -138,6 +142,7 @@ flowchart LR
   REDACT -->|"redacted prompt only"| CLOUDMODEL
   CLOUDMODEL -->|completion| DAEMON
   KEYCHAIN -.->|"read by, never written to disk, never egresses"| DAEMON
+  ENV -.->|"read at startup, sent only to its own provider"| DAEMON
   PRE -.->|"human disposition only — no ingest or model path writes here"| DAEMON
 ```
 
@@ -224,12 +229,35 @@ instruction anyway still cannot write outside those checks.
 
 ## Keys and tokens
 
-Model API keys and connector OAuth tokens live in the OS keychain — never in
-files, never in the brain repo, never in the derived index. This holds for
-every key Serenity handles: cloud model provider keys, connector OAuth
-access and refresh tokens. Connector token rotation and refresh happen
-automatically; when refresh fails (revoked grant, expired refresh token), a
-one-command re-auth path recovers without hand-editing any file.
+Serenity never writes key material to files, the brain repo, or the derived
+index. Where each kind lives:
+
+- **Model provider API keys** are read from environment variables
+  (`OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, plus the
+  `OPENAI_BASE_URL` / `OPENAI_EMBEDDINGS_BASE_URL` endpoints for a local
+  server) of the process that runs Serenity. They are not stored in the OS
+  keychain or in `serenity.yml`; see [providers](providers.md). Protecting
+  them is the operator's job: anything that can read that process's
+  environment (the same user's shell profile, a process-inspection tool, a
+  crash report that captures the environment) can read the keys. Set them
+  only for the shells or service units that run Serenity, and rotate them at
+  the provider if they leak.
+- **The daemon bearer token** (and each named credential profile's token)
+  lives in the OS keychain under the `serenity` service. On macOS the item
+  is created with an access control list naming only the serenity
+  executable, so another process running as the same user, including
+  `/usr/bin/security`, is prompted by macOS before it can read the token
+  (SEC-L08). Items created before this change keep their older, wider list
+  until the token is rotated with `serenity connect --rotate-token`. On
+  Linux the Secret Service keyring has no per-application list: any process
+  in the same user session can read the token, which the bearer-token and
+  loopback controls below assume.
+- **Connector credentials** (for example the IMAP account password) live in
+  the OS keychain under the same service. They are still written with the
+  keychain library's default access list, which on macOS trusts
+  `/usr/bin/security`, so a same-user process can read them without a
+  prompt. When a refresh or login fails, a one-command re-auth path
+  recovers without hand-editing any file.
 
 Keeping keys out of the brain repo also protects the RFC §7 disaster-recovery
 story: `git clone` plus rebuild reconstructs a brain on a new machine, but
