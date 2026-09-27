@@ -287,6 +287,33 @@ precept. The adversarial corpus (RFC §16) attacks exactly this question ("can
 a malicious email make an agent believe a precept exists?"), and the release
 gate asserts zero precept mutations from adversarial sources.
 
+## check_plan's free-text classifier fails closed
+
+`check_plan` accepts a free-text plan and asks the local-cheap
+classification model to map it onto the closed action set before the
+deterministic matcher runs (`internal/direction/check/classify.go`). Plan
+text is attacker-reachable, so the classifier's output is treated as an
+untrusted claim that must earn a verdict, never as a verdict itself. The
+matcher runs only when every one of these holds; otherwise the result is
+`unverified` (exit code 1) with a `Reason` naming the failed condition:
+
+- a classification model is configured and answered;
+- the reported confidence is at or above the 0.80 floor;
+- no reported action falls outside the closed action set (one dropped
+  action means the rest are not a complete account of the plan);
+- at least one action was reported (an empty list is not evidence the
+  plan does nothing a constraint covers);
+- every action cites evidence that appears in the plan text, compared
+  with whitespace normalized; each action whose evidence is missing is
+  named in the result.
+
+These gates run on every call, including classification cache hits.
+Evidence validation stops a model from inventing plan content -- for
+example citing "wire $50" for a plan that wires $800 to slip under a
+spend ceiling. It does not check that an action's parameters agree with
+evidence that is genuinely present; callers that need that guarantee pass
+structured actions instead of free text.
+
 ## Right-to-forget: the deletion chain
 
 Deletion semantics are contractual, and the chain runs in one direction only:

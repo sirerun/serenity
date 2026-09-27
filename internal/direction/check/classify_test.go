@@ -190,6 +190,9 @@ func TestMatchFreeText_NilRouterReturnsUnverified(t *testing.T) {
 	if len(result.MatchedActions) != 0 {
 		t.Errorf("MatchedActions = %+v, want none -- no model was ever consulted", result.MatchedActions)
 	}
+	if result.Reason == "" {
+		t.Error("Reason is empty, want the no-model condition named")
+	}
 }
 
 func TestMatchFreeText_NoLocalCheapProviderReturnsUnverified(t *testing.T) {

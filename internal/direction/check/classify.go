@@ -15,10 +15,15 @@
 // calls the router, and therefore never appends a spend ledger row --
 // router.Router.Complete is the only place that happens (RFC section 16).
 //
-// ADR 010's unverified floor: classification confidence below
-// ClassifyConfidenceFloor, or no provider configured for the
-// classification task class's tier, yields StatusUnverified -- an
-// explicit verdict stage 1 never runs under, never a silent pass.
+// ADR 010's unverified floor, hardened by AI-06 (deep review 001) to
+// fail closed: stage 1 runs only on a classification it can trust. No
+// provider configured for the classification task class's tier,
+// confidence below ClassifyConfidenceFloor, any action outside
+// domain.ActionSet, an empty action list, or any action whose cited
+// evidence does not appear in the plan text (whitespace-normalized)
+// yields StatusUnverified with Result.Reason naming the condition -- an
+// explicit verdict stage 1 never runs under, never a silent pass or a
+// no_applicable_constraints a model was talked into.
 package check
 
 import (
@@ -51,9 +56,10 @@ const ClassifyPromptVersion = "v1"
 
 // StatusUnverified is check_plan STAGE 2's floor verdict (RFC 0001 §8.3,
 // ADR 010) -- distinct from the three stage-1 verdicts documented on
-// Status in check.go, since it means stage 1 never ran at all: either no
-// provider is configured for the classification task class's tier, or
-// the classifier's confidence fell below ClassifyConfidenceFloor.
+// Status in check.go, since it means stage 1 never ran at all: the
+// classification could not be obtained or could not be trusted.
+// Result.Reason names which fail-closed condition applied (see
+// MatchFreeText).
 const StatusUnverified Status = "unverified"
 
 // Span is a byte-offset range into the free text passed to
@@ -88,10 +94,16 @@ type FreeTextResult struct {
 
 	// MatchedActions is the classifier's output for this call, in the
 	// order the model returned them. Present even when Result.Status is
-	// StatusUnverified due to low confidence (so a caller can see what
-	// was classified and why it was not trusted), empty when no model
-	// was available to classify at all.
+	// StatusUnverified (so a caller can see what was classified and why
+	// it was not trusted), empty when no model was available to classify
+	// at all.
 	MatchedActions []MatchedAction
+
+	// MissingEvidence lists every classified action whose cited evidence
+	// is empty or does not appear in the plan text under whitespace
+	// normalization. Non-empty only when Result.Status is
+	// StatusUnverified for that reason.
+	MissingEvidence []MatchedAction
 
 	// Confidence is the classifier's confidence for this call, already
 	// clamped to the classification task class's tier cap
@@ -201,16 +213,28 @@ func NewClassifier(matcher *Matcher, modelVersion string, cache ClassifyCache) *
 // are then run through the underlying Matcher's Match -- stage 1 -- so
 // the returned Result is a genuine stage-1 verdict, not a stand-in.
 //
-// Two conditions short-circuit before stage 1 ever runs, both yielding
-// StatusUnverified per ADR 010: no provider is configured for the
-// classification task class's tier (the underlying Matcher was built
-// with a nil router, or the router has no local-cheap provider
-// registered), or the classifier's confidence for this text is below
-// ClassifyConfidenceFloor.
+// The classifier fails closed (ADR 010, AI-06): each of these
+// short-circuits before stage 1 ever runs, yielding StatusUnverified
+// with Result.Reason set --
+//
+//   - no provider is configured for the classification task class's
+//     tier (the underlying Matcher was built with a nil router, or the
+//     router has no local-cheap provider registered);
+//   - the classifier's confidence is below ClassifyConfidenceFloor;
+//   - the model reported any action outside domain.ActionSet (the
+//     remaining actions are then not a complete account of the plan);
+//   - the model reported no actions at all (an empty list is not
+//     evidence the plan does nothing a constraint covers);
+//   - any action's cited evidence is empty or absent from planText under
+//     whitespace normalization (FreeTextResult.MissingEvidence names
+//     each one).
+//
+// The last three are evaluated on every call, cached or not, so a cache
+// entry written before they existed is still held to them.
 func (c *Classifier) MatchFreeText(ctx context.Context, planText string, budget router.Budget) (FreeTextResult, error) {
 	rtr := c.matcher.Router()
 	if rtr == nil {
-		return FreeTextResult{Result: Result{Status: StatusUnverified}}, nil
+		return FreeTextResult{Result: Result{Status: StatusUnverified, Reason: reasonNoModel}}, nil
 	}
 
 	key := ClassifyCacheKey{
@@ -229,7 +253,7 @@ func (c *Classifier) MatchFreeText(ctx context.Context, planText string, budget 
 		res, err := rtr.Complete(ctx, router.TaskClassClassification, router.Prompt{Text: prompt}, budget)
 		if err != nil {
 			if errors.Is(err, router.ErrTierUnavailable) {
-				return FreeTextResult{Result: Result{Status: StatusUnverified}}, nil
+				return FreeTextResult{Result: Result{Status: StatusUnverified, Reason: reasonNoModel}}, nil
 			}
 			return FreeTextResult{}, fmt.Errorf("check: classify: router: %w", err)
 		}
@@ -248,12 +272,13 @@ func (c *Classifier) MatchFreeText(ctx context.Context, planText string, budget 
 		}
 	}
 
-	if cached.Confidence < ClassifyConfidenceFloor {
+	if reason, missing := untrustedReason(cached, planText); reason != "" {
 		return FreeTextResult{
-			Result:         Result{Status: StatusUnverified},
-			MatchedActions: cached.Actions,
-			Confidence:     cached.Confidence,
-			Rejected:       cached.Rejected,
+			Result:          Result{Status: StatusUnverified, Reason: reason},
+			MatchedActions:  cached.Actions,
+			MissingEvidence: missing,
+			Confidence:      cached.Confidence,
+			Rejected:        cached.Rejected,
 		}, nil
 	}
 
@@ -272,6 +297,54 @@ func (c *Classifier) MatchFreeText(ctx context.Context, planText string, budget 
 		Confidence:     cached.Confidence,
 		Rejected:       cached.Rejected,
 	}, nil
+}
+
+// reasonNoModel is Result.Reason when no classification model could be
+// consulted at all.
+const reasonNoModel = "no model is configured for the classification task class"
+
+// untrustedReason is the fail-closed gate between classification and
+// stage 1 (AI-06). It returns a non-empty reason when out must not be
+// matched -- confidence below the floor, any out-of-set action, an empty
+// action list, or evidence not found in planText -- plus, for the last
+// case, every action whose evidence is missing. An empty reason means
+// stage 1 may run.
+func untrustedReason(out ClassifiedOutput, planText string) (string, []MatchedAction) {
+	if out.Confidence < ClassifyConfidenceFloor {
+		return fmt.Sprintf("classifier confidence %.2f is below the %.2f floor", out.Confidence, ClassifyConfidenceFloor), nil
+	}
+	if out.Rejected > 0 {
+		return fmt.Sprintf("classifier reported %d action(s) outside the closed action set", out.Rejected), nil
+	}
+	if len(out.Actions) == 0 {
+		return "classifier reported no actions; an empty classification is not evidence the plan does nothing", nil
+	}
+	plan := normalizeWhitespace(planText)
+	var missing []MatchedAction
+	var named []string
+	for _, ma := range out.Actions {
+		ev := normalizeWhitespace(ma.Span.Text)
+		if ev != "" && strings.Contains(plan, ev) {
+			continue
+		}
+		missing = append(missing, ma)
+		if ev == "" {
+			named = append(named, fmt.Sprintf("%s (no evidence cited)", ma.Action.Action))
+		} else {
+			named = append(named, fmt.Sprintf("%s %q", ma.Action.Action, ma.Span.Text))
+		}
+	}
+	if len(missing) > 0 {
+		return "cited evidence not found in the plan text: " + strings.Join(named, ", "), missing
+	}
+	return "", nil
+}
+
+// normalizeWhitespace collapses every run of Unicode whitespace to one
+// ASCII space and trims the ends, so evidence quoted across a line break
+// or a doubled space still matches the plan text it was copied from.
+func normalizeWhitespace(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // classifyModelResponse mirrors the JSON shape buildClassifyPrompt
