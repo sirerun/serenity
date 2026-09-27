@@ -84,6 +84,13 @@ type Result struct {
 	// ledger id order.
 	Constraints []ConstraintVerdict
 
+	// Reason explains a StatusUnverified verdict: which fail-closed
+	// condition check_plan stage 2 hit (no model, confidence below the
+	// floor, an out-of-set or empty classification, or cited evidence
+	// absent from the plan text). Stage 1 never sets it; it is empty for
+	// every other Status.
+	Reason string
+
 	// ConsideredCount is the number of active constraint entries the
 	// matcher examined, whether or not any were applicable -- the count
 	// RFC 0001 §8.3 / ADR 010 attach to a no_applicable_constraints
