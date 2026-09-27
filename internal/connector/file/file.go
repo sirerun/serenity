@@ -370,7 +370,13 @@ func (c *Connector) handleEvent(ev fsnotify.Event) {
 	}
 	if info.IsDir() {
 		if ev.Op&fsnotify.Create != 0 {
-			_ = c.addTreeWatches(ev.Name) // best-effort: watch the new subtree too
+			// A subtree that vanished before it could be walked needs no watch;
+			// any other failure leaves it unwatched, so Poll must report it.
+			if err := c.addTreeWatches(ev.Name); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				c.mu.Lock()
+				c.watchErr = fmt.Errorf("watch %s: %w", rel, err)
+				c.mu.Unlock()
+			}
 		}
 		return
 	}

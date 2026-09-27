@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"os/exec"
 	"strings"
 	"testing"
@@ -328,5 +329,22 @@ func TestCheckCLI_NotABrainRepoErrors(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(string(out)), "brain repo") {
 		t.Fatalf("expected the error to mention 'brain repo', got:\n%s", out)
+	}
+}
+
+// errWriter fails every write, standing in for a closed stdout pipe.
+type errWriter struct{}
+
+func (errWriter) Write([]byte) (int, error) { return 0, errors.New("write: broken pipe") }
+
+// TestCheckJSONWriteFailureIsAnError pins T24.29: a pass verdict whose
+// --json output could not be written must not exit zero with no output.
+func TestCheckJSONWriteFailureIsAnError(t *testing.T) {
+	root := initBrainRepo(t)
+	seedConstraint(t, root, "cst-0001", "spend_over", "{amount: {gte: 200}}", checkTestWhyNot, checkTestRevisitIf)
+
+	err := runCheck(context.Background(), root, "", `[{"action":"spend_over","params":{"amount":100}}]`, true, errWriter{})
+	if err == nil || !strings.Contains(err.Error(), "broken pipe") {
+		t.Fatalf("runCheck --json with a failing writer: err = %v, want the write error", err)
 	}
 }

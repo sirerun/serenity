@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
+
 	"github.com/sirerun/serenity/internal/connector"
 	"github.com/sirerun/serenity/internal/connector/file"
 	"github.com/sirerun/serenity/internal/store"
@@ -280,5 +282,30 @@ func TestToSourceLeavesSHA256ForTheStoreToCompute(t *testing.T) {
 	}
 	if src.SHA256 != "" {
 		t.Fatalf("ToSource set SHA256 = %q, want empty (store's job)", src.SHA256)
+	}
+}
+
+// TestWatchNewSubdirFailureSurfacesFromPoll pins T24.29: when a newly
+// created subdirectory cannot be watched, Poll reports it instead of
+// silently never ingesting files dropped into that subtree.
+func TestWatchNewSubdirFailureSurfacesFromPoll(t *testing.T) {
+	root := t.TempDir()
+	c, err := file.New(root, file.WithClock(newFakeClock(time.Unix(0, 0))))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// Closing the watcher makes every further Add fail deterministically,
+	// standing in for an exhausted inotify watch limit.
+	if err := c.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	sub := filepath.Join(root, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c.HandleEventForTest(sub, fsnotify.Create)
+
+	if _, _, err := c.Poll(context.Background(), nil); err == nil {
+		t.Fatal("Poll after a failed subtree watch: err = nil, want the watch error")
 	}
 }
