@@ -4,8 +4,10 @@ on:
   push:
     tags: ["v*"]
 
+# Least privilege (deep review 001 SUP-02): every job gets a read-only token
+# unless it declares more. Only the publish job below may write.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   adversarial-gate:
@@ -33,6 +35,8 @@ jobs:
   goreleaser:
     needs: adversarial-gate
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub release and upload its assets
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,7 +46,9 @@ jobs:
           go-version-file: go.mod
       - uses: goreleaser/goreleaser-action@v6
         with:
-          version: "~> v2"
+          # Exact pin so a release tag always builds with the same goreleaser
+          # (deep review 001 SUP-01); bump deliberately, never float.
+          version: "v2.18.2"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
