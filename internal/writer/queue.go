@@ -10,6 +10,10 @@ package writer
 
 import (
 	"errors"
+	"fmt"
+	"reflect"
+	"runtime"
+	"runtime/debug"
 	"sort"
 	"sync"
 )
@@ -18,9 +22,58 @@ import (
 // I/O (e.g. FenceWriter.WriteEntity or ShardStore.Append) and returns the
 // bytes it landed, purely so callers and tests can observe the result --
 // the queue itself never touches Path directly.
+//
+// Kind is an optional label naming the write (e.g. "fence", "shard",
+// "memory-fact") for diagnostics only: it appears in the PanicError the
+// queue returns when Render panics. It never affects ordering. When it is
+// empty the queue falls back to Path, and then to Render's own symbol, so
+// an unlabelled job is still locatable from the error alone.
 type Job struct {
+	Kind   string
 	Path   string
 	Render func() ([]byte, error)
+}
+
+// kind is the diagnostic name used in a PanicError: Kind, else Path, else
+// the Render function's symbol (a closure inside the submitting function,
+// which names the entry point that built the job).
+func (j Job) kind() string {
+	if j.Kind != "" {
+		return j.Kind
+	}
+	if j.Path != "" {
+		return j.Path
+	}
+	if j.Render == nil {
+		return "unnamed"
+	}
+	if fn := runtime.FuncForPC(reflect.ValueOf(j.Render).Pointer()); fn != nil {
+		return fn.Name()
+	}
+	return "unnamed"
+}
+
+// PanicError is the error a job's submitter receives when its Render
+// panicked (CON-06). The drain goroutine recovers the panic so one bad
+// write can never terminate the process -- on hosted that is every tenant
+// at once -- and returns it here instead, carrying the job kind, the panic
+// value and the stack captured at the recover site. Unwrap exposes Value
+// when it is itself an error, so errors.Is/As keep working through it.
+type PanicError struct {
+	Kind  string
+	Value any
+	Stack []byte
+}
+
+func (e *PanicError) Error() string {
+	return fmt.Sprintf("writer: job %s panicked: %v", e.Kind, e.Value)
+}
+
+func (e *PanicError) Unwrap() error {
+	if err, ok := e.Value.(error); ok {
+		return err
+	}
+	return nil
 }
 
 // Result is delivered back to the submitter once a job has landed.
@@ -82,7 +135,7 @@ func (q *Queue) drain() {
 	defer q.wg.Done()
 	for s := range q.jobs {
 		q.runMu.Lock()
-		b, err := s.job.Render()
+		b, err := run(s.job)
 		res := Result{Job: s.job, Seq: s.seq, Bytes: b, Err: err}
 		if err == nil && s.job.Path != "" {
 			q.touchedMu.Lock()
@@ -95,6 +148,22 @@ func (q *Queue) drain() {
 		}
 		s.reply <- res
 	}
+}
+
+// run executes one job's Render on the drain goroutine, converting a panic
+// into a *PanicError so the goroutine -- and with it the process -- survives
+// and the queue moves on to the next job. It is a plain function rather
+// than inline in drain so the deferred recover scopes exactly one Render:
+// runMu, the touched set and the reply channel are all handled by drain
+// after this returns, on the normal path and the recovered path alike.
+func run(j Job) (b []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			b = nil
+			err = &PanicError{Kind: j.kind(), Value: r, Stack: debug.Stack()}
+		}
+	}()
+	return j.Render()
 }
 
 // Submit enqueues a job and blocks until it has landed. The per-path
