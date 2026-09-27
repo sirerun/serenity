@@ -263,6 +263,7 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 	q := writer.NewQueue(nil)
 	defer q.Close()
 	iw := ingest.New(q, store.NewFenceWriter(root), store.NewShardStore(root), cfg)
+	iw.Trust = ingest.StoreTrust(cfg, ss)
 
 	var written, skipped, distilled, rejected, indexOnlySkipped int
 	var ready, lowConfidence []domain.Observation
@@ -319,7 +320,7 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 	if err != nil {
 		return fmt.Errorf("extract: reconcile observations: %w", err)
 	}
-	stats, err := iw.Write(review.Ready)
+	stats, err := iw.WriteReviewed(review)
 	if err != nil {
 		return fmt.Errorf("extract: publish observation batch: %w", err)
 	}
@@ -333,9 +334,14 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 	if err != nil {
 		return fmt.Errorf("extract: canonical additions committed but review staging incomplete; rerun extraction: %w", err)
 	}
+	held, heldExisting, err := iw.StageCandidates(ctx, ds, review.Pending, reviewNow)
+	if err != nil {
+		return fmt.Errorf("extract: pending claims committed but inbox staging incomplete; rerun extraction: %w", err)
+	}
 	_, _ = fmt.Fprintf(out, "extraction: %d claim(s) written, %d skipped (already present), %d rejected, %d below distill threshold, %d source(s) skipped (index_only)\n",
 		written, skipped, rejected, distilled, indexOnlySkipped)
 	_, _ = fmt.Fprintf(out, "reconciliation: %d proposal(s) staged, %d existing reviews preserved, %d prior human decisions retained, %d pending distill reviews retained\n", staged, existing, review.PriorDecision, review.AwaitingDistill)
+	_, _ = fmt.Fprintf(out, "untrusted: %d first-seen claim(s) held pending (%d written), %d existing candidate(s) preserved, %d awaiting review; accept with serenity inbox\n", held, stats.Pending, heldExisting, review.AwaitingCandidate)
 	_, _ = fmt.Fprintf(out, "distill: %d observation(s) retained, %d existing reviews preserved; review with serenity inbox\n", lowStaged, lowExisting)
 	if committed {
 		_, _ = fmt.Fprintln(out, "committed new claims")

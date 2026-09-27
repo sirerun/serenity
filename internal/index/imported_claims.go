@@ -187,7 +187,13 @@ func RetrievalEligibility(root string, proj *store.MemoryProjection, remote, egr
 // ClaimDisclosureEligible applies audience/source policy to an already-canonical
 // claim. Callers must separately resolve lifecycle and current validity. This is
 // also used for directly composed claims, which do not pass through chunk search.
+//
+// A pending claim (an untrusted connector's first-seen claim awaiting a human
+// accept, ADR 022) is never eligible, locally or remotely.
 func ClaimDisclosureEligible(proj *store.MemoryProjection, claim domain.Claim, remote, egress bool, now time.Time) bool {
+	if claim.State == domain.StatePending {
+		return false
+	}
 	if remote || egress {
 		visibility := claim.Visibility
 		// Native legacy claims retain the existing single-principal shared

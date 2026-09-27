@@ -266,6 +266,9 @@ func Load(path string) (*Config, error) {
 	if _, err := c.Redact.Compile(); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
+	if err := validateConnectorTrust(&c); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
 	return &c, nil
 }
 

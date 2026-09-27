@@ -44,6 +44,10 @@ type Writer struct {
 	// EntityType resolves the fence-tier folder for a subject slug. Nil
 	// defaults every slug to DefaultEntityType.
 	EntityType func(subjectSlug string) string
+	// Trust classifies an observation's source by connector trust (ADR 022,
+	// T24.16). Nil treats every source as trusted, the behavior of every
+	// caller before T24.16; extraction always sets it (StoreTrust).
+	Trust func(sourceSHA256 string) SourceClass
 
 	// pages caches parsed entity pages by path for the duration of one
 	// Write call, so N observations against the same entity read the file
@@ -72,6 +76,9 @@ type Stats struct {
 	// at the target -- the source-level re-ingest no-op this task's acc
 	// line requires, not an error.
 	Skipped int
+	// Pending counts written claims held in state pending for a human
+	// accept (untrusted first-seen claims, T24.16); included in Written.
+	Pending int
 }
 
 // writeObservations runs the existing tier writers inside a private snapshot,
@@ -82,20 +89,21 @@ type Stats struct {
 // partial, silently-degraded ingestion is never reported as success. A
 // caller must route Result.Distill elsewhere; this package never writes a
 // sub-threshold observation to a fence or shard.
-func (w *Writer) writeObservations(obs []domain.Observation) (Stats, error) {
+// claims[i] is the claim written for obs[i] (see WriteReviewed).
+func (w *Writer) writeObservations(obs []domain.Observation, claims []domain.Claim) (Stats, error) {
 	var stats Stats
 	w.pages = map[string]*store.EntityPage{}
 	w.changedPages = map[string]bool{}
 	w.shardIDs = map[string]map[string]bool{}
 	defer func() { w.pages, w.changedPages, w.shardIDs = nil, nil, nil }()
 
-	for _, o := range obs {
+	for i, o := range obs {
 		if o.Confidence < extract.DistillThreshold {
 			return stats, fmt.Errorf("ingest: observation %s confidence %.2f below distill threshold %.2f -- pass only Result.Ready, never Result.Distill",
 				o.ID, o.Confidence, extract.DistillThreshold)
 		}
 
-		c := ClaimFromObservation(o)
+		c := claims[i]
 		tier := w.Config.TierOf(c.Family)
 
 		written, err := w.writeClaim(tier, c)
@@ -104,6 +112,9 @@ func (w *Writer) writeObservations(obs []domain.Observation) (Stats, error) {
 		}
 		if written {
 			stats.Written++
+			if c.State == domain.StatePending {
+				stats.Pending++
+			}
 		} else {
 			stats.Skipped++
 		}

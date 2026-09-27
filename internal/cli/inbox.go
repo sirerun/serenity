@@ -17,6 +17,7 @@ import (
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/disposition"
+	"github.com/sirerun/serenity/internal/ingest"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/reconcile"
 	"github.com/sirerun/serenity/internal/store"
@@ -185,6 +186,8 @@ type reconcilePublisher interface {
 	ApplyAndCommitReconcile(context.Context, *disposition.Store, disposition.Item, time.Time) (string, error)
 	PreviewDistillAssertion(context.Context, disposition.Item, string, string, time.Time) (supersede.DistillDecision, error)
 	ApplyAndCommitDistill(context.Context, *disposition.Store, disposition.Item, time.Time) (string, error)
+	PreviewClaimCandidate(context.Context, disposition.Item, string, time.Time) error
+	ApplyAndCommitClaimCandidate(context.Context, *disposition.Store, disposition.Item, time.Time) (string, error)
 }
 
 type inboxPublisher struct {
@@ -206,6 +209,18 @@ func (p *inboxPublisher) PreviewDistillAssertion(ctx context.Context, item dispo
 
 func (p *inboxPublisher) ApplyAndCommitDistill(ctx context.Context, ds *disposition.Store, item disposition.Item, now time.Time) (string, error) {
 	id, err := p.writer.ApplyAndCommitDistill(ctx, ds, item, now)
+	if err == nil && item.AppliedClaimID == "" {
+		p.published = true
+	}
+	return id, err
+}
+
+func (p *inboxPublisher) PreviewClaimCandidate(ctx context.Context, item disposition.Item, actor string, now time.Time) error {
+	return p.writer.PreviewClaimCandidate(ctx, item, actor, now)
+}
+
+func (p *inboxPublisher) ApplyAndCommitClaimCandidate(ctx context.Context, ds *disposition.Store, item disposition.Item, now time.Time) (string, error) {
+	id, err := p.writer.ApplyAndCommitClaimCandidate(ctx, ds, item, now)
 	if err == nil && item.AppliedClaimID == "" {
 		p.published = true
 	}
@@ -237,6 +252,9 @@ func applyInboxDecision(ctx context.Context, sw reconcilePublisher, dirStore *di
 	}
 	if item.Kind == disposition.KindDistill {
 		return sw.ApplyAndCommitDistill(ctx, ds, item, now)
+	}
+	if item.Kind == disposition.KindClaimCandidate {
+		return sw.ApplyAndCommitClaimCandidate(ctx, ds, item, now)
 	}
 	return sw.ApplyAndCommitReconcile(ctx, ds, item, now)
 }
@@ -271,6 +289,9 @@ func itemFamily(item disposition.Item) (string, bool) {
 	}
 	if observation, extracted, err := disposition.ExtractionObservation(item); err == nil && extracted {
 		return observation.Predicate, true
+	}
+	if candidate, ok, err := ingest.ClaimCandidate(item); err == nil && ok {
+		return candidate.Claim.Family, true
 	}
 	if item.Kind != disposition.KindReconcile {
 		return "", false
@@ -320,6 +341,13 @@ func itemSummary(item disposition.Item) string {
 			}
 			return fmt.Sprintf("%s %q", item.Kind, text)
 		}
+	case disposition.KindClaimCandidate:
+		p, _, err := ingest.ClaimCandidate(item)
+		if err != nil {
+			return "claim_candidate: malformed payload: " + err.Error()
+		}
+		return fmt.Sprintf("claim_candidate %s %s=%q confidence=%.2f actor=%s connector=%s trust=%s source=%s sha=%s span=%s model=%s; space: accept as your own (activates it), d: defer, r: reject",
+			p.Claim.SubjectSlug, p.Claim.Predicate, p.Claim.Object, p.Claim.Confidence, p.Claim.Provenance.Actor, p.Connector, p.Trust, p.SourceURI, p.Claim.Provenance.SourceSHA256, p.Claim.Provenance.Span, p.Claim.Provenance.Model)
 	case disposition.KindEntityMerge:
 		var p disposition.LexicalAliasPayload
 		if json.Unmarshal(item.Payload, &p) == nil && p.Origin == disposition.LexicalAliasOrigin {
@@ -524,6 +552,19 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 						dirty = true
 					}
 				}
+				held := false
+				for _, it := range row.Items {
+					if it.Kind != disposition.KindClaimCandidate {
+						continue
+					}
+					if err := sw.PreviewClaimCandidate(ctx, it, actor, now); err != nil {
+						_, _ = fmt.Fprintf(out, "inbox: claim candidate %s stays pending: %v\n", it.ID, err)
+						held = true
+					}
+				}
+				if held {
+					continue
+				}
 				if dirty {
 					if len(row.Items) != 1 {
 						return fmt.Errorf("inbox: review paused edits individually")
@@ -563,6 +604,12 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 						return fmt.Errorf("inbox: publication incomplete for %s: %w; retry with inbox --apply %s", it.ID, aerr, it.ID)
 					}
 					_, _ = fmt.Fprintf(out, "applied %s -> publication %s committed to brain repo\n", it.ID, id)
+				case verdict == disposition.VerdictAccept && res.Item.Verdict == disposition.VerdictAccept && it.Kind == disposition.KindClaimCandidate:
+					id, aerr := sw.ApplyAndCommitClaimCandidate(ctx, dispStore, res.Item, now)
+					if aerr != nil {
+						return fmt.Errorf("inbox: activation incomplete for %s: %w; retry with inbox --apply %s", it.ID, aerr, it.ID)
+					}
+					_, _ = fmt.Fprintf(out, "applied %s -> claim %s activated as %s and committed to brain repo\n", it.ID, id, actor)
 				case verdict == disposition.VerdictAccept && res.Item.Verdict == disposition.VerdictAccept && it.Kind == disposition.KindReconcile:
 					id, aerr := sw.ApplyAndCommitReconcile(ctx, dispStore, res.Item, now)
 					if aerr != nil {
@@ -721,7 +768,7 @@ func runListUnapplied(ctx context.Context, dispStore *disposition.Store, out io.
 		if err != nil {
 			return err
 		}
-		supported := item.Kind == disposition.KindCompact || item.Kind == disposition.KindPreceptDraft || item.Kind == disposition.KindDecompose || item.Kind == disposition.KindDirtyEdit || item.Kind == disposition.KindReconcile || (extracted && item.Verdict == disposition.VerdictEditAccept)
+		supported := item.Kind == disposition.KindCompact || item.Kind == disposition.KindPreceptDraft || item.Kind == disposition.KindDecompose || item.Kind == disposition.KindDirtyEdit || item.Kind == disposition.KindReconcile || item.Kind == disposition.KindClaimCandidate || (extracted && item.Verdict == disposition.VerdictEditAccept)
 		if !supported || item.State != disposition.StateDisposed || (item.Verdict != disposition.VerdictAccept && item.Verdict != disposition.VerdictEditAccept) || item.AppliedClaimID != "" || item.AppliedPublicationID != "" || item.AppliedEntryID != "" {
 			continue
 		}
