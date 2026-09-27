@@ -8,13 +8,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/kazi-org/dira/ledger"
 	"github.com/sirerun/serenity/internal/disposition"
+	"github.com/sirerun/serenity/internal/gitrun"
 	"github.com/sirerun/serenity/internal/writer"
 )
 
@@ -208,9 +208,7 @@ func (s *Store) preparePublication(ctx context.Context, item disposition.Item) (
 		return ledgerPublication{}, err
 	}
 	// Verify Git even for a first precept with no existing ledger dependencies.
-	cmd := exec.CommandContext(ctx, "git", "rev-parse", "--is-inside-work-tree")
-	cmd.Dir = s.root
-	output, err := cmd.Output()
+	output, err := gitrun.Brain(s.root).Output(ctx, "rev-parse", "--is-inside-work-tree")
 	if err != nil || strings.TrimSpace(string(output)) != "true" {
 		return ledgerPublication{}, fmt.Errorf("direction: publication requires a Git brain repository")
 	}
@@ -319,9 +317,7 @@ func (s *Store) preparePublication(ctx context.Context, item disposition.Item) (
 		if !bytes.Equal(current, before) {
 			return ledgerPublication{}, fmt.Errorf("direction: parent changed during publication planning")
 		}
-		cmd := exec.CommandContext(ctx, "git", "--literal-pathspecs", "status", "--porcelain", "--", filepath.Join(".dira", "entries", name))
-		cmd.Dir = s.root
-		status, err := cmd.Output()
+		status, err := gitrun.Brain(s.root).Output(ctx, "--literal-pathspecs", "status", "--porcelain", "--", filepath.Join(".dira", "entries", name))
 		if err != nil {
 			return ledgerPublication{}, err
 		}
