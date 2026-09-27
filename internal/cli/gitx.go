@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/sirerun/serenity/internal/gitrun"
 )
 
 // Small git helpers. The daemon-side writer queue and GitOps port arrive
@@ -17,15 +19,11 @@ func isGitRepo(root string) bool {
 }
 
 func gitInit(root string) error {
-	cmd := exec.Command("git", "init", "--quiet")
-	cmd.Dir = root
-	return cmd.Run()
+	return gitrun.Brain(root).Run(context.Background(), "init", "--quiet")
 }
 
 func gitRemotes(root string) []string {
-	cmd := exec.Command("git", "remote")
-	cmd.Dir = root
-	out, err := cmd.Output()
+	out, err := gitrun.Brain(root).Output(context.Background(), "remote")
 	if err != nil {
 		return nil
 	}
@@ -36,9 +34,7 @@ func gitRemotes(root string) []string {
 // gitUnpushed returns the number of commits ahead of upstream, or -1 when
 // there is no upstream to compare against.
 func gitUnpushed(root string) int {
-	cmd := exec.Command("git", "rev-list", "--count", "@{u}..HEAD")
-	cmd.Dir = root
-	out, err := cmd.Output()
+	out, err := gitrun.Brain(root).Output(context.Background(), "rev-list", "--count", "@{u}..HEAD")
 	if err != nil {
 		return -1
 	}
@@ -58,9 +54,7 @@ func gitUnpushed(root string) int {
 // including the first `push -u`. ok is false when there is no upstream
 // configured at all, i.e. this branch has never been pushed anywhere.
 func gitLastPushTime(root string) (t time.Time, ok bool) {
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
-	cmd.Dir = root
-	out, err := cmd.Output()
+	out, err := gitrun.Brain(root).Output(context.Background(), "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
 	if err != nil {
 		return time.Time{}, false
 	}
