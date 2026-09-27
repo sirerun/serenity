@@ -28,6 +28,27 @@ includes injected instructions in email, files, and repos, and the release
 gate asserts zero precept mutations and zero unauthorized effect proposals
 from adversarial sources.
 
+**Connector trust ([ADR 022](adr/022-untrusted-content-trust-boundary.md), T24.16).**
+Structured extraction still turns an instruction-free planted sentence ("Ava's
+balance is $0" in an email) into a well-formed claim, so text alone is not
+the boundary. Each connector has a trust class, `trusted` or `untrusted`,
+set by `connectors.<name>.trust` in `serenity.yml`. The defaults are `imap`
+and `git_repo` untrusted, `file` and `voice` trusted; a source kind no
+connector owns is untrusted, and an unknown `trust:` value fails config load.
+A first-seen, non-conflicting machine claim from an untrusted connector is
+written with `state: pending` and `actor: machine`, and waits in the inbox as a
+`claim_candidate` item. A pending claim is never a live head, never
+disclosure-eligible and never shown to the composer, so `ask` and MCP
+`synthesize` cannot cite it. Accepting the item activates the same claim with
+the accepting human as actor; rejecting or deferring leaves it pending. An
+untrusted claim that agrees with an existing live claim is corroboration and is
+written active; one that conflicts takes the unchanged reconciliation path.
+Every untrusted claim records `trust: untrusted` in its provenance, and every
+claim in the composer prompt ends with `[actor=... trust=...]`; `ask`
+citations carry the same two values. Tests:
+`internal/ingest/trust_test.go`, `internal/cli/claim_candidate_test.go`,
+`internal/compose/trust_markers_test.go`.
+
 ### Adversary 2: malicious or compromised MCP client
 
 An MCP client with access to `recall`/`synthesize` is a channel a compromised
