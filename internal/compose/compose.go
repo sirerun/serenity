@@ -43,7 +43,6 @@ package compose
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -383,17 +382,18 @@ func (e *queryEmbedding) Embed(ctx context.Context, query string) ([]float32, er
 func AllClaims(root string, cfg *config.Config) (map[string][]domain.Claim, error) {
 	out := map[string][]domain.Claim{}
 
-	pages, err := filepath.Glob(filepath.Join(root, "brain", "entities", "*", "*.md"))
+	// One unparsable page is quarantined (logged once, skipped) by the
+	// shared walk rather than aborting composition for the whole brain
+	// (deep review SEC-H03 blast radius); `serenity check` lists it.
+	pages, quarantined, err := index.WalkEntityPages(root, store.NewFenceWriter(root))
 	if err != nil {
-		return nil, fmt.Errorf("compose: glob entity pages: %w", err)
+		return nil, fmt.Errorf("compose: %w", err)
 	}
-	sort.Strings(pages)
-	fw := store.NewFenceWriter(root)
-	for _, path := range pages {
-		p, err := fw.ParseEntity(path)
-		if err != nil {
-			return nil, fmt.Errorf("compose: parse %s: %w", path, err)
-		}
+	for _, q := range quarantined {
+		q.Log()
+	}
+	for _, pp := range pages {
+		p := pp.Page
 		for _, cl := range p.Claims {
 			if cfg.TierOf(cl.Family) == domain.TierShard {
 				continue // the shard below is canonical for this family

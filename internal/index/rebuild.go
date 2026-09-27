@@ -2,7 +2,9 @@ package index
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -48,21 +50,20 @@ func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) e
 		return err
 	}
 
-	// Entity pages: entities, fence-tier claims, page chunks.
-	pages, err := filepath.Glob(filepath.Join(root, "brain", "entities", "*", "*.md"))
+	// Entity pages: entities, fence-tier claims, page chunks. A page that
+	// fails to parse is quarantined (logged once, skipped) rather than
+	// failing the whole rebuild -- one corrupt page must never take
+	// retrieval down for the entire brain (deep review SEC-H03 blast
+	// radius). `serenity check` lists the quarantined pages via AuditPages.
+	pages, quarantined, err := WalkEntityPages(root, store.NewFenceWriter(root))
 	if err != nil {
 		return err
 	}
-	sort.Strings(pages)
-	fw := store.NewFenceWriter(root)
-	for _, path := range pages {
-		p, err := fw.ParseEntity(path)
-		if err != nil {
-			return fmt.Errorf("rebuild %s: %w", path, err)
-		}
-		if p.Entity.Slug == "" {
-			return fmt.Errorf("rebuild %s: page has no slug", path)
-		}
+	for _, q := range quarantined {
+		q.Log()
+	}
+	for _, pp := range pages {
+		p := pp.Page
 		if err := eng.UpsertEntity(ctx, p.Entity); err != nil {
 			return err
 		}
@@ -199,6 +200,116 @@ func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) e
 		}
 	}
 	return nil
+}
+
+// QuarantinedPage is one entity page that a page walk skipped because it
+// could not be parsed into a usable page: its frontmatter failed to parse
+// (a duplicate YAML key, the SEC-H03 injection shape) or it carries no
+// slug. Rebuild, compose.AllClaims, the MCP entity tool and
+// `serenity check` all record the same shape, so one corrupt page is
+// reported once per walk and never aborts the walk.
+type QuarantinedPage struct {
+	// Path is the page's path exactly as the walker saw it: absolute from
+	// WalkEntityPages, root-relative from AuditPages.
+	Path string
+	Err  error
+}
+
+// Log records the quarantine once, with the path and the parse error,
+// through the process's default slog handler (stderr, never the MCP stdio
+// transport's stdout). The entry points that own a walk -- Rebuild,
+// compose.AllClaims and the MCP entity tool -- log; the per-request
+// eligibility helpers that re-walk the pages on every read do not, so one
+// corrupt page is reported once per sync or lookup, not once per query.
+func (q QuarantinedPage) Log() {
+	slog.Warn("quarantined unparsable entity page", "path", q.Path, "err", q.Err)
+}
+
+// ParsedPage is one successfully parsed entity page and the path it came
+// from.
+type ParsedPage struct {
+	Path string
+	Page *store.EntityPage
+}
+
+// WalkEntityPages parses every brain/entities/*/*.md under root in sorted
+// path order (the same deterministic order Rebuild has always used) and
+// returns the pages that parsed alongside the ones that did not. A page
+// whose frontmatter fails to parse, or that parses with an empty slug, is
+// quarantined and skipped; the walk continues. Only a failure to list the
+// pages at all is an error. The walk itself does not log: the caller
+// decides (QuarantinedPage.Log).
+//
+// Skipping is fail-closed for the skipped page: nothing from it reaches
+// the index, the canonical-claim projection, the summary-restriction set
+// or the page-chunk authority map, so a stale index row for that slug is
+// refused at read time exactly as a deleted page's would be.
+func WalkEntityPages(root string, fw *store.FenceWriter) ([]ParsedPage, []QuarantinedPage, error) {
+	paths, err := filepath.Glob(filepath.Join(root, "brain", "entities", "*", "*.md"))
+	if err != nil {
+		return nil, nil, fmt.Errorf("walk entity pages: %w", err)
+	}
+	sort.Strings(paths)
+	var (
+		pages       []ParsedPage
+		quarantined []QuarantinedPage
+	)
+	for _, path := range paths {
+		p, err := fw.ParseEntity(path)
+		if err == nil && p.Entity.Slug == "" {
+			err = errors.New("page has no slug")
+		}
+		if err != nil {
+			quarantined = append(quarantined, QuarantinedPage{Path: path, Err: err})
+			continue
+		}
+		pages = append(pages, ParsedPage{Path: path, Page: p})
+	}
+	return pages, quarantined, nil
+}
+
+// NonConformingSlug is one page that parsed but whose slug fails
+// domain.ValidSlug -- a pre-existing page the operator should rename
+// before slug validation is enforced on read.
+type NonConformingSlug struct {
+	// Path is root-relative.
+	Path string
+	Slug string
+}
+
+// PageAudit is what `serenity check` reports about the brain's entity
+// pages: every page quarantined by the walk and every parsable page whose
+// slug does not satisfy domain.ValidSlug. Paths are root-relative so the
+// report never carries an absolute directory.
+type PageAudit struct {
+	Quarantined        []QuarantinedPage
+	NonConformingSlugs []NonConformingSlug
+}
+
+// AuditPages walks the brain's entity pages exactly as Rebuild does and
+// returns the quarantine list plus every non-conforming slug. It reads
+// only; nothing is renamed or rewritten.
+func AuditPages(root string) (PageAudit, error) {
+	pages, quarantined, err := WalkEntityPages(root, store.NewFenceWriter(root))
+	if err != nil {
+		return PageAudit{}, err
+	}
+	rel := func(path string) string {
+		if r, err := filepath.Rel(root, path); err == nil {
+			return r
+		}
+		return path
+	}
+	var audit PageAudit
+	for _, q := range quarantined {
+		audit.Quarantined = append(audit.Quarantined, QuarantinedPage{Path: rel(q.Path), Err: q.Err})
+	}
+	for _, pp := range pages {
+		if slug := pp.Page.Entity.Slug; !domain.ValidSlug(slug) {
+			audit.NonConformingSlugs = append(audit.NonConformingSlugs, NonConformingSlug{Path: rel(pp.Path), Slug: slug})
+		}
+	}
+	return audit, nil
 }
 
 // DumpString renders the deterministic dump as a string (test helper and
@@ -445,16 +556,16 @@ func RestrictedSummaryEntities(root string, proj *store.MemoryProjection, now ti
 			restricted[rec.Payload.EntitySlug] = true
 		}
 	}
-	pages, err := filepath.Glob(filepath.Join(root, "brain", "entities", "*", "*.md"))
+	// An unparsable page is quarantined (skipped) here exactly as Rebuild
+	// skips it: nothing from it is indexed or served, which is the
+	// fail-closed outcome for that page, while the rest of the brain stays
+	// readable (deep review SEC-H03 blast radius).
+	pages, _, err := WalkEntityPages(root, store.NewFenceWriter(root))
 	if err != nil {
 		return nil, err
 	}
-	fw := store.NewFenceWriter(root)
-	for _, path := range pages {
-		page, err := fw.ParseEntity(path)
-		if err != nil {
-			return nil, err
-		}
+	for _, pp := range pages {
+		page := pp.Page
 		for _, cl := range page.Claims {
 			if cl.Visibility == domain.VisibilityPrivate || proj.SourceIndexOnly(cl.Provenance.SourceSHA256) || !store.MemoryEligible(proj, cl.Provenance.SourceSHA256, true, now) {
 				restricted[page.Entity.Slug] = true

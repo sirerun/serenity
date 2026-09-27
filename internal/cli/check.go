@@ -14,6 +14,7 @@ import (
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/direction/check"
+	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/router"
 )
 
@@ -31,6 +32,7 @@ func newCheckCmd() *cobra.Command {
 	var actionsJSON string
 	var jsonOut bool
 	var claudeHook bool
+	var pagesOnly bool
 	cmd := &cobra.Command{
 		Use:   "check [plan text]",
 		Short: "Check a plan against active precept constraints (DIRECTION v1 check_plan)",
@@ -39,16 +41,29 @@ func newCheckCmd() *cobra.Command {
 			"brain repo's ledger, plus open blocking questions.\n\n" +
 			"Exit codes (ADR 010): 0 for pass or no_applicable_constraints, 2 for\n" +
 			"violated, 1 for unverified or any other error.\n\n" +
+			"The text report ends with two warning-class sections about the brain's\n" +
+			"entity pages: `quarantined pages` (pages whose frontmatter cannot be\n" +
+			"parsed, skipped by sync, ask and the MCP entity tool) and\n" +
+			"`non-conforming slugs` (pages whose slug fails the canonical slug\n" +
+			"grammar; rename them before slug validation is enforced on read).\n" +
+			"Neither section moves the exit code. --pages prints only those two\n" +
+			"sections, with no plan verdict, and exits 0.\n\n" +
 			"--claude-hook reads a Claude Code PreToolUse hook envelope from stdin\n" +
 			"instead -- this is what `serenity connect claude` installs as Claude\n" +
 			"Code's pre-plan gate; a person runs the plan-text or --actions form.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if claudeHook {
-				if len(args) != 0 || actionsJSON != "" {
-					return claudeGateResult("", fmt.Errorf("--claude-hook is mutually exclusive with plan text and --actions"), cmd.ErrOrStderr())
+				if len(args) != 0 || actionsJSON != "" || pagesOnly {
+					return claudeGateResult("", fmt.Errorf("--claude-hook is mutually exclusive with plan text, --actions and --pages"), cmd.ErrOrStderr())
 				}
 				return runCheckClaudeHook(cmd.Context(), flagRoot, cmd.InOrStdin(), cmd.ErrOrStderr())
+			}
+			if pagesOnly {
+				if len(args) != 0 || actionsJSON != "" || jsonOut {
+					return fmt.Errorf("check: --pages is mutually exclusive with plan text, --actions and --json")
+				}
+				return runCheckPages(flagRoot, cmd.OutOrStdout())
 			}
 			var planText string
 			if len(args) == 1 {
@@ -62,7 +77,47 @@ func newCheckCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "machine-readable JSON output")
 	cmd.Flags().BoolVar(&claudeHook, "claude-hook", false,
 		"read a Claude Code PreToolUse hook JSON envelope from stdin (installed by `serenity connect claude`)")
+	cmd.Flags().BoolVar(&pagesOnly, "pages", false,
+		"print only the quarantined pages and non-conforming slugs sections (no plan verdict; exit 0)")
 	return cmd
+}
+
+// runCheckPages is `serenity check --pages`: the entity-page audit alone,
+// for an operator who wants to find and rename pages before slug
+// validation is enforced on read. Both sections are warning class (ADR
+// 010's warnings never move the exit code), so this always exits 0 when
+// the brain could be read at all; only a failure to list the pages is an
+// error.
+func runCheckPages(root string, out io.Writer) error {
+	if _, err := config.Load(filepath.Join(root, config.FileName)); err != nil {
+		return fmt.Errorf("not a brain repo (run `serenity init`?): %w", err)
+	}
+	if err := writePageAudit(out, root); err != nil {
+		return fmt.Errorf("check: %w", err)
+	}
+	return nil
+}
+
+// writePageAudit prints the two warning-class page sections that close
+// every text-mode check report. Every path is root-relative (index.
+// AuditPages' contract) and every parse error is collapsed to one line,
+// so each entry is one greppable line under its section header. The
+// counts are printed even when zero so an operator can tell the audit
+// ran.
+func writePageAudit(out io.Writer, root string) error {
+	audit, err := index.AuditPages(root)
+	if err != nil {
+		return fmt.Errorf("page audit: %w", err)
+	}
+	_, _ = fmt.Fprintf(out, "quarantined pages: %d\n", len(audit.Quarantined))
+	for _, q := range audit.Quarantined {
+		_, _ = fmt.Fprintf(out, "  %s: %s\n", q.Path, strings.Join(strings.Fields(q.Err.Error()), " "))
+	}
+	_, _ = fmt.Fprintf(out, "non-conforming slugs: %d\n", len(audit.NonConformingSlugs))
+	for _, n := range audit.NonConformingSlugs {
+		_, _ = fmt.Fprintf(out, "  %s: slug %q\n", n.Path, n.Slug)
+	}
+	return nil
 }
 
 // runCheckClaudeHook adapts the ordinary check verdict to Claude Code's
@@ -199,6 +254,14 @@ func runCheck(ctx context.Context, root, planText, actionsJSON string, jsonOut b
 		writeCheckJSON(out, result, matchedActions, confidence, haveConfidence)
 	} else {
 		writeCheckText(out, result, matchedActions, confidence, haveConfidence)
+		// The page audit is warning class (ADR 010): printed after the
+		// verdict, never part of the --json wire shape check.ToWire shares
+		// with the DIRECTION check_plan endpoint, and never a factor in
+		// the exit code below. A failure to read the pages at all is the
+		// same exit-1 class as a ledger read failure.
+		if err := writePageAudit(out, root); err != nil {
+			return fmt.Errorf("check: %w", err)
+		}
 	}
 
 	switch result.Status {

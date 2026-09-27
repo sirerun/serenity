@@ -62,7 +62,11 @@ func canonicalClaimProjection(slug string, c domain.Claim) (string, canonicalCla
 // Lifecycle and replacement are resolved before visibility, so a private
 // successor never resurrects a public predecessor. Index rows confer no authority.
 func canonicalClaims(root string, now time.Time, cfg *config.Config) (map[string]canonicalClaimRecord, error) {
-	paths, err := filepath.Glob(filepath.Join(root, "brain", "entities", "*", "*.md"))
+	// An unparsable page is quarantined (skipped), never a whole-brain
+	// failure: its claims then have no canonical record, so any stale
+	// index row for them is refused at read time (fail closed for that
+	// page only). Identity mismatches below stay hard errors.
+	pages, _, err := WalkEntityPages(root, store.NewFenceWriter(root))
 	if err != nil {
 		return nil, err
 	}
@@ -87,13 +91,9 @@ func canonicalClaims(root string, now time.Time, cfg *config.Config) (map[string
 		result[ref] = rec
 		return nil
 	}
-	fw := store.NewFenceWriter(root)
 	subjects := map[string]bool{}
-	for _, path := range paths {
-		page, err := fw.ParseEntity(path)
-		if err != nil {
-			return nil, fmt.Errorf("canonical claim policy: %w", err)
-		}
+	for _, pp := range pages {
+		path, page := pp.Path, pp.Page
 		slug := page.Entity.Slug
 		if slug != strings.TrimSuffix(filepath.Base(path), ".md") || subjects[slug] {
 			return nil, fmt.Errorf("canonical claim policy: ambiguous or mismatched entity identity")
