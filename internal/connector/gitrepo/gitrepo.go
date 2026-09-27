@@ -36,7 +36,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"sort"
@@ -47,6 +46,7 @@ import (
 	"github.com/kazi-org/dira/ledger"
 	"github.com/sirerun/serenity/internal/connector"
 	"github.com/sirerun/serenity/internal/domain"
+	"github.com/sirerun/serenity/internal/gitrun"
 )
 
 // KindGitRepo is the domain.Source.Kind value every item this connector
@@ -447,8 +447,10 @@ func (c *Connector) listFiles(ctx context.Context, dir string) ([]string, error)
 
 // git runs one git subcommand rooted at dir and returns its stdout.
 func (c *Connector) git(ctx context.Context, dir string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Dir = dir
+	cmd, err := gitrun.Foreign(dir).Command(ctx, args...)
+	if err != nil {
+		return "", err
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
