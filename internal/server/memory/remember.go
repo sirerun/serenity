@@ -131,7 +131,7 @@ func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, boo
 		ValidUntil:   validUntil,
 	}, now)
 	if errors.Is(err, writer.ErrMemoryOperationCanceled) {
-		return verbError(ErrCodeOperationCanceled, "remember: operation was canceled before creation", "do not retry a withdrawn operation with another key"), true, nil
+		return verbError(ErrCodeOperationCanceled, "remember: operation was canceled, or its fact was forgotten", "do not retry a withdrawn operation with another key"), true, nil
 	}
 	if errors.Is(err, writer.ErrMemoryOperationConflict) {
 		return verbError(ErrCodeOperationConflict, "remember: operation_key already has different input", "retry the original payload; use a new key only for a genuinely new operation"), true, nil

@@ -287,7 +287,11 @@ func (d Deps) now() time.Time {
 }
 
 func (d Deps) memoryWriter() *writer.MemoryFact {
-	return &writer.MemoryFact{Queue: d.Queue, Sources: d.Sources}
+	mw := &writer.MemoryFact{Queue: d.Queue, Sources: d.Sources}
+	if d.Index != nil {
+		mw.Index = d.Index
+	}
+	return mw
 }
 
 // Handlers implements MEMORY_VERBS v1's five verbs over Deps.

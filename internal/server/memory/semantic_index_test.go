@@ -67,8 +67,9 @@ func TestRememberSemanticReadinessAndRetry(t *testing.T) {
 	if _, bad, err := h.forget(context.Background(), mustMarshal(t, map[string]string{"id": first.ID})); err != nil || bad {
 		t.Fatal("forget failed")
 	}
-	withdrawn := remember()
-	if withdrawn.SearchState != "not_eligible" || !withdrawn.Expired || e.count() != 1 {
+	// ADR 019: the forgotten fact is erased and its key fenced.
+	v, bad, err := h.remember(context.Background(), mustMarshal(t, request))
+	if err != nil || !bad || asVerbError(t, v, bad).Error != ErrCodeOperationCanceled || e.count() != 1 {
 		t.Fatal("withdrawn retry re-entered embedding")
 	}
 }
@@ -176,8 +177,7 @@ func TestRememberEmbeddingSerializesWithdrawal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rec, ok := projection.Get(records[0].SHA256)
-	if !ok || !rec.Expired(testNow) {
+	if _, erased := projection.ErasedExpiry(records[0].SHA256); !erased {
 		t.Fatal("withdrawal was not durable")
 	}
 }

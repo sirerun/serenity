@@ -184,6 +184,13 @@ retrieval or a completion. Malformed requests are answered as
 Expire one fact by its opaque id. Idempotent — re-forgetting an
 already-expired fact succeeds with `expired: false`.
 
+Serenity erases a forgotten fact (ADR 019): its text leaves the working tree
+and the search index in the same flush that records the expiry, and the
+expiry audit record carries only the target id and reason. After erasure the
+opaque id still re-forgets with `expired: false`, the legacy numeric id no
+longer resolves (`not_found`), and a `remember` retry under the fact's
+`operation_key` returns `operation_canceled` instead of the expired record.
+
 **Request** — [`memory_verbs_forget_request.schema.json`](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_verbs_forget_request.schema.json)
 
 | Field | Type | Required | Notes |
@@ -295,13 +302,15 @@ fact. Repeat cancellation is idempotent. An existing private fact returns
 scope_denied and is unchanged. Canonical failure is not successful cancellation.
 
 A subsequent remember cannot create an absent canceled key: operation_canceled
-is returned. If a matching fact existed, exact replay recovers its expired ID;
+is returned. `forget` of a keyed fact writes the same fence, so its erased
+text cannot be recreated by replay. If a matching fact existed, exact replay recovers its expired ID;
 changed payloads still return operation_conflict. Cancellation is not secure
 physical erasure and cannot be bypassed by retrying the same publication under
 a different key. The source projection also applies fences to later merged facts.
 
-Storage uses memory_expiry format v2 for key cancellation. Old binaries fail
-closed on that version; ordinary fact-ID expiry retains format v1. Do not roll
+Storage uses memory_expiry format v2 for key cancellation, including the
+fence `forget` writes for a keyed fact. Old binaries fail closed on that
+version; ordinary fact-ID expiry retains format v1. Do not roll
 back a brain containing cancellations to an incompatible reader/writer.
 
 Schemas: [request](https://github.com/sirerun/serenity/docs/protocol/schemas/memory_extensions_cancel_operation_request.schema.json)

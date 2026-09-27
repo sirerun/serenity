@@ -170,7 +170,7 @@ func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) e
 	// time, never by omission from the index.
 	for _, src := range sources {
 		switch src.Kind {
-		case store.SourceKindMemoryExpiry:
+		case store.SourceKindMemoryExpiry, store.SourceKindTombstone:
 			continue
 		case store.SourceKindMemoryFact:
 			rec, ok := memProj.Get(src.SHA256)
@@ -604,6 +604,20 @@ func RecoverMemorySearch(ctx context.Context, root string, eng *SQLite, embeddin
 	if err != nil {
 		return err
 	}
+	// Expired facts and facts whose bytes forget removed lose their FTS and
+	// vector rows here, the same outcome Rebuild's reset gives them.
+	for ref := range existing {
+		sha, ok := strings.CutPrefix(ref, "fact:")
+		if !ok {
+			continue
+		}
+		if fact, found := projection.Get(sha); found && !fact.Expired(time.Now()) {
+			continue
+		}
+		if err := eng.PurgeSource(ctx, sha); err != nil {
+			return err
+		}
+	}
 	for _, fact := range projection.All() {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -651,4 +665,29 @@ func RecoverMemorySearch(ctx context.Context, root string, eng *SQLite, embeddin
 		}
 	}
 	return nil
+}
+
+// PurgeSource deletes every FTS and vector row derived directly from one
+// source's bytes -- its memory fact chunk ("fact:<sha>") and its raw source
+// chunks ("src:<sha>:<span>") -- in one transaction. Forget and source
+// tombstone call it from inside the writer queue so the rows go in the same
+// flush that removes the bytes (ADR 019). Claim-derived chunks that merely
+// cite the source are left to the retraction path and the next rebuild.
+func (s *SQLite) PurgeSource(ctx context.Context, sha string) error {
+	if !store.ValidSourceSHA(sha) {
+		return fmt.Errorf("index: purge: invalid source SHA")
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	fact, prefix := "fact:"+sha, "src:"+sha+":"
+	for _, table := range []string{"chunks", "vectors"} {
+		q := fmt.Sprintf("DELETE FROM %s WHERE chunk_ref = ? OR substr(chunk_ref, 1, ?) = ?", table)
+		if _, err := tx.ExecContext(ctx, q, fact, len(prefix), prefix); err != nil {
+			return fmt.Errorf("index: purge %s: %w", table, err)
+		}
+	}
+	return tx.Commit()
 }

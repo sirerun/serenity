@@ -1,8 +1,10 @@
 package store
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -66,11 +68,19 @@ func (s *SourceStore) metaPath(sha string) string  { return filepath.Join(s.DirF
 
 func reservedMemoryKind(kind string) bool { return strings.HasPrefix(strings.ToLower(kind), "memory_") }
 
+// reservedSourceKind covers every lifecycle kind only typed entry points write.
+func reservedSourceKind(kind string) bool {
+	return reservedMemoryKind(kind) || strings.EqualFold(kind, SourceKindTombstone)
+}
+
 // Write publishes ordinary imported material. Memory lifecycle kinds are reserved
 // for the typed entry points: importing JSON never grants expiry semantics.
 func (s *SourceStore) Write(data []byte, src domain.Source) (domain.Source, error) {
 	if reservedMemoryKind(src.Kind) {
 		return domain.Source{}, fmt.Errorf("store: reserved source kind %q requires a typed memory write", src.Kind)
+	}
+	if src.Kind == SourceKindTombstone {
+		return domain.Source{}, fmt.Errorf("store: reserved source kind %q is written only by TombstoneAt", src.Kind)
 	}
 	return s.writeSource(data, src)
 }
@@ -360,6 +370,15 @@ func validateSourcePayload(data []byte, src domain.Source) error {
 	if strings.TrimSpace(src.Kind) == "" {
 		return fmt.Errorf("store: source kind is required")
 	}
+	if src.Kind == SourceKindTombstone {
+		if _, err := decodeSourceTombstone(data); err != nil {
+			return err
+		}
+		if src.URI != SourceTombstoneURI || src.IndexOnly {
+			return fmt.Errorf("store: source tombstone metadata disagrees with payload")
+		}
+		return nil
+	}
 	if !reservedMemoryKind(src.Kind) {
 		return nil
 	}
@@ -450,19 +469,162 @@ func parseOccurredAt(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339Nano, s)
 }
 
-// Tombstone returns every claim, across every entity's shard families,
-// whose provenance cites sha — the read side of §7.4's "deleting a source
-// is a tombstone operation that cascades retraction proposals to its
-// claims." T1.2 ships only this citing-claim lookup (the task's
-// "tombstone stub"); turning the result into retraction proposals through
-// the writer/disposition path is later work.
-//
-// Fence-tier claims render provenance down to a short human-readable
-// SourceRef cell (§7.2's table has no sha256 column), so a parsed entity
-// page cannot answer "does this cite sha" — only shard-tier claims persist
-// full Provenance JSON on disk. This scans shards; fence-page citation
-// lookup needs fence rendering to carry provenance first.
+// SourceKindTombstone is the audit event a source tombstone leaves behind
+// once the source's bytes and meta.yaml are removed (ADR 019, PRIV-01). Its
+// bytes name only the target SHA-256, never the source's content or URI,
+// and are deterministic per target so a retried tombstone reuses the same
+// event instead of writing a second one. The tombstone time lives in the
+// event's own meta.yaml occurred_at.
+const SourceKindTombstone = "source_tombstone"
+
+// SourceTombstoneURI is every tombstone event's fixed meta.yaml uri.
+const SourceTombstoneURI = "tombstone://source"
+
+// SourceTombstonePayload is the canonical JSON body of a tombstone event.
+type SourceTombstonePayload struct {
+	FormatVersion int    `json:"format_version"`
+	RecordType    string `json:"record_type"`
+	TargetSHA256  string `json:"target_sha256"`
+}
+
+// EncodeSourceTombstone renders the deterministic event bytes for target.
+func EncodeSourceTombstone(target string) ([]byte, error) {
+	if !ValidSourceSHA(target) {
+		return nil, fmt.Errorf("store: invalid tombstone target %q", target)
+	}
+	return json.Marshal(SourceTombstonePayload{FormatVersion: 1, RecordType: SourceKindTombstone, TargetSHA256: target})
+}
+
+func decodeSourceTombstone(data []byte) (SourceTombstonePayload, error) {
+	var p SourceTombstonePayload
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&p); err != nil {
+		return SourceTombstonePayload{}, fmt.Errorf("store: corrupt source tombstone: %w", err)
+	}
+	if p.FormatVersion != 1 || p.RecordType != SourceKindTombstone || !ValidSourceSHA(p.TargetSHA256) {
+		return SourceTombstonePayload{}, fmt.Errorf("store: invalid source tombstone")
+	}
+	canonical, err := EncodeSourceTombstone(p.TargetSHA256)
+	if err != nil || !bytes.Equal(canonical, data) {
+		return SourceTombstonePayload{}, fmt.Errorf("store: non-canonical source tombstone")
+	}
+	return p, nil
+}
+
+// TombstoneResult reports what TombstoneAt did: the audit event it wrote
+// (or found from an earlier attempt), the exact file paths it removed from
+// the working tree -- the writer marks both as touched so the next flush
+// commits the deletion and the event together -- and every shard claim
+// whose provenance cites the source.
+type TombstoneResult struct {
+	Event   domain.Source
+	Removed []string
+	Citing  []domain.Claim
+}
+
+// ErrSourceNotFound means no source and no earlier tombstone exist for a SHA.
+var ErrSourceNotFound = errors.New("store: no source with this SHA")
+
+// Tombstone is TombstoneAt at the current time, returning only the citing
+// claims (§7.4's "deleting a source is a tombstone operation that cascades
+// retraction proposals to its claims").
 func (s *SourceStore) Tombstone(sha string, ss *ShardStore) ([]domain.Claim, error) {
+	res, err := s.TombstoneAt(sha, ss, time.Now())
+	return res.Citing, err
+}
+
+// TombstoneAt deletes an ordinary source: it records a SourceKindTombstone
+// event, then removes the source's bytes and meta.yaml from the working
+// tree (ADR 019). Memory facts are erased through writer.MemoryFact.Forget
+// instead, which keeps their expiry event. Idempotent: a source that is
+// already gone but has its tombstone event returns that event again, so a
+// retry after a failed flush re-stages the same deletion. Call through the
+// writer queue so the removal and the event land in one flush.
+//
+// Citing claims come from shards only: fence-tier claims render provenance
+// down to a short SourceRef cell (§7.2's table has no sha256 column), so a
+// parsed entity page cannot answer "does this cite sha". Turning the result
+// into retraction proposals is the disposition path's work.
+func (s *SourceStore) TombstoneAt(sha string, ss *ShardStore, now time.Time) (TombstoneResult, error) {
+	if !ValidSourceSHA(sha) {
+		return TombstoneResult{}, fmt.Errorf("store: invalid source SHA %q", sha)
+	}
+	event, err := EncodeSourceTombstone(sha)
+	if err != nil {
+		return TombstoneResult{}, err
+	}
+	digest := sha256.Sum256(event)
+	eventSHA := hex.EncodeToString(digest[:])
+	var res TombstoneResult
+	src, err := s.readMeta(sha)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		_, prior, readErr := s.Read(eventSHA)
+		if readErr != nil {
+			if errors.Is(readErr, fs.ErrNotExist) {
+				return TombstoneResult{}, ErrSourceNotFound
+			}
+			return TombstoneResult{}, readErr
+		}
+		res.Event = prior
+	case err != nil:
+		return TombstoneResult{}, err
+	case reservedSourceKind(src.Kind):
+		return TombstoneResult{}, fmt.Errorf("store: source kind %q cannot be tombstoned; memory facts are erased by forget", src.Kind)
+	default:
+		res.Event, err = s.writeSource(event, domain.Source{Kind: SourceKindTombstone, URI: SourceTombstoneURI, OccurredAt: now})
+		if err != nil {
+			return TombstoneResult{}, fmt.Errorf("store: record tombstone: %w", err)
+		}
+	}
+	if res.Removed, err = s.RemoveSource(sha); err != nil {
+		return res, err
+	}
+	if ss != nil {
+		if res.Citing, err = citingClaims(sha, ss); err != nil {
+			return res, err
+		}
+	}
+	return res, nil
+}
+
+// RemoveSource deletes one source's bytes and meta.yaml and then its
+// directory, returning both file paths whether or not they were still
+// present so a caller can stage their deletion. A missing directory is a
+// no-op. A directory holding anything else is left in place with an error
+// rather than deleting files the store never wrote.
+func (s *SourceStore) RemoveSource(sha string) ([]string, error) {
+	if err := s.sourceParents(sha, false); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return []string{s.bytesPath(sha), s.metaPath(sha)}, nil
+		}
+		return nil, err
+	}
+	dir := s.DirFor(sha)
+	removed := []string{s.bytesPath(sha), s.metaPath(sha)}
+	info, err := os.Lstat(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return removed, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("store: invalid source directory")
+	}
+	for _, path := range removed {
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+	}
+	if err := os.Remove(dir); err != nil {
+		return removed, fmt.Errorf("store: remove source directory: %w", err)
+	}
+	return removed, syncSourceDirectory(filepath.Dir(dir))
+}
+
+func citingClaims(sha string, ss *ShardStore) ([]domain.Claim, error) {
 	slugs, err := ss.Slugs()
 	if err != nil {
 		return nil, err

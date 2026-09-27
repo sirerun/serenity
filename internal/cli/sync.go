@@ -268,7 +268,7 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 	var written, skipped, distilled, rejected, indexOnlySkipped int
 	var ready, lowConfidence []domain.Observation
 	for _, src := range sources {
-		if src.Kind == store.SourceKindMemoryFact || src.Kind == store.SourceKindMemoryExpiry {
+		if src.Kind == store.SourceKindMemoryFact || src.Kind == store.SourceKindMemoryExpiry || src.Kind == store.SourceKindTombstone {
 			continue
 		}
 		if src.IndexOnly {

@@ -3,6 +3,8 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os/exec"
 	"strings"
 	"testing"
@@ -106,9 +108,12 @@ func TestMemoryV1DurableRoundTrip(t *testing.T) {
 	if after["total"] != float64(0) {
 		t.Fatalf("forgotten fact resurrected: %v", after)
 	}
-	rawAfter, _, err := third.deps.Sources.Read(id)
-	if err != nil || string(rawAfter) != string(rawBefore) {
-		t.Fatalf("audit source changed: %v", err)
+	// ADR 019: forget erases the fact's bytes; the expiry event is the audit.
+	if _, _, err := third.deps.Sources.Read(id); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("forgotten fact bytes survived: %v", err)
+	}
+	if len(rawBefore) == 0 {
+		t.Fatal("fixture read no canonical bytes before forget")
 	}
 	fresh := acceptanceCall(t, third, "remember", request)
 	if fresh["id"] == id || fresh["status"] != "inserted" {

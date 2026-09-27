@@ -27,16 +27,17 @@ func TestMemoryOperationRecoverySurvivesWithdrawalAndRestart(t *testing.T) {
 	q = NewQueue(nil)
 	defer q.Close()
 	w.Queue = q
-	recovered, err := w.Remember(input, now.Add(2*time.Hour))
-	if err != nil {
-		t.Fatal(err)
+	// Forget erased the fact (ADR 019) and fenced its key: a retry, with the
+	// same or a changed payload, is refused and never writes the text back.
+	if _, err := w.Remember(input, now.Add(2*time.Hour)); !errors.Is(err, ErrMemoryOperationCanceled) {
+		t.Fatalf("retry after withdrawal: %v", err)
 	}
-	if recovered.Inserted || recovered.Record.SHA256 != first.Record.SHA256 || !recovered.Record.Expired(now) {
-		t.Fatal("retry revived or changed withdrawn fact")
+	if _, _, err := sources.Read(first.Record.SHA256); err == nil {
+		t.Fatal("retry revived withdrawn fact")
 	}
 	changed := input
 	changed.Fact = "different claim"
-	if _, err := w.Remember(changed, now); !errors.Is(err, ErrMemoryOperationConflict) {
+	if _, err := w.Remember(changed, now); !errors.Is(err, ErrMemoryOperationCanceled) {
 		t.Fatalf("changed payload: %v", err)
 	}
 	changed = input
@@ -49,7 +50,7 @@ func TestMemoryOperationRecoverySurvivesWithdrawalAndRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(projection.All()) != 2 {
+	if len(projection.All()) != 1 {
 		t.Fatal("unexpected canonical fact count")
 	}
 }

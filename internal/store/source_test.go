@@ -208,7 +208,11 @@ func TestTombstoneEmptyForUncitedSha(t *testing.T) {
 	}
 
 	s := NewSourceStore(root)
-	got, err := s.Tombstone("bbbb2222-never-cited", ss)
+	uncited, err := s.Write([]byte("never cited"), domain.Source{Kind: "note", URI: "test://uncited"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Tombstone(uncited.SHA256, ss)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +227,12 @@ func TestTombstoneEmptyForUncitedSha(t *testing.T) {
 func TestTombstoneFindsCitingClaims(t *testing.T) {
 	root := t.TempDir()
 	ss := NewShardStore(root)
-	const sha = "c0ffee00"
+	s := NewSourceStore(root)
+	cited, err := s.Write([]byte("cited source"), domain.Source{Kind: "note", URI: "test://cited"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sha := cited.SHA256
 
 	claims := []domain.Claim{
 		{
@@ -248,7 +257,6 @@ func TestTombstoneFindsCitingClaims(t *testing.T) {
 		}
 	}
 
-	s := NewSourceStore(root)
 	got, err := s.Tombstone(sha, ss)
 	if err != nil {
 		t.Fatal(err)

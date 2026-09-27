@@ -40,7 +40,8 @@ func (h *Handlers) forgetTool() mcp.Tool {
 	}
 }
 
-// forget records an immutable expiry event for an accessible public fact.
+// forget erases an accessible public fact: it records an immutable expiry
+// event and removes the fact's bytes and index rows (ADR 019).
 func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool, error) {
 	var req forgetRequest
 	if err := json.Unmarshal(args, &req); err != nil {
@@ -58,6 +59,22 @@ func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool,
 	}
 	sha, ok := writer.ByLegacyOrOpaqueID(proj, id)
 	if !ok {
+		// Forget removed this fact's bytes (ADR 019); only its expiry
+		// event remains, so re-forgetting it is the idempotent success.
+		// Forget removed this fact's bytes (ADR 019); only its expiry event
+		// remains. The writer finishes any partial erasure and reports the
+		// idempotent Expired=false.
+		if _, erased := proj.ErasedExpiry(id); erased {
+			result, err := h.deps.memoryWriter().Forget(id, req.Reason, now)
+			if err != nil {
+				return nil, false, fmt.Errorf("forget: %w", err)
+			}
+			resp := forgetResponse{ProtocolVersion: ProtocolVersion, ID: id, Expired: result.Expired}
+			if req.Reason != "" {
+				resp.Reason = &req.Reason
+			}
+			return resp, false, nil
+		}
 		return verbError(ErrCodeNotFound, fmt.Sprintf("no fact with id %q", id), "ids come from remember/recall (facts[].fact_id). recall the entity first to find the right fact"), true, nil
 	}
 

@@ -1,6 +1,7 @@
 package writer
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -28,6 +29,15 @@ import (
 type MemoryFact struct {
 	Queue   *Queue
 	Sources *store.SourceStore
+	// Index, when set, loses a forgotten fact's FTS and vector rows inside
+	// the same queue job that removes its bytes (ADR 019).
+	Index IndexPurger
+}
+
+// IndexPurger deletes the derived index rows of one source SHA-256.
+// *index.SQLite implements it; the writer never imports the index.
+type IndexPurger interface {
+	PurgeSource(ctx context.Context, sha string) error
 }
 
 // ErrMemoryFactNotFound is ForgetMemoryFact's own not_found signal: no
@@ -158,12 +168,18 @@ type ForgetResult struct {
 	Expired bool                   // true = this call expired it; false = it already was
 }
 
-// Forget expires the memory_fact source named by targetSHA256 through a
-// canonical, audit-preserving memory_expiry source (never edits or deletes
-// the original -- mapping: "Existing immutable fact is never edited/
-// deleted"). Idempotent by construction: a target already expired (by a
-// prior forget, or its own TTL having passed) writes nothing and returns
-// Expired=false; an unknown target returns ErrMemoryFactNotFound.
+// Forget erases the memory_fact source named by targetSHA256 (ADR 019): it
+// writes a memory_expiry source as the audit record (target SHA-256 and
+// reason only, never the fact text), deletes the fact's FTS and vector rows
+// through Index, and removes the fact's bytes and meta.yaml, all in one
+// queue job so the next Flush commits the deletion and the event together.
+// A fact carrying an operation key also gets a cancellation fence, so a
+// retried remember under that key can never write the text back.
+// Idempotent: a target already expired (by a prior forget, or its own TTL
+// having passed) writes no new expiry, finishes any erasure a failed
+// attempt left behind, and returns Expired=false; so does a target whose
+// erasure already completed. An unknown target returns
+// ErrMemoryFactNotFound.
 func (w *MemoryFact) Forget(targetSHA256, reason string, now time.Time) (ForgetResult, error) {
 	if w.Queue == nil || w.Sources == nil {
 		return ForgetResult{}, fmt.Errorf("writer: memory writer dependencies unavailable")
@@ -189,15 +205,21 @@ func (w *MemoryFact) forgetLocked(targetSHA256, reason string, now time.Time) (F
 	}
 	rec, ok := proj.Get(targetSHA256)
 	if !ok {
-		return ForgetResult{}, ErrMemoryFactNotFound
-	}
-	if rec.Expired(now) {
-		w.markSource(rec.SHA256)
-		if rec.ExpirySHA256 != "" {
-			w.markSource(rec.ExpirySHA256)
+		expiry, erased := proj.ErasedExpiry(targetSHA256)
+		if !erased {
+			return ForgetResult{}, ErrMemoryFactNotFound
 		}
-		return ForgetResult{Record: rec, Expired: false}, nil
+		rec = store.MemoryFactRecord{SHA256: targetSHA256, ExpirySHA256: expiry}
+		w.markSource(expiry)
+		return ForgetResult{Record: rec, Expired: false}, w.eraseFact(targetSHA256, "", proj, now)
 	}
+	if rec.ExpirySHA256 != "" {
+		w.markSource(rec.ExpirySHA256)
+		return ForgetResult{Record: rec, Expired: false}, w.eraseFact(rec.SHA256, rec.Payload.OperationKey, proj, now)
+	}
+	// A fact past its own TTL is already unavailable, but erasing it still
+	// needs the expiry event as its audit record and idempotency trace.
+	ttlExpired := rec.TTLExpired(now)
 
 	payload := store.MemoryExpiryPayload{
 		FormatVersion: store.MemoryFactFormatVersion,
@@ -214,10 +236,44 @@ func (w *MemoryFact) forgetLocked(targetSHA256, reason string, now time.Time) (F
 		return ForgetResult{}, fmt.Errorf("writer: write memory expiry: %w", err)
 	}
 	rec.ExpirySHA256 = written.SHA256
+	if ttlExpired {
+		return ForgetResult{Record: rec, Expired: false}, w.eraseFact(rec.SHA256, rec.Payload.OperationKey, proj, now)
+	}
 
 	rec.ExpiredAt = &now
 	rec.ExpiredReason = reason
-	return ForgetResult{Record: rec, Expired: true}, nil
+	return ForgetResult{Record: rec, Expired: true}, w.eraseFact(rec.SHA256, rec.Payload.OperationKey, proj, now)
+}
+
+// eraseFact runs inside the queue job, after the expiry event exists: it
+// fences the fact's operation key, deletes its index rows, then removes its
+// bytes and meta.yaml and marks both paths so the next Flush stages the
+// deletion. Each step is idempotent, so a retried forget completes a
+// partial erasure.
+func (w *MemoryFact) eraseFact(sha, operationKey string, proj *store.MemoryProjection, now time.Time) error {
+	if operationKey != "" {
+		if fence, canceled := proj.OperationCancellation(operationKey); canceled {
+			w.markSource(fence)
+		} else {
+			fence, err := w.Sources.WriteMemoryExpiry(store.MemoryExpiryPayload{OperationKey: operationKey, ExpiredAt: now})
+			if fence.SHA256 != "" {
+				w.markSource(fence.SHA256)
+			}
+			if err != nil {
+				return fmt.Errorf("writer: fence forgotten operation: %w", err)
+			}
+		}
+	}
+	if w.Index != nil {
+		if err := w.Index.PurgeSource(context.Background(), sha); err != nil {
+			return fmt.Errorf("writer: purge forgotten fact index rows: %w", err)
+		}
+	}
+	w.markSource(sha)
+	if _, err := w.Sources.RemoveSource(sha); err != nil {
+		return fmt.Errorf("writer: remove forgotten fact: %w", err)
+	}
+	return nil
 }
 
 // ByLegacyOrOpaqueID resolves a MEMORY_VERBS id -- the opaque SHA256
