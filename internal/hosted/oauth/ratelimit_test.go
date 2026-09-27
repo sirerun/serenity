@@ -181,3 +181,128 @@ func countWhere(t *testing.T, db *sql.DB, table, where string) int {
 	}
 	return n
 }
+
+func TestPrefixKeyMasksV4To24AndV6To56(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"198.18.7.9", "198.18.7.0"},
+		{"198.18.7.250", "198.18.7.0"},
+		{"198.18.8.1", "198.18.8.0"},
+		{"2001:db8:0:1::1", "2001:db8::"},
+		{"2001:db8:0:ff:ffff:ffff:ffff:ffff", "2001:db8::"},
+		{"2001:db8:0:100::1", "2001:db8:0:100::"},
+		{"::ffff:198.18.7.9", "198.18.7.0"},
+		{"not-an-address", "not-an-address"},
+	} {
+		if got := prefixKey(tc.in); got != tc.want {
+			t.Errorf("prefixKey(%q)=%q want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestLimiterPerKeyIsEvaluatedBeforeGlobal(t *testing.T) {
+	l := newLimiter(2, 3, time.Minute)
+	base := time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)
+	l.now = func() time.Time { return base }
+	// Key a exhausts its own allowance; the third refusal must not have
+	// charged the global window.
+	if !l.allow("a") || !l.allow("a") || l.allow("a") {
+		t.Fatal("per-key allowance of 2 not enforced")
+	}
+	if l.global.count != 2 {
+		t.Fatalf("refused per-key request charged the global window: %d", l.global.count)
+	}
+	// One more request from another key fills the global ceiling of 3.
+	if !l.allow("b") {
+		t.Fatal("key b refused within both allowances")
+	}
+	// A saturated global window refuses without charging the key.
+	if l.allow("c") {
+		t.Fatal("global ceiling of 3 not enforced")
+	}
+	if l.keys["c"].count != 0 {
+		t.Fatalf("globally refused request charged key c: %d", l.keys["c"].count)
+	}
+	// After the window both reset.
+	l.now = func() time.Time { return base.Add(time.Minute) }
+	if !l.allow("a") || !l.allow("c") {
+		t.Fatal("windows did not reset after one minute")
+	}
+}
+
+func TestLimiterZeroLimitsDisableThatWindow(t *testing.T) {
+	global := newLimiter(0, 2, time.Minute)
+	if !global.allow("a") || !global.allow("b") || global.allow("c") {
+		t.Fatal("global-only limiter did not enforce its ceiling across keys")
+	}
+	if len(global.keys) != 0 {
+		t.Fatal("global-only limiter tracked keys")
+	}
+	perKey := newLimiter(1, 0, time.Minute)
+	if !perKey.allow("a") || perKey.allow("a") || !perKey.allow("b") {
+		t.Fatal("per-key-only limiter did not isolate keys")
+	}
+}
+
+func TestLimiterSweepDropsElapsedKeysAndBoundsMemory(t *testing.T) {
+	l := newLimiter(1, 0, time.Minute)
+	base := time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)
+	l.now = func() time.Time { return base }
+	for i := range 10 {
+		l.allow(fmt.Sprint("k", i))
+	}
+	l.now = func() time.Time { return base.Add(time.Minute) }
+	l.allow("fresh")
+	if len(l.keys) != 1 {
+		t.Fatalf("elapsed keys survived the sweep: %d", len(l.keys))
+	}
+	l.keys = make(map[string]*rateWindow, maxTrackedKeys+1)
+	for i := range maxTrackedKeys + 1 {
+		l.keys[fmt.Sprint(i)] = &rateWindow{start: base.Add(time.Minute), count: 1}
+	}
+	if !l.allow("0") {
+		t.Fatal("over-capacity table was not reset")
+	}
+	if len(l.keys) != 1 {
+		t.Fatalf("over-capacity table not reset: %d keys", len(l.keys))
+	}
+}
+
+func TestSECH02GlobalCeilingCoversOnlyRegisterAndAuthorize(t *testing.T) {
+	h, rawRefresh := floodHost(t)
+	h.limits.StateCreating = 30
+	handler := h.Handler()
+	// Thirty distinct prefixes each send one authorize; the global ceiling is
+	// now full for register and authorize.
+	for i := range 30 {
+		if w := requestFrom(t, handler, "GET", "/oauth/authorize", fmt.Sprintf("198.18.%d.1", i), nil); w.Code == http.StatusTooManyRequests {
+			t.Fatalf("authorize %d refused under the ceiling", i)
+		}
+	}
+	if w := requestFrom(t, handler, "GET", "/oauth/authorize", "198.18.200.1", nil); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("authorize admitted past the global ceiling: %d", w.Code)
+	}
+	if w := requestFrom(t, handler, "POST", "/oauth/register", "198.18.201.1", url.Values{"redirect_uris": {"https://client.example/cb"}}); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("register admitted past the global ceiling: %d", w.Code)
+	}
+	// Token, revoke and the session-authenticated paths are outside it.
+	form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {rawRefresh}, "client_id": {"flood-client"}}
+	w := requestFrom(t, handler, "POST", "/oauth/token", "198.18.202.1", form)
+	if w.Code != http.StatusOK {
+		t.Fatalf("refresh refused by the state-creating ceiling: %d %s", w.Code, w.Body.String())
+	}
+	if w := requestFrom(t, handler, "POST", "/oauth/revoke", "198.18.203.1", url.Values{"token": {"x"}, "client_id": {"flood-client"}}); w.Code == http.StatusTooManyRequests {
+		t.Fatal("revoke refused by the state-creating ceiling")
+	}
+	if w := requestFrom(t, handler, "POST", "/oauth/consent", "198.18.204.1", url.Values{}); w.Code == http.StatusTooManyRequests {
+		t.Fatal("consent refused by the state-creating ceiling")
+	}
+}
+
+func TestSECH02GlobalCeilingIsAtLeastTenTimesPerKey(t *testing.T) {
+	l := defaultRateLimits()
+	for name, perKey := range map[string]int{"PerPrefix": l.PerPrefix, "Register": l.Register, "Token": l.Token} {
+		if l.StateCreating < 10*perKey {
+			t.Errorf("StateCreating %d is below 10x %s %d", l.StateCreating, name, perKey)
+		}
+	}
+}

@@ -17,6 +17,12 @@ import (
 // both redeem a consent handle or authorization code.
 type SQLStore struct{ DB *store.Store }
 
+// maxLiveConsentsPerClient bounds pending authorization requests per
+// registered client (SEC-H02). Together with the state-creating global
+// ceiling this bounds the consent table without a per-table cap that one
+// client could fill for everyone.
+const maxLiveConsentsPerClient = 500
+
 func (s *SQLStore) create(ctx context.Context, table, id string, value any, expires time.Time) error {
 	body, err := json.Marshal(value)
 	if err != nil {
@@ -29,34 +35,48 @@ func (s *SQLStore) create(ctx context.Context, table, id string, value any, expi
 		if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE expires_at<?", store.Stamp(time.Now())); err != nil {
 			return err
 		}
-		var count int
-		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil {
-			return err
-		}
-		if table == "oauth_clients" && count >= 10000 {
-			// Unary + removes TEXT affinity from c.id so SQLite can use the
-			// client_id expression indexes in these correlated subqueries.
-			// Only unreferenced registrations may be evicted. Pending consent,
-			// codes and live grants protect their registered callbacks.
-			result, err := tx.ExecContext(ctx, `DELETE FROM oauth_clients WHERE id IN (SELECT c.id FROM oauth_clients c WHERE NOT EXISTS(SELECT 1 FROM oauth_grants g WHERE json_extract(g.record,'$.client_id')=+c.id AND g.expires_at>?) AND NOT EXISTS(SELECT 1 FROM oauth_consents p WHERE json_extract(p.record,'$.client_id')=+c.id AND p.expires_at>?) AND NOT EXISTS(SELECT 1 FROM oauth_codes p WHERE json_extract(p.record,'$.client_id')=+c.id AND p.expires_at>?) ORDER BY c.expires_at LIMIT 100)`, store.Stamp(time.Now()), store.Stamp(time.Now()), store.Stamp(time.Now()))
-			if err != nil {
-				return err
-			}
-			removed, err := result.RowsAffected()
-			if err != nil {
-				return err
-			}
-			count -= int(removed)
-		}
-		if count >= 10000 {
-			return errors.New("oauth storage capacity reached")
-		}
 		var clientID string
 		switch rec := value.(type) {
 		case mcpoauth.ConsentRecord:
 			clientID = rec.ClientID
 		case mcpoauth.CodeRecord:
 			clientID = rec.ClientID
+		}
+		if table == "oauth_consents" {
+			// SEC-H02: consents are capped per client, never per table, so one
+			// client's pending flows cannot block every other client's authorize.
+			// The expired-row delete above already evicted this client's stale
+			// consents; only live ones count.
+			var live int
+			if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM oauth_consents WHERE json_extract(record,'$.client_id')=? AND expires_at>?", clientID, store.Stamp(time.Now())).Scan(&live); err != nil {
+				return err
+			}
+			if live >= maxLiveConsentsPerClient {
+				return errors.New("oauth consent capacity reached for client")
+			}
+		} else {
+			var count int
+			if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM "+table).Scan(&count); err != nil {
+				return err
+			}
+			if table == "oauth_clients" && count >= 10000 {
+				// Unary + removes TEXT affinity from c.id so SQLite can use the
+				// client_id expression indexes in these correlated subqueries.
+				// Only unreferenced registrations may be evicted. Pending consent,
+				// codes and live grants protect their registered callbacks.
+				result, err := tx.ExecContext(ctx, `DELETE FROM oauth_clients WHERE id IN (SELECT c.id FROM oauth_clients c WHERE NOT EXISTS(SELECT 1 FROM oauth_grants g WHERE json_extract(g.record,'$.client_id')=+c.id AND g.expires_at>?) AND NOT EXISTS(SELECT 1 FROM oauth_consents p WHERE json_extract(p.record,'$.client_id')=+c.id AND p.expires_at>?) AND NOT EXISTS(SELECT 1 FROM oauth_codes p WHERE json_extract(p.record,'$.client_id')=+c.id AND p.expires_at>?) ORDER BY c.expires_at LIMIT 100)`, store.Stamp(time.Now()), store.Stamp(time.Now()), store.Stamp(time.Now()))
+				if err != nil {
+					return err
+				}
+				removed, err := result.RowsAffected()
+				if err != nil {
+					return err
+				}
+				count -= int(removed)
+			}
+			if count >= 10000 {
+				return errors.New("oauth storage capacity reached")
+			}
 		}
 		if clientID != "" {
 			if _, err := tx.ExecContext(ctx, "UPDATE oauth_clients SET expires_at=MAX(expires_at,?) WHERE id=?", store.Stamp(expires.Add(10*time.Minute)), clientID); err != nil {
