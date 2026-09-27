@@ -2,6 +2,9 @@ package cli
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sirerun/serenity/internal/config"
@@ -105,4 +108,58 @@ func TestLastCursorSkipsInterruptedAndOtherConnectors(t *testing.T) {
 	if got := lastCursor(jobs, "git-repo:nope"); got != nil {
 		t.Fatalf("lastCursor for an unseen connector = %s, want nil", got)
 	}
+}
+
+// TestBuildConnectorsRejectsGitRepoPathOutsideRoots pins SEC-H05's path
+// containment half (ADR 018 decision 3): a git_repo path delivered through
+// a synced serenity.yml that escapes every allowlisted root (the home
+// directory by default) is refused at connector build, naming the path,
+// rather than handed to git as a repository root.
+func TestBuildConnectorsRejectsGitRepoPathOutsideRoots(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	outside := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Default()
+	setGitRepoPaths(cfg, outside)
+
+	_, err := buildConnectors(home, cfg)
+	if err == nil {
+		t.Fatalf("buildConnectors accepted git_repo path %q outside every allowlisted root; want an error naming it", outside)
+	}
+	if !strings.Contains(err.Error(), outside) {
+		t.Fatalf("buildConnectors error = %q, want it to name the escaping path %q", err, outside)
+	}
+}
+
+// TestBuildConnectorsRejectsTraversalOutOfRoot proves containment is on
+// the cleaned absolute path: a path that starts under home but climbs out
+// with ".." is still refused, and the error names the cleaned form.
+func TestBuildConnectorsRejectsTraversalOutOfRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	escaping := filepath.Join(home, "..", "..", "etc")
+
+	cfg := config.Default()
+	setGitRepoPaths(cfg, escaping)
+
+	_, err := buildConnectors(home, cfg)
+	if err == nil {
+		t.Fatalf("buildConnectors accepted traversal path %q; want an error", escaping)
+	}
+	if !strings.Contains(err.Error(), filepath.Clean(escaping)) {
+		t.Fatalf("buildConnectors error = %q, want it to name the cleaned path %q", err, filepath.Clean(escaping))
+	}
+}
+
+// setGitRepoPaths writes one git_repo entry per path into cfg.
+func setGitRepoPaths(cfg *config.Config, paths ...string) {
+	var list []any
+	for _, p := range paths {
+		list = append(list, map[string]any{"path": p})
+	}
+	cfg.Connectors = map[string]any{"git_repo": list}
 }

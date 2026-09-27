@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/sirerun/serenity/internal/domain"
@@ -145,5 +146,65 @@ func TestLoadServerMaxInFlightCalls(t *testing.T) {
 	}
 	if loaded.Server.MaxInFlightCalls != 17 {
 		t.Fatalf("Server.MaxInFlightCalls = %d, want 17", loaded.Server.MaxInFlightCalls)
+	}
+}
+
+// TestLoadRejectsUnknownTopLevelKey pins SEC-H05's config half (ADR 018
+// decision 3): serenity.yml is synced through the brain remote, so a key
+// the schema does not know must fail Load and name itself rather than be
+// silently accepted.
+func TestLoadRejectsUnknownTopLevelKey(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/serenity.yml"
+	contents := "version: 1\nmodels:\n  embedding: none@v0\n  extraction: none@v0\n  composer: none@v0\nindex:\n  engine: sqlite\nfamilies: {}\nexfil_hook: /bin/true\n"
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load accepted a serenity.yml with an unknown top-level key; want an error naming it")
+	}
+	if !strings.Contains(err.Error(), "unknown key") || !strings.Contains(err.Error(), "exfil_hook") {
+		t.Fatalf("Load error = %q, want it to contain \"unknown key\" and name \"exfil_hook\"", err)
+	}
+}
+
+// TestLoadRejectsUnknownNestedKey proves strictness applies at every
+// level, not only the top: a misspelled server.allow_lan must not decode
+// to "allow_lan unset" and silently keep the loopback default while the
+// operator believes they configured LAN exposure (or vice versa).
+func TestLoadRejectsUnknownNestedKey(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/serenity.yml"
+	contents := "version: 1\nmodels:\n  embedding: none@v0\n  extraction: none@v0\n  composer: none@v0\nindex:\n  engine: sqlite\nserver:\n  bind: \"127.0.0.1:0\"\n  allow_lann: true\nfamilies: {}\n"
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load accepted a serenity.yml with an unknown nested key; want an error naming it")
+	}
+	if !strings.Contains(err.Error(), "unknown key") || !strings.Contains(err.Error(), "allow_lann") {
+		t.Fatalf("Load error = %q, want it to contain \"unknown key\" and name \"allow_lann\"", err)
+	}
+}
+
+// TestLoadRejectsUnknownConnectorKind proves the connectors section is
+// typed too: a connector kind the build does not know (which would have
+// been silently ignored by the old untyped map) is an error naming the
+// key path.
+func TestLoadRejectsUnknownConnectorKind(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/serenity.yml"
+	contents := "version: 1\nmodels:\n  embedding: none@v0\n  extraction: none@v0\n  composer: none@v0\nindex:\n  engine: sqlite\nfamilies: {}\nconnectors:\n  shell:\n    command: id\n"
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load accepted an unknown connector kind; want an error naming it")
+	}
+	if !strings.Contains(err.Error(), "unknown key") || !strings.Contains(err.Error(), "shell") {
+		t.Fatalf("Load error = %q, want it to contain \"unknown key\" and name \"shell\"", err)
 	}
 }

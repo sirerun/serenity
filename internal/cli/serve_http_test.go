@@ -4,16 +4,63 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/secrets"
+	"github.com/sirerun/serenity/internal/server"
 )
+
+// TestServeHTTPRefusesNonLoopbackBindWithoutAllowLAN pins SEC-H05's bind
+// half (ADR 018 decision 3): a serenity.yml delivered through the brain
+// remote that sets server.bind to a non-loopback address without the
+// explicit server.allow_lan opt-in makes `serve --http` refuse to start,
+// and the refusal is logged on stderr naming the bind and the missing key
+// so the operator can find it.
+func TestServeHTTPRefusesNonLoopbackBindWithoutAllowLAN(t *testing.T) {
+	requireGit(t)
+	root := pushFixture(t)
+
+	cfgPath := filepath.Join(root, config.FileName)
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load fixture config: %v", err)
+	}
+	cfg.Server.Bind = "0.0.0.0:0"
+	cfg.Server.AllowLAN = false
+	if err := cfg.Save(cfgPath); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"-C", root, "serve", "--http"})
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err = cmd.ExecuteContext(ctx)
+	if err == nil {
+		t.Fatalf("serve --http started on a non-loopback bind without allow_lan; stdout=%q", stdout.String())
+	}
+	if !errors.Is(err, server.ErrNonLoopbackBindRefused) {
+		t.Fatalf("serve --http err = %v, want it to wrap server.ErrNonLoopbackBindRefused", err)
+	}
+	if strings.Contains(stdout.String(), "listening on") {
+		t.Fatalf("serve --http printed a bound endpoint despite refusing the bind: %q", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "allow_lan") || !strings.Contains(stderr.String(), "0.0.0.0:0") {
+		t.Fatalf("serve --http stderr = %q, want a logged refusal naming the bind and server.allow_lan", stderr.String())
+	}
+}
 
 func TestServeHTTPRequiresExactlyOneMode(t *testing.T) {
 	cmd := newRootCmd()
