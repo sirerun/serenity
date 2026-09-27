@@ -23,6 +23,10 @@ import (
 func TestServeHTTPCheckPlanUsesConfiguredRouter(t *testing.T) {
 	requireGit(t)
 
+	// The fake model classifies the plan as one in-set action whose
+	// evidence is copied verbatim from the posted plan text, so the
+	// classifier's fail-closed gate (empty action list, uncited evidence)
+	// trusts it and the verdict comes from stage 1, not a refusal.
 	var calls atomic.Int32
 	var sawClassifyPrompt atomic.Bool
 	model := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +37,7 @@ func TestServeHTTPCheckPlanUsesConfiguredRouter(t *testing.T) {
 		}
 		w.Header().Set("content-type", "application/json")
 		_, _ = w.Write([]byte(`{
-			"choices": [{"message": {"role": "assistant", "content": "{\"confidence\":0.9,\"actions\":[]}"}}],
+			"choices": [{"message": {"role": "assistant", "content": "{\"confidence\":0.9,\"actions\":[{\"action\":\"deploy_to_prod\",\"params\":{},\"evidence\":\"ship the release on friday\"}]}"}}],
 			"usage": {"prompt_tokens": 10, "completion_tokens": 5}
 		}`))
 	}))
