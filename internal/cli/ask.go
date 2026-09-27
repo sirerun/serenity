@@ -106,6 +106,12 @@ func runAsk(ctx context.Context, root, question string, out io.Writer) error {
 		_, _ = fmt.Fprintf(out, "%s -- widening query relevance to full-text/lexical matching only\n", note)
 	}
 
+	return writeAskAnswer(out, answer)
+}
+
+// writeAskAnswer prints a composed answer: the gap statement, or the
+// answer text followed by every attributed source citation.
+func writeAskAnswer(out io.Writer, answer compose.Answer) error {
 	if answer.Gap != "" {
 		_, _ = fmt.Fprintln(out, answer.Gap)
 		return nil

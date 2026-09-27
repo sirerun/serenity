@@ -87,15 +87,20 @@ func runSearch(ctx context.Context, root, query string, limit int, out io.Writer
 	if err != nil {
 		return err
 	}
+	writeSearchResults(out, note, results)
+	return nil
+}
+
+// writeSearchResults prints the search note and one ranked line per result.
+func writeSearchResults(out io.Writer, note string, results []search.Result) {
 	_, _ = fmt.Fprintln(out, note)
 	if len(results) == 0 {
 		_, _ = fmt.Fprintln(out, "no results")
-		return nil
+		return
 	}
 	for i, r := range results {
 		_, _ = fmt.Fprintf(out, "%2d. %-24s score=%.4f  %s\n", i+1, r.ChunkRef, r.RRFScore, truncateText(r.Text, 80))
 	}
-	return nil
 }
 
 func truncateText(s string, n int) string {
