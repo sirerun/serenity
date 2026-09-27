@@ -196,7 +196,9 @@ func runCheck(ctx context.Context, root, planText, actionsJSON string, jsonOut b
 	}
 
 	if jsonOut {
-		writeCheckJSON(out, result, matchedActions, confidence, haveConfidence)
+		if err := writeCheckJSON(out, result, matchedActions, confidence, haveConfidence); err != nil {
+			return fmt.Errorf("check: write json: %w", err)
+		}
 	} else {
 		writeCheckText(out, result, matchedActions, confidence, haveConfidence)
 	}
@@ -273,8 +275,8 @@ func writeCheckText(out io.Writer, result check.Result, matched []check.MatchedA
 // T4.6) uses, so the two surfaces can never drift on field names or
 // omission rules. This package no longer declares its own copy of the
 // wire shape.
-func writeCheckJSON(out io.Writer, result check.Result, matched []check.MatchedAction, confidence float64, haveConfidence bool) {
+func writeCheckJSON(out io.Writer, result check.Result, matched []check.MatchedAction, confidence float64, haveConfidence bool) error {
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
-	_ = enc.Encode(check.ToWire(result, matched, confidence, haveConfidence))
+	return enc.Encode(check.ToWire(result, matched, confidence, haveConfidence))
 }
