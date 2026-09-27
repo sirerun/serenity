@@ -90,3 +90,7 @@ c := gitrepo.New(gitrepo.Config{
 - It shells out to `git`, so `git` must be on `PATH`.
 - There's no CLI command to author `serenity.yml`'s `connectors.git_repo`
   list; edit the file directly.
+- Each `path` must resolve under your home directory or a directory
+  listed in `connectors.roots`; a repository elsewhere is refused at
+  `serenity sync` with the path named (ADR 018). See the
+  [serenity.yml reference](../operator/config.md#connectors).

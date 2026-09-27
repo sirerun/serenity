@@ -31,12 +31,15 @@ func TestBuildConnectorsEmpty(t *testing.T) {
 // criterion) each getting a distinct Name().
 func TestBuildConnectorsFileAndGitRepo(t *testing.T) {
 	root := t.TempDir()
-	dirA, dirB := t.TempDir(), t.TempDir()
+	dirA, dirB, fileDir := t.TempDir(), t.TempDir(), t.TempDir()
 
 	cfg := config.Default()
-	cfg.Connectors = map[string]any{
-		"file":     map[string]any{"path": t.TempDir()},
-		"git_repo": []any{map[string]any{"path": dirA}, map[string]any{"path": dirB}},
+	cfg.Connectors = config.Connectors{
+		// t.TempDir()s share one parent, which is outside $HOME; allowlist
+		// it so containment (T24.8) admits them.
+		Roots:   []string{filepath.Dir(dirA)},
+		File:    &config.FileConnector{Path: fileDir},
+		GitRepo: []config.GitRepoConnector{{Path: dirA}, {Path: dirB}},
 	}
 
 	cs, err := buildConnectors(root, cfg)
@@ -64,7 +67,7 @@ func TestBuildConnectorsFileAndGitRepo(t *testing.T) {
 // connector or a nil-pointer panic later at Poll time.
 func TestBuildConnectorsMissingPathErrors(t *testing.T) {
 	cfg := config.Default()
-	cfg.Connectors = map[string]any{"file": map[string]any{}}
+	cfg.Connectors = config.Connectors{File: &config.FileConnector{}}
 	if _, err := buildConnectors(t.TempDir(), cfg); err == nil {
 		t.Fatal("expected an error for connectors.file with no path, got nil")
 	}
@@ -76,7 +79,7 @@ func TestBuildConnectorsMissingPathErrors(t *testing.T) {
 // consumes.
 func TestBuildConnectorsIMAPUsesAuthedAccount(t *testing.T) {
 	cfg := config.Default()
-	cfg.Connectors = map[string]any{"imap": map[string]any{"account": "you@gmail.com"}}
+	cfg.Connectors = config.Connectors{IMAP: &config.IMAPConnector{Account: "you@gmail.com"}}
 
 	cs, err := buildConnectors(t.TempDir(), cfg)
 	if err != nil {
@@ -157,9 +160,74 @@ func TestBuildConnectorsRejectsTraversalOutOfRoot(t *testing.T) {
 
 // setGitRepoPaths writes one git_repo entry per path into cfg.
 func setGitRepoPaths(cfg *config.Config, paths ...string) {
-	var list []any
+	var list []config.GitRepoConnector
 	for _, p := range paths {
-		list = append(list, map[string]any{"path": p})
+		list = append(list, config.GitRepoConnector{Path: p})
 	}
-	cfg.Connectors = map[string]any{"git_repo": list}
+	cfg.Connectors = config.Connectors{GitRepo: list}
+}
+
+// TestBuildConnectorsAcceptsPathUnderConfiguredRoot proves connectors.roots
+// is a real allowlist extension: the same out-of-home path
+// TestBuildConnectorsRejectsGitRepoPathOutsideRoots refuses is accepted
+// once its parent is listed, and the connector is built on the cleaned
+// absolute path.
+func TestBuildConnectorsAcceptsPathUnderConfiguredRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	shared := t.TempDir()
+	repo := filepath.Join(shared, "repo")
+	if err := os.MkdirAll(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Default()
+	cfg.Connectors = config.Connectors{
+		Roots:   []string{shared + string(filepath.Separator)},
+		GitRepo: []config.GitRepoConnector{{Path: filepath.Join(shared, ".", "repo")}},
+	}
+
+	cs, err := buildConnectors(home, cfg)
+	if err != nil {
+		t.Fatalf("buildConnectors with %q allowlisted: %v", shared, err)
+	}
+	if len(cs) != 1 {
+		t.Fatalf("buildConnectors returned %d connector(s), want 1: %+v", len(cs), cs)
+	}
+}
+
+// TestBuildConnectorsRejectsRelativeRoot proves a root is validated the
+// same way a path is: a relative connectors.roots entry cannot widen the
+// allowlist to wherever the process happens to run.
+func TestBuildConnectorsRejectsRelativeRoot(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cfg := config.Default()
+	cfg.Connectors = config.Connectors{Roots: []string{"../shared"}}
+
+	_, err := buildConnectors(t.TempDir(), cfg)
+	if err == nil {
+		t.Fatal("buildConnectors accepted a relative connectors.roots entry; want an error")
+	}
+	if !strings.Contains(err.Error(), "connectors.roots[0]") || !strings.Contains(err.Error(), "../shared") {
+		t.Fatalf("buildConnectors error = %q, want it to name connectors.roots[0] and the offending value", err)
+	}
+}
+
+// TestBuildConnectorsRejectsFilePathOutsideRoots proves containment covers
+// the file connector's path too, not only git_repo.
+func TestBuildConnectorsRejectsFilePathOutsideRoots(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	outside := t.TempDir()
+
+	cfg := config.Default()
+	cfg.Connectors = config.Connectors{File: &config.FileConnector{Path: outside}}
+
+	_, err := buildConnectors(home, cfg)
+	if err == nil {
+		t.Fatalf("buildConnectors accepted file path %q outside every allowlisted root; want an error", outside)
+	}
+	if !strings.Contains(err.Error(), "connectors.file.path") || !strings.Contains(err.Error(), outside) {
+		t.Fatalf("buildConnectors error = %q, want it to name connectors.file.path and %q", err, outside)
+	}
 }

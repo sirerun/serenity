@@ -91,12 +91,12 @@ func TestConnectorsAuthIMAPStoresPasswordInKeychain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load config: %v", err)
 	}
-	imapCfg, ok := cfg.Connectors["imap"].(map[string]any)
-	if !ok {
-		t.Fatalf("serenity.yml connectors.imap = %#v, want a map with account", cfg.Connectors["imap"])
+	imapCfg := cfg.Connectors.IMAP
+	if imapCfg == nil {
+		t.Fatalf("serenity.yml connectors.imap = %#v, want an entry with account", cfg.Connectors)
 	}
-	if imapCfg["account"] != email {
-		t.Fatalf("serenity.yml connectors.imap.account = %v, want %q", imapCfg["account"], email)
+	if imapCfg.Account != email {
+		t.Fatalf("serenity.yml connectors.imap.account = %v, want %q", imapCfg.Account, email)
 	}
 
 	// Exercise the .serenity/ runtime dir too, matching the acc line's

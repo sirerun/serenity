@@ -208,3 +208,76 @@ func TestLoadRejectsUnknownConnectorKind(t *testing.T) {
 		t.Fatalf("Load error = %q, want it to contain \"unknown key\" and name \"shell\"", err)
 	}
 }
+
+// TestLoadStrictGoldenDecode is the strict-form golden decode: every
+// documented top-level key, including the typed connectors section with
+// its roots allowlist, decodes under KnownFields without error and lands
+// in the typed field it belongs to.
+func TestLoadStrictGoldenDecode(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/serenity.yml"
+	contents := `version: 1
+models:
+  embedding: none@v0
+  extraction: none@v0
+  composer: none@v0
+  provider: openrouter
+  disable_thinking: true
+index:
+  engine: sqlite
+server:
+  bind: "127.0.0.1:0"
+  allow_lan: false
+  max_in_flight_calls: 3
+families:
+  works_at:
+    tier: fence
+    half_life_days: 90
+connectors:
+  roots:
+    - /srv/shared
+  imap:
+    account: you@example.com
+  file:
+    path: /srv/shared/notes
+  git_repo:
+    - path: /srv/shared/repo-one
+    - path: /srv/shared/repo-two
+ladder:
+  default:
+    min_dispositions: 1
+    min_accept: 0.5
+    sample_rate: 0.1
+  correlation_guards:
+    min_span_days: 1
+    min_distinct_sources: 1
+`
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load strict golden config: %v", err)
+	}
+	if !loaded.Models.DisableThinking || loaded.Models.Provider != "openrouter" {
+		t.Fatalf("Models = %+v, want provider openrouter and disable_thinking true", loaded.Models)
+	}
+	if loaded.Server.Bind != "127.0.0.1:0" || loaded.Server.AllowLAN || loaded.Server.MaxInFlightCalls != 3 {
+		t.Fatalf("Server = %+v, want bind 127.0.0.1:0, allow_lan false, max_in_flight_calls 3", loaded.Server)
+	}
+	if got := loaded.Connectors.Roots; len(got) != 1 || got[0] != "/srv/shared" {
+		t.Fatalf("Connectors.Roots = %v, want [/srv/shared]", got)
+	}
+	if loaded.Connectors.IMAP == nil || loaded.Connectors.IMAP.Account != "you@example.com" {
+		t.Fatalf("Connectors.IMAP = %+v, want account you@example.com", loaded.Connectors.IMAP)
+	}
+	if loaded.Connectors.File == nil || loaded.Connectors.File.Path != "/srv/shared/notes" {
+		t.Fatalf("Connectors.File = %+v, want path /srv/shared/notes", loaded.Connectors.File)
+	}
+	if got := loaded.Connectors.GitRepo; len(got) != 2 || got[0].Path != "/srv/shared/repo-one" || got[1].Path != "/srv/shared/repo-two" {
+		t.Fatalf("Connectors.GitRepo = %+v, want two entries repo-one and repo-two", got)
+	}
+	if loaded.Ladder.Default.MinDispositions != 1 || loaded.Ladder.CorrelationGuards.MinSpanDays != 1 {
+		t.Fatalf("Ladder = %+v, want the decoded default and correlation_guards values", loaded.Ladder)
+	}
+}

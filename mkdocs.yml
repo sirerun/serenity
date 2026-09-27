@@ -17,6 +17,7 @@ nav:
   - Quickstart: operator/server.md
   - Operator:
       - Server: operator/server.md
+      - Configuration: operator/config.md
       - MCP: operator/mcp.md
       - Claude: operator/claude.md
       - Connectors: operator/connect.md

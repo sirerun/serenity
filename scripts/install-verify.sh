@@ -155,8 +155,13 @@ if [[ ! -d "$CORPUS_DIR" ]]; then
 	echo "FAIL: canned Ava corpus not found at $CORPUS_DIR" >&2
 	exit 1
 fi
+# $WORKDIR may be a mktemp directory outside $HOME, so allowlist the
+# source checkout as a connector root (docs/operator/config.md,
+# T24.8 path containment) rather than rely on where the runner keeps it.
 cat >>"$BRAIN/serenity.yml" <<YAML
 connectors:
+  roots:
+    - $SRC_DIR
   file:
     path: $CORPUS_DIR
 YAML

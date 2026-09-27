@@ -67,7 +67,10 @@ connectors:
 `serenity sync` always polls in poll mode (`file.NewPoll`), never watch
 mode — see the connector guide for why. There's still no CLI command to
 author this config; edit `serenity.yml` directly. Only one directory is
-supported per brain repo today (see the next section).
+supported per brain repo today (see the next section). The path must
+resolve under your home directory or a directory listed in
+`connectors.roots`; see the
+[serenity.yml reference](../operator/config.md#connectors).
 
 To use the package directly instead — for example from a long-running
 process that wants watch mode — construct it yourself:

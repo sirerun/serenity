@@ -136,8 +136,11 @@ func TestSyncExtractEndToEnd(t *testing.T) {
 	cfg.Models.Provider = ""
 	cfg.Models.Extraction = "test-extract@v1"
 	cfg.Models.Embedding = "test-embed@v1"
-	cfg.Connectors = map[string]any{
-		"file": map[string]any{"path": dropDir},
+	// dropDir is a t.TempDir(), which lives outside $HOME, so allowlist its
+	// parent explicitly (T24.8 path containment).
+	cfg.Connectors = config.Connectors{
+		Roots: []string{filepath.Dir(dropDir)},
+		File:  &config.FileConnector{Path: dropDir},
 	}
 	if err := cfg.Save(cfgPath); err != nil {
 		t.Fatal(err)
