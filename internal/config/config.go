@@ -13,6 +13,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/ladder"
+	"github.com/sirerun/serenity/internal/redact"
 )
 
 // FileName is the canonical config file name at the brain repo root.
@@ -88,11 +89,46 @@ type Server struct {
 	MaxInFlightCalls int `yaml:"max_in_flight_calls,omitempty"`
 }
 
+// Redact configures the redaction pass internal/router applies to every
+// provider egress (ADR 021). The built-in table (API-key shapes, card
+// and account numbers) always runs; this section can only extend it.
+// There is deliberately no key that disables a built-in rule.
+type Redact struct {
+	// Patterns are operator-defined rules, applied after the built-in
+	// table. A match is replaced by "[REDACTED:<NAME>]" (name
+	// upper-cased). Load rejects an invalid regex or a missing name.
+	Patterns []RedactPattern `yaml:"patterns,omitempty"`
+}
+
+// RedactPattern is one entry of `redact.patterns`.
+type RedactPattern struct {
+	// Name labels the placeholder; letters, digits, "_" and "-" only.
+	Name string `yaml:"name"`
+	// Regex is a Go (RE2) regular expression.
+	Regex string `yaml:"regex"`
+}
+
+// Compile turns the configured entries into redact.Pattern values. Load
+// calls it to fail fast on a bad rule; internal/providers calls it to
+// wire the router. An error names the entry's index and name.
+func (r Redact) Compile() ([]redact.Pattern, error) {
+	patterns := make([]redact.Pattern, 0, len(r.Patterns))
+	for i, p := range r.Patterns {
+		compiled, err := redact.NewPattern(p.Name, p.Regex)
+		if err != nil {
+			return nil, fmt.Errorf("redact.patterns[%d]: %w", i, err)
+		}
+		patterns = append(patterns, compiled)
+	}
+	return patterns, nil
+}
+
 type Config struct {
 	Version    int               `yaml:"version"`
 	Models     Models            `yaml:"models"`
 	Index      Index             `yaml:"index"`
 	Server     Server            `yaml:"server,omitempty"`
+	Redact     Redact            `yaml:"redact,omitempty"`
 	Families   map[string]Family `yaml:"families"`
 	Connectors map[string]any    `yaml:"connectors,omitempty"`
 	// Ladder is the earned-automation ladder policy object (RFC §10.3,
@@ -156,6 +192,11 @@ func Load(path string) (*Config, error) {
 	}
 	var c Config
 	if err := yaml.Unmarshal(b, &c); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	// A bad redaction rule is a config error at load time, never a
+	// silently dropped rule on the egress path (ADR 021).
+	if _, err := c.Redact.Compile(); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return &c, nil
