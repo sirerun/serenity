@@ -1,0 +1,14 @@
+{
+  "outcome": "PASS",
+  "started_at": "2026-09-24T23:28:04.015012Z",
+  "finished_at": "2026-09-24T23:28:08.504906Z",
+  "region": "us-west-2",
+  "bucket_created": true,
+  "versioning_enabled": true,
+  "conditional_write_and_delete_policy_enforced": true,
+  "atomic_conditional_write_race_passed": true,
+  "journal_round_trip_passed": true,
+  "generation_seal_verified": true,
+  "delete_marker_visible_to_reader": true,
+  "disposable_bucket_cleanup": "deleted"
+}

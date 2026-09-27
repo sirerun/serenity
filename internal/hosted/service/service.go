@@ -24,6 +24,7 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/hosted/credential"
 	"github.com/sirerun/serenity/internal/hosted/dashboard"
+	"github.com/sirerun/serenity/internal/hosted/deletion"
 	"github.com/sirerun/serenity/internal/hosted/gateway"
 	"github.com/sirerun/serenity/internal/hosted/identity"
 	"github.com/sirerun/serenity/internal/hosted/meter"
@@ -36,23 +37,28 @@ import (
 )
 
 type Config struct {
-	BillingEnabled   bool   `json:"billing_enabled"`
-	BuilderPrice     string `json:"builder_price"`
-	ScalePrice       string `json:"scale_price"`
-	billingConfig    *billing.Config
-	Bind             string                     `json:"bind"`
-	DataDir          string                     `json:"data_dir"`
-	SecretsDir       string                     `json:"secrets_dir"`
-	PublicOrigin     string                     `json:"public_origin"`
-	EmbeddingModel   string                     `json:"embedding_model"`
-	EmbeddingVersion string                     `json:"embedding_version"`
-	EmbeddingBaseURL string                     `json:"embedding_base_url"`
-	Sender           string                     `json:"sender"`
-	MaxOpen          int                        `json:"max_open"`
-	MaxInFlight      int                        `json:"max_in_flight"`
-	AccountCap       int                        `json:"account_cap"`
-	RegistrationMode contracts.RegistrationMode `json:"registration_mode"`
-	InviteAllowlist  []string                   `json:"invite_allowlist"`
+	BillingEnabled            bool   `json:"billing_enabled"`
+	BuildIdentity             string `json:"build_identity"`
+	BuilderPrice              string `json:"builder_price"`
+	ScalePrice                string `json:"scale_price"`
+	billingConfig             *billing.Config
+	DeletionJournalBucket     string `json:"deletion_journal_bucket"`
+	DeletionJournalRegion     string `json:"deletion_journal_region"`
+	DeletionJournalGeneration int64  `json:"deletion_journal_generation"`
+	deletionJournal           contracts.DeletionJournal
+	Bind                      string                     `json:"bind"`
+	DataDir                   string                     `json:"data_dir"`
+	SecretsDir                string                     `json:"secrets_dir"`
+	PublicOrigin              string                     `json:"public_origin"`
+	EmbeddingModel            string                     `json:"embedding_model"`
+	EmbeddingVersion          string                     `json:"embedding_version"`
+	EmbeddingBaseURL          string                     `json:"embedding_base_url"`
+	Sender                    string                     `json:"sender"`
+	MaxOpen                   int                        `json:"max_open"`
+	MaxInFlight               int                        `json:"max_in_flight"`
+	AccountCap                int                        `json:"account_cap"`
+	RegistrationMode          contracts.RegistrationMode `json:"registration_mode"`
+	InviteAllowlist           []string                   `json:"invite_allowlist"`
 }
 
 func Load(path string) (Config, error) {
@@ -72,6 +78,12 @@ func Load(path string) (Config, error) {
 	return c, nil
 }
 func (c *Config) Validate(dev bool) error {
+	if c.DeletionJournalGeneration == 0 {
+		c.DeletionJournalGeneration = 1
+	}
+	if c.DeletionJournalGeneration < 1 {
+		return errors.New("deletion_journal_generation must be positive")
+	}
 	if c.RegistrationMode == "" {
 		c.RegistrationMode = contracts.RegistrationPublic
 	}
@@ -172,6 +184,7 @@ type Service struct {
 	Store    *store.Store
 	Pool     *pool.Pool
 	Gateway  *gateway.Gateway
+	Journal  contracts.DeletionJournal
 	Handler  http.Handler
 	cfg      Config
 	embedder embed.Embedder
@@ -241,15 +254,35 @@ func New(cfg Config, dev bool, devOutput io.Writer) (*Service, error) {
 
 // Assemble supplies the same production handlers to integration tests with explicit provider adapters.
 func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, embedding embed.Embedder) (*Service, error) {
+	if cfg.BuildIdentity == "" && dev {
+		cfg.BuildIdentity = "development"
+	}
+	if cfg.DeletionJournalGeneration == 0 {
+		cfg.DeletionJournalGeneration = 1
+	}
+	if !dev && (strings.TrimSpace(cfg.DeletionJournalBucket) == "" || strings.TrimSpace(cfg.DeletionJournalRegion) == "") {
+		return nil, errors.New("production requires an independent deletion journal bucket and region")
+	}
 	p, err := pool.New(pool.Config{MaxOpen: cfg.MaxOpen, MaxInFlight: cfg.MaxInFlight, IdleTimeout: 10 * time.Minute, BrainsRoot: filepath.Join(cfg.DataDir, "brains"), Embedder: embedding})
 	if err != nil {
 		return nil, err
 	}
 	issuer := &credential.Issuer{Store: db}
 	metering := &meter.Meter{Store: db}
-	g := &gateway.Gateway{Issuer: issuer, Pool: p, Meter: metering, Operations: &operation.Ledger{Store: db}}
-	if err = g.RecoverDeletions(context.Background(), filepath.Join(cfg.DataDir, "brains")); err != nil {
-		return nil, errors.Join(err, p.Close())
+	journal := cfg.deletionJournal
+	if journal == nil {
+		if dev {
+			journal, err = deletion.NewFilesystemJournal(filepath.Join(cfg.DataDir, "deletion-journal"), "", cfg.DeletionJournalGeneration, nil)
+		} else {
+			journal, err = deletion.NewAWSJournal(context.Background(), cfg.DeletionJournalBucket, cfg.DeletionJournalRegion, "", cfg.DeletionJournalGeneration)
+		}
+		if err != nil {
+			return nil, errors.Join(err, p.Close())
+		}
+	}
+	g := &gateway.Gateway{
+		Issuer: issuer, Pool: p, Meter: metering, Operations: &operation.Ledger{Store: db},
+		Journal: journal, BillingRequired: cfg.BillingEnabled,
 	}
 	allowlist := make(map[string]struct{}, len(cfg.InviteAllowlist))
 	for _, email := range cfg.InviteAllowlist {
@@ -260,8 +293,16 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 	if err = provisioner.Recover(context.Background()); err != nil {
 		return nil, errors.Join(err, p.Close())
 	}
+	var billingService *billing.Service
+	if cfg.billingConfig != nil {
+		billingService = &billing.Service{Store: db, Identity: id, Config: *cfg.billingConfig}
+		g.BillingCloser = billingService
+	}
+	if err = g.RecoverDeletions(context.Background(), filepath.Join(cfg.DataDir, "brains")); err != nil {
+		return nil, errors.Join(err, p.Close())
+	}
 	dash := &dashboard.Dashboard{Gateway: g, Identity: id, Provision: provisioner, Issuer: issuer, Meter: metering, Origin: cfg.PublicOrigin, Dev: dev, Billing: cfg.BillingEnabled}
-	s := &Service{Store: db, Pool: p, Gateway: g, cfg: cfg, embedder: embedding}
+	s := &Service{Store: db, Pool: p, Gateway: g, Journal: journal, cfg: cfg, embedder: embedding}
 	mux := http.NewServeMux()
 	auth, err := oauth.New(db, id, provisioner, cfg.PublicOrigin, dev)
 	if err != nil {
@@ -275,8 +316,8 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 	mux.Handle("/.well-known/oauth-protected-resource", auth.Server.ProtectedResourceHandler())
 	mux.Handle("/.well-known/oauth-protected-resource/mcp", auth.Server.ProtectedResourceHandler())
 	if cfg.billingConfig != nil {
-		dash.BillingService = &billing.Service{Store: db, Identity: id, Config: *cfg.billingConfig}
-		mux.Handle("/billing/", dash.BillingService)
+		dash.BillingService = billingService
+		mux.Handle("/billing/", billingService)
 	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	mux.HandleFunc("GET /readyz", s.readiness)
@@ -326,7 +367,7 @@ func (s *Service) Backup(ctx context.Context, destination string) error {
 	if err := s.Pool.FlushAll(); err != nil {
 		return err
 	}
-	return backup.Create(ctx, s.cfg.DataDir, destination)
+	return backup.Create(ctx, s.cfg.DataDir, destination, s.cfg.BuildIdentity, s.Journal)
 }
 func (s *Service) AdminHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

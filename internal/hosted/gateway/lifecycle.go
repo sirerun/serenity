@@ -14,7 +14,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/sirerun/serenity/internal/hosted/contracts"
 	hoststore "github.com/sirerun/serenity/internal/hosted/store"
+	"github.com/sirerun/serenity/internal/hosted/testhooks"
 	brainstore "github.com/sirerun/serenity/internal/store"
 )
 
@@ -77,6 +79,9 @@ func (g *Gateway) Export(ctx context.Context, account, brain string, out io.Writ
 	_, err = io.Copy(entry, file)
 	return err
 }
+
+var errDeletionJournalUnavailable = errors.New("hosted/gateway: independent deletion journal is required")
+
 func (g *Gateway) DeleteBrain(ctx context.Context, account, brain string, root string) error {
 	g.Maintenance.RLock()
 	defer g.Maintenance.RUnlock()
@@ -84,6 +89,17 @@ func (g *Gateway) DeleteBrain(ctx context.Context, account, brain string, root s
 	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
 	lock.Lock()
 	defer lock.Unlock()
+	return g.deleteBrainLocked(ctx, account, brain, root)
+}
+
+func (g *Gateway) deleteBrainLocked(ctx context.Context, account, brain string, root string) error {
+	return g.deleteBrainWithJournalState(ctx, account, brain, root, nil)
+}
+
+func (g *Gateway) deleteBrainWithJournalState(ctx context.Context, account, brain string, root string, state *deletionEntrySet) error {
+	if g.Journal == nil {
+		return errDeletionJournalUnavailable
+	}
 	var owned hoststore.Brain
 	err := g.Issuer.Store.DB().QueryRowContext(ctx, `SELECT id,account_id,state,path_key FROM brains WHERE id=? AND account_id=?`, brain, account).Scan(&owned.ID, &owned.AccountID, &owned.State, &owned.PathKey)
 	if err != nil {
@@ -91,9 +107,6 @@ func (g *Gateway) DeleteBrain(ctx context.Context, account, brain string, root s
 	}
 	if owned.PathKey != owned.ID || filepath.Base(owned.PathKey) != owned.PathKey {
 		return errors.New("invalid stored brain path")
-	}
-	if err = g.Pool.Drop(brain); err != nil {
-		return err
 	}
 	err = g.Issuer.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		now := hoststore.Stamp(time.Now())
@@ -103,21 +116,71 @@ func (g *Gateway) DeleteBrain(ctx context.Context, account, brain string, root s
 		if e := hoststore.RevokeOAuth(ctx, tx, account, brain); e != nil {
 			return e
 		}
-		_, e := tx.ExecContext(ctx, `UPDATE brains SET state='deleted',deleted_at=? WHERE id=? AND account_id=?`, now, brain, account)
+		_, e := tx.ExecContext(ctx, `UPDATE brains SET state='deleted',deleted_at=COALESCE(deleted_at,?) WHERE id=? AND account_id=?`, now, brain, account)
 		return e
 	})
 	if err != nil {
 		return err
 	}
-	return os.RemoveAll(filepath.Join(root, owned.PathKey))
+	if err = g.ensureDeletionEntryWithState(ctx, contracts.DeletionSubjectBrain, brain, contracts.DeletionIntentRequested, state); err != nil {
+		return err
+	}
+	testhooks.At(testhooks.PhaseDeletionJournaled)
+	if err = g.Pool.Drop(brain); err != nil {
+		return err
+	}
+	if err = os.RemoveAll(filepath.Join(root, owned.PathKey)); err != nil {
+		return err
+	}
+	testhooks.At(testhooks.PhaseDeletionPurged)
+	return g.ensureDeletionEntryWithState(ctx, contracts.DeletionSubjectBrain, brain, contracts.DeletionOutcomePurged, state)
 }
 
 func (g *Gateway) DeleteAccount(ctx context.Context, account, root string) error {
+	g.Maintenance.RLock()
+	defer g.Maintenance.RUnlock()
+	if g.Journal == nil {
+		return errDeletionJournalUnavailable
+	}
+	hash := sha256.Sum256([]byte(account))
+	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
+	lock.Lock()
+	defer lock.Unlock()
+	return g.deleteAccountLocked(ctx, account, root, nil)
+}
+
+func (g *Gateway) deleteAccountLocked(ctx context.Context, account, root string, state *deletionEntrySet) error {
+	var status, email string
+	if err := g.Issuer.Store.DB().QueryRowContext(ctx, `SELECT status,email FROM accounts WHERE id=?`, account).Scan(&status, &email); err != nil {
+		return err
+	}
+	if status == "deleted" {
+		if err := g.ensureDeletionEntryWithState(ctx, contracts.DeletionSubjectAccount, account, contracts.DeletionIntentRequested, state); err != nil {
+			return err
+		}
+		return g.ensureDeletionEntryWithState(ctx, contracts.DeletionSubjectAccount, account, contracts.DeletionOutcomePurged, state)
+	}
 	if err := g.Issuer.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		_, e := tx.ExecContext(ctx, `UPDATE accounts SET status='deleting' WHERE id=? AND status IN ('active','deleting')`, account)
 		return e
 	}); err != nil {
 		return err
+	}
+	if err := g.ensureDeletionEntryWithState(ctx, contracts.DeletionSubjectAccount, account, contracts.DeletionIntentRequested, state); err != nil {
+		return err
+	}
+	testhooks.At(testhooks.PhaseDeletionJournaled)
+	if g.BillingRequired && g.BillingCloser == nil {
+		return errors.New("hosted/gateway: billing closure is required but not configured")
+	}
+	if g.BillingCloser != nil {
+		result, err := g.BillingCloser.CloseBillingAccount(ctx, account)
+		if err != nil {
+			return err
+		}
+		if result.Status != contracts.CloseStatusClosed {
+			return fmt.Errorf("hosted/gateway: billing closure remains pending: %s", result.PendingReason)
+		}
 	}
 	rows, err := g.Issuer.Store.DB().QueryContext(ctx, `SELECT id FROM brains WHERE account_id=?`, account)
 	if err != nil {
@@ -136,19 +199,11 @@ func (g *Gateway) DeleteAccount(ctx context.Context, account, root string) error
 		return err
 	}
 	for _, id := range ids {
-		if err = g.DeleteBrain(ctx, account, id, root); err != nil {
+		if err = g.deleteBrainWithJournalState(ctx, account, id, root, state); err != nil {
 			return err
 		}
 	}
-	hash := sha256.Sum256([]byte(account))
-	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
-	lock.Lock()
-	defer lock.Unlock()
-	return g.Issuer.Store.Transaction(ctx, func(tx *sql.Tx) error {
-		var email string
-		if e := tx.QueryRowContext(ctx, `SELECT email FROM accounts WHERE id=?`, account).Scan(&email); e != nil {
-			return e
-		}
+	if err = g.Issuer.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		if _, e := tx.ExecContext(ctx, `DELETE FROM login_tokens WHERE email=?`, email); e != nil {
 			return e
 		}
@@ -157,11 +212,87 @@ func (g *Gateway) DeleteAccount(ctx context.Context, account, root string) error
 		}
 		_, e := tx.ExecContext(ctx, `UPDATE accounts SET status='deleted',email='',email_hash=?,plan_id='free' WHERE id=?`, "deleted:"+account, account)
 		return e
-	})
+	}); err != nil {
+		return err
+	}
+	testhooks.At(testhooks.PhaseDeletionPurged)
+	return g.ensureDeletionEntryWithState(ctx, contracts.DeletionSubjectAccount, account, contracts.DeletionOutcomePurged, state)
+}
+
+func (g *Gateway) ensureDeletionEntry(ctx context.Context, subjectType contracts.DeletionSubjectType, subjectID string, outcome contracts.DeletionOutcome) error {
+	if g.Journal == nil {
+		return errDeletionJournalUnavailable
+	}
+	read, err := g.Journal.ReadThrough(ctx, contracts.DeletionWatermark{})
+	if err != nil {
+		return fmt.Errorf("hosted/gateway: verify deletion journal before append: %w", err)
+	}
+	state := newDeletionEntrySet(read.Entries)
+	return g.ensureDeletionEntryWithState(ctx, subjectType, subjectID, outcome, state)
+}
+
+func (g *Gateway) ensureDeletionEntryWithState(ctx context.Context, subjectType contracts.DeletionSubjectType, subjectID string, outcome contracts.DeletionOutcome, state *deletionEntrySet) error {
+	if g.Journal == nil {
+		return errDeletionJournalUnavailable
+	}
+	if state == nil {
+		return g.ensureDeletionEntry(ctx, subjectType, subjectID, outcome)
+	}
+	if state.contains(subjectType, subjectID, outcome) {
+		return nil
+	}
+	if _, err := g.Journal.AppendDeletion(ctx, contracts.DeletionEntry{
+		SubjectType: subjectType,
+		SubjectID:   subjectID,
+		Outcome:     outcome,
+	}); err != nil {
+		return fmt.Errorf("hosted/gateway: append deletion journal entry: %w", err)
+	}
+	state.add(subjectType, subjectID, outcome)
+	return nil
+}
+
+type deletionEntryKey struct {
+	subjectType contracts.DeletionSubjectType
+	subjectID   string
+	outcome     contracts.DeletionOutcome
+}
+
+type deletionEntrySet map[deletionEntryKey]struct{}
+
+func newDeletionEntrySet(entries []contracts.DeletionEntry) *deletionEntrySet {
+	set := make(deletionEntrySet, len(entries))
+	for _, entry := range entries {
+		set.add(entry.SubjectType, entry.SubjectID, entry.Outcome)
+	}
+	return &set
+}
+
+func (s *deletionEntrySet) add(subjectType contracts.DeletionSubjectType, subjectID string, outcome contracts.DeletionOutcome) {
+	(*s)[deletionEntryKey{subjectType: subjectType, subjectID: subjectID, outcome: outcome}] = struct{}{}
+}
+
+func (s *deletionEntrySet) contains(subjectType contracts.DeletionSubjectType, subjectID string, outcome contracts.DeletionOutcome) bool {
+	if _, ok := (*s)[deletionEntryKey{subjectType: subjectType, subjectID: subjectID, outcome: outcome}]; ok {
+		return true
+	}
+	if outcome == contracts.DeletionIntentRequested {
+		_, ok := (*s)[deletionEntryKey{subjectType: subjectType, subjectID: subjectID, outcome: contracts.DeletionOutcomePurged}]
+		return ok
+	}
+	return false
 }
 
 func (g *Gateway) RecoverDeletions(ctx context.Context, root string) error {
-	rows, err := g.Issuer.Store.DB().QueryContext(ctx, `SELECT id FROM accounts WHERE status='deleting'`)
+	if g.Journal == nil {
+		return errDeletionJournalUnavailable
+	}
+	journal, err := g.Journal.ReadThrough(ctx, contracts.DeletionWatermark{})
+	if err != nil {
+		return fmt.Errorf("hosted/gateway: verify deletion journal before recovery: %w", err)
+	}
+	state := newDeletionEntrySet(journal.Entries)
+	rows, err := g.Issuer.Store.DB().QueryContext(ctx, `SELECT id FROM accounts WHERE status IN ('deleting','deleted')`)
 	if err != nil {
 		return err
 	}
@@ -182,26 +313,41 @@ func (g *Gateway) RecoverDeletions(ctx context.Context, root string) error {
 		return err
 	}
 	for _, id := range accounts {
-		if err = g.DeleteAccount(ctx, id, root); err != nil {
+		hash := sha256.Sum256([]byte(id))
+		lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
+		lock.Lock()
+		err = g.deleteAccountLocked(ctx, id, root, state)
+		lock.Unlock()
+		if err != nil {
 			return err
 		}
 	}
-	rows, err = g.Issuer.Store.DB().QueryContext(ctx, `SELECT id,path_key FROM brains WHERE state='deleted'`)
+	rows, err = g.Issuer.Store.DB().QueryContext(ctx, `SELECT id,account_id FROM brains WHERE state='deleted'`)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
+	type deletedBrain struct{ id, account string }
+	var deleted []deletedBrain
 	for rows.Next() {
-		var id, key string
-		if err = rows.Scan(&id, &key); err != nil {
+		var brain deletedBrain
+		if err = rows.Scan(&brain.id, &brain.account); err != nil {
+			_ = rows.Close()
 			return err
 		}
-		if id != key || filepath.Base(key) != key || len(key) < 16 {
-			return errors.New("invalid deleted brain path")
-		}
-		if err = os.RemoveAll(filepath.Join(root, key)); err != nil {
+		deleted = append(deleted, brain)
+	}
+	if err = errors.Join(rows.Err(), rows.Close()); err != nil {
+		return err
+	}
+	for _, brain := range deleted {
+		hash := sha256.Sum256([]byte(brain.account))
+		lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
+		lock.Lock()
+		err = g.deleteBrainWithJournalState(ctx, brain.account, brain.id, root, state)
+		lock.Unlock()
+		if err != nil {
 			return err
 		}
 	}
-	return rows.Err()
+	return nil
 }
