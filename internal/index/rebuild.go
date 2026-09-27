@@ -547,8 +547,10 @@ func indexedRoot(ctx context.Context, eng *SQLite) (string, error) {
 }
 
 // RestrictedSummaryEntities identifies untraceable cached summaries that may
-// quote private, index-only or expired source evidence. Canonical parse errors
-// fail closed. Retained history remains relevant because cached text can be old.
+// quote private, index-only or expired source evidence. A page that cannot
+// be parsed is quarantined, which fails closed for that page alone (nothing
+// from it is indexed or served) without failing the read for the whole
+// brain. Retained history remains relevant because cached text can be old.
 func RestrictedSummaryEntities(root string, proj *store.MemoryProjection, now time.Time) (map[string]bool, error) {
 	restricted := make(map[string]bool)
 	for _, rec := range proj.All() {
