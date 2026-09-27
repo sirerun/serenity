@@ -80,6 +80,13 @@ if changed:
     os.chown(temporary, metadata.st_uid, metadata.st_gid)
     os.replace(temporary, path)
 PYCONFIG
+# Keep the previous Caddy unit and config once for rollback of the privilege
+# drop (ADR 020); the snapshot is only taken when the unit actually changes.
+if [[ -f /etc/systemd/system/caddy.service ]] && ! cmp -s "$script_dir/caddy.service" /etc/systemd/system/caddy.service; then
+    install -d -m 0700 /root/serenity-caddy-rollback
+    cp -p /etc/systemd/system/caddy.service /root/serenity-caddy-rollback/caddy.service
+    [[ ! -f /etc/caddy/Caddyfile ]] || cp -p /etc/caddy/Caddyfile /root/serenity-caddy-rollback/Caddyfile
+fi
 install -m 0644 "$caddy_config" /etc/caddy/Caddyfile
 install -d -m 0755 /opt/serenity-hosted
 install -m 0755 "$script_dir/backup.sh" /opt/serenity-hosted/backup.sh
@@ -92,7 +99,14 @@ systemctl daemon-reload
 systemctl enable --now caddy
 systemctl enable --now serenity-hosted
 systemctl restart serenity-hosted
-systemctl reload caddy
+# Reload through the 0600 unix admin socket. A process started under the old
+# root unit has no socket, so the first deploy after the privilege drop
+# restarts Caddy instead; every later deploy is a zero-downtime reload.
+if [[ -S /run/caddy/admin.sock ]]; then
+    caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile --address unix//run/caddy/admin.sock
+else
+    systemctl restart caddy
+fi
 curl --fail --retry 5 --retry-connrefused --max-time 10 http://127.0.0.1:8090/readyz
 systemctl start serenity-backup.service
 systemctl enable --now serenity-backup.timer

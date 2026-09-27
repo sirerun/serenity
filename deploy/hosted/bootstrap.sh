@@ -59,6 +59,17 @@ fi
 id serenity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/serenity --shell /sbin/nologin serenity
 install -d -m 0700 -o serenity -g serenity /etc/serenity /etc/serenity/secrets
 install -d -m 0755 /etc/caddy
+# Caddy runs unprivileged (ADR 020): a dedicated system user, state under
+# /var/lib/caddy and the admin socket under /run/caddy. When a root-era
+# certificate store exists it is copied once, before deploy.sh starts the new
+# unit, so no certificate is re-issued against Let's Encrypt rate limits.
+# Reruns leave an existing /var/lib/caddy/caddy alone.
+id caddy >/dev/null 2>&1 || useradd --system --home-dir /var/lib/caddy --shell /sbin/nologin caddy
+install -d -m 0750 -o caddy -g caddy /var/lib/caddy /var/lib/caddy/config /run/caddy
+if [[ -d /root/.local/share/caddy && ! -e /var/lib/caddy/caddy ]]; then
+    cp -a /root/.local/share/caddy /var/lib/caddy/
+fi
+chown -R caddy:caddy /var/lib/caddy
 install -d -m 0700 -o serenity -g serenity /var/lib/serenity /var/lib/serenity/brains
 systemctl enable --now amazon-ssm-agent.service
 printf 'architecture=%s\ndata_device=%s\ndata_uuid=%s\ncaddy_version=%s\n' \

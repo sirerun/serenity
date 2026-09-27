@@ -1,12 +1,30 @@
+{
+	# The admin API lives on a 0600 unix socket instead of TCP localhost:2019
+	# (deep review 001 SEC-H01, ADR 020). caddy.service and deploy.sh reload
+	# through it with --address unix//run/caddy/admin.sock.
+	admin unix//run/caddy/admin.sock|0600
+	servers {
+		# Cloudflare proxies every request, so the TCP peer is a shared edge
+		# address. Trust only Cloudflare's published ranges and take the real
+		# client address from CF-Connecting-IP (SEC-M03, ADR 020).
+		# Source: https://www.cloudflare.com/ips-v4 and
+		# https://www.cloudflare.com/ips-v6, fetched 2026-09-27. Refresh this
+		# line and deploy/hosted/tests/test_units.py together.
+		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+		client_ip_headers CF-Connecting-IP
+	}
+}
+
 serenity.sire.run {
-    encode zstd gzip
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        Referrer-Policy "same-origin"
-    }
-    reverse_proxy 127.0.0.1:8090 {
-        # Replace any caller-supplied header with the actual client address.
-        header_up X-Serenity-Client-IP {remote_host}
-    }
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "same-origin"
+	}
+	reverse_proxy 127.0.0.1:8090 {
+		# Replace any caller-supplied header with the client address Caddy
+		# resolved through trusted_proxies; the app trusts it from loopback only.
+		header_up X-Serenity-Client-IP {client_ip}
+	}
 }
