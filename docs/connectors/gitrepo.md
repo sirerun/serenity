@@ -68,6 +68,14 @@ the repository's `HEAD` moves — even a forced re-poll of an unchanged
 `HEAD` returns zero items, and the source store's content-address dedup
 means a moved-then-reverted `HEAD` still adds no new sources.
 
+## Source URIs
+
+A crawled file's `uri` is `git-repo://<repo dir name>/<path relative to the
+repo>@<commit>`, never the repository's absolute location. Its metadata
+carries `path_hash`, the SHA-256 of the absolute path. `serenity sync` keeps
+the absolute path only in the local index. See
+[Source URIs and local paths](../operator/source-uris.md).
+
 ## Setup
 
 Configure one entry per repository under `serenity.yml`'s

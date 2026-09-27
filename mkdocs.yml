@@ -26,6 +26,7 @@ nav:
       - Import gbrain: operator/gbrain-import.md
       - Inbox recovery: operator/inbox.md
       - Conformance: operator/conformance.md
+      - Source URIs: operator/source-uris.md
       - Threat model: operator/threat-model.md
   - Connectors:
       - Overview: connectors/README.md

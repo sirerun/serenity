@@ -155,6 +155,20 @@ they never reach the redaction stage because they never leave
 authenticated: the daemon serves protocol responses (with provenance and
 confidence attached), it does not hand out raw source bytes or key material.
 
+### Source records carry no absolute paths
+
+`brain/sources/` metadata is committed and auto-pushed, so it's the one part of
+the local picture that does reach a git remote. Source records written by the
+`file` and `git_repo` connectors name their file relative to the connector's
+root (`uri: file:notes/plan.txt`,
+`git-repo://<repo dir name>/<path>@<commit>`) plus a `path_hash`, the SHA-256
+of the absolute path. The absolute path itself is kept only in the local
+derived index (`source_paths` in `.serenity/index.db`), which never leaves the
+machine. The hash is unsalted: it doesn't reveal the directory layout, but it
+can confirm a guessed full path. Records written before this change keep their
+absolute `file://` URIs. Nothing rewrites history. See
+[Source URIs and local paths](operator/source-uris.md).
+
 ## Redaction contract
 
 Prompts to model providers carry only composed briefs, chunks, and query

@@ -51,6 +51,13 @@ time, and size. On the next `Poll`:
 Combined with the source store's content-address dedup, ingesting an
 unchanged directory tree twice adds zero new sources.
 
+## Source URIs
+
+A file source's `uri` is `file:<path relative to the watched directory>`,
+never the absolute path, and its metadata carries `path_hash`, the SHA-256 of
+the absolute path. `serenity sync` keeps the absolute path only in the local
+index. See [Source URIs and local paths](../operator/source-uris.md).
+
 ## Setup
 
 Configure one watched directory under `serenity.yml`'s `connectors.file`
