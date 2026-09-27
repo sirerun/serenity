@@ -205,7 +205,12 @@ func TestLimiterPerKeyIsEvaluatedBeforeGlobal(t *testing.T) {
 	l.now = func() time.Time { return base }
 	// Key a exhausts its own allowance; the third refusal must not have
 	// charged the global window.
-	if !l.allow("a") || !l.allow("a") || l.allow("a") {
+	for i := range 2 {
+		if !l.allow("a") {
+			t.Fatalf("key a refused at request %d of its allowance of 2", i+1)
+		}
+	}
+	if l.allow("a") {
 		t.Fatal("per-key allowance of 2 not enforced")
 	}
 	if l.global.count != 2 {
