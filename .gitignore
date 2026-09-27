@@ -1,6 +1,9 @@
 # Derived state — rebuildable, never canonical (RFC §7.5)
 .serenity/
 
+# Local secrets -- never committed (deep review 001 SEC-INF-SECRET)
+.env
+
 # Ephemeral agent outputs
 .claude/
 .kazi/
