@@ -200,6 +200,8 @@ scope and ownership rules.
   recorded revisit condition becomes due.
 - [HTTP transport](docs/operator/server.md) — authentication and bind configuration
   for the server implementation.
+- [Spend](docs/operator/spend.md) — the dated per-model price table, how
+  `MaxUSD` and the nightly eval cap trip, and synthesize's rate and output limits.
 - [Threat model](docs/threat-model.md) — trust boundaries and security assumptions.
 - [Work plan](docs/plan.md) — implementation progress and remaining work.
 

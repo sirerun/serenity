@@ -172,7 +172,12 @@ statement and a best-effort cost aggregate.
 | `answer` | string | yes | |
 | `sources` | array of string | yes | |
 | `gaps` | array of string | no | What the brain doesn't know. |
-| `cost` | object | yes | `model` (string), `input_tokens`/`output_tokens` (integer or null), `usd_estimate` (number or null) — all required within `cost`. An honest signal, not an invoice: retries and multi-call flows sum, cache hits may undercount. |
+| `cost` | object | yes | `model` (string), `input_tokens`/`output_tokens` (integer or null), `usd_estimate` (number or null) — all required within `cost`. An honest signal, not an invoice: retries and multi-call flows sum, cache hits may undercount. `usd_estimate` is priced from Serenity's dated per-model price table and is `null` for a model the table does not list (see [docs/operator/spend.md](../operator/spend.md)). |
+
+Serenity limits `synthesize` to 60 well-formed calls per account per minute
+(E24 T24.13); the 61st answers the `rate_limited` error below without running
+retrieval or a completion. Malformed requests are answered as
+`invalid_params` and are not counted.
 
 ### `forget`
 
@@ -222,6 +227,7 @@ Error codes:
 | `unavailable` | A dependency (e.g. the index) is unavailable. |
 | `budget_unsatisfiable` | Schema-listed by the pinned gbrain contract but **reserved** — Serenity's current implementation never emits it. |
 | `internal` | An unclassified internal failure. |
+| `rate_limited` | Serenity extension (E24 T24.13), not in gbrain's `ERROR_SCHEMA`: `synthesize` refused the call because the account has already made 60 well-formed `synthesize` calls in the current one-minute window. The refused call ran no retrieval and no completion; `suggestion` says to wait for the minute to roll over or use `recall`. Only `synthesize` emits it. |
 
 ## Governance
 

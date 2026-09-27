@@ -17,6 +17,7 @@ var defaultModelIDs = []string{
 	"claude-haiku-4-5-20251001", // cmd/eval-runner -model default (nightly-eval.yml live run)
 	"claude-haiku-4-5",          // AnthropicProvider.Model doc example, undated alias of the above
 	"qwen3.8-27b",               // docs/evals/m1-report.md: self-hosted SGLang extraction/composer model
+	"claude-sonnet-4-5",         // docs/providers.md: the documented example pin for models.provider: anthropic
 }
 
 func TestPriceTableCoversDefaultModels(t *testing.T) {

@@ -40,6 +40,7 @@ var prices = map[string]ModelPrice{
 	// undated id is the same model addressed by its alias.
 	"claude-haiku-4-5-20251001": {InputUSDPerMillion: 1.00, OutputUSDPerMillion: 5.00},
 	"claude-haiku-4-5":          {InputUSDPerMillion: 1.00, OutputUSDPerMillion: 5.00},
+	"claude-sonnet-4-5":         {InputUSDPerMillion: 3.00, OutputUSDPerMillion: 15.00},
 	"claude-sonnet-4-6":         {InputUSDPerMillion: 3.00, OutputUSDPerMillion: 15.00},
 	"claude-sonnet-5":           {InputUSDPerMillion: 2.00, OutputUSDPerMillion: 10.00},
 	"claude-opus-4-6":           {InputUSDPerMillion: 5.00, OutputUSDPerMillion: 25.00},

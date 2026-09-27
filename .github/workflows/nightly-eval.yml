@@ -8,12 +8,11 @@ name: nightly-eval
 # internal/eval/runner.TrackingLedger), and publishes evals/report.json
 # as a workflow artifact for plan T1.23 (M1 exit verification) to read.
 #
-# KNOWN LIMITATION, disclosed: internal/router's AnthropicProvider and
-# OpenAICompatibleProvider (internal/router/anthropic.go,
-# openai_compatible.go) do not compute Usage.CostUSD yet, so the budget
-# cap below is correctly wired but does not actually bound spend today --
-# it starts enforcing the moment a provider reports a real cost. See
-# internal/eval/runner/ledger.go's doc comment.
+# The cap is real (E24 T24.13, closing lore L-0008): every call is
+# priced from internal/router/prices.go's dated per-model table, the
+# TrackingLedger sums that priced cost, and a model the table does not
+# list counts as over budget on its first call (fail closed) rather than
+# running the split at an unknown price. See docs/operator/spend.md.
 #
 # Requires an ANTHROPIC_API_KEY repository secret before a scheduled run
 # can succeed; SERENITY_EVAL_BUDGET_USD can be set as a repository/
