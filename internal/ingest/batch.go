@@ -16,6 +16,14 @@ import (
 // Real tier writers operate in the private snapshot; publication preserves human
 // bytes and records every actual shard segment for the caller's Git Flush.
 func (w *Writer) Write(obs []domain.Observation) (Stats, error) {
+	claims := make([]domain.Claim, len(obs))
+	for i, o := range obs {
+		claims[i] = ClaimFromObservation(o)
+	}
+	return w.writeBatch(obs, claims)
+}
+
+func (w *Writer) writeBatch(obs []domain.Observation, claims []domain.Claim) (Stats, error) {
 	if len(obs) == 0 {
 		return Stats{}, nil
 	}
@@ -34,7 +42,7 @@ func (w *Writer) Write(obs []domain.Observation) (Stats, error) {
 		planned := New(q, fw, ss, w.Config)
 		planned.EntityType = func(slug string) string { return types[slug] }
 		var err error
-		stats, err = planned.writeObservations(obs)
+		stats, err = planned.writeObservations(obs, claims)
 		return err
 	})
 	if err != nil {

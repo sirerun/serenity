@@ -83,6 +83,12 @@ const (
 	// kind-specific exception to T2.7's "space never touches the brain
 	// repo" default.
 	KindDecompose Kind = "decompose"
+	// KindClaimCandidate is a first-seen, non-conflicting machine claim
+	// from an untrusted connector (ADR 022, T24.16). The claim is already
+	// canonical with state pending; accepting the item activates it with the
+	// disposing human as actor. Payload is internal/ingest's
+	// ClaimCandidatePayload.
+	KindClaimCandidate Kind = "claim_candidate"
 )
 
 // State enumerates disposition item lifecycle states (RFC 0001 §8.2/ADR

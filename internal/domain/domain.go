@@ -22,6 +22,10 @@ const (
 	StateActive     State = "active"
 	StateSuperseded State = "superseded"
 	StateRetracted  State = "retracted"
+	// StatePending is a machine claim from an untrusted connector that has
+	// not yet been accepted by a human (ADR 022, T24.16). It is canonical
+	// evidence awaiting review, never a live head and never disclosed.
+	StatePending State = "pending"
 )
 
 // Tier is a predicate family's storage tier (§7.2a).

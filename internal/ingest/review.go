@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/extract"
@@ -30,6 +31,13 @@ type ReviewPlan struct {
 	AlreadyPresent  int
 	PriorDecision   int
 	AwaitingDistill int
+	// Pending holds first-seen, non-conflicting observations from untrusted
+	// connectors (ADR 022, T24.16). WriteReviewed writes them in state
+	// pending; StageCandidates then queues one claim_candidate item each.
+	Pending []domain.Observation
+	// AwaitingCandidate counts observations whose claim_candidate item is
+	// still open.
+	AwaitingCandidate int
 }
 
 // ReviewObservations uses canonical rows, not potentially stale index claims.
@@ -51,7 +59,22 @@ func (w *Writer) ReviewObservations(ctx context.Context, ds *disposition.Store, 
 	}
 	decided := map[string]bool{}
 	awaiting := map[string]bool{}
+	openCandidates := map[string]bool{}
 	for _, item := range items {
+		if candidate, isCandidate, err := ClaimCandidate(item); err != nil {
+			return result, err
+		} else if isCandidate {
+			key, err := observationIdentity(candidate.Claim)
+			if err != nil {
+				return result, err
+			}
+			if item.State == disposition.StateDisposed {
+				decided[key] = true
+			} else {
+				openCandidates[key] = true
+			}
+			continue
+		}
 		observation, isExtraction, err := disposition.ExtractionObservation(item)
 		if err != nil {
 			return result, err
@@ -88,7 +111,8 @@ func (w *Writer) ReviewObservations(ctx context.Context, ds *disposition.Store, 
 		if observation.Confidence < extract.DistillThreshold {
 			return result, fmt.Errorf("extract review: low-confidence observation requires distill review")
 		}
-		claim := ClaimFromObservation(observation)
+		class := w.classify(observation.SourceSHA256)
+		claim := classifiedClaim(observation, class)
 		identity := claim.SubjectSlug + "\x00" + claim.ID
 		if all[identity] {
 			result.AlreadyPresent++
@@ -106,11 +130,23 @@ func (w *Writer) ReviewObservations(ctx context.Context, ds *disposition.Store, 
 			result.AwaitingDistill++
 			continue
 		}
+		if openCandidates[key] {
+			result.AwaitingCandidate++
+			continue
+		}
 		candidates := reconcile.Candidates(claim, active[claim.SubjectSlug])
 		sort.Slice(candidates, func(i, j int) bool { return candidates[i].ID < candidates[j].ID })
 		detection := reconcile.Detect(claim, candidates)
 		if detection.Verdict == reconcile.VerdictConflict || detection.Verdict == reconcile.VerdictWindowClose {
 			result.Proposals = append(result.Proposals, reconcile.ReconcilePayload{Verdict: detection.Verdict, Reason: detection.Reason, A: claim, B: detection.Candidate})
+			continue
+		}
+		if class.Trust != config.TrustTrusted && detection.Verdict != reconcile.VerdictAgree {
+			// First-seen machine claim from an untrusted connector: it waits
+			// for a human accept (ADR 022). Agreement with a live claim is
+			// corroboration, not a new belief, so it stays on the ready path.
+			result.Pending = append(result.Pending, observation)
+			all[identity] = true
 			continue
 		}
 		result.Ready = append(result.Ready, observation)
