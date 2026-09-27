@@ -18,6 +18,14 @@ import (
 // limit rarely hits it, disclosed rather than silently unbounded.
 const defaultRecallLimit = 50
 
+// maxRecallQueryBytes and maxRecallLimit bound what one recall can send
+// to the (possibly paid) embedding provider and ask of the search arm
+// (SEC-L06). Both are checked before any store load or embedder call.
+const (
+	maxRecallQueryBytes = 4096
+	maxRecallLimit      = 100
+)
+
 type recallRequest struct {
 	Query        string `json:"query,omitempty"`
 	Entity       string `json:"entity,omitempty"`
@@ -62,12 +70,12 @@ func (h *Handlers) recallTool() mcp.Tool {
 	schema := `{
 		"type": "object",
 		"properties": {
-			"query": {"type": "string", "description": "Hybrid-search the brain's pages; omit to skip the search arm."},
+			"query": {"type": "string", "description": "Hybrid-search the brain's pages; omit to skip the search arm. At most 4096 bytes (UTF-8)."},
 			"entity": {"type": "string", "description": "Scope the facts arm to one entity (name or type/slug)."},
 			"budget_tokens": {"type": "integer", "minimum": 0, "description": "Server-side char/4 packing budget; facts pack first."},
 			"since": {"type": "string", "description": "ISO 8601 date/datetime -- filters the facts arm only."},
 			"session_id": {"type": "string"},
-			"limit": {"type": "integer", "minimum": 0, "description": "Per-arm cap on candidates."}
+			"limit": {"type": "integer", "minimum": 0, "maximum": 100, "description": "Per-arm cap on candidates (default 50, at most 100)."}
 		}
 	}`
 	return mcp.Tool{
@@ -90,6 +98,9 @@ func (h *Handlers) recall(ctx context.Context, args json.RawMessage) (any, bool,
 	var req recallRequest
 	if err := json.Unmarshal(args, &req); err != nil {
 		return verbError(ErrCodeInvalidParams, "recall: malformed request", "send a JSON object; every field is optional"), true, nil
+	}
+	if len(req.Query) > maxRecallQueryBytes {
+		return verbError(ErrCodeInvalidParams, "recall: query exceeds 4096 bytes", "shorten the query to at most 4096 bytes (UTF-8)"), true, nil
 	}
 
 	since, err := parseSinceUntil(req.Since)
@@ -115,6 +126,9 @@ func (h *Handlers) recall(ctx context.Context, args json.RawMessage) (any, bool,
 	if req.Limit != nil {
 		if *req.Limit < 0 {
 			return verbError(ErrCodeInvalidParams, "limit must be nonnegative", "omit limit or provide a nonnegative integer"), true, nil
+		}
+		if *req.Limit > maxRecallLimit {
+			return verbError(ErrCodeInvalidParams, "recall: limit exceeds 100", "omit limit or provide an integer from 0 to 100"), true, nil
 		}
 		limit = *req.Limit
 	}
