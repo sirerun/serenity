@@ -22,7 +22,22 @@ ls-files --cached --others --exclude-standard` rather than reimplementing
 gitignore semantics, so nested files and negation patterns behave exactly
 as git itself resolves them.
 
-## The brain repo is excluded by default
+## Symlinks and non-regular files are skipped
+
+The crawler reads only regular files that sit inside the repository. Before
+it reads any listed path it checks the entry as it sits in the tree
+(`Lstat`), refuses anything that is not a regular file (symlinks,
+directories, sockets, devices, pipes), resolves the path with
+`EvalSymlinks`, and refuses it unless the resolved path is under the
+resolved repository top level. A repository that tracks a symlink to a file
+outside its own tree therefore produces no source for that link, and none
+of the linked file's bytes reach the brain, the model, or the brain remote.
+
+Skipped entries don't abort the crawl. `Poll` records each one with its
+path and reason, and `Connector.Skipped()` returns the list for the most
+recent poll so a sync summary can report how many entries were ignored.
+A symlink that stays inside the repository is skipped too: the crawler
+never follows links, it reads the target through its own tracked path.
 
 Your brain repo is itself a git repository, holding the dira ledger under
 `.dira/entries/`. Crawling it would re-ingest your own precepts and claims
@@ -88,6 +103,9 @@ c := gitrepo.New(gitrepo.Config{
 - The crawler reads the tree at `HEAD` only; it doesn't walk commit
   history.
 - It shells out to `git`, so `git` must be on `PATH`.
+- Symlinks are never followed, even ones that point inside the
+  repository; the target is ingested only if git lists it under its own
+  path.
 - There's no CLI command to author `serenity.yml`'s `connectors.git_repo`
   list; edit the file directly.
 - Each `path` must resolve under your home directory or a directory
