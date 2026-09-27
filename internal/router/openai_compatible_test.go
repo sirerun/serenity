@@ -3,10 +3,81 @@ package router
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+// TestOpenAICompatibleProviderPopulatesCostUSDFromPriceTable mirrors the
+// Anthropic adapter's test: prompt_tokens/completion_tokens are priced
+// against prices.go; a self-hosted model listed at $0 is a real $0; an
+// unlisted id is +Inf.
+func TestOpenAICompatibleProviderPopulatesCostUSDFromPriceTable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"}}],"usage":{"prompt_tokens":1000,"completion_tokens":500}}`))
+	}))
+	defer server.Close()
+
+	cases := []struct {
+		model string
+		want  float64 // math.Inf(1) for unlisted
+	}{
+		{"claude-haiku-4-5", 0.0035},
+		{"qwen3.8-27b", 0},
+		{"gpt-x", math.Inf(1)},
+	}
+	for _, c := range cases {
+		p := &OpenAICompatibleProvider{BaseURL: server.URL, Model: c.model, Version: "v1"}
+		resp, err := p.Send(context.Background(), "hi")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if math.IsInf(c.want, 1) {
+			if !math.IsInf(resp.Usage.CostUSD, 1) {
+				t.Fatalf("%s: Usage.CostUSD = %v, want +Inf (unlisted, fail closed)", c.model, resp.Usage.CostUSD)
+			}
+			continue
+		}
+		if math.Abs(resp.Usage.CostUSD-c.want) > 1e-9 {
+			t.Fatalf("%s: Usage.CostUSD = %v, want %v", c.model, resp.Usage.CostUSD, c.want)
+		}
+	}
+}
+
+// TestOpenAICompatibleProviderMaxTokens: MaxTokens > 0 is sent as the
+// chat-completions max_tokens field (the AI-04 fix for an unbounded
+// synthesize completion); MaxTokens 0 omits it, so every request that
+// does not opt in stays byte-identical to before the field existed.
+func TestOpenAICompatibleProviderMaxTokens(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody = nil
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+		w.Header().Set("content-type", "application/json")
+		_, _ = w.Write([]byte(`{"choices": [{"message": {"role": "assistant", "content": "ok"}}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}`))
+	}))
+	defer server.Close()
+
+	p := &OpenAICompatibleProvider{BaseURL: server.URL, Model: "qwen3.8-27b", Version: "v", MaxTokens: 4096}
+	if _, err := p.Send(context.Background(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := gotBody["max_tokens"].(float64); !ok || got != 4096 {
+		t.Fatalf("max_tokens = %v (present=%v), want 4096", gotBody["max_tokens"], ok)
+	}
+
+	p = &OpenAICompatibleProvider{BaseURL: server.URL, Model: "qwen3.8-27b", Version: "v"}
+	if _, err := p.Send(context.Background(), "hi"); err != nil {
+		t.Fatal(err)
+	}
+	if _, present := gotBody["max_tokens"]; present {
+		t.Fatalf("max_tokens present with MaxTokens 0: %+v", gotBody)
+	}
+}
 
 // TestOpenAICompatibleProviderSendsChatRequestOverHTTP stands a real
 // net/http test server in for an OpenAI-compatible chat-completions API
