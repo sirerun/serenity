@@ -43,7 +43,7 @@ or returned, or has no observer.
 
 ### Sites
 
-Fixed sites link to the PR that fixed them: T24.29 (this audit's PR,
+Fixed sites link to the PR that fixed them: [#295](https://github.com/sirerun/serenity/pull/295) (T24.29,
 branch `t24-29-swallowed-errors`).
 
 | # | Site (at 2bf0d98) | Expression | Category | Disposition | Reason |
@@ -58,11 +58,11 @@ branch `t24-29-swallowed-errors`).
 | 8 | `evals/hosted-load/fixtureprep/verify.go:450` | `_ = crows.Close()` | harmless | benign-documented | Read-only handle closed on an early-return (or read-complete) path; the returned error is the one reported. |
 | 9 | `evals/hosted-load/fixtureprep/verify.go:679` | `_ = rows.Close()` | harmless | benign-documented | Read-only handle closed on an early-return (or read-complete) path; the returned error is the one reported. |
 | 10 | `evals/hosted-load/fixtureprep/verify.go:718` | `_ = vrows.Close()` | harmless | benign-documented | Read-only handle closed on an early-return (or read-complete) path; the returned error is the one reported. |
-| 11 | `internal/cli/check.go:279` | `_ = enc.Encode(check.ToWire(result, matched, confidence, haveConfidence))` | material | fixed | `serenity check --json` exited 0 with no output when stdout could not be written; now returns the write error. Test: `TestCheckJSONWriteFailureIsAnError`. |
+| 11 | `internal/cli/check.go:279` | `_ = enc.Encode(check.ToWire(result, matched, confidence, haveConfidence))` | material | fixed | `serenity check --json` exited 0 with no output when stdout could not be written; now returns the write error. Test: `TestCheckJSONWriteFailureIsAnError`. Fixed in [#295](https://github.com/sirerun/serenity/pull/295). |
 | 12 | `internal/cli/hosted.go:63` | `_ = adminListener.Close()` | harmless | benign-documented | Closing the admin listener on a Chmod failure; the Chmod error is returned. |
 | 13 | `internal/cli/serve.go:318` | `_ = unix.Close(fd)` | harmless | benign-documented | Closing a duplicated fd on an error path; the SetNonblock error is returned. |
 | 14 | `internal/connector/file/file.go:89` | `_ = w.Close()` | harmless | benign-documented | Closing the watcher after the initial tree watch failed; that error is returned. |
-| 15 | `internal/connector/file/file.go:373` | `_ = c.addTreeWatches(ev.Name) // best-effort: watch the new subtree too` | material | fixed | A new subdirectory that could not be watched (e.g. inotify watch limit) was silently never ingested; the error is now recorded in `watchErr` and returned by the next Poll (a vanished subtree is ignored). Test: `TestWatchNewSubdirFailureSurfacesFromPoll`. |
+| 15 | `internal/connector/file/file.go:373` | `_ = c.addTreeWatches(ev.Name) // best-effort: watch the new subtree too` | material | fixed | A new subdirectory that could not be watched (e.g. inotify watch limit) was silently never ingested; the error is now recorded in `watchErr` and returned by the next Poll (a vanished subtree is ignored). Test: `TestWatchNewSubdirFailureSurfacesFromPoll`. Fixed in [#295](https://github.com/sirerun/serenity/pull/295). |
 | 16 | `internal/connector/imap/connector.go:91` | `_ = client.Close()` | harmless | benign-documented | IMAP connection teardown after login failure or in a deferred cleanup; the session result is already decided. |
 | 17 | `internal/connector/imap/connector.go:131` | `_ = client.Logout().Wait()` | harmless | benign-documented | IMAP connection teardown after login failure or in a deferred cleanup; the session result is already decided. |
 | 18 | `internal/connector/imap/connector.go:132` | `_ = client.Close()` | harmless | benign-documented | IMAP connection teardown after login failure or in a deferred cleanup; the session result is already decided. |
