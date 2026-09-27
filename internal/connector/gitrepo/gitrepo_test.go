@@ -348,3 +348,188 @@ func TestAdversarialDocProducesZeroDiraWrites(t *testing.T) {
 		t.Fatal("adversarial prose (not a valid dira entry) was flagged as a precept_draft_candidate")
 	}
 }
+
+// outsideSentinel is a byte string that exists only in a file outside every
+// fixture repository. The containment tests assert it appears nowhere in
+// the polled items or in a source store fed from them.
+const outsideSentinel = "OUTSIDE-REPOSITORY-SENTINEL-4f1c2e"
+
+// writeOutside writes a file in a sibling temp dir (never inside repo)
+// carrying outsideSentinel and returns its absolute path.
+func writeOutside(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "secret.txt")
+	if err := os.WriteFile(p, []byte(outsideSentinel+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func symlink(t *testing.T, repo, rel, target string) {
+	t.Helper()
+	full := filepath.Join(repo, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, full); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// ingestAll runs every item through ToSource and a source store rooted at
+// a fresh temp dir, then returns the concatenated bytes of every file under
+// it so a caller can assert a sentinel never reached the brain.
+func ingestAll(t *testing.T, c *gitrepo.Connector, items []connector.RawItem) string {
+	t.Helper()
+	target := t.TempDir()
+	ss := store.NewSourceStore(target)
+	for _, it := range items {
+		src, err := c.ToSource(it)
+		if err != nil {
+			t.Fatalf("ToSource(%s): %v", it.URI, err)
+		}
+		if _, err := ss.Write(it.Bytes, src); err != nil {
+			t.Fatalf("Write(%s): %v", it.URI, err)
+		}
+	}
+	var all strings.Builder
+	err := filepath.WalkDir(target, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		all.Write(data)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", target, err)
+	}
+	return all.String()
+}
+
+func assertNoOutsideBytes(t *testing.T, items []connector.RawItem, brain string) {
+	t.Helper()
+	for _, it := range items {
+		if bytes.Contains(it.Bytes, []byte(outsideSentinel)) {
+			t.Fatalf("item %s carries bytes from outside the repository", it.URI)
+		}
+	}
+	if strings.Contains(brain, outsideSentinel) {
+		t.Fatal("bytes from outside the repository reached the source store")
+	}
+}
+
+func skippedPaths(c *gitrepo.Connector) []string {
+	var paths []string
+	for _, s := range c.Skipped() {
+		paths = append(paths, s.Path)
+	}
+	return paths
+}
+
+// TestPollSkipsTrackedSymlinkOutsideRepository is SEC-H04's reproduction:
+// a repository that tracks a symlink to a file in a sibling temp dir. Poll
+// must return no source for the link, the sibling file's bytes must appear
+// nowhere, and the skipped entry must be counted with its path.
+func TestPollSkipsTrackedSymlinkOutsideRepository(t *testing.T) {
+	repo := initRepo(t)
+	secret := writeOutside(t)
+	writeFile(t, repo, "README.md", "# Fixture\n")
+	symlink(t, repo, "docs/leak.md", secret)
+	commitAll(t, repo, "track a symlink that escapes the repository")
+
+	c := gitrepo.New(gitrepo.Config{RepoRoot: repo})
+	items, _, err := c.Poll(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	for _, it := range items {
+		if it.Meta["path"] == "docs/leak.md" {
+			t.Fatalf("Poll returned a source for the tracked symlink docs/leak.md (uri %s)", it.URI)
+		}
+	}
+	if len(items) != 1 || items[0].Meta["path"] != "README.md" {
+		t.Fatalf("expected exactly the README, got %d item(s)", len(items))
+	}
+	assertNoOutsideBytes(t, items, ingestAll(t, c, items))
+
+	skipped := c.Skipped()
+	if len(skipped) != 1 || skipped[0].Path != "docs/leak.md" {
+		t.Fatalf("expected one skipped entry for docs/leak.md, got %+v", skipped)
+	}
+	if !strings.Contains(skipped[0].Reason, "docs/leak.md") {
+		t.Fatalf("skip reason must name the path, got %q", skipped[0].Reason)
+	}
+}
+
+// TestPollSkipsNestedSymlinks covers symlink chains and symlinked
+// directories: a link to a link that ends outside the repository, a link
+// to a directory outside the repository, and a link that stays inside the
+// repository. Every symlink is a non-regular entry and is skipped; no
+// outside bytes surface either way.
+func TestPollSkipsNestedSymlinks(t *testing.T) {
+	repo := initRepo(t)
+	secret := writeOutside(t)
+	outsideDir := filepath.Dir(secret)
+	if err := os.WriteFile(filepath.Join(outsideDir, "README.md"), []byte(outsideSentinel+" readme\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, repo, "docs/guide.md", "# Guide\n")
+	symlink(t, repo, "docs/inner.md", secret)   // hop 2: escapes the repository
+	symlink(t, repo, "docs/hop.md", "inner.md") // hop 1: relative link to hop 2
+	symlink(t, repo, "docs/vendor", outsideDir) // directory link out of the repository
+	symlink(t, repo, "docs/alias.md", "guide.md")
+	commitAll(t, repo, "track nested symlinks")
+
+	c := gitrepo.New(gitrepo.Config{RepoRoot: repo})
+	items, _, err := c.Poll(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	if len(items) != 1 || items[0].Meta["path"] != "docs/guide.md" {
+		var paths []string
+		for _, it := range items {
+			paths = append(paths, it.Meta["path"])
+		}
+		t.Fatalf("expected only docs/guide.md, got %v", paths)
+	}
+	assertNoOutsideBytes(t, items, ingestAll(t, c, items))
+
+	got := skippedPaths(c)
+	want := []string{"docs/alias.md", "docs/hop.md", "docs/inner.md"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("skipped paths: got %v, want %v", got, want)
+	}
+}
+
+// TestPollReadsRegularFilesUnchanged is the regression guard for the
+// containment check: regular files under the repository are read exactly
+// as before, byte for byte, and nothing is counted as skipped. t.TempDir
+// on macOS lives under a symlinked prefix (/var -> /private/var), so this
+// also proves a symlinked top level does not trip the containment check.
+func TestPollReadsRegularFilesUnchanged(t *testing.T) {
+	repo := initRepo(t)
+	const body = "# Guide\n\nRegular file bytes.\n"
+	writeFile(t, repo, "docs/guide.md", body)
+	writeFile(t, repo, "README.md", "# Fixture\n")
+	commitAll(t, repo, "seed regular files")
+
+	c := gitrepo.New(gitrepo.Config{RepoRoot: repo})
+	items, _, err := c.Poll(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+	if got := string(itemByPath(t, items, "docs/guide.md").Bytes); got != body {
+		t.Fatalf("docs/guide.md bytes changed: got %q, want %q", got, body)
+	}
+	if s := c.Skipped(); len(s) != 0 {
+		t.Fatalf("regular files must not be skipped, got %+v", s)
+	}
+}
