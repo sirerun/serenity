@@ -2,6 +2,17 @@
 
 Newest first. Investigation findings, benchmarks, and ops notes for the greenfield code. Architecture goes to docs/design.md, decisions to docs/adr/.
 
+## 2026-09-27 Deep review 001 discovery (E24 groom)
+
+Point-in-time facts verified while grooming `docs/plans/deep-review-001-remediation.md`:
+
+- Review `docs/deep-reviews/001-full-codebase.md` (14 agents, read-only, HEAD `0f55bf0`): 0 Critical, 5 High (SEC-H01 Caddy as root with an open admin API; SEC-H02 OAuth global caps deniable from ~17 addresses; SEC-H03 model-emitted subject reaches file names and YAML keys; SEC-H04 git_repo follows tracked symlinks; SEC-H05 a synced serenity.yml plus git config can execute code), plus High-impact FUN-01/FUN-02 (every hosted remember with a relative TTL fails and strands quota), FUN-04 (restore locks customers out), PRIV-01 (forget is logical while the threat model says erasure), ARC-H01 (recovery layer unwired).
+- `ajent.social` (codex, 2026-09-26) records the candidate `v0.1.12-hosted-candidate` at `0f55bf0` deployed behind a Cloudflare-proxied A record with both services active, so the SEC-H01, SEC-H02, FUN-01 and FUN-02 conditions are live. `docs/launch/hosted-status.md` still says no public service exists; it is coordinator-owned and was not edited, the discrepancy is recorded here and in the epic context.
+- The same entry records GitHub Actions cannot start because the organization is billing-locked; E24 PRs carry local verification until T24.41 (David) clears it.
+- Verified on disk: `deploy/hosted/caddy.service` has no `User=`; the Caddyfile has no global block and forwards `{remote_host}`; `internal/hosted/oauth/ratelimit.go:36-62` checks the global window before the per-IP one; `.gitignore` has no `.env` line; `stack.json:266-278` opens 80/443 to 0.0.0.0/0; `.github/` has no gitleaks, govulncheck, CodeQL or dependabot; git exec sites: 12 production files (8 local, 4 hosted); `config.Load` at `config.go:152` does not use KnownFields; `Usage.CostUSD` is never populated (lore L-0008).
+- Registry state at groom time: T23.41, T23.43, T23.60 ready, everything else planned; claims held on origin for T23.1, T23.41, T23.47, T23.48, T23.49, T23.60 and R-hosted-{assembly,backup,billing,cost,lifecycle,schema}. T23.44 (the FUN-01/FUN-02 owner) has no claim; it is now the top hosted-completion priority.
+- `docs/adr/` carries two files numbered 014 (`014-dira-as-a-module-not-vendored.md`, `014-hosted-tenancy-topology.md`); E24 numbered from 018 to avoid a third collision and did not renumber either.
+
 ## 2026-09-11 Hosted-launch discovery (E23 groom)
 
 Facts verified for `docs/launch/hosted-plan.md`, recorded here because they are point-in-time:

@@ -22,7 +22,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "4\u20136",
+      "estimate_agent_hours": "4–6",
       "write_paths": [
         "docs/launch/hosted-completion/interfaces.md",
         "internal/hosted/store/**",
@@ -35,7 +35,7 @@
         "Read b986382 and subsequent main changes; inventory each original E23 requirement using the crosswalk. Keep existing implemented features; record divergence from old contracts (JSON config, uppercase secret filenames, opaque sessions, actual packages).",
         "With chief-architect, resolve and publish the four bounded design decisions in interfaces.md: physical storage reservation/headroom, crash-safe canonical-operation accounting, independently durable deletion journal, and restore eligibility. Required invariants and preferred mechanisms are in the execution plan. No worker chooses a weaker substitute. The journal design must prove completeness through activation and fence old service writers; a sequence/checksum alone does not prove no tail was omitted.",
         "Freeze callable Go interfaces and failure codes for ReconcileCustomer, CloseBillingAccount, operation outcome reconciliation, deletion journal AppendDeletion/ReadThrough/Seal, backup manifest v2, restore Plan/Apply and telemetry. Specify lock order, request cancellation, accounting units and every new config field. Freeze a deterministic fault-barrier API compiled only under the hostedtest build tag, using inherited private pipes/files, never an HTTP endpoint or production environment switch. Feature owners implement checkpoints in their files before qualification begins.",
-        "As the sole schema owner, add forward-only migrations and helper APIs needed by tasks44/47/48/50 in reviewed increments before those dependent workers start. Migration must preserve schema1\u20133 data; never edit an applied migration. Do not add no-op production methods just to make interfaces compile. All applied SQL remains single-writer; reserve each migration version and its owning feature in interfaces.md. Feature workers submit schema/API requests and wait for the integrator commit instead of editing store files.",
+        "As the sole schema owner, add forward-only migrations and helper APIs needed by tasks44/47/48/50 in reviewed increments before those dependent workers start. Migration must preserve schema1–3 data; never edit an applied migration. Do not add no-op production methods just to make interfaces compile. All applied SQL remains single-writer; reserve each migration version and its owning feature in interfaces.md. Feature workers submit schema/API requests and wait for the integrator commit instead of editing store files.",
         "Publish a source-pinned interface receipt. Coordinator applies all subsequent shared-file requests and integrates each feature immediately in dependency order; task57 is the final integration/release gate, not permission to leave feature code unconnected."
       ],
       "acceptance": [
@@ -75,7 +75,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "3\u20135",
+      "estimate_agent_hours": "3–5",
       "write_paths": [
         "internal/router/openai_embeddings.go",
         "internal/router/openai_embeddings_test.go",
@@ -121,7 +121,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "3\u20135",
+      "estimate_agent_hours": "3–5",
       "write_paths": [
         "evals/hosted/**",
         "scripts/hosted/eval_embeddings.py",
@@ -166,7 +166,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "6\u201310",
+      "estimate_agent_hours": "6–10",
       "write_paths": [
         "internal/hosted/gateway/gateway.go",
         "internal/hosted/gateway/quota_test.go",
@@ -178,12 +178,14 @@
         "Treat failure after canonical commit as an unknown/durable outcome, never as an ordinary failed write that releases quota. Retries across brains/windows preserve one canonical fact and one committed charge; failed audit insertion cannot erase accounting.",
         "Enforce the reviewed physical-byte admission/headroom contract before mutation, including Git history, canonical bytes, index/vector/WAL growth and concurrent brains. Never delete an acknowledged fact to recover space. If a safe upper bound cannot be established, block writes and escalate the contract; do not silently redefine published storage.",
         "Keep export, deletion, billing cancellation and idempotent replay available at quota exhaustion. Test period rollover, released-row cleanup and all six published allowances. Produce a shared seam request for any core writer/index change; gate allowlist stays unchanged.",
-        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58."
+        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58.",
+        "Deep review 001 (E24, 2026-09-27) FUN-01, FUN-02, SEC-L05, ARC-H01: validate tool arguments and the storage limit BEFORE EnterCanonical and release the reservation on every deterministic pre-canonical rejection so no pending_review row is created; convert a relative TTL (30d/12h/45m) to an absolute timestamp in the gateway before forwarding (or use a ledger-internal key that remember never sees) so keyed hosted remember with the documented shorthand succeeds; scope client-key lookups to the quota period; wire ResolvePendingReview and ReconcilePending (extended to phase pending_review) on a ticker in service.New and at startup, and expose the pending_review resolver on the admin socket; include every normalized remember field (visibility, ttl, entity, kind, provenance) in the idempotency fingerprint. Regression tests named FUN-01, FUN-02 and SEC-L05 (verified by E24 T24.31)."
       ],
       "acceptance": [
         "100 concurrent one-write requests with allowance60 admit exactly60; one-byte headroom cannot produce an acknowledged write above the defined ceiling.",
         "Crash after canonical write/flush/audit/token-finalization boundaries then retry consumes exactly one write and the agreed input units. A genuinely failed mutation consumes none. Cover unkeyed writes and identical content submitted with distinct keys.",
-        "Concurrent account brains share caps; forgotten Git history still counts; replay at zero remaining is safe; auth/readiness checks leave customer usage unchanged."
+        "Concurrent account brains share caps; forgotten Git history still counts; replay at zero remaining is safe; auth/readiness checks leave customer usage unchanged.",
+        "Deep review 001 (E24, 2026-09-27): a keyed hosted remember with ttl 30d stores the fact; a limit-exceeded or malformed call leaves no pending_review row and the quota SUM is unchanged; a pending_review row older than its lease is cleared by one reconciler sweep and at startup; a retry with the same key and a different visibility returns the writer conflict."
       ],
       "commands": [
         "go test -race -count=1 ./internal/hosted/meter ./internal/hosted/operation ./internal/hosted/gateway"
@@ -215,7 +217,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "4\u20136",
+      "estimate_agent_hours": "4–6",
       "write_paths": [
         "internal/hosted/gateway/gateway.go",
         "internal/hosted/gateway/admission.go",
@@ -227,12 +229,14 @@
         "Move cold runtime open/recovery outside the global pool lock with bounded per-brain opening coordination; preserve exactly one writer/runtime and total open/in-flight caps. Do not hold gateway global map lock over provider or disk work.",
         "Make queued account admission context-aware and bounded before tool timeout starts; define per-account/per-brain/global semantics explicitly. Hash collisions must not cause unbounded unrelated-tenant waits.",
         "Apply equivalent account admission to dashboard memory actions and authenticated MCP, without denying recovery/export/delete solely because write quota is exhausted. Bound maintenance/export work separately.",
-        "Exercise churn of credentials, MCP sessions, limiter keys and cold brains; expired/revoked entries relinquish capacity. Honor only trusted loopback proxy headers. Keep Scale ten-brain connectivity possible."
+        "Exercise churn of credentials, MCP sessions, limiter keys and cold brains; expired/revoked entries relinquish capacity. Honor only trusted loopback proxy headers. Keep Scale ten-brain connectivity possible.",
+        "Deep review 001 (E24, 2026-09-27) CON-01, CON-02, CON-03, CON-04, ARC-M01, ARC-M02, ARC-M03, AI-L03, SEC-H05: make Runtime.close idempotent and delete the pool map entry even when close fails (quarantine the id); replace p.mu.TryLock with a ctx-bounded wait and open brains outside p.mu behind a per-id singleflight; run cold open and vector recovery outside both p.mu and g.mu, rebuild vectors lazily and degrade recall to FTS while vectors are missing; release g.mu before Pool.Acquire and use per-account locks; build exports to a temp file under the locks then stream after release with a per-chunk write deadline and a per-account export rate limit; fail closed in the pool when .git is missing and route provisioning only through provision/canonical; unify the two limiters and three client-IP helpers into one shared limiter and one trusted-client-IP resolver; require the memory:forget scope for forget; route pool.go and provision/canonical.go git calls through internal/gitrun (E24 T24.7). Regression tests named CON-01..CON-04, ARC-M01, ARC-M02 (verified by E24 T24.32)."
       ],
       "acceptance": [
         "Over-cap admission returns typed capacity within100ms in deterministic local tests; canceled queued requests do no work and release permits.",
         "Hot tenant with a blocked provider does not prevent an independent warm tenant from serving within its timeout; cold-open burst remains bounded.",
-        "Authenticated account/IP 429 includes Retry-After; multiple credentials cannot multiply quotas/concurrency; spoofed client-IP cannot bypass controls; maps plateau under sustained churn."
+        "Authenticated account/IP 429 includes Retry-After; multiple credentials cannot multiply quotas/concurrency; spoofed client-IP cannot bypass controls; maps plateau under sustained churn.",
+        "Deep review 001 (E24, 2026-09-27): a failed runtime close is evicted and a later Acquire for every tenant succeeds; ordinary contention never returns ErrCapacity; a cold open of a brain with 1000 vectorless facts does not block another tenant's request for more than 250 ms; sixteen slow export readers do not exhaust MaxInFlight or fail FlushAll; a brain with a missing .git fails closed."
       ],
       "commands": [
         "go test -race -count=1 ./internal/hosted/gateway ./internal/hosted/pool ./internal/hosted/credential"
@@ -264,7 +268,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "3\u20135",
+      "estimate_agent_hours": "3–5",
       "write_paths": [
         "internal/hosted/identity/**",
         "internal/hosted/provision/**"
@@ -274,12 +278,14 @@
         "Add the task41 registration-mode contract: public mode preserves current approved scope; invitation-only mode is deny-by-default for uninvited new email identities, with an operator-managed private allowlist. Existing eligible accounts can sign in; never log allowlist contents.",
         "Optional pilot admission is implemented/tested but not activated by this plan. It must gate the actual signup/account-creation path, not only hide the website CTA.",
         "Ensure deleting/restore_pending accounts cannot regain normal access; only the existing deletion retry route gets restricted session access. Re-signup after completed deletion creates a new identity/brain and cannot reconnect old tokens.",
-        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58."
+        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58.",
+        "Deep review 001 (E24, 2026-09-27) SEC-M01, SEC-M02, SEC-M04, SEC-L02, SEC-L03: GET /login/consume renders a confirm page and the token is consumed only by a POST bound to a nonce cookie set at POST /login; a different account's existing session is never silently replaced; the dashboard and the OAuth consent page show the account email; POST /login gets a challenge (Cloudflare Turnstile or equivalent), a global daily send budget, a per-email daily cap, and sends nothing to unknown addresses when registration is closed, and the attempts map cannot lock everyone out; AccountCap counts only active accounts (a saved memory or a connected client) and never-used accounts expire; ErrInviteRequired returns the same 200 page as success; sessions carry an absolute created_at ceiling, the cookie is __Host- prefixed, a revoke-all-sessions control exists, and credential rotation revokes sessions; provision/canonical.go git calls use internal/gitrun. Update TestHostedJourneyAndIsolation, TestOAuthBrowserConsentMCPAndRevocation and TestInviteOnlyRegistrationConfigWiresThroughAssembly for the POST consume and the 200 page. Regression tests named SEC-M01, SEC-M02, SEC-M04, SEC-L02, SEC-L03 (verified by E24 T24.33)."
       ],
       "acceptance": [
         "Forged/expired/reused magic links and sessions denied; cookie renewal matches server expiry; logout invalidates server-side state.",
         "Uninvited direct login submission creates neither account nor brain in pilot mode; allowed signup occurs exactly once under concurrency.",
-        "Crash-recovery fixture does not create duplicate default/additional brains; account-cap arithmetic remains atomic."
+        "Crash-recovery fixture does not create duplicate default/additional brains; account-cap arithmetic remains atomic.",
+        "Deep review 001 (E24, 2026-09-27): a consume URL opened by a mail scanner (GET) does not burn the token; a victim browser lured to an attacker's consume URL is not logged into the attacker's account; 100 scripted signups from a catch-all domain do not block a real visitor; unknown addresses under invite-only get the same response as known ones."
       ],
       "commands": [
         "go test -race -count=1 ./internal/hosted/identity ./internal/hosted/provision ./internal/hosted/credential"
@@ -311,7 +317,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "5\u20138",
+      "estimate_agent_hours": "5–8",
       "write_paths": [
         "internal/hosted/billing/**"
       ],
@@ -321,12 +327,14 @@
         "Reconcile checkout attempts older than23h without blindly creating a duplicate. Make the repair auditable and account-scoped. Late cancellation/deletion webhooks must be acknowledged/idempotent rather than permanently retried as503.",
         "Use authoritative subscription/invoice timestamps for the fixed72h payment-failure grace; late/reversed events cannot restart it. Document upgrade proration, period-end downgrade/cancellation and billing-portal settings.",
         "Expand fixture state table: initial incomplete/failure, activation, renewal, upgrade, scheduled downgrade, cancellation/re-subscription, duplicate subscription, stale/duplicate/reversed events, unknown price, provider outage and provider-success/local-save failure.",
-        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58."
+        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58.",
+        "Deep review 001 (E24, 2026-09-27) FUN-05, CON-05, ARC-M04, FUN-06: check and propagate the three swallowed Scan errors (billing.go:330,388,1047) so a failed row read never feeds blank prior state into graceDeadline or recordWindowClosed; replace the global billing mutex with a per-account mutex and add a per-account checkout rate limit so a webhook that pages Stripe cannot stall checkout; split billing.go into webhook, subscription-state and checkout/portal files with no behaviour change; ReconcileCustomer and CloseBillingAccount become production-called (they are tested but unwired today). Regression tests named FUN-05 and CON-05 (verified by E24 T24.34)."
       ],
       "acceptance": [
         "Checkout return alone never grants access; one customer cannot acquire duplicate active paid subscriptions through retries.",
         "Checkout completed before webhook then deletion cancels that subscription; open checkout cannot leave a live subscription after deletion closure is certified.",
-        "Grace deadline is stable under delayed/replayed events, first observed past_due, missed activation, new invoice/renewal and delayed old failure after payment. Renewal opens a fresh allowance while retaining old-window accounting history."
+        "Grace deadline is stable under delayed/replayed events, first observed past_due, missed activation, new invoice/renewal and delayed old failure after payment. Renewal opens a fresh allowance while retaining old-window accounting history.",
+        "Deep review 001 (E24, 2026-09-27): a Scan error surfaces as an error return in all three sites; a webhook paging 10,000 events does not block a concurrent checkout for another account."
       ],
       "commands": [
         "go test -race -count=1 ./internal/hosted/billing ./internal/hosted/meter"
@@ -359,7 +367,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "5\u20138",
+      "estimate_agent_hours": "5–8",
       "write_paths": [
         "internal/hosted/gateway/lifecycle.go",
         "internal/hosted/gateway/lifecycle_test.go",
@@ -371,12 +379,14 @@
         "Order and resume billing closure, credential revocation, brain directory cleanup, session/token deletion and account anonymization. Journal append failure leaves deletion pending and restricted retry available; never acknowledge a durability guarantee not achieved.",
         "Coordinate journal storage/IAM with task52 and infra integrator; use an explicit filesystem fake locally and stack-scoped durable object storage in production. Preserve all ordinary account/brain ownership checks.",
         "Keep export a quota-independent operation; verify canonical facts and restorable bundle. Wire dashboard via integrator request, not concurrent edits to dashboard.go.",
-        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58."
+        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58.",
+        "Deep review 001 (E24, 2026-09-27) PRIV-01 (hosted), FUN-07, SEC-H05: account and brain deletion purge the three erasure targets (working-tree bytes, git history via a path-scoped rewrite through internal/gitrun, and FTS/vector rows) with the journal proving completion (ADR 019); export defaults to a history-free archive (current tree plus a HEAD-only bundle) with --with-history as explicit opt-in; a mid-stream export failure fails the response with a logged error instead of returning 200 with a partial archive; lifecycle.go git calls use internal/gitrun. Regression tests named PRIV-01 and FUN-07 (verified by E24 T24.35)."
       ],
       "acceptance": [
         "Fault injection at each phase converges to one completed deletion without resurrection, double cancellation or orphaned subscription.",
         "Snapshot then delete, losing live disk, still leaves a valid independent deletion record; missing journal acknowledgment prevents successful delete response. Deleting one brain then restoring preserves its sibling but never the deleted brain or its credentials.",
-        "Cross-account export/delete fails without touching victim files/counters; export/deletion remain available at quota exhaustion; fresh re-signup is empty."
+        "Cross-account export/delete fails without touching victim files/counters; export/deletion remain available at quota exhaustion; fresh re-signup is empty.",
+        "Deep review 001 (E24, 2026-09-27): after deletion no commit, index row or working-tree byte of the brain remains and the journal records each target; the default export archive contains no history for a forgotten fact; a truncated export returns an error status."
       ],
       "commands": [
         "go test -race -count=1 ./internal/hosted/deletion ./internal/hosted/gateway"
@@ -407,7 +417,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "4\u20136",
+      "estimate_agent_hours": "4–6",
       "write_paths": [
         "internal/hosted/backup/**"
       ],
@@ -453,7 +463,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "5\u20138",
+      "estimate_agent_hours": "5–8",
       "write_paths": [
         "internal/hosted/recovery/**",
         "internal/cli/hosted_recovery.go"
@@ -464,12 +474,14 @@
         "Keep every pre-restore credential/session revoked even for surviving accounts. Permit only fresh magic-link login and newly issued tokens after successful reconciliation. Never expose activate-all or directSQL operator shortcuts.",
         "Persist idempotent recovery phases; interrupted plan/apply resumes. Billing-disabled pilot still requires deletion reconciliation and restores only Free eligibility, never historical paid access.",
         "Supply CLI registration/service wiring patch request to integrator. Journal pruning cannot remove data needed by any restorable retained snapshot.",
-        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58."
+        "Implement the task41 hostedtest-only phase barriers in owned code and a test proving production builds cannot activate them; include phase names in the integration receipt for task58.",
+        "Deep review 001 (E24, 2026-09-27) FUN-04: restore writes into a temporary directory and renames on success so a partial failure leaves an empty destination and a rerun is accepted (today control.db is mutated before brains are cloned and a rerun is refused); the reactivation command is the documented unfreeze for restore_pending accounts (docs/launch/hosted-runbook.md:50-53 forbids manual flipping, so this command is the only path); keep TestConsumeDoesNotReanimateUnavailableAccount green and add a post-restore fresh-login test. Regression test named FUN-04 (verified by E24 T24.36)."
       ],
       "acceptance": [
         "Snapshot then revoke/delete/cancel, lose live state, restore: old key denied, deleted account absent, canceled plan Free, surviving facts recoverable after new login.",
         "Provider/journal outage prevents affected activation; foreign account/modified plan hash rejected; second apply has no additional effect. Include a surviving Free account with canceled historical subscription/stale pending Checkout; no stale blocker may survive authoritative reconciliation.",
-        "Recovery report records counts, journal watermark, schema, provider mode and exact unresolved accounts without secret/customer content."
+        "Recovery report records counts, journal watermark, schema, provider mode and exact unresolved accounts without secret/customer content.",
+        "Deep review 001 (E24, 2026-09-27): a restore interrupted after control.db is written leaves no partial destination and a rerun succeeds; after reconciliation a surviving account logs in with a fresh magic link."
       ],
       "commands": [
         "go test -race -count=1 ./internal/hosted/recovery ./internal/hosted/backup ./internal/cli"
@@ -499,7 +511,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "4\u20136",
+      "estimate_agent_hours": "4–6",
       "write_paths": [
         "deploy/hosted/bootstrap.sh",
         "deploy/hosted/deploy.py",
@@ -509,12 +521,14 @@
         "Keep AWS us-west-2 single ARM VM architecture; prepare scripts and fixtures without provisioning. Validate subnet belongs to VPC and AZ, region/account IDs and all stack inputs before preview/execution.",
         "Install version-pinned/checksummed Caddy, Git, AWS CLI and required service dependencies on AL2023 ARM. Identify only the exact stack-owned EBS volume by ID; format only a positively identified blank new volume under recorded authorization. Never infer blankness from a missing mount.",
         "Preserve an existing filesystem, mount by UUID, persist fstab, set ownership and order startup after mount/network/SSM. Refuse app startup on the root disk when the data volume is missing.",
-        "Use command adapters/fixtures to test block-device operations. Deliver stack UserData/DependsOn/IAM requirements to the sole stack integrator rather than edit stack.json here."
+        "Use command adapters/fixtures to test block-device operations. Deliver stack UserData/DependsOn/IAM requirements to the sole stack integrator rather than edit stack.json here.",
+        "Deep review 001 (E24, 2026-09-27) INF-06, SEC-H01: fix deploy/hosted/test_bootstrap.py (64-hex SHA256, not 128) and run it in CI; bootstrap creates the caddy system user, /var/lib/caddy and /run/caddy, and migrates /root/.local/share/caddy when present, matching the unprivileged unit E24 T24.1 ships. Verified by E24 T24.38."
       ],
       "acceptance": [
         "Blank intended disk, retained formatted disk, wrong disk, missing disk, second run and reboot cases have explicit expected outcomes; wrong/existing disk is never formatted.",
         "Package/network failure leaves a stopped unhealthy service; no secret data in logs; region/VPC/AZ mismatch refuses before change-set creation.",
-        "Fresh-host live proof remains BLOCKED until task64; local fixture success is labeled local."
+        "Fresh-host live proof remains BLOCKED until task64; local fixture success is labeled local.",
+        "Deep review 001 (E24, 2026-09-27): test_bootstrap.py is green in CI; a blank-host bootstrap starts Caddy as the caddy user with no TCP admin listener."
       ],
       "commands": [
         "bash -n deploy/hosted/bootstrap.sh",
@@ -546,7 +560,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "4\u20136",
+      "estimate_agent_hours": "4–6",
       "write_paths": [
         "deploy/hosted/backup.sh",
         "deploy/hosted/serenity-backup.service",
@@ -561,12 +575,14 @@
         "Upload manifest-verified artifacts then a completion record binding the manifest hash; download verifies completion+checksums before restore. Failed upload is not complete and emits failure/age metrics.",
         "Replace reliance on current30+noncurrent30 expiration with total-age purge of all versions and delete markers for expired snapshot prefixes. Choose scheduled cutoff with margin so customer-deletion backups are purged within30days, e.g. eligible snapshot age29days plus hourly sweep; lifecycle is only a backstop. Own/installable hourly systemd purge service+timer; task57 wires installation and task64 proves it runs. A script without its schedule fails acceptance.",
         "Purge dry-run lists exact stack-owned keys/versions and source timestamps; apply requires scoped prefix/age checks and recorded destructive-action authority. Fail closed on malformed timestamps, pagination errors or missing version inventory.",
-        "Keep deletion-journal records until all snapshots they protect are permanently purged; then apply separate documented minimal-metadata retention. Submit precise IAM/alarms/unit requirements to task54."
+        "Keep deletion-journal records until all snapshots they protect are permanently purged; then apply separate documented minimal-metadata retention. Submit precise IAM/alarms/unit requirements to task54.",
+        "Deep review 001 (E24, 2026-09-27) INF-04: retention may not outlive the disclosed window (ADR 019): current objects expire at 30 days and noncurrent versions within 1 day; the purge job verifies expiry and reports the oldest surviving object age."
       ],
       "acceptance": [
         "Fixtures cover overwritten versions, delete markers, multipart remnants, pagination, incorrect prefix, clock cutoff and API denial; no eligible version silently survives a successful receipt.",
         "Interrupted upload rejected by downloader; completed upload restores manifest-consistent contents. Failed purge yields a failed retention status, not a30day promise.",
-        "No production object deletion occurs in this task; live qualification is task66 with approved disposable resources."
+        "No production object deletion occurs in this task; live qualification is task66 with approved disposable resources.",
+        "Deep review 001 (E24, 2026-09-27): no backup object or version older than 31 days survives; the purge report states the oldest age."
       ],
       "commands": [
         "bash -n deploy/hosted/backup.sh",
@@ -598,7 +614,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "3\u20135",
+      "estimate_agent_hours": "3–5",
       "write_paths": [
         "internal/hosted/telemetry/**",
         "deploy/hosted/telemetry/**"
@@ -644,7 +660,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "3\u20135",
+      "estimate_agent_hours": "3–5",
       "write_paths": [
         "deploy/hosted/stack.json",
         "deploy/hosted/tests/test_stack.py",
@@ -654,12 +670,14 @@
         "Only this task edits stack.json. Apply bootstrap, backup/journal, retention and telemetry requirements as one reviewed change set; keep existing account/region, encryption, IMDSv2, inbound80/443 and SSM administration.",
         "Add exact least-privilege versioned-object/journal/metrics/log permissions. Keep write/delete prefixes and roles separated where needed; no broad s3:* or accountwide secret read.",
         "Wire alarm actions to an approved existing destination or explicitly priced new destination. Thresholds: readiness2 consecutive1min failures; errors>5% over5min with>=20requests; disk>=80% warning/>=90% critical; last verified backup>3h; purge failure>=1; CPU>=70% for10min; instance failure>=1. Missing health/backup/purge telemetry breaches.",
-        "Validate alarm math/units with task53, network/AZ/disk boot topology with task51, and full monthly line items with task60. Preview only; record change-set impact and no unexpected replacements."
+        "Validate alarm math/units with task53, network/AZ/disk boot topology with task51, and full monthly line items with task60. Preview only; record change-set impact and no unexpected replacements.",
+        "Deep review 001 (E24, 2026-09-27) INF-01, INF-02, INF-04, INF-05: pin the AMI to a literal image id and add UserData that re-bootstraps the root volume so a replacement does not lose Caddy state, /etc/serenity and units; REPLACES the earlier 'keep inbound 80/443' clause: restrict security-group ingress on 80 and 443 to Cloudflare's published ranges once docs/launch/evidence/E24/acme-path.md (E24 T24.42) records a working ACME path, citing that file in the change; set NoncurrentVersionExpiration to 1 day; add an SNS topic and AlarmActions on every alarm and a destination for the backup OnFailure unit. Regression tests named INF-01, INF-02, INF-04, INF-05 in test_stack.py (verified by E24 T24.37)."
       ],
       "acceptance": [
         "Template fixture checks prove every required metric has a producer, correct dimension and AlarmActions; every permission targets stack resources.",
         "cloudformation validate-template passes. No resource creation is claimed from syntax checks.",
-        "Injected alarm delivery to the chosen destination is required in task64, not accepted from a green CloudWatch console state alone."
+        "Injected alarm delivery to the chosen destination is required in task64, not accepted from a green CloudWatch console state alone.",
+        "Deep review 001 (E24, 2026-09-27): the template has a literal AMI id and UserData; ingress on 80/443 lists only Cloudflare ranges; noncurrent expiration is 1 day; every alarm has AlarmActions; the stack update preview shows no instance replacement."
       ],
       "commands": [
         "python3 -m unittest discover -s deploy/hosted/tests -p \"test_stack.py\"",
@@ -694,7 +712,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "5\u20138",
+      "estimate_agent_hours": "5–8",
       "write_paths": [
         "internal/hosted/dashboard/**",
         "tests/hosted/**",
@@ -747,7 +765,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "2\u20134",
+      "estimate_agent_hours": "2–4",
       "write_paths": [
         "site/index.html",
         "site/product/**",
@@ -759,12 +777,14 @@
         "Keep plans.v1.json generated from canonical plans; render every allowance and ratified Free/Builder/Scale prices. Do not silently change prices/caps for the pilot.",
         "Prepare hosted guide using exact tested dashboard/Rakazo labels, empty default brain label and explicit write opt-in. Preserve the install-yourself path.",
         "Explain selected provider processing, forget vs retained Git history, account deletion and only verified backup retention terms. No unsupported SLA, setup-time or privacy claim.",
-        "Prepare a separate, reversible activation diff for Start free/public checkout visibility; do not publish active public signup before task73. Pilot copy explicitly says invitation-only and hides unavailable paid controls without removing published ratified pricing."
+        "Prepare a separate, reversible activation diff for Start free/public checkout visibility; do not publish active public signup before task73. Pilot copy explicitly says invitation-only and hides unavailable paid controls without removing published ratified pricing.",
+        "Deep review 001 (E24, 2026-09-27) PRIV-01 (disclosure), INF-04: pricing and privacy copy on the site state ADR 019 semantics exactly: forget purges the fact everywhere Serenity controls including history, export omits history by default, hosted backups expire within 31 days; remove any 'logical' or 60-day wording."
       ],
       "acceptance": [
         "Site link checker and mobile/desktop browser tests pass; generated pricing matches server bytes.",
         "No public call-to-action points to an unqualified or inaccessible signup path; staging preview tests links against approved origin.",
-        "Activation and rollback are named commit diffs in evidence; unavailable features are labeled, not promised as live."
+        "Activation and rollback are named commit diffs in evidence; unavailable features are labeled, not promised as live.",
+        "Deep review 001 (E24, 2026-09-27): site tests assert the three statements are present and the retired wording absent."
       ],
       "commands": [
         "python3 scripts/site/check.py",
@@ -805,7 +825,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "4\u20137",
+      "estimate_agent_hours": "4–7",
       "write_paths": [
         "internal/hosted/service/**",
         "internal/cli/hosted.go",
@@ -824,12 +844,14 @@
         "Finalize config/secrets/schema contracts and CLI registrations; migration/recovery/deletion code must be invoked by real service paths, not only tests. Preserve self-hosted command behavior.",
         "Deploy stages checksum-verified binary/config, validates secrets without output, takes a coordinated pre-upgrade snapshot, checks schema compatibility, and switches only with bounded readiness verification. Revert binary/config on compatible failure; refuse unsafe downgrade and use reviewed restore path instead. Install and enable both backup and purge timers; retain the previous manifest/config for supported rollback.",
         "Implement three artifact states: local candidate (integration tests), restricted qualification candidate (same immutable artifact plus tasks58/59 PASS), and hosted-qualified (task70 packet). CI may build/store the first before58/59 exist; it must refuse promoting to the second/third without their exact evidence. Ordinary self-hosted releases remain possible but are not called hosted-qualified.",
-        "Create a checksum-pinned immutable unqualified Linux ARM candidate artifact in CI, with retention sufficient for qualification, source SHA and build metadata; task64 deploys this exact candidate only after58/59 pass. Teach deployment to consume a verified downloaded candidate archive, not only a published release tag. Task70 certifies these same bytes in the release packet. Task73 owns publishing the approved tag/assets without rebuilding; an optional pilot71 may keep the immutable candidate private. Record prior supported version/schema pair. No production deploy or public release tag in this task."
+        "Create a checksum-pinned immutable unqualified Linux ARM candidate artifact in CI, with retention sufficient for qualification, source SHA and build metadata; task64 deploys this exact candidate only after58/59 pass. Teach deployment to consume a verified downloaded candidate archive, not only a published release tag. Task70 certifies these same bytes in the release packet. Task73 owns publishing the approved tag/assets without rebuilding; an optional pilot71 may keep the immutable candidate private. Record prior supported version/schema pair. No production deploy or public release tag in this task.",
+        "Deep review 001 (E24, 2026-09-27): E24 T24.1, T24.2, T24.10 and T24.11 landed earlier on the Caddy and service units, deploy.sh, the release workflow and .goreleaser.yaml under R-hosted-release (unprivileged Caddy, admin unix socket, trusted_proxies, IMDS deny, backup OnFailure, readiness rollback, SHA-pinned actions, scanners, cosign, SBOM, provenance). Rebase onto them and keep every one; the transactional deployment gate builds on the rollback deploy.sh already carries."
       ],
       "acceptance": [
         "Fresh and upgraded fixture service passes assembled integration suite; no unregistered/new unused feature accepted.",
         "Bad checksum/config/secret/readiness leaves previous service usable or fails closed without data rollback; newer schema refuses older binary.",
-        "CI distinguishes fixture/live/missing-credential results and never turns a skipped live qualification into PASS; full final-head checks green."
+        "CI distinguishes fixture/live/missing-credential results and never turns a skipped live qualification into PASS; full final-head checks green.",
+        "Deep review 001 (E24, 2026-09-27): deploy/hosted/tests/test_units.py and the workflow pin check stay green after this task's changes."
       ],
       "commands": [
         "export SERENITY_TEST_BINARY=\"${TMPDIR:-/tmp}/serenity-T23.57-$(git rev-parse --short=12 HEAD)\"",
@@ -874,7 +896,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "4\u20137",
+      "estimate_agent_hours": "4–7",
       "write_paths": [
         "internal/hosted/qualification/crash_test.go",
         "internal/hosted/qualification/crash_helpers_test.go",
@@ -927,7 +949,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "4\u20136",
+      "estimate_agent_hours": "4–6",
       "write_paths": [
         "internal/hosted/qualification/security_test.go",
         "internal/hosted/qualification/security_helpers_test.go"
@@ -936,12 +958,14 @@
         "Use real HTTP/SQLite/Git with2 accounts, multiple brains and credentials. Enumerate every mutation and tool rather than sampling one route.",
         "Cover forged/expired sessions, each POST CSRF/origin, cross-account issue/rotate/revoke/export/delete/write/read, read-only credentials, old and foreign MCP sessions, path/entity/label tricks and unsupported tools.",
         "Cover oversized/deep JSON,4097-byte facts, cancellation, dropped responses, dashboard abuse, direct-MCP second-credential quota bypass, exhausted quotas and backup concurrency.",
-        "Assert denials preserve victim facts/counters/directories, not only status codes. Run one isolated negative control per security boundary; record review of log-redaction evidence."
+        "Assert denials preserve victim facts/counters/directories, not only status codes. Run one isolated negative control per security boundary; record review of log-redaction evidence.",
+        "Deep review 001 (E24, 2026-09-27): add to the boundary matrix the SEC-H02 flood scenario (17 addresses at 120/min, refresh from an 18th admitted; 10,000 live consents for one client_id), the SEC-M01 consume-on-GET CSRF chain, AI-05 markdown exfiltration through a real markdown-rendering MCP client, and SEC-H03 subject injection through the hosted remember path."
       ],
       "acceptance": [
         "Complete route/tool inventory is covered; cross-account exposure or mutation exactly0.",
         "Each deny result has verified unchanged victim state; tests fail under intentional local removal of the corresponding guard.",
-        "No new public debugging endpoints, auth exemptions or file-first allowlist expansion."
+        "No new public debugging endpoints, auth exemptions or file-first allowlist expansion.",
+        "Deep review 001 (E24, 2026-09-27): each added scenario has a recorded run with its outcome in the evidence directory."
       ],
       "commands": [
         "go test -race -count=1 -timeout 600s ./internal/hosted/qualification -run Security"
@@ -973,7 +997,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "3\u20135",
+      "estimate_agent_hours": "3–5",
       "write_paths": [
         "scripts/hosted/cost_model.py",
         "scripts/hosted/load.py",
@@ -983,7 +1007,7 @@
       "steps": [
         "Price0/10/100accounts and the original1Scale+3Builder+10Free full-limit mix. Include EC2 baseline/burst credits, root+data EBS, IPv4, KMS, secrets, hourly full snapshot amplification, S3 storage/requests, logs/metrics/alarms, transfer, email, embeddings, readiness probes and rebuilds.",
         "Date/cite primary rates; distinguish assumptions from measurements. Compare minimum feasible AWS configuration to already-authorized existing capacity as a proposal; no automatic topology change, reservations, new GPU or spend.",
-        "Build bounded load harness with synthetic accounts, warm/cold brains, skewed tenants, retries, provider latency/failure, max facts/history and controlled synthetic billing entitlements. Never forge entitlements on public production. Freeze workload manifests before live measurement:10min warmup+30min steady+5min2x burst, total8concurrent clients, baseline4requests/s with80%recall/15%remember/5%forget,20%requests target cold brains,50%traffic one hot tenant,20\u2013128token queries and32\u2013512token facts. Full advertised memory/storage cardinalities for the selected profile; run quota-boundary saturation separately so expected429s cannot hide failures. Replay captures exact arrivals; repeat3times. These are reviewable qualification targets, not claims of tested performance.",
+        "Build bounded load harness with synthetic accounts, warm/cold brains, skewed tenants, retries, provider latency/failure, max facts/history and controlled synthetic billing entitlements. Never forge entitlements on public production. Freeze workload manifests before live measurement:10min warmup+30min steady+5min2x burst, total8concurrent clients, baseline4requests/s with80%recall/15%remember/5%forget,20%requests target cold brains,50%traffic one hot tenant,20–128token queries and32–512token facts. Full advertised memory/storage cardinalities for the selected profile; run quota-boundary saturation separately so expected429s cannot hide failures. Replay captures exact arrivals; repeat3times. These are reviewable qualification targets, not claims of tested performance.",
         "Require explicit request/token/elapsed/cost caps before live mode; fixture mode cannot measure semantic quality. Report CPU/RSS/disk/writes, latency percentiles, provider totals and per-plan contribution.",
         "Produce a conservative idle+peak monthly exposure and measurable cap recommendation. Original$60 ceiling is not a budget target or new authorization; no hidden plan-limit reductions."
       ],
@@ -1024,7 +1048,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "1\u20133",
+      "estimate_agent_hours": "1–3",
       "write_paths": [
         "docs/launch/hosted-provider-setup.md",
         "docs/launch/hosted-completion/authorizations.md",
@@ -1080,7 +1104,7 @@
         "DNS",
         "SPEND"
       ],
-      "estimate_agent_hours": "1\u20133",
+      "estimate_agent_hours": "1–3",
       "write_paths": [
         "docs/launch/evidence/T23.62/**"
       ],
@@ -1125,7 +1149,7 @@
       "external_gates": [
         "STRIPE_TEST"
       ],
-      "estimate_agent_hours": "2\u20133",
+      "estimate_agent_hours": "2–3",
       "write_paths": [
         "scripts/hosted/stripe_setup.py",
         "scripts/hosted/tests/test_stripe_setup.py",
@@ -1188,7 +1212,7 @@
         "DNS",
         "OPS"
       ],
-      "estimate_agent_hours": "2\u20134",
+      "estimate_agent_hours": "2–4",
       "write_paths": [
         "docs/launch/evidence/T23.64/**"
       ],
@@ -1241,7 +1265,7 @@
         "EMBEDDINGS",
         "MAIL"
       ],
-      "estimate_agent_hours": "3\u20135",
+      "estimate_agent_hours": "3–5",
       "write_paths": [
         "docs/launch/evidence/T23.65/**",
         "scripts/hosted/client_qualification/**"
@@ -1303,7 +1327,7 @@
         "SPEND",
         "EMBEDDINGS"
       ],
-      "estimate_agent_hours": "3\u20135",
+      "estimate_agent_hours": "3–5",
       "write_paths": [
         "docs/launch/evidence/T23.66/**",
         "scripts/hosted/recovery_rehearsal.py"
@@ -1356,7 +1380,7 @@
       "external_gates": [
         "STRIPE_TEST"
       ],
-      "estimate_agent_hours": "3\u20135",
+      "estimate_agent_hours": "3–5",
       "write_paths": [
         "scripts/hosted/stripe_qualification.py",
         "docs/launch/evidence/T23.67/**"
@@ -1410,7 +1434,7 @@
         "SPEND",
         "EMBEDDINGS"
       ],
-      "estimate_agent_hours": "2\u20134",
+      "estimate_agent_hours": "2–4",
       "write_paths": [
         "docs/launch/evidence/T23.68/**",
         "docs/launch/hosted-economics.md"
@@ -1464,7 +1488,7 @@
       "external_gates": [
         "HUMANS"
       ],
-      "estimate_agent_hours": "1\u20133",
+      "estimate_agent_hours": "1–3",
       "write_paths": [
         "docs/launch/hosted-walkthrough.md",
         "docs/launch/evidence/T23.69/**"
@@ -1521,7 +1545,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "2\u20134",
+      "estimate_agent_hours": "2–4",
       "write_paths": [
         "docs/launch/hosted-release.md",
         "docs/launch/hosted-runbook.md",
@@ -1581,7 +1605,7 @@
       "external_gates": [
         "PILOT_GO"
       ],
-      "estimate_agent_hours": "0.5\u20131",
+      "estimate_agent_hours": "0.5–1",
       "write_paths": [
         "docs/launch/evidence/T23.71/**"
       ],
@@ -1624,7 +1648,7 @@
       "external_gates": [
         "LIVE_BILLING"
       ],
-      "estimate_agent_hours": "1\u20132",
+      "estimate_agent_hours": "1–2",
       "write_paths": [
         "docs/launch/evidence/T23.72/**"
       ],
@@ -1667,7 +1691,7 @@
       "external_gates": [
         "PUBLIC_GO"
       ],
-      "estimate_agent_hours": "1\u20132",
+      "estimate_agent_hours": "1–2",
       "write_paths": [
         "docs/launch/evidence/T23.73/**",
         "site/index.html",
@@ -1675,7 +1699,7 @@
       ],
       "steps": [
         "Present final paid release packet and explicit state/cost/remaining-risk summary to David through the standing path; obtain go/no-go, not silence-as-consent.",
-        "On go, publish the reviewed release tag/assets from the exact qualified immutable candidate without rebuilding, then apply reviewed public registration/site activation diff. Verify source/tag/archiveSHA, DNS/TLS/email and Free signup\u2192Rakazo write\u2192recall\u2192export/delete; published prices/limits and paid path match qualified objects.",
+        "On go, publish the reviewed release tag/assets from the exact qualified immutable candidate without rebuilding, then apply reviewed public registration/site activation diff. Verify source/tag/archiveSHA, DNS/TLS/email and Free signup→Rakazo write→recall→export/delete; published prices/limits and paid path match qualified objects.",
         "On no-go/failure, preserve private candidate and data, disable new admission/Checkout and execute reviewed compatible rollback. No unsupported public availability or SLA announcement.",
         "Record exact release/deploy/site/Stripe revisions, time and operator; start the finite observation window in task74."
       ],
@@ -1721,7 +1745,7 @@
         "paid"
       ],
       "external_gates": [],
-      "estimate_agent_hours": "1\u20132 active + 24h observation",
+      "estimate_agent_hours": "1–2 active + 24h observation",
       "write_paths": [
         "docs/launch/evidence/T23.74/**",
         "docs/launch/hosted-status.md",

@@ -47,8 +47,9 @@ Out of scope: Flutter app, Graph email, ANN index, multi-principal enforcement i
 ### E9-E21 -- Verification remediation epics  -> docs/plans/E9-*.md .. E21-*.md  (all complete 2026-09-08; trimmed from this file)
 ### E22 -- Final import performance investigation  -> docs/plans/E22-import-budget-investigation.md  (0/1)
 ### E23 -- Hosted Serenity launch  -> docs/launch/hosted-plan.md  (0/40; executable; contracts in docs/tasks/T23.*.md)
+### E24 -- Deep review 001 remediation  -> docs/plans/deep-review-001-remediation.md  (0/42; executable; contracts in docs/tasks/deep-review-001/T24.*.md)
 
-Decisions confirmed by David on 2026 08 27 (OD-1..OD-4) stand; see ADR 005 and ADR 010. Decisions on 2026 09 11 for E23 are in ADR 014-016.
+Decisions confirmed by David on 2026 08 27 (OD-1..OD-4) stand; see ADR 005 and ADR 010. Decisions on 2026 09 11 for E23 are in ADR 014-016. Decisions on 2026 09 27 for E24 (erasure semantics, edge trust, ownership of overlapping findings, untrusted-connector claims) are in ADR 018-022; E24 closes deep review 001 (`docs/deep-reviews/001-full-codebase.md`, 5 High) against a hosted candidate that `ajent.social` records as live since 2026-09-26, with GitHub Actions billing-locked (T24.41).
 
 ### Open waves
 
@@ -118,6 +119,7 @@ Scope-gated, not date-gated (RFC section 17), except E23, which targets a seven-
 | R9 | Scope gravity: in-place claim edit or private daemon path sneaks in | RFC section 18.7 | Low | Drift tests, edit_accept only via writer, README leads with plan-check |
 | R11 | E22 timing failure masks a real regression | Release quality | Medium | Baseline never advanced on a failing run; controlled-runner isolation next |
 | RH1-RH7 | Hosted launch risks (Resend, embedding cost, stack semantics, single node, Rakazo drift, published prices, disk) | see epic | see epic | `docs/launch/hosted-plan.md` section 7 |
+| RR1-RR7 | Deep review remediation risks (cert re-issuance under the Caddy privilege drop, CI billing lock, FUN-02 burning live quota until T23.44 is dispatched, history rewrite on shared remotes, KnownFields breaking old brains, redaction eval drift, stale Cloudflare ranges) | see epic | see epic | `docs/plans/deep-review-001-remediation.md` Risks |
 
 ## 8. Operating procedure
 
@@ -132,6 +134,7 @@ Rules: one worktree per task on `/Volumes/BuildOffload/wt/serenity-<task>`; smal
 
 ## 9. Progress log
 
+- 2026-09-27 Deep review 001 groom: added E24 (42 rows T24.1-T24.42, 41 with acc:, 5 lane: agent, 1 kind: human, 1 kind: any, 1 kind: plan, 10 blocked) in `docs/plans/deep-review-001-remediation.md` with contracts `docs/tasks/deep-review-001/T24.*.md`; ADR 018 (hardened git runner and synced-config trust), 019 (erasure semantics), 020 (edge and host trust), 021 (redaction chokepoint), 022 (untrusted-content boundary) written; T23.44/45/46/47/48/50/51/52/54/56/57/59 amended in `docs/launch/hosted-completion/tasks.json` and re-rendered; UC-072..UC-083 added. No trim (no new completed work since 2026-09-11).
 - 2026-09-11 Hosted launch groom: added E23 (40 tasks, 38 with acc:, 5 lane: agent, 4 founder-gated kind: human/any, 1 kind: plan) in `docs/launch/hosted-plan.md` with `docs/launch/hosted-status.md` and `docs/launch/hosted-acceptance.md`; ADR 014 (tenancy topology), ADR 015 (Resend magic link), ADR 016 (plans, metering, Stripe) written; UC-049..UC-071 added; contracts `docs/tasks/T23.{1,2,4,5,6,7,8,9,10,11,12}.md` written. Trim pass: shipped waves 1a-1c, 1e, 2a-2d, 3a-3d, 4a-4c, 5a, 9 and epics E9-E21 removed from this file (detail preserved in epic files and roadmap Shipped); stale checkboxes T2.17 and T4.17 synced to shipped; progress-log history before this entry removed (in git history and roadmap).
 
 ## 10. Hand-off notes
@@ -145,6 +148,6 @@ Rules: one worktree per task on `/Volumes/BuildOffload/wt/serenity-<task>`; smal
 ## 11. Appendix
 
 - RFC: `docs/rfc/0001-serenity.md`
-- ADRs: `docs/adr/001` Gmail IMAP; `002` code-complete boundary; `003` dependency posture; `004` writer queue, pending records, id width; `005` eval labeling, voice notes to M2; `006` `serenity cron`, x/term TUI; `007` reconcile constants; `008` precepts on dira, applies_when body block; `009` gbrain import mapping; `010` check exit codes, events per transport, token rotation, docs toolchain, name timing; `011` milestone gates mechanical; `012` embedded read facade, writes single-process; `013` OpenRouter default provider; `014` hosted tenancy topology and binding chain; `015` hosted identity via Resend magic link; `016` versioned plans, atomic metering, Stripe-hosted billing.
+- ADRs: `docs/adr/001` Gmail IMAP; `002` code-complete boundary; `003` dependency posture; `004` writer queue, pending records, id width; `005` eval labeling, voice notes to M2; `006` `serenity cron`, x/term TUI; `007` reconcile constants; `008` precepts on dira, applies_when body block; `009` gbrain import mapping; `010` check exit codes, events per transport, token rotation, docs toolchain, name timing; `011` milestone gates mechanical; `012` embedded read facade, writes single-process; `013` OpenRouter default provider; `014` hosted tenancy topology and binding chain; `015` hosted identity via Resend magic link; `016` versioned plans, atomic metering, Stripe-hosted billing; `018` hardened git runner, synced-config trust; `019` erasure semantics for forget and delete; `020` edge and host trust posture; `021` redaction at the provider egress chokepoint; `022` untrusted-content trust boundary.
 - Use-case manifest: `.claude/scratch/usecases-manifest.json`
-- Evidence reports: `docs/evals/m<N>-report.md`; hosted evidence: `docs/launch/hosted-acceptance.md`
+- Evidence reports: `docs/evals/m<N>-report.md`; hosted evidence: `docs/launch/hosted-acceptance.md`; deep reviews: `docs/deep-reviews/`
