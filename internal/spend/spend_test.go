@@ -278,3 +278,32 @@ func TestApplyDisposedEffectRejectsWrongKind(t *testing.T) {
 		t.Fatal("expected an error for a non-effect kind")
 	}
 }
+
+// TestApplyDisposedEffectIsIdempotent proves a retried accept (inbox
+// --apply after an interrupted session) records the approved row once and
+// reports success, rather than failing on the ledger's primary key.
+func TestApplyDisposedEffectIsIdempotent(t *testing.T) {
+	c, eng := openTestChecker(t, Config{MonthlyCeilingUSD: 1})
+	ctx := context.Background()
+	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
+	d, err := c.CheckAndRecord(ctx, fixtureRow("retried", 5, now), now)
+	if err != nil || d.Recorded {
+		t.Fatalf("CheckAndRecord = %+v, %v; want staged", d, err)
+	}
+	res, err := c.Disposition.Dispose(ctx, d.ItemID, disposition.VerdictAccept, nil, "", "human:tester", "", now)
+	if err != nil {
+		t.Fatalf("Dispose: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := c.ApplyDisposedEffect(ctx, res.Item); err != nil {
+			t.Fatalf("ApplyDisposedEffect #%d: %v", i+1, err)
+		}
+	}
+	rows, err := eng.SpendRows(ctx)
+	if err != nil {
+		t.Fatalf("SpendRows: %v", err)
+	}
+	if len(rows) != 1 || rows[0].ID != "retried" {
+		t.Fatalf("ledger after two applies = %+v, want exactly the one approved row", rows)
+	}
+}
