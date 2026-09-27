@@ -3,6 +3,7 @@ package memory
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/sirerun/serenity/internal/domain"
@@ -51,5 +52,17 @@ func TestEntityToolQuarantinesUnparsablePage(t *testing.T) {
 	got := acceptanceCall(t, h, "entity", map[string]any{"name": "person/injected"})
 	if got["found"] != false {
 		t.Fatalf("entity person/injected: quarantined page must not resolve, got %v", got)
+	}
+
+	// The walk the tool uses records the corrupt page exactly once.
+	pages, quarantined, err := h.loadAllEntityPages()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pages) != 2 {
+		t.Fatalf("parsed pages = %d, want 2", len(pages))
+	}
+	if len(quarantined) != 1 || quarantined[0].Path != filepath.Join(root, "brain", "entities", "person", "injected.md") {
+		t.Fatalf("quarantined = %+v, want exactly the injected page", quarantined)
 	}
 }

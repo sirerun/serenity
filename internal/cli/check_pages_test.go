@@ -115,3 +115,38 @@ func TestCheckReportsCleanBrainCounts(t *testing.T) {
 		}
 	}
 }
+
+// TestCheckPagesOnly: `serenity check --pages` prints only the two page
+// sections, needs no plan text, and exits 0 even when both sections have
+// entries (warning class, ADR 010). Combining it with a plan input is
+// refused.
+func TestCheckPagesOnly(t *testing.T) {
+	root := initBrainRepo(t)
+	seedPageAuditFixture(t, root)
+
+	c := newRootCmd()
+	c.SetArgs([]string{"-C", root, "check", "--pages"})
+	var out, stderr bytes.Buffer
+	c.SetOut(&out)
+	c.SetErr(&stderr)
+	if err := c.Execute(); err != nil {
+		t.Fatalf("check --pages must exit 0 on warnings, got %v\n%s%s", err, out.String(), stderr.String())
+	}
+	got := out.String()
+	if strings.Contains(got, "status:") {
+		t.Fatalf("--pages must print no plan verdict:\n%s", got)
+	}
+	for _, want := range []string{"quarantined pages: 1\n", "non-conforming slugs: 1\n", `slug "Bad_Slug"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("check --pages output lacks %q:\n%s", want, got)
+		}
+	}
+
+	c = newRootCmd()
+	c.SetArgs([]string{"-C", root, "check", "--pages", "--actions", `[]`})
+	c.SetOut(&out)
+	c.SetErr(&stderr)
+	if err := c.Execute(); err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Fatalf("--pages with --actions must be refused, got %v", err)
+	}
+}

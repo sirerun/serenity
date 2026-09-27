@@ -19,6 +19,7 @@ nav:
       - Server: operator/server.md
       - MCP: operator/mcp.md
       - Claude: operator/claude.md
+      - Check: operator/check.md
       - Connectors: operator/connect.md
       - Scheduling: operator/scheduling.md
       - Import gbrain: operator/gbrain-import.md

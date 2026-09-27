@@ -12,6 +12,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/compose"
 	"github.com/sirerun/serenity/internal/domain"
+	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/server/mcp"
 	"github.com/sirerun/serenity/internal/store"
 )
@@ -114,7 +115,7 @@ func (h *Handlers) entity(ctx context.Context, args json.RawMessage) (any, bool,
 		return verbError(ErrCodeInvalidParams, "entity: name must be a valid reference", "pass a plain name or a \"type/slug\" reference with no path separators beyond the one splitting them"), true, nil
 	}
 
-	pages, err := h.loadAllEntityPages()
+	pages, _, err := h.loadAllEntityPages()
 	if err != nil {
 		return nil, false, err
 	}
@@ -138,28 +139,29 @@ func (h *Handlers) entity(ctx context.Context, args json.RawMessage) (any, bool,
 	return resp, false, nil
 }
 
-func (h *Handlers) loadAllEntityPages() ([]resolvedEntityPage, error) {
+func (h *Handlers) loadAllEntityPages() ([]resolvedEntityPage, []index.QuarantinedPage, error) {
 	base := filepath.Join(h.deps.Root, "brain", "entities")
 	for _, dir := range []string{h.deps.Root, filepath.Join(h.deps.Root, "brain"), base} {
 		info, err := os.Lstat(dir)
 		if os.IsNotExist(err) {
-			return []resolvedEntityPage{}, nil
+			return []resolvedEntityPage{}, nil, nil
 		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return nil, fmt.Errorf("entity: unsafe directory %s", dir)
+			return nil, nil, fmt.Errorf("entity: unsafe directory %s", dir)
 		}
 	}
 	types, err := os.ReadDir(base)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	out := []resolvedEntityPage{}
+	var quarantined []index.QuarantinedPage
 	for _, typ := range types {
 		if typ.Type()&os.ModeSymlink != 0 {
-			return nil, fmt.Errorf("entity: symlink type directory")
+			return nil, nil, fmt.Errorf("entity: symlink type directory")
 		}
 		if !typ.IsDir() {
 			continue
@@ -167,11 +169,11 @@ func (h *Handlers) loadAllEntityPages() ([]resolvedEntityPage, error) {
 		dir := filepath.Join(base, typ.Name())
 		files, err := os.ReadDir(dir)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, file := range files {
 			if file.Type()&os.ModeSymlink != 0 {
-				return nil, fmt.Errorf("entity: symlink page")
+				return nil, nil, fmt.Errorf("entity: symlink page")
 			}
 			if file.IsDir() || !strings.HasSuffix(file.Name(), ".md") {
 				continue
@@ -179,19 +181,27 @@ func (h *Handlers) loadAllEntityPages() ([]resolvedEntityPage, error) {
 			path := filepath.Join(dir, file.Name())
 			info, err := file.Info()
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if !info.Mode().IsRegular() {
-				return nil, fmt.Errorf("entity: nonregular page")
+				return nil, nil, fmt.Errorf("entity: nonregular page")
 			}
 			page, err := h.deps.Fence.ParseEntity(path)
 			if err != nil {
-				return nil, fmt.Errorf("entity: parse page: %w", err)
+				// One corrupt page is quarantined (logged once, skipped),
+				// never an error for every lookup in the brain (deep
+				// review SEC-H03 blast radius). The symlink and
+				// non-regular checks above stay hard errors: they are
+				// security refusals, not parse failures.
+				q := index.QuarantinedPage{Path: path, Err: err}
+				q.Log()
+				quarantined = append(quarantined, q)
+				continue
 			}
 			out = append(out, resolvedEntityPage{page: page, path: path, mtime: info.ModTime()})
 		}
 	}
-	return out, nil
+	return out, quarantined, nil
 }
 
 // matchEntityPages resolves name against pages under the frozen precedence

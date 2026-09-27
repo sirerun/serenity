@@ -2,7 +2,6 @@ package index
 
 import (
 	"fmt"
-	"path/filepath"
 	"sync"
 	"unicode/utf8"
 
@@ -14,15 +13,15 @@ import (
 // Rebuild produces. The cache belongs to one request, never to the index lifetime.
 func sourceChunkAuthority(root string, proj *store.MemoryProjection, restricted map[string]bool) (func(Hit) bool, error) {
 	pages := make(map[string]Hit)
-	paths, err := filepath.Glob(filepath.Join(root, "brain", "entities", "*", "*.md"))
+	// An unparsable page is quarantined (skipped): its "page:<slug>" ref is
+	// then absent from this map, so a stale indexed chunk for it is refused
+	// below -- fail closed for that page, readable for the rest of the brain.
+	parsed, _, err := WalkEntityPages(root, store.NewFenceWriter(root))
 	if err != nil {
 		return nil, err
 	}
-	for _, path := range paths {
-		p, err := store.NewFenceWriter(root).ParseEntity(path)
-		if err != nil {
-			return nil, err
-		}
+	for _, pp := range parsed {
+		p := pp.Page
 		text := p.Title
 		if !restricted[p.Entity.Slug] {
 			text += "\n" + p.Summary
