@@ -11,14 +11,23 @@ import (
 // Confidence/ConfidenceClamped are the CLAMPED values (Result.Confidence
 // after NewConfidence), not the provider's raw report.
 type SpendEntry struct {
-	ID                string
-	TaskClass         TaskClass
-	Tier              Tier
-	Provider          string
-	ModelVersion      string
-	InputTokens       int
-	OutputTokens      int
-	CostUSD           float64
+	ID           string
+	TaskClass    TaskClass
+	Tier         Tier
+	Provider     string
+	ModelVersion string
+	InputTokens  int
+	OutputTokens int
+	// CostUSD is the call's priced cost (prices.go), always finite. For
+	// a model the price table does not list it is 0 and Unpriced is
+	// true: the +Inf that Result.Usage.CostUSD carries for such a call
+	// has no JSON encoding, and index.SpendRow persists rows as JSON.
+	// A ledger summing CostUSD therefore under-counts unpriced calls --
+	// it must read Unpriced to fail closed (internal/eval/runner's
+	// TrackingLedger does).
+	CostUSD  float64
+	Unpriced bool
+	// Confidence/ConfidenceClamped are the clamped values (see above).
 	Confidence        float64
 	ConfidenceClamped bool
 	OccurredAt        time.Time

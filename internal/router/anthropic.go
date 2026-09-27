@@ -132,11 +132,15 @@ func (p *AnthropicProvider) Send(ctx context.Context, prompt string) (Response, 
 		}
 	}
 
+	// CostUSD is priced from the API's own usage block against
+	// prices.go (T24.13, closing lore L-0008); an unlisted Model prices
+	// at +Inf so any Budget.MaxUSD trips.
 	return Response{
 		Text: text,
 		Usage: Usage{
 			InputTokens:  parsed.Usage.InputTokens,
 			OutputTokens: parsed.Usage.OutputTokens,
+			CostUSD:      CostUSD(p.Model, parsed.Usage.InputTokens, parsed.Usage.OutputTokens),
 		},
 	}, nil
 }

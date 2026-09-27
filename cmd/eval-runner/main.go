@@ -45,7 +45,7 @@ func run(args []string) error {
 	reconcileCorpus := fs.String("reconcile-corpus", "", "plan T2.18: additionally score this reconcile corpus (e.g. evals/corpora/reconcile) against the real internal/reconcile.Detect, attaching a Reconcile section; empty skips it")
 	out := fs.String("out", "evals/report.json", "report output path")
 	providerName := fs.String("provider", "anthropic", "ModeLive: anthropic | openai")
-	model := fs.String("model", "claude-haiku-4-5-20251001", "ModeLive: model identifier")
+	model := fs.String("model", defaultLiveModel, "ModeLive: model identifier")
 	modelVersionTag := fs.String("model-version", "v1", "ModeLive: pinned-model-set version tag (RFC 0001 SS7.5)")
 	budgetFlag := fs.Float64("budget-usd", -1, "aggregate USD cap for this run; -1 reads SERENITY_EVAL_BUDGET_USD, unset/0 means unlimited")
 	liveCheckpoint := fs.String("live-checkpoint", "", "ModeLive: path to an incremental per-span checkpoint file (JSONL) enabling resume after an interrupted run; empty (default) disables checkpointing")
@@ -130,6 +130,13 @@ func resolveBudget(flagValue float64) (float64, error) {
 	}
 	return parsed, nil
 }
+
+// defaultLiveModel is the -model default for -mode live (what
+// nightly-eval.yml runs). It must be listed in internal/router's price
+// table (main_test.go's TestDefaultLiveModelIsPriced) so the
+// SERENITY_EVAL_BUDGET_USD cap prices real dollars rather than failing
+// closed on the very first call.
+const defaultLiveModel = "claude-haiku-4-5-20251001"
 
 func buildProvider(name, model, versionTag string) (router.Provider, string, error) {
 	switch name {

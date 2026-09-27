@@ -47,6 +47,7 @@ const (
 	ErrCodeScopeDenied         = "scope_denied"
 	ErrCodeUnavailable         = "unavailable"
 	ErrCodeBudgetUnsatisfiable = "budget_unsatisfiable" // reserved -- never emitted
+	ErrCodeRateLimited         = "rate_limited"         // synthesize: more than synthesizeCallsPerMinute calls in one minute for one account
 	ErrCodeInternal            = "internal"
 )
 
@@ -292,6 +293,10 @@ func (d Deps) memoryWriter() *writer.MemoryFact {
 // Handlers implements MEMORY_VERBS v1's five verbs over Deps.
 type Handlers struct {
 	deps Deps
+	// synthLimiter is synthesize's per-account, per-minute call limiter
+	// (synthesize.go); one per Handlers, so its state lives exactly as
+	// long as the session that owns these verbs.
+	synthLimiter *synthesizeLimiter
 }
 
 // New builds Handlers over deps. Root, Config, Index, Queue, Sources,
@@ -301,7 +306,7 @@ func New(deps Deps) *Handlers {
 	if deps.Clock == nil {
 		deps.Clock = realClock{}
 	}
-	return &Handlers{deps: deps}
+	return &Handlers{deps: deps, synthLimiter: newSynthesizeLimiter(synthesizeCallsPerMinute, time.Minute)}
 }
 
 // Tools returns the five MEMORY_VERBS v1 tool registrations, ready to pass
