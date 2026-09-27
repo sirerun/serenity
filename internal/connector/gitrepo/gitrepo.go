@@ -33,6 +33,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -40,6 +41,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kazi-org/dira/ledger"
@@ -84,6 +86,27 @@ type Config struct {
 // Connector crawls one git working tree. It implements connector.Connector.
 type Connector struct {
 	cfg Config
+
+	mu      sync.Mutex
+	skipped []SkippedEntry
+}
+
+// SkippedEntry records one listed path the most recent Poll refused to
+// read, with the reason readContained gave.
+type SkippedEntry struct {
+	Path   string
+	Reason string
+}
+
+// Skipped returns the entries the most recent Poll skipped instead of
+// reading: non-regular files (symlinks, sockets, devices) and any path
+// whose resolved form leaves the repository top level. Callers that print
+// a sync summary surface len(Skipped()) so a crawl that silently ignored
+// entries is visible.
+func (c *Connector) Skipped() []SkippedEntry {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]SkippedEntry(nil), c.skipped...)
 }
 
 var _ connector.Connector = (*Connector)(nil)
@@ -149,11 +172,19 @@ func (c *Connector) Poll(ctx context.Context, cursor connector.Cursor) ([]connec
 
 	repoName := filepath.Base(toplevel)
 	var items []connector.RawItem
+	var skipped []SkippedEntry
 	for _, rel := range paths {
 		if !isDoc(rel) {
 			continue
 		}
-		data, err := os.ReadFile(filepath.Join(toplevel, filepath.FromSlash(rel)))
+		data, err := readContained(toplevel, rel)
+		if errors.Is(err, errNonRegular) || errors.Is(err, errEscapes) {
+			// SEC-H04: a tracked symlink (or any other non-regular entry)
+			// is never followed. Skip it, count it, and keep crawling --
+			// one hostile entry must not hide the rest of the tree.
+			skipped = append(skipped, SkippedEntry{Path: rel, Reason: err.Error()})
+			continue
+		}
 		if err != nil {
 			return nil, cursor, fmt.Errorf("gitrepo: read %s: %w", rel, err)
 		}
@@ -180,6 +211,10 @@ func (c *Connector) Poll(ctx context.Context, cursor connector.Cursor) ([]connec
 		})
 	}
 
+	c.mu.Lock()
+	c.skipped = skipped
+	c.mu.Unlock()
+
 	next := cursor
 	if head != "" {
 		b, err := json.Marshal(cursorState{Head: head})
@@ -189,6 +224,55 @@ func (c *Connector) Poll(ctx context.Context, cursor connector.Cursor) ([]connec
 		next = connector.Cursor(b)
 	}
 	return items, next, nil
+}
+
+// errNonRegular and errEscapes are the two reasons readContained refuses
+// an entry. Poll branches on them with errors.Is: both mean "skip and
+// count", while any other error (permission denied, vanished file) still
+// aborts the poll as it always has.
+var (
+	errNonRegular = errors.New("not a regular file")
+	errEscapes    = errors.New("resolves outside the repository")
+)
+
+// readContained reads the file listed as rel under toplevel, and only that
+// file (SEC-H04, ADR 018 D4). os.ReadFile follows symlinks, so a
+// repository that tracks a link to a file outside its own tree would
+// otherwise hand that file's bytes to the brain. Three checks run before
+// any byte is read, and the returned error names rel when one fails:
+//
+//  1. Lstat, not Stat, so the entry is examined as it sits in the tree; a
+//     symlink is seen as a symlink.
+//  2. The entry must be a regular file. Symlinks, directories, sockets,
+//     devices and pipes are refused with errNonRegular.
+//  3. The entry's fully resolved path (EvalSymlinks, which also resolves
+//     any symlinked parent directory) must sit strictly under the
+//     resolved top level; anything else is refused with errEscapes. Both
+//     sides are resolved so a top level that itself lives under a symlink
+//     (macOS's /var -> /private/var) compares equal to its own files.
+//
+// Only the resolved path is then read.
+func readContained(toplevel, rel string) ([]byte, error) {
+	p := filepath.Join(toplevel, filepath.FromSlash(rel))
+	fi, err := os.Lstat(p)
+	if err != nil {
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, fmt.Errorf("gitrepo: skip %s: %w (%s)", rel, errNonRegular, fi.Mode().Type())
+	}
+	real, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return nil, err
+	}
+	root, err := filepath.EvalSymlinks(toplevel)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.HasPrefix(real, root+string(filepath.Separator)) {
+		return nil, fmt.Errorf("gitrepo: skip %s: %w", rel, errEscapes)
+	}
+	return os.ReadFile(real)
 }
 
 // ToSource builds the domain.Source shell for one crawled item. It never
