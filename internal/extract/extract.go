@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/domain"
@@ -570,6 +571,16 @@ func filterCandidates(raw []Candidate, vocab map[string]bool) (accepted []Candid
 			continue
 		}
 		if strings.ContainsAny(object, "\n\r") {
+			rejected++
+			continue
+		}
+		// SEC-H03: the subject becomes a directory name, a file name and a
+		// YAML frontmatter value downstream, so it must already be a
+		// canonical slug here at the model boundary; an object carrying a
+		// control character can split a table row or a shard line. Either
+		// drops this one candidate and counts it; the rest of the batch
+		// proceeds (FUN-03).
+		if !domain.ValidSlug(subject) || strings.IndexFunc(object, unicode.IsControl) >= 0 {
 			rejected++
 			continue
 		}

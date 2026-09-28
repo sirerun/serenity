@@ -7,7 +7,6 @@ package store
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,6 +45,16 @@ const (
 type TimelineEntry struct {
 	Date string
 	Text string
+}
+
+// pageFrontmatter is the page header as yaml.Marshal emits it and
+// yaml.Unmarshal reads it back: type, slug, then aliases as a flow list.
+// Rendering through the YAML encoder (not string formatting) is what
+// guarantees a value containing a colon is quoted (SEC-H03).
+type pageFrontmatter struct {
+	Type    string   `yaml:"type"`
+	Slug    string   `yaml:"slug"`
+	Aliases []string `yaml:"aliases,omitempty,flow"`
 }
 
 // EntityPage is the structured form of one entity markdown page.
@@ -95,6 +104,13 @@ func (w *FenceWriter) PathFor(entityType, slug string) string {
 // timeline entries are sorted so concurrent git merges are deterministic
 // (§7.2: rows are append-mostly; the writer sorts and normalizes).
 func (w *FenceWriter) RenderEntity(p *EntityPage) ([]byte, error) {
+	// SEC-H03: type and slug become the page's directory and file name and
+	// its frontmatter values. Anything outside the canonical slug grammar is
+	// refused here, never escaped, so a model-emitted subject can neither
+	// name a path nor inject a YAML key.
+	if !domain.ValidSlug(p.Entity.Type) || !domain.ValidSlug(p.Entity.Slug) {
+		return nil, fmt.Errorf("entity %q/%q: type and slug must be lowercase alphanumerics and hyphens, 1-64 characters", p.Entity.Type, p.Entity.Slug)
+	}
 	vocab := w.vocabulary()
 	for i := range p.Claims {
 		if strings.ContainsRune(p.Claims[i].Object, '\n') {
@@ -106,14 +122,15 @@ func (w *FenceWriter) RenderEntity(p *EntityPage) ([]byte, error) {
 	}
 
 	var b bytes.Buffer
-	fmt.Fprintf(&b, "---\ntype: %s\nslug: %s\n", p.Entity.Type, p.Entity.Slug)
-	if len(p.Entity.Aliases) > 0 {
-		encoded, err := json.Marshal(p.Entity.Aliases)
-		if err != nil {
-			return nil, err
-		}
-		fmt.Fprintf(&b, "aliases: %s\n", encoded)
+	// The header is emitted by yaml.Marshal, never by string formatting,
+	// so a value that YAML would otherwise read as another type or as a
+	// key (a colon, a leading '#' or '-', a bare number) is quoted.
+	header, err := yaml.Marshal(pageFrontmatter{Type: p.Entity.Type, Slug: p.Entity.Slug, Aliases: p.Entity.Aliases})
+	if err != nil {
+		return nil, err
 	}
+	b.WriteString("---\n")
+	b.Write(header)
 	b.WriteString("---\n")
 
 	title := p.Title
@@ -221,25 +238,11 @@ func ParseEntityBytes(raw []byte) (*EntityPage, error) {
 	if err != nil {
 		return nil, err
 	}
-	var front struct {
-		Aliases []string `yaml:"aliases"`
-	}
+	var front pageFrontmatter
 	if err := yaml.Unmarshal([]byte(fm), &front); err != nil {
 		return nil, fmt.Errorf("entity frontmatter: %w", err)
 	}
-	p.Entity.Aliases = front.Aliases
-	for _, ln := range strings.Split(fm, "\n") {
-		key, val, ok := strings.Cut(ln, ": ")
-		if !ok {
-			continue
-		}
-		switch key {
-		case "type":
-			p.Entity.Type = val
-		case "slug":
-			p.Entity.Slug = val
-		}
-	}
+	p.Entity.Type, p.Entity.Slug, p.Entity.Aliases = front.Type, front.Slug, front.Aliases
 
 	for _, ln := range strings.Split(rest, "\n") {
 		if after, ok := strings.CutPrefix(ln, "# "); ok {

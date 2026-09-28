@@ -131,7 +131,7 @@ func (w *Writer) StageCandidates(ctx context.Context, ds *disposition.Store, pen
 	if len(pending) == 0 {
 		return 0, 0, nil
 	}
-	_, snapshot, err := w.snapshotObservations(pending)
+	_, snapshot, _, _, err := w.snapshotObservations(pending)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -194,7 +194,7 @@ func (w *Writer) PlanActivateCandidate(ctx context.Context, pending domain.Claim
 	if pending.State != domain.StatePending || !safePart(pending.SubjectSlug) || !safePart(pending.Family) {
 		return nil, fmt.Errorf("claim candidate: not a pending claim")
 	}
-	types, snapshot, err := w.snapshotObservations([]domain.Observation{{SubjectSlug: pending.SubjectSlug, Predicate: pending.Predicate}})
+	types, snapshot, _, _, err := w.snapshotObservations([]domain.Observation{{SubjectSlug: pending.SubjectSlug, Predicate: pending.Predicate}})
 	if err != nil {
 		return nil, err
 	}

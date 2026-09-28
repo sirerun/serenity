@@ -332,6 +332,12 @@ func extractClaims(ctx context.Context, root string, cfg *config.Config, ledger 
 		return fmt.Errorf("extract: publish observation batch: %w", err)
 	}
 	written, skipped = stats.Written, stats.Skipped+review.AlreadyPresent
+	// An observation whose subject is not a canonical slug is dropped per
+	// observation by the ingest path builder, never aborting the batch
+	// (FUN-03); it is counted with the extractor's own rejections so the
+	// operator sees one number for everything the model emitted that was
+	// refused.
+	rejected += review.Rejected + stats.Rejected
 
 	committed, err := writer.Flush(q, root)
 	if err != nil {

@@ -79,6 +79,11 @@ type Stats struct {
 	// Pending counts written claims held in state pending for a human
 	// accept (untrusted first-seen claims, T24.16); included in Written.
 	Pending int
+	// Rejected counts observations dropped before any path was built
+	// because their subject is not a canonical slug (domain.ValidSlug) or
+	// their predicate is not a safe path segment. One bad observation is
+	// dropped and counted; the rest of the batch proceeds (SEC-H03, FUN-03).
+	Rejected int
 }
 
 // writeObservations runs the existing tier writers inside a private snapshot,

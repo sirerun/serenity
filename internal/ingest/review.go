@@ -38,6 +38,10 @@ type ReviewPlan struct {
 	// AwaitingCandidate counts observations whose claim_candidate item is
 	// still open.
 	AwaitingCandidate int
+	// Rejected counts observations dropped because their subject is not a
+	// canonical slug or their predicate is not a safe path segment; the
+	// rest of the batch is still planned (SEC-H03, FUN-03).
+	Rejected int
 }
 
 // ReviewObservations uses canonical rows, not potentially stale index claims.
@@ -45,10 +49,16 @@ type ReviewPlan struct {
 // on later extraction attempts, including a human-edited accepted value.
 func (w *Writer) ReviewObservations(ctx context.Context, ds *disposition.Store, observations []domain.Observation, now time.Time) (ReviewPlan, error) {
 	result := ReviewPlan{}
-	_, snapshot, err := w.snapshotObservations(observations)
+	_, snapshot, kept, rejected, err := w.snapshotObservations(observations)
 	if err != nil {
 		return result, err
 	}
+	safeObs := make([]domain.Observation, 0, len(kept))
+	for _, i := range kept {
+		safeObs = append(safeObs, observations[i])
+	}
+	observations = safeObs
+	result.Rejected = rejected
 	all, active, err := w.canonicalReviewClaims(snapshot, now)
 	if err != nil {
 		return result, err
@@ -164,7 +174,7 @@ func (w *Writer) StageReview(ctx context.Context, ds *disposition.Store, proposa
 	for _, proposal := range proposals {
 		observations = append(observations, domain.Observation{SubjectSlug: proposal.B.SubjectSlug, Predicate: proposal.B.Predicate})
 	}
-	_, snapshot, err := w.snapshotObservations(observations)
+	_, snapshot, err := w.snapshotStrict(observations)
 	if err != nil {
 		return 0, 0, err
 	}
