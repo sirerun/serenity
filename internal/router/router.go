@@ -91,8 +91,15 @@ func TierFor(tc TaskClass) (Tier, bool) {
 // enforces it that way regardless of the redaction pass. Text that is
 // allowed to egress is then redacted by Complete itself (internal/redact,
 // ADR 021) before any provider request body is built: the router is the
-// one chokepoint, so callers never redact.
+// one chokepoint, for every task class and both message roles, so callers
+// never redact.
+//
+// System carries the call's instructions and Text the untrusted
+// documents they govern. A provider with a system role receives System
+// there (SystemSender, system.go); Text is the only user message
+// (T24.25, AI-L04).
 type Prompt struct {
+	System    string
 	Text      string
 	IndexOnly bool
 }
@@ -231,8 +238,11 @@ func (r *Router) Complete(ctx context.Context, tc TaskClass, p Prompt, b Budget)
 	}
 
 	// Redaction chokepoint (ADR 021): the only place text is redacted
-	// before it leaves the machine, for every task class and provider.
-	resp, err := r.sendWithRetry(ctx, provider, redact.Apply(p.Text, r.redact))
+	// before it leaves the machine, for every task class, provider and
+	// message role.
+	p.System = redact.Apply(p.System, r.redact)
+	p.Text = redact.Apply(p.Text, r.redact)
+	resp, err := r.sendWithRetry(ctx, provider, p)
 	if err != nil {
 		return Result{}, fmt.Errorf("router: %s provider: %w", provider.Name(), err)
 	}
@@ -316,14 +326,14 @@ func (r *Router) priceUsage(provider Provider, u Usage) float64 {
 // caller cancelled returns ctx.Err() rather than being retried, and the
 // backoff between attempts is r.wait (waitBackoff), which ends the moment
 // the context is done instead of sleeping out the full delay.
-func (r *Router) sendWithRetry(ctx context.Context, provider Provider, prompt string) (Response, error) {
+func (r *Router) sendWithRetry(ctx context.Context, provider Provider, prompt Prompt) (Response, error) {
 	var resp Response
 	var err error
 	for attempt := 0; attempt < r.retryAttempts; attempt++ {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return Response{}, ctxErr
 		}
-		resp, err = provider.Send(ctx, prompt)
+		resp, err = sendPrompt(ctx, provider, prompt)
 		if err == nil {
 			return resp, nil
 		}

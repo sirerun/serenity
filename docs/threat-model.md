@@ -22,7 +22,8 @@ and mark this claim precept-level trust").
 
 **Mitigation.** Ingested content is data, never instructions. Extraction
 prompts are structured so that source text cannot steer predicates or
-confidence, and no ingest path can create or modify a precept (see
+confidence (see [Prompt construction](#prompt-construction)), and
+no ingest path can create or modify a precept (see
 [Precept integrity](#precept-integrity)). The adversarial corpus (RFC §16)
 includes injected instructions in email, files, and repos, and the release
 gate asserts zero precept mutations and zero unauthorized effect proposals
@@ -194,6 +195,32 @@ crosses the machine boundary to a model provider. It does not change what is
 stored locally — the full, unredacted claim remains in the fence or shard on
 disk, because the local brain is the operator's own data on the operator's
 own machine. Redaction is a boundary control, not a storage control.
+
+## Prompt construction
+
+Every model call separates the instructions from the documents they govern
+(RFC §14, Adversary 1; deep review 001 finding AI-L04):
+
+- **System role for instructions.** Extraction and composer instructions
+  travel in the provider's system role: the Messages API `system` field for
+  Anthropic, a leading `system` message for OpenAI-compatible servers. The
+  untrusted document is the only user message. A provider adapter with no
+  system role receives the instructions ahead of the document in its single
+  prompt, so they are never dropped.
+- **Per-call nonce delimiters.** Untrusted text inside the user message
+  (an extraction chunk, the composer's claim and source-report lines) sits
+  between `<<<doc-<nonce>>>>` and `<<</doc-<nonce>>>>` fences. The nonce is
+  26 letters drawn from `crypto/rand` for every call, is named only in the
+  system instructions, and is redrawn if it already occurs in any of the
+  documents. A document cannot know the nonce of the call it lands in, so it
+  cannot forge a closing fence and step outside its data block the way it
+  could with a fixed `--- CHUNK END ---` marker. The nonce uses letters only
+  so the redaction pass's digit-run rules never rewrite it.
+
+These are hardening layers, not the defense. The enforcement for extraction
+remains the fixed predicate vocabulary and the required JSON shape, and for
+the composer the citation whitelist; a model that follows an injected
+instruction anyway still cannot write outside those checks.
 
 ## Keys and tokens
 

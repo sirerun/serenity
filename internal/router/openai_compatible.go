@@ -63,6 +63,7 @@ type OpenAICompatibleProvider struct {
 }
 
 var _ Provider = (*OpenAICompatibleProvider)(nil)
+var _ SystemSender = (*OpenAICompatibleProvider)(nil)
 
 func (p *OpenAICompatibleProvider) Name() string { return "openai-compatible" }
 
@@ -90,15 +91,26 @@ type openAIResponse struct {
 }
 
 func (p *OpenAICompatibleProvider) Send(ctx context.Context, prompt string) (Response, error) {
+	return p.SendSystem(ctx, "", prompt)
+}
+
+// SendSystem sends system as a leading system-role message and prompt as
+// the only user message; an empty system sends the user message alone.
+func (p *OpenAICompatibleProvider) SendSystem(ctx context.Context, system, prompt string) (Response, error) {
 	baseURL := p.BaseURL
 	if baseURL == "" {
 		baseURL = defaultOpenAICompatibleBaseURL
 	}
 	client := httpClientOrDefault(p.HTTPClient)
 
+	var messages []openAIMessage
+	if system != "" {
+		messages = append(messages, openAIMessage{Role: "system", Content: system})
+	}
+	messages = append(messages, openAIMessage{Role: "user", Content: prompt})
 	fields := map[string]any{
 		"model":    p.Model,
-		"messages": []openAIMessage{{Role: "user", Content: prompt}},
+		"messages": messages,
 	}
 	if p.MaxTokens > 0 {
 		fields["max_tokens"] = p.MaxTokens
