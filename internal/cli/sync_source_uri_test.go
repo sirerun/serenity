@@ -37,7 +37,8 @@ func TestSyncCommitsNoAbsoluteSourcePath(t *testing.T) {
 	}
 
 	cfg := config.Default()
-	cfg.Connectors = map[string]any{"file": map[string]any{"path": watched}}
+	cfg.Connectors.File = &config.FileConnector{Path: watched}
+	cfg.Connectors.Roots = []string{watched} // T24.8 path containment: the temp dir is not under home
 	if err := os.MkdirAll(filepath.Join(root, ".serenity"), 0o700); err != nil {
 		t.Fatal(err)
 	}
