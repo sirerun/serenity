@@ -244,11 +244,11 @@ index. Where each kind lives:
   the provider if they leak.
 - **The daemon bearer token** (and each named credential profile's token)
   lives in the OS keychain under the `serenity` service. On macOS the item
-  is created with an access control list naming only the serenity
-  executable, so another process running as the same user, including
-  `/usr/bin/security`, is prompted by macOS before it can read the token
-  (SEC-L08). Items created before this change keep their older, wider list
-  until the token is rotated with `serenity connect --rotate-token`. On
+  is written through the `security` tool with the keychain library's
+  default access list, so another process running as the same user can
+  read the token without a prompt; restricting the list to the serenity
+  executable (SEC-L08) is planned and requires reads to move to
+  Security.framework so daemon reads stay silent and protected. On
   Linux the Secret Service keyring has no per-application list: any process
   in the same user session can read the token, which the bearer-token and
   loopback controls below assume.

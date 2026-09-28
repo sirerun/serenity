@@ -1,10 +1,7 @@
 // Package secrets stores key material in the OS keychain — never in
 // files, the brain repo, or the index (RFC §14). The daemon bearer token
 // is on by default: loopback is authenticated too, because any local
-// process is not automatically trusted. On macOS each item this package
-// writes carries an access control list trusting only the serenity
-// binary (SEC-L08). Model provider API keys are not stored here; they are
-// read from environment variables (internal/providers).
+// process is not automatically trusted.
 package secrets
 
 import (
@@ -43,7 +40,7 @@ func EnsureDaemonToken() (token string, created bool, err error) {
 		return "", false, err
 	}
 	t = hex.EncodeToString(buf)
-	if err := setSecret(daemonTokenKey, t); err != nil {
+	if err := keyring.Set(Service, daemonTokenKey, t); err != nil {
 		return "", false, err
 	}
 	return t, true, nil
@@ -59,30 +56,14 @@ func RotateDaemonToken() (string, error) {
 		return "", err
 	}
 	t := hex.EncodeToString(buf)
-	if err := setSecret(daemonTokenKey, t); err != nil {
+	if err := keyring.Set(Service, daemonTokenKey, t); err != nil {
 		return "", err
 	}
 	return t, nil
 }
 
-// mocked reports MockForTesting was called: writes go to go-keyring's
-// in-memory store instead of the platform keychain.
-var mocked bool
-
 // MockForTesting swaps the OS keychain for an in-memory store. Test-only.
-func MockForTesting() {
-	keyring.MockInit()
-	mocked = true
-}
-
-// setSecret stores value under account in the Service keychain, through
-// the platform writer (platformSet) unless the keychain is mocked.
-func setSecret(account, value string) error {
-	if mocked {
-		return keyring.Set(Service, account, value)
-	}
-	return platformSet(account, value)
-}
+func MockForTesting() { keyring.MockInit() }
 
 // profileAccountKey namespaces an explicit, operator-selected credential
 // profile's keychain account distinctly from both the legacy shared
@@ -118,7 +99,7 @@ func EnsureProfileDaemonToken(name string) (token string, created bool, err erro
 		return "", false, err
 	}
 	t = hex.EncodeToString(buf)
-	if err := setSecret(profileAccountKey(name), t); err != nil {
+	if err := keyring.Set(Service, profileAccountKey(name), t); err != nil {
 		return "", false, err
 	}
 	return t, true, nil
@@ -134,7 +115,7 @@ func RotateProfileDaemonToken(name string) (string, error) {
 		return "", err
 	}
 	t := hex.EncodeToString(buf)
-	if err := setSecret(profileAccountKey(name), t); err != nil {
+	if err := keyring.Set(Service, profileAccountKey(name), t); err != nil {
 		return "", err
 	}
 	return t, nil
