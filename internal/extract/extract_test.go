@@ -419,7 +419,7 @@ func TestBuildPromptIncludesFamilyGuidanceForRootCausedFamilies(t *testing.T) {
 	for family := range familyGuidance {
 		vocab = append(vocab, family)
 	}
-	prompt := buildPrompt(vocab, "irrelevant chunk text")
+	prompt := buildPrompt(vocab, "irrelevant chunk text").System
 
 	for family, guidance := range familyGuidance {
 		if !strings.Contains(prompt, guidance) {
@@ -437,7 +437,7 @@ func TestBuildPromptIncludesFamilyGuidanceForRootCausedFamilies(t *testing.T) {
 // bare bullet, matching pre-T1.28 behavior -- guidance is additive, not a
 // wholesale prompt rewrite.
 func TestBuildPromptOmitsGuidanceForFamiliesWithoutIt(t *testing.T) {
-	prompt := buildPrompt([]string{"works_at"}, "irrelevant chunk text")
+	prompt := buildPrompt([]string{"works_at"}, "irrelevant chunk text").System
 	if !strings.Contains(prompt, "- works_at\n") {
 		t.Fatalf("expected a bare \"- works_at\" bullet with no guidance suffix, got:\n%s", prompt)
 	}
@@ -453,7 +453,7 @@ func TestBuildPromptOmitsGuidanceForFamiliesWithoutIt(t *testing.T) {
 // the vocabulary -- it is not gated by familyGuidance the way a
 // per-predicate bullet is.
 func TestBuildPromptIncludesSaidIsLastResortInstruction(t *testing.T) {
-	prompt := buildPrompt([]string{"said", "prefers"}, "irrelevant chunk text")
+	prompt := buildPrompt([]string{"said", "prefers"}, "irrelevant chunk text").System
 	if !strings.Contains(prompt, "not itself evidence for the \"said\" predicate") {
 		t.Fatalf("expected buildPrompt to render the said-is-last-resort instruction, got:\n%s", prompt)
 	}

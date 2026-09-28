@@ -41,6 +41,7 @@ type AnthropicProvider struct {
 }
 
 var _ Provider = (*AnthropicProvider)(nil)
+var _ SystemSender = (*AnthropicProvider)(nil)
 
 func (p *AnthropicProvider) Name() string { return "anthropic" }
 
@@ -56,6 +57,7 @@ type anthropicMessage struct {
 type anthropicRequest struct {
 	Model     string             `json:"model"`
 	MaxTokens int                `json:"max_tokens"`
+	System    string             `json:"system,omitempty"`
 	Messages  []anthropicMessage `json:"messages"`
 }
 
@@ -75,6 +77,12 @@ type anthropicResponse struct {
 }
 
 func (p *AnthropicProvider) Send(ctx context.Context, prompt string) (Response, error) {
+	return p.SendSystem(ctx, "", prompt)
+}
+
+// SendSystem sends system in the Messages API's top-level system field
+// and prompt as the only user message; an empty system omits the field.
+func (p *AnthropicProvider) SendSystem(ctx context.Context, system, prompt string) (Response, error) {
 	baseURL := p.BaseURL
 	if baseURL == "" {
 		baseURL = defaultAnthropicBaseURL
@@ -92,6 +100,7 @@ func (p *AnthropicProvider) Send(ctx context.Context, prompt string) (Response, 
 	reqBody, err := json.Marshal(anthropicRequest{
 		Model:     p.Model,
 		MaxTokens: maxTokens,
+		System:    system,
 		Messages:  []anthropicMessage{{Role: "user", Content: prompt}},
 	})
 	if err != nil {
