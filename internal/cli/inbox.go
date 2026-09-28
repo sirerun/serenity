@@ -18,6 +18,7 @@ import (
 	"github.com/sirerun/serenity/internal/direction"
 	"github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/ingest"
+	"github.com/sirerun/serenity/internal/neutralize"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/reconcile"
 	"github.com/sirerun/serenity/internal/store"
@@ -462,10 +463,10 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 		// keypress-wait this task's scripted test would then also need to
 		// drive.
 		if row.HasFamily && (!lastFamilySet || row.Family != lastFamily) {
-			_, _ = fmt.Fprintf(out, "── family: %s ──\n", row.Family)
+			_, _ = fmt.Fprintf(out, "── family: %s ──\n", neutralize.Text(row.Family))
 			lastFamily, lastFamilySet = row.Family, true
 		}
-		_, _ = fmt.Fprintf(out, "[%d/%d] %s\n", i+1, len(rows), describeRow(row))
+		_, _ = fmt.Fprintf(out, "[%d/%d] %s\n", i+1, len(rows), neutralize.Text(describeRow(row)))
 	}
 	printRow(cursor)
 
@@ -573,7 +574,7 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 					if err != nil {
 						return fmt.Errorf("inbox: paused edit remains pending: %w", err)
 					}
-					_, _ = fmt.Fprint(out, preview, "Commit this human copy and its listed shard corrections? [y/N]: ")
+					_, _ = fmt.Fprint(out, neutralize.Text(preview), "Commit this human copy and its listed shard corrections? [y/N]: ")
 					answer, err := r.ReadString('\n')
 					if err != nil && err != io.EOF {
 						return err
@@ -621,7 +622,7 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 					if aerr != nil {
 						return fmt.Errorf("inbox: ledger publication incomplete for %s: %w; retry with inbox --apply %s", it.ID, aerr, it.ID)
 					}
-					_, _ = fmt.Fprintf(out, "applied %s -> %s written to ledger and committed (%s)\n", it.ID, entry.ID, entry.Title)
+					_, _ = fmt.Fprintf(out, "applied %s -> %s written to ledger and committed (%s)\n", it.ID, entry.ID, neutralize.Text(entry.Title))
 				}
 			}
 			if advance() {
@@ -748,7 +749,7 @@ func runListParked(ctx context.Context, dispStore *disposition.Store, out io.Wri
 		if it.State != disposition.StateParked {
 			continue
 		}
-		_, _ = fmt.Fprintln(out, itemSummary(it))
+		_, _ = fmt.Fprintln(out, neutralize.Text(itemSummary(it)))
 		n++
 	}
 	if n == 0 {

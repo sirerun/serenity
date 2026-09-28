@@ -14,6 +14,7 @@ import (
 	"github.com/sirerun/serenity/internal/compose"
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/embed"
+	"github.com/sirerun/serenity/internal/neutralize"
 	"github.com/sirerun/serenity/internal/search"
 )
 
@@ -113,14 +114,14 @@ func runAsk(ctx context.Context, root, question string, out io.Writer) error {
 // answer text followed by every attributed source citation.
 func writeAskAnswer(out io.Writer, answer compose.Answer) error {
 	if answer.Gap != "" {
-		_, _ = fmt.Fprintln(out, answer.Gap)
+		_, _ = fmt.Fprintln(out, neutralize.Text(answer.Gap))
 		return nil
 	}
-	if _, err := fmt.Fprintln(out, answer.Text); err != nil {
+	if _, err := fmt.Fprintln(out, neutralize.Text(answer.Text)); err != nil {
 		return err
 	}
 	for _, source := range answer.SourceCitations {
-		if _, err := fmt.Fprintf(out, "[source:%s] %s (attribution: %s)\n", source.SHA256, source.Fact, source.Provenance); err != nil {
+		if _, err := fmt.Fprintf(out, "[source:%s] %s (attribution: %s)\n", source.SHA256, neutralize.Text(source.Fact), neutralize.Text(source.Provenance)); err != nil {
 			return err
 		}
 	}
