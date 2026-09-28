@@ -5,11 +5,52 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/sirerun/serenity/internal/server/mcp"
 	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
 )
+
+// ErrCodeForbidden is a Serenity extension to the error enum: the caller is
+// authenticated and scoped for forget but is neither the fact's writer nor a
+// human actor (AI-L03).
+const ErrCodeForbidden = "forbidden"
+
+// ScopeForget is the credential scope forget requires of a non-human
+// principal, separate from memory:write so a credential can save facts
+// without being able to expire them.
+const ScopeForget = "memory:forget"
+
+// LocalWriter is the writer recorded for a remember that carries no
+// Principal: the local stdio or CLI path run by the brain's own operator.
+const LocalWriter = "local"
+
+// Principal identifies the caller of a verb. A transport that authenticates
+// callers (the hosted gateway) attaches one with WithPrincipal; a context
+// without one is the local operator path, which keeps its prior behavior.
+type Principal struct {
+	// ID is the stable identity recorded as a fact's writer, such as a
+	// credential id. It must not be reused across distinct clients.
+	ID string
+	// Human marks an interactive human actor (the account owner), who may
+	// forget any accessible fact.
+	Human bool
+	// Scopes are the credential's granted scopes.
+	Scopes []string
+}
+
+type principalKey struct{}
+
+// WithPrincipal returns ctx carrying p for the memory verbs.
+func WithPrincipal(ctx context.Context, p Principal) context.Context {
+	return context.WithValue(ctx, principalKey{}, p)
+}
+
+func principalFrom(ctx context.Context) (Principal, bool) {
+	p, ok := ctx.Value(principalKey{}).(Principal)
+	return p, ok
+}
 
 type forgetRequest struct {
 	ID     string `json:"id"`
@@ -40,8 +81,10 @@ func (h *Handlers) forgetTool() mcp.Tool {
 	}
 }
 
-// forget erases an accessible public fact: it records an immutable expiry
-// event and removes the fact's bytes and index rows (ADR 019).
+// forget records an immutable expiry event for an accessible public fact.
+// A non-human Principal needs ScopeForget and must be the fact's recorded
+// writer; a fact with no recorded writer is forgettable only by a human
+// actor or the local path (AI-L03).
 func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool, error) {
 	var req forgetRequest
 	if err := json.Unmarshal(args, &req); err != nil {
@@ -85,8 +128,20 @@ func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool,
 	if record.Payload.Visibility != store.MemoryVisibilityWorld {
 		return verbError(ErrCodeScopeDenied, "Fact is outside the remote scope", "manage private facts through a local interface"), true, nil
 	}
-	reason := req.Reason
 	mw := h.deps.memoryWriter()
+	if p, ok := principalFrom(ctx); ok && !p.Human {
+		if !slices.Contains(p.Scopes, ScopeForget) {
+			return verbError(ErrCodeScopeDenied, "forget requires the "+ScopeForget+" scope", "ask the brain owner for a credential that includes "+ScopeForget+", or forget the fact from the dashboard or local CLI"), true, nil
+		}
+		writerID, err := mw.FactWriter(sha)
+		if err != nil {
+			return nil, false, fmt.Errorf("forget: read writer: %w", err)
+		}
+		if writerID == "" || writerID == LocalWriter || writerID != p.ID {
+			return verbError(ErrCodeForbidden, "Fact was written by another principal", "only the client that remembered a fact, or the brain owner, can forget it"), true, nil
+		}
+	}
+	reason := req.Reason
 	result, err := mw.Forget(sha, reason, now)
 	if err != nil {
 		if errors.Is(err, writer.ErrMemoryFactNotFound) {
