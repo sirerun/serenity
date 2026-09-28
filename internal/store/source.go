@@ -94,6 +94,24 @@ func (s *SourceStore) WriteMemoryFact(p MemoryFactPayload) (domain.Source, error
 	return s.writeSource(data, NewMemoryFactSource(p.CreatedAt))
 }
 
+// MemoryFactWriterMetaKey is the meta.yaml key recording the principal that
+// wrote a memory_fact source (AI-L03).
+const MemoryFactWriterMetaKey = "writer"
+
+// WriteMemoryFactBy is WriteMemoryFact recording writer in meta.yaml. An
+// empty writer records none. Call via the writer queue.
+func (s *SourceStore) WriteMemoryFactBy(p MemoryFactPayload, writer string) (domain.Source, error) {
+	data, err := EncodeMemoryFact(p)
+	if err != nil {
+		return domain.Source{}, err
+	}
+	src := NewMemoryFactSource(p.CreatedAt)
+	if writer != "" {
+		src.Meta = map[string]string{MemoryFactWriterMetaKey: writer}
+	}
+	return s.writeSource(data, src)
+}
+
 // WriteMemoryExpiry publishes an immutable lifecycle event through the writer queue.
 func (s *SourceStore) WriteMemoryExpiry(p MemoryExpiryPayload) (domain.Source, error) {
 	data, err := EncodeMemoryExpiry(p)

@@ -212,6 +212,31 @@ longer resolves (`not_found`), and a `remember` retry under the fact's
 | `expired` | boolean | yes | `true` = this call expired the fact; `false` = it was already expired. |
 | `reason` | string or null | yes | |
 
+**Writer and forget authorization (Serenity).** `remember` records the
+calling principal as `writer: <principal>` in the fact source's `meta.yaml`
+sidecar (`meta:` map). A transport that authenticates callers supplies the
+principal (for the hosted service, the credential identity); a call on the
+local stdio or CLI path records `writer: local`. An exact duplicate or keyed
+replay returns the existing fact and keeps its original writer. The writer
+is not part of the wire response.
+
+`forget` then applies these rules, after the fact is found and in scope:
+
+| Caller | Rule |
+|---|---|
+| Local stdio or CLI path (no authenticated principal) | Unchanged: may forget any accessible fact. |
+| Human actor (the account owner, e.g. the dashboard) | May forget any accessible fact. |
+| Non-human principal without the `memory:forget` scope | `scope_denied`. |
+| Non-human principal with `memory:forget` | Only a fact whose recorded writer is that principal. Any other fact, including one with no recorded writer (written before this rule) or written on the local path, returns `forbidden`. |
+
+**Scopes.** Credentials carry `memory:read` (recall, entity, synthesize,
+read_memory_fact), `memory:write` (remember), and `memory:forget` (forget).
+`memory:forget` is separate from `memory:write` so a client can be issued a
+credential that saves facts without being able to expire any. The server
+enforces the scope and writer rules for any principal its transport attaches;
+the hosted gateway's own per-tool scope table is updated to require
+`memory:forget` for `forget` by T23.45.
+
 ## Error envelope
 
 Every verb returns this object in place of its own success response
@@ -236,6 +261,7 @@ Error codes:
 | `provenance_required` | `remember` was called without `provenance`. |
 | `not_found` | The referenced resource does not exist. |
 | `scope_denied` | The call is outside the caller's granted scope. |
+| `forbidden` | Serenity extension: the caller holds the scope but is neither the fact's writer nor a human actor (`forget`). |
 | `unavailable` | A dependency (e.g. the index) is unavailable. |
 | `budget_unsatisfiable` | Schema-listed by the pinned gbrain contract but **reserved** — Serenity's current implementation never emits it. |
 | `internal` | An unclassified internal failure. |

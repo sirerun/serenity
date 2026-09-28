@@ -63,6 +63,14 @@ Responses carry provenance and confidence so a consuming client's behavior is
 auditable, and `index_only` sources are excluded from any response path,
 cloud or local.
 
+A client with write access could also withdraw facts other clients saved.
+`remember` records the calling principal as `writer:` in the fact's
+`meta.yaml`, and `forget` from a non-human principal requires the separate
+`memory:forget` scope and succeeds only on facts that principal wrote; a fact
+with no recorded writer is forgettable only by a human actor or the local
+operator path. The owner can therefore issue save-only credentials, and one
+agent cannot erase another's facts by id (AI-L03).
+
 ### Adversary 3: model-provider data handling
 
 Every extraction and synthesis call sends brain content to a model provider.

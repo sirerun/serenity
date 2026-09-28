@@ -119,6 +119,10 @@ func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, boo
 		entityType, entitySlug = t, s
 	}
 
+	writerID := LocalWriter
+	if p, ok := principalFrom(ctx); ok {
+		writerID = p.ID
+	}
 	mw := h.deps.memoryWriter()
 	result, err := mw.Remember(writer.RememberInput{
 		OperationKey: req.OperationKey,
@@ -129,6 +133,7 @@ func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, boo
 		Kind:         store.MemoryFactKind(kind),
 		Visibility:   store.MemoryVisibility(visibility),
 		ValidUntil:   validUntil,
+		Writer:       writerID,
 	}, now)
 	if errors.Is(err, writer.ErrMemoryOperationCanceled) {
 		return verbError(ErrCodeOperationCanceled, "remember: operation was canceled, or its fact was forgotten", "do not retry a withdrawn operation with another key"), true, nil

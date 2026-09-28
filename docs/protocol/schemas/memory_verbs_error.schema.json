@@ -19,7 +19,7 @@
     },
     "error": {
       "type": "string",
-      "description": "Versioned enumerated error code (upstream-verbs.ts ERROR_SCHEMA, with keyed-recovery and rate-limit extensions). budget_unsatisfiable is schema-listed but reserved -- this server never emits it. rate_limited is a Serenity extension: synthesize answers it past 60 calls per account per minute.",
+      "description": "Versioned enumerated error code (upstream-verbs.ts ERROR_SCHEMA, with keyed-recovery, rate-limit and forget-authorization extensions). budget_unsatisfiable is schema-listed but reserved -- this server never emits it. rate_limited is a Serenity extension: synthesize answers it past 60 calls per account per minute.",
       "enum": [
         "invalid_params",
         "operation_conflict",
@@ -30,6 +30,7 @@
         "budget_unsatisfiable",
         "internal",
         "operation_canceled",
+        "forbidden",
         "rate_limited"
       ]
     },

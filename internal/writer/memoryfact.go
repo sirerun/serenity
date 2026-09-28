@@ -65,6 +65,10 @@ type RememberInput struct {
 	Kind         store.MemoryFactKind
 	Visibility   store.MemoryVisibility
 	ValidUntil   *time.Time
+	// Writer is the principal making the call, recorded as `writer:` in the
+	// fact's meta.yaml so forget can be restricted to it (AI-L03). Empty
+	// records no writer; such a fact is forgettable only by a human.
+	Writer string
 }
 
 // RememberResult is what the caller needs to build MEMORY_VERBS's remember
@@ -150,7 +154,7 @@ func (w *MemoryFact) rememberLocked(input RememberInput, now time.Time) (Remembe
 		CreatedAt:     now,
 		ValidUntil:    input.ValidUntil,
 	}
-	written, err := w.Sources.WriteMemoryFact(payload)
+	written, err := w.Sources.WriteMemoryFactBy(payload, input.Writer)
 	if written.SHA256 != "" {
 		w.markSource(written.SHA256)
 	}
@@ -274,6 +278,23 @@ func (w *MemoryFact) eraseFact(sha, operationKey string, proj *store.MemoryProje
 		return fmt.Errorf("writer: remove forgotten fact: %w", err)
 	}
 	return nil
+}
+
+// FactWriter returns the writer principal recorded in the meta.yaml of the
+// memory_fact source sha, or "" for a fact written before writers were
+// recorded.
+func (w *MemoryFact) FactWriter(sha string) (string, error) {
+	if w.Sources == nil {
+		return "", fmt.Errorf("writer: memory writer dependencies unavailable")
+	}
+	_, src, err := w.Sources.Read(sha)
+	if err != nil {
+		return "", err
+	}
+	if src.Kind != store.SourceKindMemoryFact {
+		return "", ErrMemoryFactNotFound
+	}
+	return src.Meta[store.MemoryFactWriterMetaKey], nil
 }
 
 // ByLegacyOrOpaqueID resolves a MEMORY_VERBS id -- the opaque SHA256
