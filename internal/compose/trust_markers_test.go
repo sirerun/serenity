@@ -100,7 +100,7 @@ func TestPromptTrustFollowsConfiguredConnectorTrust(t *testing.T) {
 	writeAvaEntity(t, root, []domain.Claim{{ID: "mail-claim", SubjectSlug: avaSlug, Predicate: "works_at", Family: "works_at", Object: "Acme", Confidence: .9, State: domain.StateActive, SourceRef: "mail#1",
 		Provenance: domain.Provenance{SourceSHA256: email.SHA256, Span: "0-10", Model: "m@v1", ObservedAt: mustDate(t, "2024-02-01"), Actor: "machine"}}})
 	cfg := config.Default()
-	cfg.Connectors = map[string]any{"imap": map[string]any{"account": "fixture", "trust": "trusted"}}
+	cfg.Connectors.IMAP = &config.IMAPConnector{Account: "fixture", Trust: config.TrustField("trusted")}
 	var sent string
 	fp := &fakeProvider{modelVersion: "fake-composer@v1", sentPrompt: &sent, resp: router.Response{Text: "Acme [claim:mail-claim]."}}
 	c := New(root, cfg, fakeSearchStore{}, nil, newTestRouter(fp), "fake-composer@v1")
