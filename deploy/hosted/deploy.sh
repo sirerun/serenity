@@ -38,11 +38,7 @@ if [[ ! -e /etc/serenity/hosted.json ]]; then
     install -m 0600 -o serenity -g serenity "$script_dir/config.example.json" /etc/serenity/hosted.json
 fi
 
-caddy_config="$script_dir/Caddyfile"
-if [[ "${SERENITY_DOMAIN_CUTOVER:-0}" == 1 ]]; then
-    caddy_config="$script_dir/Caddyfile.cutover"
-fi
-caddy validate --config "$caddy_config" --adapter caddyfile
+caddy validate --config "$script_dir/Caddyfile" --adapter caddyfile
 # Keep one pre-cutover rollback snapshot; final activation must not replace it.
 rollback=/root/serenity-domain-rollback
 if [[ ! -d "$rollback" && -f /etc/caddy/Caddyfile && -L /usr/local/bin/serenity ]]; then

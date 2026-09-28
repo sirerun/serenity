@@ -23,8 +23,7 @@ The explicit `final` argument is required. The deployment preserves custom
 origins and senders, migrates only the obsolete default origin, and retains
 private configuration permissions. Billing activation is separate.
 
-The `Caddyfile.cutover` and `rollback-domain.sh` files preserve the historical
-September cutover procedure. They refer to the retired hostname and are not
-a routine release rollback. Roll back a normal release to its previous binary
-and canonical Caddy configuration; retain the canonical DNS record. Restoring
-the historical hostname would require a separate reviewed DNS change.
+Roll back a normal release to its previous binary and canonical Caddy
+configuration; retain the canonical DNS record. Restoring the historical
+hostname would require a separate reviewed DNS change; the retired cutover
+configuration was removed (founder ruling, 2026-09-27).
