@@ -110,8 +110,7 @@ type Connectors struct {
 	// form lies outside every root fails connector build naming the path,
 	// so a serenity.yml delivered through the brain remote cannot point
 	// the process at an arbitrary repository.
-	Roots  []string `yaml:"roots,omitempty"`
-	Redact Redact   `yaml:"redact,omitempty"`
+	Roots []string `yaml:"roots,omitempty"`
 	// IMAP is the single Gmail mailbox `serenity connectors auth imap`
 	// writes; the app password lives in the OS keychain, never here.
 	IMAP *IMAPConnector `yaml:"imap,omitempty"`
@@ -124,17 +123,20 @@ type Connectors struct {
 
 // IMAPConnector is the `connectors.imap` entry.
 type IMAPConnector struct {
-	Account string `yaml:"account"`
+	Account string     `yaml:"account"`
+	Trust   TrustField `yaml:"trust,omitempty"`
 }
 
 // FileConnector is the `connectors.file` entry.
 type FileConnector struct {
-	Path string `yaml:"path"`
+	Path  string     `yaml:"path"`
+	Trust TrustField `yaml:"trust,omitempty"`
 }
 
 // GitRepoConnector is one `connectors.git_repo[]` entry.
 type GitRepoConnector struct {
-	Path string `yaml:"path"`
+	Path  string     `yaml:"path"`
+	Trust TrustField `yaml:"trust,omitempty"`
 }
 
 // Redact configures the redaction pass internal/router applies to every
