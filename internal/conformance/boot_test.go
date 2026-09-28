@@ -330,7 +330,7 @@ func TestBootDispositionReplaysDispose(t *testing.T) {
 			t.Fatalf("seed item: %v", err)
 		}
 		c := substituteCase(caseByName(t, tr, "dispose accept records the verdict"),
-			map[string]string{"6bdc48ad531356f7c371d9a167cfac9c": item.ID})
+			map[string]string{"ebb90defc84c86a3010f076589d2e015": item.ID})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
 
@@ -341,7 +341,7 @@ func TestBootDispositionReplaysDispose(t *testing.T) {
 			t.Fatalf("seed item: %v", err)
 		}
 		c := substituteCase(caseByName(t, tr, "reject without a note returns the reject_requires_note protocol error"),
-			map[string]string{"cf1f6b680b141ae8944d3841700fbc70": item.ID})
+			map[string]string{"182ee55d8720eeb003eb159588543c6a": item.ID})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
 
@@ -352,7 +352,7 @@ func TestBootDispositionReplaysDispose(t *testing.T) {
 			t.Fatalf("seed item: %v", err)
 		}
 		c := substituteCase(caseByName(t, tr, "dispose without idempotency_key returns invalid_request"),
-			map[string]string{"311d0e3bdfc3770510ab478d1707efa1": item.ID})
+			map[string]string{"6690d5075e44b885db74e84a36e79c4e": item.ID})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
 
@@ -363,25 +363,27 @@ func TestBootDispositionReplaysDispose(t *testing.T) {
 			t.Fatalf("seed item: %v", err)
 		}
 		c := substituteCase(caseByName(t, tr, "replaying dispose with the same idempotency_key returns replayed:true, never a second write"),
-			map[string]string{"d62ea2ad57d0c4900c55d8fef87798a2": item.ID})
+			map[string]string{"4f16bcb1c055d15249b4a29781baf6eb": item.ID})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
 
 	t.Run("dispose by group_id disposes every member individually, one result per member", func(t *testing.T) {
 		srv, store := newBootDispositionServer(t)
 		const group = "g2"
-		m1, err := store.Create(ctx, coredisp.KindDecompose, json.RawMessage(`{}`), group, bootFixedNow)
+		// Distill, matching the regenerated transcript: accepting a
+		// ledger-bound kind over HTTP is forbidden (ADR 022).
+		m1, err := store.Create(ctx, coredisp.KindDistill, json.RawMessage(`{}`), group, bootFixedNow)
 		if err != nil {
 			t.Fatalf("seed member 1: %v", err)
 		}
-		m2, err := store.Create(ctx, coredisp.KindDecompose, json.RawMessage(`{}`), group, bootFixedNow.Add(time.Second))
+		m2, err := store.Create(ctx, coredisp.KindDistill, json.RawMessage(`{}`), group, bootFixedNow.Add(time.Second))
 		if err != nil {
 			t.Fatalf("seed member 2: %v", err)
 		}
 		c := substituteCase(caseByName(t, tr, "dispose by group_id disposes every member individually, one result per member"),
 			map[string]string{
-				"d0b3dcbfcff72383c9fe36cbf4c6f592": m1.ID,
-				"bca12abeaf764b8df9068b27f9488288": m2.ID,
+				"9722261d0bafc283c115905f904bbf64": m1.ID,
+				"e8cbbee695f907cea3c5ab31cd9e0a07": m2.ID,
 			})
 		requireCasePassed(t, replayCase(ctx, srv.client, srv.base, srv.token, c))
 	})
@@ -626,7 +628,7 @@ func TestBootDeliberatelyBrokenBuildFailsDisposeConformance(t *testing.T) {
 		t.Fatalf("seed item: %v", err)
 	}
 	c := substituteCase(caseByName(t, tr, "dispose accept records the verdict"),
-		map[string]string{"6bdc48ad531356f7c371d9a167cfac9c": item.ID})
+		map[string]string{"ebb90defc84c86a3010f076589d2e015": item.ID})
 
 	brokenClient := &http.Client{Transport: breakingRoundTripper{inner: srv.client.Transport}}
 	outcome := replayCase(ctx, brokenClient, srv.base, srv.token, c)

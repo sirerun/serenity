@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -147,6 +148,9 @@ func runInbox(ctx context.Context, root string, in io.Reader, out io.Writer, opt
 			if err != nil {
 				return err
 			}
+			if err := confirmLedgerApply(out, item, currentActor()); err != nil {
+				return err
+			}
 			id, err := applyInboxDecision(ctx, sw, dirStore, dispStore, item, now)
 			if err != nil {
 				return fmt.Errorf("inbox: publication incomplete for %s: %w; resolve the target and retry with inbox --apply %s", item.ID, err, item.ID)
@@ -280,7 +284,7 @@ func (p *inboxPublisher) ApplyAndCommitDirtyEdit(ctx context.Context, ds *dispos
 
 func applyInboxDecision(ctx context.Context, sw reconcilePublisher, dirStore *direction.Store, ds *disposition.Store, item disposition.Item, now time.Time) (string, error) {
 	if item.Kind == disposition.KindPreceptDraft || item.Kind == disposition.KindDecompose {
-		entry, err := dirStore.ApplyAndCommitDisposition(ctx, ds, item, now)
+		entry, err := dirStore.ApplyAndCommitDisposition(ctx, ds, item, direction.OriginCLI, now)
 		if err != nil {
 			return "", err
 		}
@@ -299,6 +303,50 @@ func applyInboxDecision(ctx context.Context, sw reconcilePublisher, dirStore *di
 		return applyEffect(ctx, sw, item)
 	}
 	return sw.ApplyAndCommitReconcile(ctx, ds, item, now)
+}
+
+// confirmLedgerApply is `inbox --apply`'s gate for a ledger-bound decision
+// (precept_draft, decompose; AI-03): it prints the kind, the target and the
+// full payload that is about to enter the directive ledger, then refuses
+// unless the acceptance was recorded by this CLI's own actor. An accept
+// recorded under any other identity, such as a `human:` actor claimed over
+// the HTTP transport before the actor was derived from the principal, is
+// never published; the human re-reviews it instead. Other kinds pass
+// through unchanged.
+func confirmLedgerApply(out io.Writer, item disposition.Item, actor string) error {
+	if item.Kind != disposition.KindPreceptDraft && item.Kind != disposition.KindDecompose {
+		return nil
+	}
+	if item.State != disposition.StateDisposed || (item.Verdict != disposition.VerdictAccept && item.Verdict != disposition.VerdictEditAccept) {
+		// Not an acceptance: publication refuses it with its own error.
+		return nil
+	}
+	payload := item.Payload
+	if item.Verdict == disposition.VerdictEditAccept && len(item.EditedPayload) > 0 {
+		payload = item.EditedPayload
+	}
+	target := "new ledger decision"
+	if item.Kind == disposition.KindDecompose {
+		var d direction.DecomposePayload
+		if err := json.Unmarshal(payload, &d); err != nil {
+			return fmt.Errorf("inbox: decode decompose payload for %s: %w", item.ID, err)
+		}
+		target = "child intent of " + d.ParentID
+	}
+	// Indented JSON escapes control characters, so the payload is shown
+	// exactly and cannot drive the terminal.
+	var body bytes.Buffer
+	if err := json.Indent(&body, payload, "", "  "); err != nil {
+		return fmt.Errorf("inbox: payload for %s is not valid JSON: %w", item.ID, err)
+	}
+	_, _ = fmt.Fprintf(out, "ledger publication %s\nkind: %s\ntarget: %s\nverdict: %s\nactor: %s\npayload:\n%s\n", item.ID, item.Kind, target, item.Verdict, item.Actor, body.String())
+	if item.Actor != actor {
+		return fmt.Errorf("inbox: %s was accepted by %s, not by this CLI user (%s); ledger proposals publish only from an acceptance recorded here -- review it again in serenity inbox", item.ID, item.Actor, actor)
+	}
+	if err := direction.AuthorizeLedgerDisposition(item.Kind, item.Verdict, item.Actor, direction.OriginCLI); err != nil {
+		return fmt.Errorf("inbox: %s: %w", item.ID, err)
+	}
+	return nil
 }
 
 // currentActor reports the local human identity used as Dispose's actor
@@ -628,7 +676,7 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 			}
 			for _, it := range row.Items {
 				if verdict == disposition.VerdictAccept && (it.Kind == disposition.KindPreceptDraft || it.Kind == disposition.KindDecompose) {
-					if err := dirStore.PreviewDisposition(ctx, it, actor, now); err != nil {
+					if err := dirStore.PreviewDisposition(ctx, it, actor, direction.OriginCLI, now); err != nil {
 						return fmt.Errorf("inbox: ledger proposal %s remains pending: %w", it.ID, err)
 					}
 				}
@@ -659,7 +707,7 @@ func runInteractive(ctx context.Context, dispStore *disposition.Store, sw reconc
 					}
 					_, _ = fmt.Fprintf(out, "applied %s -> claim %s committed to brain repo\n", it.ID, id)
 				case verdict == disposition.VerdictAccept && res.Item.Verdict == disposition.VerdictAccept && (it.Kind == disposition.KindDecompose || it.Kind == disposition.KindPreceptDraft):
-					entry, aerr := dirStore.ApplyAndCommitDisposition(ctx, dispStore, res.Item, now)
+					entry, aerr := dirStore.ApplyAndCommitDisposition(ctx, dispStore, res.Item, direction.OriginCLI, now)
 					if aerr != nil {
 						return fmt.Errorf("inbox: ledger publication incomplete for %s: %w; retry with inbox --apply %s", it.ID, aerr, it.ID)
 					}

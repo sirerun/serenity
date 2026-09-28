@@ -350,10 +350,12 @@ func genDispose() {
 		defer e.close()
 		ctx := context.Background()
 		const group = "g2"
-		if _, err := e.dispStore.Create(ctx, coredisp.KindDecompose, json.RawMessage(`{}`), group, fixedNow); err != nil {
+		// A non-ledger kind: accepting precept_draft/decompose over HTTP is
+		// forbidden (ADR 022), so group fan-out is recorded on distill items.
+		if _, err := e.dispStore.Create(ctx, coredisp.KindDistill, json.RawMessage(`{}`), group, fixedNow); err != nil {
 			log.Fatalf("seed member 1: %v", err)
 		}
-		if _, err := e.dispStore.Create(ctx, coredisp.KindDecompose, json.RawMessage(`{}`), group, fixedNow.Add(time.Second)); err != nil {
+		if _, err := e.dispStore.Create(ctx, coredisp.KindDistill, json.RawMessage(`{}`), group, fixedNow.Add(time.Second)); err != nil {
 			log.Fatalf("seed member 2: %v", err)
 		}
 		s := e.step("POST", "/disposition/dispose", serverdisposition.DisposeRequest{

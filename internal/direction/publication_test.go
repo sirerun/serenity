@@ -82,7 +82,7 @@ func TestLedgerPublicationCommitsOneEntryAndPreservesLaterChanges(t *testing.T) 
 			s, ds, item, git := ledgerPublicationFixture(t, kind)
 			ctx := context.Background()
 			before := git("rev-parse", "HEAD")
-			if err := s.PreviewDisposition(ctx, item, "human:reviewer", decomposeFixedNow); err != nil {
+			if err := s.PreviewDisposition(ctx, item, "human:reviewer", OriginCLI, decomposeFixedNow); err != nil {
 				t.Fatal(err)
 			}
 			if before != git("rev-parse", "HEAD") || git("status", "--porcelain") != "" {
@@ -96,7 +96,7 @@ func TestLedgerPublicationCommitsOneEntryAndPreservesLaterChanges(t *testing.T) 
 			if !item.LedgerEffectPending {
 				t.Fatal("acceptance lacks recovery marker")
 			}
-			entry, err := s.ApplyAndCommitDisposition(ctx, ds, item, decomposeFixedNow.Add(time.Hour))
+			entry, err := s.ApplyAndCommitDisposition(ctx, ds, item, OriginCLI, decomposeFixedNow.Add(time.Hour))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -126,7 +126,7 @@ func TestLedgerPublicationCommitsOneEntryAndPreservesLaterChanges(t *testing.T) 
 			if err := os.WriteFile(path, later, 0600); err != nil {
 				t.Fatal(err)
 			}
-			again, err := s.ApplyAndCommitDisposition(ctx, ds, item, decomposeFixedNow.Add(2*time.Hour))
+			again, err := s.ApplyAndCommitDisposition(ctx, ds, item, OriginCLI, decomposeFixedNow.Add(2*time.Hour))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -157,7 +157,7 @@ func TestLedgerPublicationFailedCommitResumesOrPreservesInterveningEdit(t *testi
 				t.Fatal(err)
 			}
 			before := git("rev-parse", "HEAD")
-			if _, err := s.ApplyAndCommitDisposition(ctx, ds, item, decomposeFixedNow); err == nil {
+			if _, err := s.ApplyAndCommitDisposition(ctx, ds, item, OriginCLI, decomposeFixedNow); err == nil {
 				t.Fatal("commit failure swallowed")
 			}
 			if before != git("rev-parse", "HEAD") {
@@ -180,7 +180,7 @@ func TestLedgerPublicationFailedCommitResumesOrPreservesInterveningEdit(t *testi
 					t.Fatal(err)
 				}
 			}
-			_, err = s.ApplyAndCommitDisposition(ctx, ds, item, decomposeFixedNow.Add(time.Hour))
+			_, err = s.ApplyAndCommitDisposition(ctx, ds, item, OriginCLI, decomposeFixedNow.Add(time.Hour))
 			if mode == "resume" {
 				if err != nil {
 					t.Fatal(err)
@@ -241,7 +241,7 @@ func TestLedgerPublicationPreflightRejectsInvalidOrChangedParent(t *testing.T) {
 				item.Payload, _ = json.Marshal(p)
 			}
 			head, status := git("rev-parse", "HEAD"), git("status", "--porcelain")
-			if err := s.PreviewDisposition(ctx, item, "human:reviewer", decomposeFixedNow); err == nil {
+			if err := s.PreviewDisposition(ctx, item, "human:reviewer", OriginCLI, decomposeFixedNow); err == nil {
 				t.Fatal("invalid preview passed")
 			}
 			if git("rev-parse", "HEAD") != head || git("status", "--porcelain") != status {
@@ -267,14 +267,14 @@ func TestLedgerPublicationMarkerFailureRetriesWithoutNewAllocation(t *testing.T)
 	if _, err := db.Exec(`CREATE TRIGGER reject_entry_marker BEFORE UPDATE ON disposition_items WHEN json_extract(NEW.payload,'$.applied_entry_id') IS NOT NULL BEGIN SELECT RAISE(ABORT,'forced marker failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ApplyAndCommitDisposition(ctx, ds, item, decomposeFixedNow); err == nil {
+	if _, err := s.ApplyAndCommitDisposition(ctx, ds, item, OriginCLI, decomposeFixedNow); err == nil {
 		t.Fatal("marker fault swallowed")
 	}
 	head := git("rev-parse", "HEAD")
 	if _, err := db.Exec(`DROP TRIGGER reject_entry_marker`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.ApplyAndCommitDisposition(ctx, ds, item, decomposeFixedNow.Add(time.Hour)); err != nil {
+	if _, err := s.ApplyAndCommitDisposition(ctx, ds, item, OriginCLI, decomposeFixedNow.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if head != git("rev-parse", "HEAD") {
@@ -311,7 +311,7 @@ func TestLedgerPublicationRefusesUnmarkedLegacyEffectAndMissingCompletedReceipt(
 					t.Fatal(err)
 				}
 			} else {
-				if _, err := s.ApplyAndCommitDisposition(ctx, ds, item, decomposeFixedNow); err != nil {
+				if _, err := s.ApplyAndCommitDisposition(ctx, ds, item, OriginCLI, decomposeFixedNow); err != nil {
 					t.Fatal(err)
 				}
 				names, err := filepath.Glob(filepath.Join(s.root, ".serenity", "direction", "*.json"))
@@ -323,7 +323,7 @@ func TestLedgerPublicationRefusesUnmarkedLegacyEffectAndMissingCompletedReceipt(
 				}
 			}
 			before := git("rev-parse", "HEAD")
-			if _, err := s.ApplyAndCommitDisposition(ctx, ds, item, decomposeFixedNow.Add(time.Hour)); err == nil {
+			if _, err := s.ApplyAndCommitDisposition(ctx, ds, item, OriginCLI, decomposeFixedNow.Add(time.Hour)); err == nil {
 				t.Fatal("allocated through missing recovery intent")
 			}
 			infos, err := s.List(ctx)
@@ -336,10 +336,10 @@ func TestLedgerPublicationRefusesUnmarkedLegacyEffectAndMissingCompletedReceipt(
 
 func TestLedgerPublicationReadOnlyStoreRefusesBeforeStateAccess(t *testing.T) {
 	s := NewStore(t.TempDir(), nil)
-	if err := s.PreviewDisposition(context.Background(), disposition.Item{}, "human:test", decomposeFixedNow); !errors.Is(err, ErrReadOnly) {
+	if err := s.PreviewDisposition(context.Background(), disposition.Item{}, "human:test", OriginCLI, decomposeFixedNow); !errors.Is(err, ErrReadOnly) {
 		t.Fatal(err)
 	}
-	if _, err := s.ApplyAndCommitDisposition(context.Background(), nil, disposition.Item{}, decomposeFixedNow); !errors.Is(err, ErrReadOnly) {
+	if _, err := s.ApplyAndCommitDisposition(context.Background(), nil, disposition.Item{}, OriginCLI, decomposeFixedNow); !errors.Is(err, ErrReadOnly) {
 		t.Fatal(err)
 	}
 }
@@ -355,7 +355,7 @@ func TestLedgerPublicationHonorsEditedChildIntent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, err := s.ApplyAndCommitDisposition(ctx, ds, res.Item, decomposeFixedNow.Add(time.Hour))
+	entry, err := s.ApplyAndCommitDisposition(ctx, ds, res.Item, OriginCLI, decomposeFixedNow.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -372,7 +372,7 @@ func TestLedgerPublicationPreservesRecordedSubsecondDecisionTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry, err := s.ApplyAndCommitDisposition(ctx, ds, res.Item, at.Add(time.Hour))
+	entry, err := s.ApplyAndCommitDisposition(ctx, ds, res.Item, OriginCLI, at.Add(time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}

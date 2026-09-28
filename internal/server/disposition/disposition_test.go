@@ -537,7 +537,9 @@ func TestDisposeGroupDisposesEveryMemberIndividually(t *testing.T) {
 	const group = "group-1"
 	var members []coredisp.Item
 	for i := 0; i < 3; i++ {
-		it, err := env.dispStore.Create(ctx, coredisp.KindDecompose, json.RawMessage(`{}`), group, fixedNow)
+		// A non-ledger kind: accepting precept_draft/decompose over HTTP
+		// is forbidden (TestDisposeLedgerAcceptOverHTTPIsForbidden).
+		it, err := env.dispStore.Create(ctx, coredisp.KindDistill, json.RawMessage(`{}`), group, fixedNow)
 		if err != nil {
 			t.Fatalf("Create %d: %v", i, err)
 		}
