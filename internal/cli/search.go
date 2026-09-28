@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/index"
+	"github.com/sirerun/serenity/internal/neutralize"
 	"github.com/sirerun/serenity/internal/store"
 
 	"github.com/sirerun/serenity/internal/providers"
@@ -99,7 +100,7 @@ func writeSearchResults(out io.Writer, note string, results []search.Result) {
 		return
 	}
 	for i, r := range results {
-		_, _ = fmt.Fprintf(out, "%2d. %-24s score=%.4f  %s\n", i+1, r.ChunkRef, r.RRFScore, truncateText(r.Text, 80))
+		_, _ = fmt.Fprintf(out, "%2d. %-24s score=%.4f  %s\n", i+1, neutralize.Text(r.ChunkRef), r.RRFScore, truncateText(neutralize.Text(r.Text), 80))
 	}
 }
 

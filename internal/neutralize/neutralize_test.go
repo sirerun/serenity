@@ -72,3 +72,20 @@ func TestTextLeavesNoControlCharacters(t *testing.T) {
 		}
 	}
 }
+
+func FuzzText(f *testing.F) {
+	f.Add(hideAndSpoof)
+	f.Add("plain\ttext\n")
+	f.Add("\x1b]8;;\x1b\\\u009b\xff")
+	f.Fuzz(func(t *testing.T, s string) {
+		got := Text(s)
+		for _, r := range got {
+			if isControl(r) {
+				t.Fatalf("Text(%q) kept control character %U", s, r)
+			}
+		}
+		if again := Text(got); again != got {
+			t.Fatalf("Text is not idempotent on %q: %q -> %q", s, got, again)
+		}
+	})
+}

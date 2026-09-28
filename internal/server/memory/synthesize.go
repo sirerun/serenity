@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/compose"
+	"github.com/sirerun/serenity/internal/neutralize"
 	"github.com/sirerun/serenity/internal/router"
 	"github.com/sirerun/serenity/internal/server/mcp"
 )
@@ -182,14 +183,18 @@ func (h *Handlers) synthesize(ctx context.Context, args json.RawMessage) (any, b
 		}
 	}
 
+	// Neutralized here as well as in compose: the answer text is model
+	// output and the gap and supersession renderings carry claim text, and
+	// an MCP client may print either to a terminal (ADR 022, decision 3).
 	if answer.Gap != "" {
-		resp.Answer = answer.Gap
+		gap := neutralize.Text(answer.Gap)
+		resp.Answer = gap
 		resp.Sources = []string{}
-		resp.Gaps = []string{answer.Gap}
+		resp.Gaps = []string{gap}
 		return resp, false, nil
 	}
 
-	resp.Answer = answer.Text
+	resp.Answer = neutralize.Text(answer.Text)
 	seen := map[string]bool{}
 	for _, cit := range answer.Citations {
 		if cit.Subject != "" && !seen[cit.Subject] {
