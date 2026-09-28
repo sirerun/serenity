@@ -44,10 +44,16 @@
 // codebase.
 //
 // `serenity serve --http` (internal/cli/serve.go) registers these routes on
-// its *internal/server.Server, alongside internal/server/disposition's, and
-// passes WithRouter/WithModelVersion from the brain's pinned local-cheap
-// chat model. Registrar mirrors internal/server/disposition.Registrar
-// exactly, so both packages mount identically.
+// its *internal/server.Server, alongside internal/server/disposition's, on
+// the same bearer-authenticated server as /mcp, and passes
+// WithRouter/WithModelVersion from the brain's pinned local-cheap chat
+// model. Registrar mirrors internal/server/disposition.Registrar exactly,
+// so both packages mount identically. No DIRECTION operation takes an
+// actor: propose stages an item with none, and the disposing actor is
+// recorded by DISPOSITION from the transport principal, never from the
+// wire (ADR 022). Provider failures in check_plan are reported as
+// provider_error with the provider's HTTP status only; no error text
+// reaches the caller (AI-L02).
 package direction
 
 import (
@@ -59,7 +65,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -188,6 +196,9 @@ func (h *Handlers) Register(s Registrar) {
 type ProtoError struct {
 	Code    string `json:"error"`
 	Message string `json:"message"`
+	// ProviderStatus is the model provider's HTTP status, set only on a
+	// provider_error; zero means the provider gave no HTTP response.
+	ProviderStatus int `json:"provider_status,omitempty"`
 }
 
 func writeError(w http.ResponseWriter, status int, code, msg string) {
@@ -283,16 +294,52 @@ func (h *Handlers) handleCheckPlan(w http.ResponseWriter, r *http.Request) {
 
 // writeCheckPlanError maps a Match/MatchFreeText error to a protocol
 // error: ErrUnknownAction (a caller-input problem, an action outside
-// domain.ActionSet) is 400; anything else (a ledger read failure, a
-// malformed applies_when block on an active constraint) is 500 -- the same
-// distinction internal/cli.runCheck's own returned-error handling draws,
-// carried over into HTTP status rather than an exit code.
+// domain.ActionSet) is 400; a model provider failure is 502 provider_error
+// carrying only the provider's HTTP status; anything else (a ledger read
+// failure, a malformed applies_when block on an active constraint) is 500.
+// Neither 5xx echoes err: router errors wrap the provider's response body
+// verbatim, and a local caller holding the daemon token has no need for it
+// (AI-L02, CWE-209).
 func writeCheckPlanError(w http.ResponseWriter, err error) {
 	if errors.Is(err, check.ErrUnknownAction) {
 		writeError(w, http.StatusBadRequest, "invalid_action", err.Error())
 		return
 	}
-	writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
+	if status, ok := providerStatus(err); ok {
+		msg := "the classification model provider did not answer"
+		if status != 0 {
+			msg = "the classification model provider returned HTTP " + strconv.Itoa(status)
+		}
+		writeJSON(w, http.StatusBadGateway, ProtoError{Code: "provider_error", Message: msg, ProviderStatus: status})
+		return
+	}
+	writeError(w, http.StatusInternalServerError, "internal_error", "check_plan could not evaluate the plan")
+}
+
+// providerStatusPattern matches the "<provider>: status <code>" prefix
+// internal/router's completion providers put on every non-2xx response.
+var providerStatusPattern = regexp.MustCompile(`\b(?:anthropic|openai_compatible): status (\d{3})\b`)
+
+// providerStatus reports whether err came from the model provider and, if
+// the provider answered, its HTTP status. The classifier wraps every
+// router failure as "check: classify: router: ..."; the status is read
+// from the provider's own prefix, never from the body that follows it.
+func providerStatus(err error) (int, bool) {
+	var embedErr *router.EmbeddingProviderError
+	if errors.As(err, &embedErr) {
+		return embedErr.Status, true
+	}
+	text := err.Error()
+	if !strings.Contains(text, "check: classify: router: ") {
+		return 0, false
+	}
+	if m := providerStatusPattern.FindStringSubmatch(text); m != nil {
+		status, convErr := strconv.Atoi(m[1])
+		if convErr == nil {
+			return status, true
+		}
+	}
+	return 0, true
 }
 
 // --- propose ------------------------------------------------------------

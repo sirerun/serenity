@@ -460,8 +460,15 @@ func TestDriftInboxDisposeMatchesDispose(t *testing.T) {
 	cliResult.AppliedClaimID = ""
 	cliResult.ID, httpResult.ID = "", ""
 	cliResult.IdempotencyKey, httpResult.IdempotencyKey = "", ""
+	// The actor is a deliberate asymmetry too (ADR 022): the CLI records
+	// its own actor, while HTTP ignores the wire actor and records the
+	// transport principal. Assert each side, then compare the rest.
+	if cliResult.Actor != "drift-test-actor" || httpResult.Actor != "agent:daemon" {
+		t.Fatalf("actors: CLI=%q HTTP=%q, want drift-test-actor and agent:daemon", cliResult.Actor, httpResult.Actor)
+	}
+	cliResult.Actor, httpResult.Actor = "", ""
 	if !reflect.DeepEqual(cliResult, httpResult) {
-		t.Fatalf("CLI-disposed item != HTTP-disposed item (IDs/IdempotencyKey cleared):\nCLI:  %+v\nHTTP: %+v", cliResult, httpResult)
+		t.Fatalf("CLI-disposed item != HTTP-disposed item (IDs/IdempotencyKey/Actor cleared):\nCLI:  %+v\nHTTP: %+v", cliResult, httpResult)
 	}
 	if cliResult.State != disposition.StateDisposed || cliResult.Verdict != disposition.VerdictAccept {
 		t.Fatalf("CLI item state/verdict = %s/%s, want disposed/accept", cliResult.State, cliResult.Verdict)

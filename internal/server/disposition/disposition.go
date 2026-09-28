@@ -20,9 +20,16 @@
 // docs/protocol/DISPOSITION_v1.md (T4.16) has not shipped yet, so this
 // package defines its own JSON request/response shapes, documented
 // per-handler below, rather than waiting on a spec that does not exist.
-// `serenity serve --http` (internal/cli/serve.go) registers these routes.
-// dispose records a verdict only; applying an accepted item is `serenity
-// inbox`'s job. subscribe's
+// `serenity serve --http` registers these routes on the same
+// bearer-authenticated server as /mcp (internal/cli/serve.go), so every
+// caller here is an agent holding the daemon credential. dispose records
+// a verdict only (applying an accepted item is `serenity inbox`'s job),
+// and it derives the actor from the transport principal,
+// `agent:<credential id>`, ignoring the wire actor field; it refuses (403
+// forbidden) any accept of a ledger-bound item: a precept_draft or
+// decompose acceptance needs a human actor, which only the CLI channel
+// produces (ADR 022, internal/direction.AuthorizeLedgerDisposition).
+// subscribe's
 // long-poll fallback and SSE both poll internal/events.Store on a fixed
 // interval rather than an event-driven wakeup (no pub/sub primitive
 // exists in this codebase yet) -- correct or a caller reads the exact
@@ -39,6 +46,7 @@ import (
 	"strings"
 	"time"
 
+	coredirection "github.com/sirerun/serenity/internal/direction"
 	coredisp "github.com/sirerun/serenity/internal/disposition"
 	"github.com/sirerun/serenity/internal/events"
 )
@@ -64,7 +72,16 @@ const (
 	// defaultLongPollWait bounds how long a long-poll subscribe request
 	// blocks before returning an empty batch.
 	defaultLongPollWait = 25 * time.Second
+
+	// DefaultCredentialID names the legacy shared daemon bearer token, the
+	// credential `serve --http` authenticates with when no
+	// --credential-profile is given.
+	DefaultCredentialID = "daemon"
 )
+
+// AgentActor is the disposition actor recorded for a caller authenticated
+// with credentialID over the bearer transport. It is never `human:`.
+func AgentActor(credentialID string) string { return "agent:" + credentialID }
 
 // Registrar is the subset of *internal/server.Server this package needs.
 // Declared locally -- the same pattern internal/direction.Completer uses
@@ -84,6 +101,9 @@ type Handlers struct {
 	clock        Clock
 	pollInterval time.Duration
 	longPollWait time.Duration
+	// actor is the transport principal every dispose records
+	// (AgentActor of the serving credential).
+	actor string
 }
 
 // Option configures Handlers at construction.
@@ -104,6 +124,17 @@ func WithLongPollWait(d time.Duration) Option {
 	return func(h *Handlers) { h.longPollWait = d }
 }
 
+// WithCredentialID names the bearer credential the serving transport
+// authenticates, so dispose records AgentActor(id). An empty id keeps
+// DefaultCredentialID.
+func WithCredentialID(id string) Option {
+	return func(h *Handlers) {
+		if id != "" {
+			h.actor = AgentActor(id)
+		}
+	}
+}
+
 // New builds Handlers over store and ev.
 func New(store *coredisp.Store, ev *events.Store, opts ...Option) *Handlers {
 	h := &Handlers{
@@ -112,6 +143,7 @@ func New(store *coredisp.Store, ev *events.Store, opts ...Option) *Handlers {
 		clock:        realClock{},
 		pollInterval: defaultPollInterval,
 		longPollWait: defaultLongPollWait,
+		actor:        AgentActor(DefaultCredentialID),
 	}
 	for _, opt := range opts {
 		opt(h)
@@ -336,7 +368,10 @@ type DisposeRequest struct {
 	EditedPayload  json.RawMessage `json:"edited_payload,omitempty"`
 	Note           string          `json:"note,omitempty"`
 	IdempotencyKey string          `json:"idempotency_key"`
-	Actor          string          `json:"actor,omitempty"`
+	// Actor is advisory and ignored: the recorded actor is always the
+	// transport principal (ADR 022). It stays in the shape so existing
+	// clients that send it still decode.
+	Actor string `json:"actor,omitempty"`
 }
 
 type DisposeResultWire struct {
@@ -403,10 +438,24 @@ func (h *Handlers) handleDispose(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Check every target before the first write, so a group holding one
+	// ledger-bound member is refused whole rather than half-disposed.
+	for _, id := range ids {
+		it, err := h.store.Get(r.Context(), id)
+		if err != nil {
+			writeDisposeError(w, err)
+			return
+		}
+		if err := coredirection.AuthorizeLedgerDisposition(it.Kind, verdict, h.actor, coredirection.OriginHTTP); err != nil {
+			writeError(w, http.StatusForbidden, "forbidden", "accepting a "+string(it.Kind)+" item requires a human through `serenity inbox`; the HTTP transport may only reject or defer it")
+			return
+		}
+	}
+
 	now := h.clock.Now()
 	results := make([]DisposeResultWire, 0, len(ids))
 	for _, id := range ids {
-		res, err := h.store.Dispose(r.Context(), id, verdict, req.EditedPayload, req.Note, req.Actor, req.IdempotencyKey, now)
+		res, err := h.store.Dispose(r.Context(), id, verdict, req.EditedPayload, req.Note, h.actor, req.IdempotencyKey, now)
 		if err != nil {
 			writeDisposeError(w, err)
 			return

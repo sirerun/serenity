@@ -116,8 +116,12 @@ func runServeStdio(cmd *cobra.Command) (runErr error) {
 }
 
 // runServeHTTP is `serenity serve --http` (T4.21): the authenticated MCP
-// Streamable HTTP transport at /mcp plus the existing DISPOSITION and
-// DIRECTION handlers. It reuses internal/server's existing
+// Streamable HTTP transport at /mcp plus the DISPOSITION and DIRECTION
+// handlers, all live on the one bearer-authenticated listener. Every
+// caller of those routes is therefore an agent holding the credential:
+// DISPOSITION records `agent:<credential id>` as the actor and refuses to
+// accept a precept_draft or decompose item, which only `serenity inbox`
+// may accept (ADR 022). It reuses internal/server's existing
 // loopback-by-default listener with bearer auth and optional mTLS (RFC
 // 0001 section 14) wholesale -- no bespoke auth or listener path -- and
 // the exact same memoryTools registry construction --stdio uses, so a
@@ -144,7 +148,12 @@ func runServeHTTP(cmd *cobra.Command, profile string, hasProfile bool) (runErr e
 	}
 
 	var tokenSource func() (string, error)
+	// credentialID names the one bearer credential this listener accepts;
+	// DISPOSITION records `agent:<credentialID>` as the actor of every
+	// dispose it serves (ADR 022), never an actor the caller claims.
+	credentialID := serverdisposition.DefaultCredentialID
 	if hasProfile {
+		credentialID = "profile:" + profile
 		if _, err := secrets.ProfileDaemonToken(profile); err != nil {
 			return fmt.Errorf("serve --http --%s %s: token missing -- run `serenity connect --%s %s --provision-token` first: %w", credentialProfileFlagName, profile, credentialProfileFlagName, profile, err)
 		}
@@ -175,7 +184,7 @@ func runServeHTTP(cmd *cobra.Command, profile string, hasProfile bool) (runErr e
 			return err
 		}
 		serverdirection.New(direction.NewStore(flagRoot, q), dispositionStore, flagRoot, directionOpts...).Register(srv)
-		serverdisposition.New(dispositionStore, events.NewStore(eng)).Register(srv)
+		serverdisposition.New(dispositionStore, events.NewStore(eng), serverdisposition.WithCredentialID(credentialID)).Register(srv)
 	}
 	if err := srv.Listen(); err != nil {
 		return fmt.Errorf("serve --http: %w", err)

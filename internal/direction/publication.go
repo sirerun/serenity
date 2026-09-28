@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,10 +28,51 @@ type ledgerPublication struct {
 	Complete     bool              `json:"complete"`
 }
 
+// Origin names the channel a disposition arrived through (ADR 022). Only
+// the CLI channel runs as the local human; every network transport runs as
+// an agent principal, whatever actor its caller claims.
+type Origin string
+
+const (
+	// OriginCLI is `serenity inbox` and the other local CLI commands.
+	OriginCLI Origin = "cli"
+	// OriginHTTP is the bearer-authenticated `serve --http` transport.
+	OriginHTTP Origin = "http"
+)
+
+// ErrHumanChannelRequired reports a ledger-bound acceptance (precept_draft
+// or decompose) that did not come from a human actor through the CLI
+// channel. The HTTP transport maps it to 403 forbidden.
+var ErrHumanChannelRequired = errors.New("direction: accepting a ledger proposal requires a human actor through the CLI")
+
+// AuthorizeLedgerDisposition is the single gate (AI-03) every path that
+// records or publishes a ledger-bound acceptance calls: an accept or
+// edit_accept of a precept_draft or decompose item needs a non-empty
+// `human:` actor and origin OriginCLI. Every other kind or verdict passes,
+// so an agent may still reject or defer a draft under its own identity.
+func AuthorizeLedgerDisposition(kind disposition.Kind, verdict disposition.Verdict, actor string, origin Origin) error {
+	if kind != disposition.KindPreceptDraft && kind != disposition.KindDecompose {
+		return nil
+	}
+	if verdict != disposition.VerdictAccept && verdict != disposition.VerdictEditAccept {
+		return nil
+	}
+	if origin != OriginCLI {
+		return fmt.Errorf("%w: origin %q", ErrHumanChannelRequired, origin)
+	}
+	if !strings.HasPrefix(actor, "human:") || actor == "human:" {
+		return fmt.Errorf("%w: actor %q", ErrHumanChannelRequired, actor)
+	}
+	return nil
+}
+
 // PreviewDisposition checks a proposed acceptance without disposing it or
 // changing the ledger. The real lifecycle runs only in an isolated preview.
-func (s *Store) PreviewDisposition(ctx context.Context, item disposition.Item, actor string, now time.Time) error {
+func (s *Store) PreviewDisposition(ctx context.Context, item disposition.Item, actor string, origin Origin, now time.Time) error {
 	if err := s.writable("preview publication"); err != nil {
+		return err
+	}
+	if err := AuthorizeLedgerDisposition(item.Kind, disposition.VerdictAccept, actor, origin); err != nil {
 		return err
 	}
 	if item.State == disposition.StateDisposed {
@@ -57,7 +99,8 @@ func acceptedLedgerDecision(item disposition.Item) error {
 // ApplyAndCommitDisposition saves an exact entry and its dependencies before
 // canonical publication. It retries the recorded decision without allocating a
 // second entry, and marks the inbox only after Git commit and receipt completion.
-func (s *Store) ApplyAndCommitDisposition(ctx context.Context, ds *disposition.Store, item disposition.Item, now time.Time) (*ledger.Entry, error) {
+// origin must be OriginCLI and the recorded actor human (AuthorizeLedgerDisposition).
+func (s *Store) ApplyAndCommitDisposition(ctx context.Context, ds *disposition.Store, item disposition.Item, origin Origin, now time.Time) (*ledger.Entry, error) {
 	if err := s.writable("publish disposition"); err != nil {
 		return nil, err
 	}
@@ -76,6 +119,9 @@ func (s *Store) ApplyAndCommitDisposition(ctx context.Context, ds *disposition.S
 		return nil, err
 	}
 	if err := acceptedLedgerDecision(item); err != nil {
+		return nil, err
+	}
+	if err := AuthorizeLedgerDisposition(item.Kind, item.Verdict, item.Actor, origin); err != nil {
 		return nil, err
 	}
 	decision, err := json.Marshal(struct {
