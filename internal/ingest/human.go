@@ -17,7 +17,7 @@ func (w *Writer) CanonicalActiveClaims(ctx context.Context, subject string, now 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	_, snapshot, err := w.snapshotObservations([]domain.Observation{{SubjectSlug: subject, Predicate: "review"}})
+	_, snapshot, err := w.snapshotStrict([]domain.Observation{{SubjectSlug: subject, Predicate: "review"}})
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func (w *Writer) PlanHumanClaim(ctx context.Context, c domain.Claim) ([]writer.F
 	if !strings.HasPrefix(c.Provenance.Actor, "human:") || c.Provenance.Actor == "human:" || c.Confidence != 1 || c.Family != c.Predicate || c.State != domain.StateActive || c.Provenance.SourceSHA256 != "" || c.Provenance.Model != "" || c.Provenance.Span != "" || c.Object == "" || c.ID != store.DerivedID(c.SubjectSlug, c.Predicate, store.NormalizeKey(c.Object), c.ValidFrom, "", store.DefaultIDWidth) {
 		return nil, fmt.Errorf("ingest: claim is not an explicit human assertion")
 	}
-	types, snapshot, err := w.snapshotObservations([]domain.Observation{{SubjectSlug: c.SubjectSlug, Predicate: c.Predicate}})
+	types, snapshot, err := w.snapshotStrict([]domain.Observation{{SubjectSlug: c.SubjectSlug, Predicate: c.Predicate}})
 	if err != nil {
 		return nil, err
 	}

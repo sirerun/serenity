@@ -93,7 +93,8 @@ func TestExtractDropsInjectedSubjectAndBrainStaysParsable(t *testing.T) {
 	cfg.Models.Provider = ""
 	cfg.Models.Extraction = "test-extract@v1"
 	cfg.Models.Embedding = "test-embed@v1"
-	cfg.Connectors = map[string]any{"file": map[string]any{"path": dropDir}}
+	cfg.Connectors.File = &config.FileConnector{Path: dropDir}
+	cfg.Connectors.Roots = []string{dropDir} // T24.8 path containment: the temp dir is not under home
 	if err := cfg.Save(cfgPath); err != nil {
 		t.Fatal(err)
 	}

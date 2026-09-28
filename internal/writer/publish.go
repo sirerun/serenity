@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // FileChange is a durable publication plan. Nil Before means the file did not
@@ -113,6 +114,12 @@ func publicationPath(root *os.Root, path string) error {
 	parts := strings.Split(path, "/")
 	for i := range parts {
 		if parts[i] == "" || parts[i] == ".." || parts[i] == "." {
+			return fmt.Errorf("writer: invalid publication path %q", path)
+		}
+		// SEC-H03: a control character in a segment (a newline that splits a
+		// YAML header, an escape sequence, DEL) is never a canonical path,
+		// whatever the caller derived it from.
+		if strings.IndexFunc(parts[i], unicode.IsControl) >= 0 {
 			return fmt.Errorf("writer: invalid publication path %q", path)
 		}
 		partial := strings.Join(parts[:i+1], "/")
