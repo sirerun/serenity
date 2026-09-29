@@ -29,6 +29,7 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/meter"
 	"github.com/sirerun/serenity/internal/hosted/oauth"
 	"github.com/sirerun/serenity/internal/hosted/operation"
+	"github.com/sirerun/serenity/internal/hosted/partner"
 	"github.com/sirerun/serenity/internal/hosted/pool"
 	"github.com/sirerun/serenity/internal/hosted/provision"
 	"github.com/sirerun/serenity/internal/hosted/store"
@@ -40,19 +41,22 @@ type Config struct {
 	BuilderPrice     string `json:"builder_price"`
 	ScalePrice       string `json:"scale_price"`
 	billingConfig    *billing.Config
-	Bind             string                     `json:"bind"`
-	DataDir          string                     `json:"data_dir"`
-	SecretsDir       string                     `json:"secrets_dir"`
-	PublicOrigin     string                     `json:"public_origin"`
-	EmbeddingModel   string                     `json:"embedding_model"`
-	EmbeddingVersion string                     `json:"embedding_version"`
-	EmbeddingBaseURL string                     `json:"embedding_base_url"`
-	Sender           string                     `json:"sender"`
-	MaxOpen          int                        `json:"max_open"`
-	MaxInFlight      int                        `json:"max_in_flight"`
-	AccountCap       int                        `json:"account_cap"`
-	RegistrationMode contracts.RegistrationMode `json:"registration_mode"`
-	InviteAllowlist  []string                   `json:"invite_allowlist"`
+	Bind             string `json:"bind"`
+	DataDir          string `json:"data_dir"`
+	SecretsDir       string `json:"secrets_dir"`
+	PublicOrigin     string `json:"public_origin"`
+	EmbeddingModel   string `json:"embedding_model"`
+	EmbeddingVersion string `json:"embedding_version"`
+	EmbeddingBaseURL string `json:"embedding_base_url"`
+	Sender           string `json:"sender"`
+	MaxOpen          int    `json:"max_open"`
+	MaxInFlight      int    `json:"max_in_flight"`
+	AccountCap       int    `json:"account_cap"`
+	// PartnerAccountCap bounds active accounts created through the partner
+	// API, separately from AccountCap (ADR 023).
+	PartnerAccountCap int                        `json:"partner_account_cap"`
+	RegistrationMode  contracts.RegistrationMode `json:"registration_mode"`
+	InviteAllowlist   []string                   `json:"invite_allowlist"`
 }
 
 func Load(path string) (Config, error) {
@@ -136,7 +140,10 @@ func (c *Config) Validate(dev bool) error {
 	if c.AccountCap == 0 {
 		c.AccountCap = 100
 	}
-	if c.MaxOpen < 1 || c.MaxInFlight < 1 || c.AccountCap < 1 {
+	if c.PartnerAccountCap == 0 {
+		c.PartnerAccountCap = partner.DefaultAccountCap
+	}
+	if c.MaxOpen < 1 || c.MaxInFlight < 1 || c.AccountCap < 1 || c.PartnerAccountCap < 1 {
 		return errors.New("capacity values must be positive")
 	}
 	if c.Sender == "" {
@@ -172,6 +179,7 @@ type Service struct {
 	Store    *store.Store
 	Pool     *pool.Pool
 	Gateway  *gateway.Gateway
+	Partner  *partner.Service
 	Handler  http.Handler
 	cfg      Config
 	embedder embed.Embedder
@@ -278,6 +286,12 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 		dash.BillingService = &billing.Service{Store: db, Identity: id, Config: *cfg.billingConfig}
 		mux.Handle("/billing/", dash.BillingService)
 	}
+	partnerCap := cfg.PartnerAccountCap
+	if partnerCap <= 0 {
+		partnerCap = partner.DefaultAccountCap
+	}
+	s.Partner = &partner.Service{Store: db, Identity: id, Provision: provisioner, Issuer: issuer, Meter: metering, Gateway: g, Origin: cfg.PublicOrigin, Dev: dev, AccountCap: partnerCap}
+	mux.Handle("/partner/", s.Partner.Handler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	mux.HandleFunc("GET /readyz", s.readiness)
 	mux.Handle("/", dash.Handler())
@@ -330,6 +344,10 @@ func (s *Service) Backup(ctx context.Context, destination string) error {
 }
 func (s *Service) AdminHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/partners" {
+			s.seedPartner(w, r)
+			return
+		}
 		if r.Method != "POST" || r.URL.Path != "/backup" {
 			http.NotFound(w, r)
 			return
@@ -347,6 +365,54 @@ func (s *Service) AdminHandler() http.Handler {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// seedPartner creates or rotates a partner from the admin socket (ADR 023).
+// The secret is read from a private file on this host, never sent over the
+// socket, and only its SHA-256 digest is stored.
+func (s *Service) seedPartner(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		ID             string `json:"id"`
+		DisplayName    string `json:"display_name"`
+		SecretFile     string `json:"secret_file"`
+		RedirectPrefix string `json:"redirect_prefix"`
+		Status         string `json:"status"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil || !filepath.IsAbs(request.SecretFile) {
+		http.Error(w, "Invalid partner request", http.StatusBadRequest)
+		return
+	}
+	secret, err := readPrivateFile(request.SecretFile)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err = partner.Seed(r.Context(), s.Store, request.ID, request.DisplayName, secret, request.RedirectPrefix, request.Status, time.Now()); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func readPrivateFile(path string) (string, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", errors.New("partner secret file is missing")
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+		return "", errors.New("partner secret file must be a private regular file")
+	}
+	value, err := os.ReadFile(path)
+	if err != nil {
+		return "", errors.New("read partner secret file")
+	}
+	out := strings.TrimSpace(string(value))
+	if out == "" || out == "UNCONFIGURED" {
+		return "", errors.New("partner secret file is empty")
+	}
+	return out, nil
 }
 
 // newEmbeddingProvider carries the hosted privacy policy into every embedding
