@@ -18,6 +18,7 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/credential"
 	"github.com/sirerun/serenity/internal/hosted/identity"
 	"github.com/sirerun/serenity/internal/hosted/meter"
+	"github.com/sirerun/serenity/internal/hosted/partner"
 	"github.com/sirerun/serenity/internal/hosted/provision"
 	"github.com/sirerun/serenity/internal/hosted/store"
 	website "github.com/sirerun/serenity/site"
@@ -57,7 +58,11 @@ type view struct {
 	Title, Message, CSRF, BrainID, Endpoint, Token, Plan string
 	Page                                                 string
 	SignedIn                                             bool
+	PartnerLinks                                         []partnerLink
 }
+
+// partnerLink is a first-party app linked through the partner API (ADR 023).
+type partnerLink struct{ ID, Name, Since string }
 
 func (d *Dashboard) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -82,6 +87,7 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("POST /account/delete", d.deleteAccount)
 	mux.HandleFunc("POST /credentials/rotate", d.rotate)
 	mux.HandleFunc("POST /credentials/revoke", d.revoke)
+	mux.HandleFunc("POST /connections/partners/disconnect", d.disconnectPartner)
 	mux.HandleFunc("POST /logout", d.logout)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if handler, pattern := mux.Handler(r); pattern == "GET /" {
@@ -151,6 +157,14 @@ func (d *Dashboard) consume(w http.ResponseWriter, r *http.Request) {
 		// A resume cookie is only an opaque handle, never a redirect destination.
 		if len(resume.Value) > 0 && len(resume.Value) <= 256 {
 			http.Redirect(w, r, "/oauth/authorize?request="+url.QueryEscape(resume.Value), http.StatusSeeOther)
+			return
+		}
+	}
+	if resume, e := r.Cookie(partner.ResumeCookie); e == nil {
+		http.SetCookie(w, &http.Cookie{Name: partner.ResumeCookie, Value: "", Path: "/", HttpOnly: true, Secure: !d.Dev, SameSite: http.SameSiteLaxMode, MaxAge: -1})
+		// The partner resume cookie is likewise only an opaque request handle.
+		if len(resume.Value) > 0 && len(resume.Value) <= 64 {
+			http.Redirect(w, r, "/partner/consent?request="+url.QueryEscape(resume.Value), http.StatusSeeOther)
 			return
 		}
 	}
@@ -236,7 +250,18 @@ func (d *Dashboard) home(w http.ResponseWriter, r *http.Request) {
 	if section == "settings" && r.URL.Query().Get("revoked") == "1" {
 		message = "Access revoked. This project's previous connections no longer work."
 	}
-	render(w, 200, view{Message: message, Page: section, Usage: usage, Reset: ent.ResetAt.UTC().Format("2 Jan 2006 15:04 UTC"), OperationKey: store.ID(), Connected: connected > 0, MemorySaved: saved > 0, Brains: brains, CanAddBrain: int64(len(brains)) < ent.Plan.Brains, Title: titles[section], SignedIn: true, Billing: d.Billing, CSRF: s.CSRF, BrainID: brain.ID, Endpoint: d.Origin + "/mcp", Plan: strings.ToUpper(ent.Plan.ID[:1]) + ent.Plan.ID[1:]})
+	var links []partnerLink
+	if section == "connections" {
+		if r.URL.Query().Get("disconnected") == "1" {
+			message = "App disconnected. Your account and memories are unchanged."
+		}
+		links, err = d.partnerLinks(r, s.AccountID)
+		if err != nil {
+			http.Error(w, "Connections unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	}
+	render(w, 200, view{PartnerLinks: links, Message: message, Page: section, Usage: usage, Reset: ent.ResetAt.UTC().Format("2 Jan 2006 15:04 UTC"), OperationKey: store.ID(), Connected: connected > 0, MemorySaved: saved > 0, Brains: brains, CanAddBrain: int64(len(brains)) < ent.Plan.Brains, Title: titles[section], SignedIn: true, Billing: d.Billing, CSRF: s.CSRF, BrainID: brain.ID, Endpoint: d.Origin + "/mcp", Plan: strings.ToUpper(ent.Plan.ID[:1]) + ent.Plan.ID[1:]})
 }
 func (d *Dashboard) issue(w http.ResponseWriter, r *http.Request) {
 	s, ok := d.session(w, r, true)
@@ -285,6 +310,49 @@ func (d *Dashboard) revoke(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, "/dashboard/settings?revoked=1", http.StatusSeeOther)
 }
+func (d *Dashboard) partnerLinks(r *http.Request, accountID string) ([]partnerLink, error) {
+	rows, err := d.Issuer.Store.DB().QueryContext(r.Context(), `SELECT l.partner_id,p.display_name,l.created_at FROM partner_links l JOIN partners p ON p.id=l.partner_id WHERE l.account_id=? AND l.status='active' ORDER BY l.created_at`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []partnerLink
+	for rows.Next() {
+		var link partnerLink
+		var since string
+		if err = rows.Scan(&link.ID, &link.Name, &since); err != nil {
+			return nil, err
+		}
+		if t, e := time.Parse(time.RFC3339Nano, since); e == nil {
+			link.Since = t.UTC().Format("2 Jan 2006")
+		}
+		out = append(out, link)
+	}
+	return out, rows.Err()
+}
+
+// disconnectPartner lets the account owner end a partner link. The account
+// and its memories are untouched; only the partner's keys and link end.
+func (d *Dashboard) disconnectPartner(w http.ResponseWriter, r *http.Request) {
+	s, ok := d.session(w, r, true)
+	if !ok {
+		return
+	}
+	id := r.FormValue("partner_id")
+	if !partner.ValidID(id) {
+		http.Error(w, "Connection not found", http.StatusNotFound)
+		return
+	}
+	err := partner.Unlink(r.Context(), d.Issuer.Store, id, s.AccountID, time.Now())
+	if err != nil {
+		http.Error(w, "Connection not found", http.StatusNotFound)
+		return
+	}
+	now := store.Stamp(time.Now())
+	_, _ = d.Issuer.Store.DB().ExecContext(r.Context(), `INSERT INTO audit_log(account_id,actor,action,created_at,detail) VALUES(?,'account','partner.disconnect',?,?)`, s.AccountID, now, id)
+	http.Redirect(w, r, "/dashboard/connections?disconnected=1", http.StatusSeeOther)
+}
+
 func (d *Dashboard) logout(w http.ResponseWriter, r *http.Request) {
 	_, ok := d.session(w, r, true)
 	if !ok {
