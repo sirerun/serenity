@@ -252,9 +252,10 @@ func TestRefusedAtCapMatchesTheGatewaySource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "!reservation.Replay && (inventory.Memories >= entitlement.Plan.Memories || inventory.StorageBytes >= entitlement.Plan.StorageBytes)"
-	if !strings.Contains(string(src), want) {
-		t.Fatalf("the gateway's remember limit rule changed; update refusedAtCap in gateway_check.go. Looked for:\n%s", want)
+	memoryLimit := "memoryLimit := max(entitlement.Plan.Memories, accountEntitlement.Plan.Memories)"
+	check := "!reservation.Replay && (inventory.Memories >= memoryLimit || inventory.StorageBytes >= storageLimit)"
+	if !strings.Contains(string(src), memoryLimit) || !strings.Contains(string(src), check) {
+		t.Fatalf("the gateway's remember limit rule changed; update refusedAtCap in gateway_check.go. Looked for:\n%s\n%s", memoryLimit, check)
 	}
 }
 
@@ -271,7 +272,7 @@ func TestRefusedAtCapRule(t *testing.T) {
 		{"storage at the quota", gateway.Inventory{Memories: 1, StorageBytes: free.StorageBytes}, true},
 	}
 	for _, c := range cases {
-		if got := refusedAtCap(c.inv, free); got != c.want {
+		if got := refusedAtCap(c.inv, free, free); got != c.want {
 			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
 		}
 	}
