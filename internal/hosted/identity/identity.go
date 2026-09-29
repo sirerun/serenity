@@ -108,11 +108,83 @@ func (s *Service) registrationAllows(ctx context.Context, email string) (bool, e
 	return allowed, nil
 }
 
-func (s *Service) RequestLink(ctx context.Context, email, ip string) error {
+// NormalizeEmail returns the canonical form used for account email hashes.
+func NormalizeEmail(email string) (string, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	address, err := mail.ParseAddress(email)
 	if err != nil || address.Address != email || len(email) > 254 {
-		return ErrInvalidEmail
+		return "", ErrInvalidEmail
+	}
+	return email, nil
+}
+
+// PartnerAccount is the outcome of EnsurePartnerAccount.
+type PartnerAccount struct {
+	ID string
+	// Created is true only when this call created the account.
+	Created bool
+	// CreatedByPartner is the partner that created the account, if any.
+	CreatedByPartner string
+}
+
+// EnsurePartnerAccount finds or creates the account for a partner-verified
+// email without a login token (ADR 023). A new account is active, has no
+// Stripe customer, and records created_by_partner. It is exempt from
+// invite_only registration and from AccountCap, and is counted against
+// partnerCap instead. onCreate runs in the creating transaction so the
+// partner link is durable together with the account.
+func (s *Service) EnsurePartnerAccount(ctx context.Context, email, partnerID string, partnerCap int, onCreate func(*sql.Tx, string) error) (out PartnerAccount, err error) {
+	email, err = NormalizeEmail(email)
+	if err != nil {
+		return out, err
+	}
+	if partnerID == "" {
+		return out, errors.New("partner id is required")
+	}
+	if partnerCap <= 0 {
+		partnerCap = 100000
+	}
+	now := s.now()
+	err = s.Store.Transaction(ctx, func(tx *sql.Tx) error {
+		var status string
+		var creator sql.NullString
+		e := tx.QueryRowContext(ctx, `SELECT id,status,created_by_partner FROM accounts WHERE email_hash=?`, store.Hash(email)).Scan(&out.ID, &status, &creator)
+		if e == nil {
+			if status != "active" {
+				return ErrAccountUnavailable
+			}
+			out.CreatedByPartner = creator.String
+			return nil
+		}
+		if !errors.Is(e, sql.ErrNoRows) {
+			return e
+		}
+		var count int
+		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM accounts WHERE status='active' AND created_by_partner IS NOT NULL`).Scan(&count); e != nil {
+			return e
+		}
+		if count >= partnerCap {
+			return ErrCapacity
+		}
+		out = PartnerAccount{ID: store.ID(), Created: true, CreatedByPartner: partnerID}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,email_hash,email,created_at,status,plan_id,plan_version,created_by_partner) VALUES(?,?,?,?,'active','free',1,?)`, out.ID, store.Hash(email), email, store.Stamp(now), partnerID); e != nil {
+			return e
+		}
+		if onCreate != nil {
+			return onCreate(tx, out.ID)
+		}
+		return nil
+	})
+	if err != nil {
+		return PartnerAccount{}, err
+	}
+	return out, nil
+}
+
+func (s *Service) RequestLink(ctx context.Context, email, ip string) error {
+	email, err := NormalizeEmail(email)
+	if err != nil {
+		return err
 	}
 	if !s.admit(email, ip) {
 		return ErrRateLimited
@@ -170,7 +242,8 @@ func (s *Service) Consume(ctx context.Context, raw string) (sessionToken string,
 		e = tx.QueryRowContext(ctx, `SELECT id,status FROM accounts WHERE email_hash=?`, store.Hash(email)).Scan(&accountID, &accountStatus)
 		if errors.Is(e, sql.ErrNoRows) {
 			var count int
-			if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM accounts WHERE status='active'`).Scan(&count); e != nil {
+			// Partner-created accounts have their own cap (ADR 023).
+			if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM accounts WHERE status='active' AND created_by_partner IS NULL`).Scan(&count); e != nil {
 				return e
 			}
 			cap := s.AccountCap
