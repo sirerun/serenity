@@ -30,6 +30,8 @@ type ClientCredential struct {
 	Generation                               int
 	CreatedAt                                time.Time
 	RevokedAt                                *time.Time
+	// PartnerID is set only for keys issued through the partner API (ADR 023).
+	PartnerID string
 }
 type CredentialBinding = ClientCredential
 
@@ -57,7 +59,7 @@ func Open(path string) (*Store, error) {
 			if e := tx.QueryRow(`SELECT max(version) FROM schema_migrations`).Scan(&current); e != nil {
 				return e
 			}
-			if current > 7 {
+			if current > 8 {
 				return fmt.Errorf("unsupported hosted schema version %d", current)
 			}
 		}
@@ -68,7 +70,7 @@ func Open(path string) (*Store, error) {
 		if e := tx.QueryRow(`SELECT max(version) FROM schema_migrations`).Scan(&version); e != nil {
 			return e
 		}
-		if version > 7 {
+		if version > 8 {
 			return fmt.Errorf("unsupported hosted schema version %d", version)
 		}
 		if version < 2 {
@@ -98,6 +100,11 @@ func Open(path string) (*Store, error) {
 		}
 		if version < 7 {
 			if _, e := tx.Exec(migration7); e != nil {
+				return e
+			}
+		}
+		if version < 8 {
+			if _, e := tx.Exec(migration8); e != nil {
 				return e
 			}
 		}
@@ -178,7 +185,11 @@ func InsertCredential(ctx context.Context, tx *sql.Tx, c ClientCredential) error
 			return errors.New("invalid credential scope")
 		}
 	}
-	result, err := tx.ExecContext(ctx, `INSERT INTO client_credentials(id,brain_id,account_id,prefix,verifier,scopes,generation,created_at) SELECT ?,id,account_id,?,?,?,?,? FROM brains WHERE id=? AND account_id=? AND state='ready'`, c.ID, c.Prefix, c.Verifier, strings.Join(c.Scopes, ","), c.Generation, Stamp(c.CreatedAt), c.BrainID, c.AccountID)
+	var partner any
+	if c.PartnerID != "" {
+		partner = c.PartnerID
+	}
+	result, err := tx.ExecContext(ctx, `INSERT INTO client_credentials(id,brain_id,account_id,prefix,verifier,scopes,generation,created_at,partner_id) SELECT ?,id,account_id,?,?,?,?,?,? FROM brains WHERE id=? AND account_id=? AND state='ready'`, c.ID, c.Prefix, c.Verifier, strings.Join(c.Scopes, ","), c.Generation, Stamp(c.CreatedAt), partner, c.BrainID, c.AccountID)
 	if err != nil {
 		return err
 	}
@@ -193,8 +204,8 @@ func InsertCredential(ctx context.Context, tx *sql.Tx, c ClientCredential) error
 }
 func (s *Store) CredentialByPrefix(ctx context.Context, prefix string) (c CredentialBinding, err error) {
 	var scopes string
-	var revoked sql.NullString
-	err = s.db.QueryRowContext(ctx, `SELECT c.id,c.brain_id,c.account_id,c.prefix,c.verifier,c.scopes,c.generation,c.revoked_at FROM client_credentials c JOIN brains b ON b.id=c.brain_id AND b.account_id=c.account_id JOIN accounts a ON a.id=c.account_id WHERE c.prefix=? AND b.state='ready' AND a.status='active'`, prefix).Scan(&c.ID, &c.BrainID, &c.AccountID, &c.Prefix, &c.Verifier, &scopes, &c.Generation, &revoked)
+	var revoked, partner sql.NullString
+	err = s.db.QueryRowContext(ctx, `SELECT c.id,c.brain_id,c.account_id,c.prefix,c.verifier,c.scopes,c.generation,c.revoked_at,c.partner_id FROM client_credentials c JOIN brains b ON b.id=c.brain_id AND b.account_id=c.account_id JOIN accounts a ON a.id=c.account_id WHERE c.prefix=? AND b.state='ready' AND a.status='active'`, prefix).Scan(&c.ID, &c.BrainID, &c.AccountID, &c.Prefix, &c.Verifier, &scopes, &c.Generation, &revoked, &partner)
 	if errors.Is(err, sql.ErrNoRows) {
 		return c, ErrNotFound
 	}
@@ -202,6 +213,7 @@ func (s *Store) CredentialByPrefix(ctx context.Context, prefix string) (c Creden
 		return c, err
 	}
 	c.Scopes = strings.Split(scopes, ",")
+	c.PartnerID = partner.String
 	if revoked.Valid {
 		t, e := time.Parse(time.RFC3339Nano, revoked.String)
 		if e != nil {
