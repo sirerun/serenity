@@ -155,6 +155,15 @@ func (g *Gateway) DeleteAccount(ctx context.Context, account, root string) error
 		if _, e := tx.ExecContext(ctx, `DELETE FROM sessions WHERE account_id=?`, account); e != nil {
 			return e
 		}
+		// Deleting the account also ends every partner link and any consent
+		// still in flight (ADR 023). Partner keys were revoked with the brains.
+		now := hoststore.Stamp(time.Now())
+		if _, e := tx.ExecContext(ctx, `UPDATE partner_links SET status='revoked',revoked_at=?,updated_at=? WHERE account_id=? AND status='active'`, now, now, account); e != nil {
+			return e
+		}
+		if _, e := tx.ExecContext(ctx, `UPDATE link_requests SET status='denied',decided_at=? WHERE account_id=? AND status IN ('pending','approved')`, now, account); e != nil {
+			return e
+		}
 		_, e := tx.ExecContext(ctx, `UPDATE accounts SET status='deleted',email='',email_hash=?,plan_id='free' WHERE id=?`, "deleted:"+account, account)
 		return e
 	})

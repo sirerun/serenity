@@ -29,6 +29,82 @@ type Entitlement struct {
 	Plan    plans.Plan
 	Window  string
 	ResetAt time.Time
+	// Bucket is BucketAccount or BucketPartner; Subject names the meter
+	// subject: the account ID, or partner:<id>:<account_id>.
+	Bucket  string
+	Subject string
+}
+
+const (
+	BucketAccount = "account"
+	BucketPartner = "partner"
+	// PartnerProPlan is the plan whose limits apply to partner-bound traffic
+	// under a live partner "pro" entitlement (ADR 023).
+	PartnerProPlan = "builder"
+)
+
+// PartnerWindow is the quota period of a partner bucket: the UTC calendar
+// month, namespaced by partner so it can never collide with an account
+// window. The account ID stays the row owner in usage_windows, reservations
+// and operations, so the partner subject partner:<id>:<account_id> is the
+// pair (account_id, PartnerWindow).
+func PartnerWindow(partnerID string, now time.Time) string {
+	return "partner:" + partnerID + ":" + now.UTC().Format("2006-01")
+}
+
+// PartnerEntitlement returns the partner bucket for accountID when the
+// partner has a live "pro" entitlement for it, an active link, and is itself
+// active. ok is false otherwise, and partner traffic then uses the account.
+func (m *Meter) PartnerEntitlement(ctx context.Context, accountID, partnerID string) (out Entitlement, ok bool, err error) {
+	if partnerID == "" {
+		return out, false, nil
+	}
+	now := m.now()
+	var tier, expires string
+	err = m.Store.DB().QueryRowContext(ctx, `SELECT e.tier,COALESCE(e.expires_at,'') FROM partner_entitlements e JOIN partners p ON p.id=e.partner_id JOIN partner_links l ON l.partner_id=e.partner_id AND l.account_id=e.account_id WHERE e.account_id=? AND e.partner_id=? AND p.status='active' AND l.status='active'`, accountID, partnerID).Scan(&tier, &expires)
+	if errors.Is(err, sql.ErrNoRows) {
+		return out, false, nil
+	}
+	if err != nil {
+		return out, false, err
+	}
+	if tier != "pro" {
+		return out, false, nil
+	}
+	if expires != "" {
+		until, e := time.Parse(time.RFC3339Nano, expires)
+		if e != nil {
+			return out, false, e
+		}
+		if !until.After(now) {
+			return out, false, nil
+		}
+	}
+	return Entitlement{
+		Plan:    plans.Get(PartnerProPlan),
+		Window:  PartnerWindow(partnerID, now),
+		ResetAt: time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC),
+		Bucket:  BucketPartner,
+		Subject: "partner:" + partnerID + ":" + accountID,
+	}, true, nil
+}
+
+// Subject selects the meter subject for one call. subject is the bucket the
+// call's operations are charged to; account is always the account's own plan,
+// which inventory checks need because inventory is physically account-wide.
+func (m *Meter) Subject(ctx context.Context, accountID, partnerID string) (subject, account Entitlement, err error) {
+	account, err = m.Entitlement(ctx, accountID)
+	if err != nil {
+		return subject, account, err
+	}
+	partner, ok, err := m.PartnerEntitlement(ctx, accountID, partnerID)
+	if err != nil {
+		return subject, account, err
+	}
+	if ok {
+		return partner, account, nil
+	}
+	return account, account, nil
 }
 
 func (m *Meter) now() time.Time {
@@ -39,7 +115,7 @@ func (m *Meter) now() time.Time {
 }
 func (m *Meter) Entitlement(ctx context.Context, accountID string) (Entitlement, error) {
 	now := m.now()
-	out := Entitlement{Plan: plans.Get("free"), Window: now.Format("2006-01"), ResetAt: time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC)}
+	out := Entitlement{Plan: plans.Get("free"), Window: now.Format("2006-01"), ResetAt: time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC), Bucket: BucketAccount, Subject: accountID}
 	var status, plan string
 	if err := m.Store.DB().QueryRowContext(ctx, `SELECT status,plan_id FROM accounts WHERE id=?`, accountID).Scan(&status, &plan); err != nil {
 		return out, err

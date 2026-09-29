@@ -239,10 +239,26 @@ func (w *sessionWriter) Write(p []byte) (int, error) {
 }
 func (w *sessionWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 func failure(code string, reset time.Time) mcp.Result {
+	return failureBody(code, reset, "")
+}
+
+// limitFailure is limit_exceeded with the meter bucket that refused the call:
+// "account" for the account's plan, "partner" for a partner bucket (ADR 023).
+func limitFailure(reset time.Time, bucket string) mcp.Result {
+	if bucket == "" {
+		bucket = meter.BucketAccount
+	}
+	return failureBody("limit_exceeded", reset, bucket)
+}
+
+func failureBody(code string, reset time.Time, bucket string) mcp.Result {
 	body := map[string]any{"protocol_version": 1, "error": code, "message": code, "suggestion": "Review your connection and account limits."}
 	if !reset.IsZero() {
 		body["reset_at"] = reset.UTC().Format(time.RFC3339)
 		body["upgrade_url"] = "/billing"
+	}
+	if bucket != "" {
+		body["bucket"] = bucket
 	}
 	b, _ := json.Marshal(body)
 	return mcp.Result{IsError: true, Content: []mcp.Content{{Type: "text", Text: string(b)}}}
@@ -303,7 +319,10 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 	var reservation meter.Reservation
 	metered := name == "recall" || name == "read_memory_fact" || (name == "remember" && g.Operations == nil)
 	if metered {
-		entitlement, e := g.Meter.Entitlement(ctx, binding.AccountID)
+		// The subject's window encodes its bucket, so account and partner
+		// usage never share a counter even though both rows belong to the
+		// same account (ADR 023).
+		entitlement, _, e := g.Meter.Subject(ctx, binding.AccountID, binding.PartnerID)
 		if e != nil {
 			return result, e
 		}
@@ -315,7 +334,7 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		if e != nil {
 			var limitErr *meter.LimitError
 			if errors.As(e, &limitErr) {
-				return failure("limit_exceeded", limitErr.ResetAt), nil
+				return limitFailure(limitErr.ResetAt, entitlement.Bucket), nil
 			}
 			if errors.Is(e, meter.ErrInProgress) {
 				return failure("operation_in_progress", time.Time{}), nil
@@ -333,10 +352,15 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 	operationReplay := false
 	canonicalCommitted := false
 	if name == "remember" {
-		entitlement, e := g.Meter.Entitlement(ctx, binding.AccountID)
+		entitlement, accountEntitlement, e := g.Meter.Subject(ctx, binding.AccountID, binding.PartnerID)
 		if e != nil {
 			return result, e
 		}
+		// Inventory is physically account-wide. A partner-pro call may fill
+		// the brain up to the larger of the account plan and the partner plan;
+		// every other call is checked against the account plan (ADR 023).
+		memoryLimit := max(entitlement.Plan.Memories, accountEntitlement.Plan.Memories)
+		storageLimit := max(entitlement.Plan.StorageBytes, accountEntitlement.Plan.StorageBytes)
 		inventory, e := g.inventory(ctx, binding.AccountID, filepath.Dir(runtime.Root))
 		if e != nil {
 			return result, e
@@ -373,7 +397,7 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 			operationRecord, e = g.Operations.Reserve(ctx, contracts.ReserveRequest{AccountID: binding.AccountID, BrainID: binding.BrainID, ClientKey: clientKey, Fingerprint: fingerprint, QuotaPeriod: entitlement.Window, Source: "gateway.remember", LeaseFor: 5 * time.Minute, Deltas: []contracts.ReserveDelta{{Metric: "writes", Units: 1, Limit: entitlement.Plan.Writes}, {Metric: "input_tokens", Units: int64(count), Limit: entitlement.Plan.InputTokens}}})
 			if e != nil {
 				if errors.Is(e, contracts.ErrOperationLimitExceeded) {
-					return failure("limit_exceeded", entitlement.ResetAt), nil
+					return limitFailure(entitlement.ResetAt, entitlement.Bucket), nil
 				}
 				if errors.Is(e, contracts.ErrOperationInProgress) || errors.Is(e, contracts.ErrOperationPendingReview) {
 					return failure("operation_in_progress", time.Time{}), nil
@@ -414,9 +438,9 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 				operationEntered = true
 			}
 		}
-		if !reservation.Replay && (inventory.Memories >= entitlement.Plan.Memories || inventory.StorageBytes >= entitlement.Plan.StorageBytes) {
+		if !reservation.Replay && (inventory.Memories >= memoryLimit || inventory.StorageBytes >= storageLimit) {
 			if !operationReplay {
-				return failure("limit_exceeded", entitlement.ResetAt), nil
+				return limitFailure(entitlement.ResetAt, entitlement.Bucket), nil
 			}
 		}
 	}

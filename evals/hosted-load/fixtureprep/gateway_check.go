@@ -14,9 +14,13 @@ import (
 )
 
 // refusedAtCap is the gateway's remember limit rule (internal/hosted/gateway/gateway.go, the nonreplay remember
-// check). A test pins the expression against that file so a change there fails here.
-func refusedAtCap(inv gateway.Inventory, plan plans.Plan) bool {
-	return inv.Memories >= plan.Memories || inv.StorageBytes >= plan.StorageBytes
+// check): the limit is the max of the metered subject's plan and the account's own plan. The fixture verifier only
+// knows the account entitlement, so it passes the account plan for both. A test pins the expression against that
+// file so a change there fails here.
+func refusedAtCap(inv gateway.Inventory, plan, accountPlan plans.Plan) bool {
+	memoryLimit := max(plan.Memories, accountPlan.Memories)
+	storageLimit := max(plan.StorageBytes, accountPlan.StorageBytes)
+	return inv.Memories >= memoryLimit || inv.StorageBytes >= storageLimit
 }
 
 // verifyThroughTheGateway asks the real gateway code what it sees. It copies control.db into a scratch directory,
@@ -67,7 +71,7 @@ func verifyThroughTheGateway(ctx context.Context, r *Report, dir string, plan *P
 			continue
 		}
 		a.GatewayBrains, a.GatewayMemories, a.GatewayStorageBytes, a.GatewayPlan = inv.Brains, inv.Memories, inv.StorageBytes, ent.Plan.ID
-		a.GatewayRefusesRemember = refusedAtCap(inv, ent.Plan)
+		a.GatewayRefusesRemember = refusedAtCap(inv, ent.Plan, ent.Plan)
 		if inv.Brains != int64(a.Brains) || inv.Memories != int64(a.Memories) {
 			badMem = append(badMem, fmt.Sprintf("%s: gateway sees %d brains, %d memories; verifier counted %d, %d", a.Label, inv.Brains, inv.Memories, a.Brains, a.Memories))
 		}
