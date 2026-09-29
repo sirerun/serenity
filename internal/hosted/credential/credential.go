@@ -26,6 +26,9 @@ type Binding struct {
 	AccountID, BrainID, CredentialID string
 	Generation                       int
 	Scopes                           []string
+	// PartnerID is non-empty only for keys issued through the partner API.
+	// The gateway uses it to choose the partner meter bucket (ADR 023).
+	PartnerID string
 }
 type Issuer struct {
 	Store *store.Store
@@ -89,7 +92,61 @@ func (i *Issuer) Verify(ctx context.Context, raw string) (Binding, error) {
 	if c.RevokedAt != nil {
 		return b, ErrRevoked
 	}
-	return Binding{c.AccountID, c.BrainID, c.ID, c.Generation, c.Scopes}, nil
+	return Binding{AccountID: c.AccountID, BrainID: c.BrainID, CredentialID: c.ID, Generation: c.Generation, Scopes: c.Scopes, PartnerID: c.PartnerID}, nil
+}
+
+// IssuePartner issues a read/write key for brainID bound to partnerID. It is
+// idempotent per account and partner: any live key this partner holds for the
+// account is revoked in the same transaction, so at most one partner key is
+// live. It never touches other clients' keys, OAuth grants, or the brain's
+// OAuth epoch. Partner keys count toward MaxActivePerAccount.
+func (i *Issuer) IssuePartner(ctx context.Context, accountID, brainID, partnerID string) (credentialID, raw string, err error) {
+	if partnerID == "" {
+		return "", "", errors.New("partner id is required")
+	}
+	err = i.Store.Transaction(ctx, func(tx *sql.Tx) error {
+		now := time.Now()
+		var generation int
+		if e := tx.QueryRowContext(ctx, `SELECT COALESCE(max(generation),0) FROM client_credentials WHERE account_id=? AND partner_id=?`, accountID, partnerID).Scan(&generation); e != nil {
+			return e
+		}
+		if _, e := tx.ExecContext(ctx, `UPDATE client_credentials SET revoked_at=? WHERE account_id=? AND partner_id=? AND revoked_at IS NULL`, store.Stamp(now), accountID, partnerID); e != nil {
+			return e
+		}
+		var count int
+		if e := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM client_credentials WHERE account_id=? AND revoked_at IS NULL)+(SELECT count(*) FROM oauth_grants WHERE json_extract(record,'$.subject')=? AND json_extract(record,'$.revoked_at') IS NULL AND expires_at>?)`, accountID, accountID, store.Stamp(now)).Scan(&count); e != nil {
+			return e
+		}
+		if count >= MaxActivePerAccount {
+			return ErrLimit
+		}
+		var c store.ClientCredential
+		raw, c = generate(accountID, brainID, []string{"memory:read", "memory:write"}, generation+1)
+		c.PartnerID = partnerID
+		credentialID = c.ID
+		return store.InsertCredential(ctx, tx, c)
+	})
+	if err != nil {
+		return "", "", err
+	}
+	return credentialID, raw, nil
+}
+
+// RevokeKey revokes exactly one key. Unlike Revoke and Rotate it does not
+// advance the brain's OAuth epoch, so every other client keeps working.
+// Revoking an already revoked key succeeds; an unknown key is ErrNotFound.
+func (i *Issuer) RevokeKey(ctx context.Context, credentialID string) error {
+	return i.Store.Transaction(ctx, func(tx *sql.Tx) error {
+		var exists int
+		if e := tx.QueryRowContext(ctx, `SELECT count(*) FROM client_credentials WHERE id=?`, credentialID).Scan(&exists); e != nil {
+			return e
+		}
+		if exists != 1 {
+			return store.ErrNotFound
+		}
+		_, e := tx.ExecContext(ctx, `UPDATE client_credentials SET revoked_at=? WHERE id=? AND revoked_at IS NULL`, store.Stamp(time.Now()), credentialID)
+		return e
+	})
 }
 
 // Rotate requires account ownership even for internal callers.
@@ -97,14 +154,16 @@ func (i *Issuer) Rotate(ctx context.Context, accountID, brainID string) (raw str
 	err = i.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		var scopes string
 		var generation int
-		e := tx.QueryRowContext(ctx, `SELECT scopes,generation FROM client_credentials WHERE brain_id=? AND account_id=? AND revoked_at IS NULL ORDER BY generation DESC LIMIT 1`, brainID, accountID).Scan(&scopes, &generation)
+		// Partner keys are managed by their partner link (ADR 023); replacing
+		// the owner's manual token must not disconnect the partner app.
+		e := tx.QueryRowContext(ctx, `SELECT scopes,generation FROM client_credentials WHERE brain_id=? AND account_id=? AND revoked_at IS NULL AND partner_id IS NULL ORDER BY generation DESC LIMIT 1`, brainID, accountID).Scan(&scopes, &generation)
 		if errors.Is(e, sql.ErrNoRows) {
 			return store.ErrNotFound
 		}
 		if e != nil {
 			return e
 		}
-		_, e = tx.ExecContext(ctx, `UPDATE client_credentials SET revoked_at=? WHERE brain_id=? AND account_id=? AND revoked_at IS NULL`, store.Stamp(time.Now()), brainID, accountID)
+		_, e = tx.ExecContext(ctx, `UPDATE client_credentials SET revoked_at=? WHERE brain_id=? AND account_id=? AND revoked_at IS NULL AND partner_id IS NULL`, store.Stamp(time.Now()), brainID, accountID)
 		if e != nil {
 			return e
 		}
