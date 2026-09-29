@@ -117,3 +117,58 @@ const migration7 = `
 ALTER TABLE subscriptions ADD COLUMN grace_invoice_id TEXT;
 INSERT INTO schema_migrations(version,applied_at) VALUES(7,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 `
+
+// migration8 adds the partner surface of ADR 023. Partner secrets are stored
+// only as SHA-256 digests. A link is the durable record that the account owner
+// (or account creation by the partner) authorized the partner; revoking it
+// never removes the account or its brains. Partner-bound credentials carry
+// partner_id so they can be metered and revoked independently of every other
+// client of the same brain.
+const migration8 = `
+CREATE TABLE partners(
+ id TEXT PRIMARY KEY,
+ display_name TEXT NOT NULL,
+ secret_hash TEXT NOT NULL,
+ redirect_prefix TEXT NOT NULL,
+ status TEXT NOT NULL CHECK(status IN ('active','disabled')),
+ created_at TEXT NOT NULL,
+ updated_at TEXT NOT NULL
+);
+CREATE TABLE partner_links(
+ partner_id TEXT NOT NULL REFERENCES partners(id),
+ account_id TEXT NOT NULL REFERENCES accounts(id),
+ status TEXT NOT NULL CHECK(status IN ('active','revoked')),
+ linked_via TEXT NOT NULL CHECK(linked_via IN ('created','consent')),
+ created_at TEXT NOT NULL,
+ updated_at TEXT NOT NULL,
+ revoked_at TEXT,
+ PRIMARY KEY(partner_id,account_id)
+);
+CREATE INDEX partner_links_account ON partner_links(account_id,status);
+CREATE TABLE link_requests(
+ id TEXT PRIMARY KEY,
+ partner_id TEXT NOT NULL REFERENCES partners(id),
+ account_id TEXT NOT NULL REFERENCES accounts(id),
+ return_url TEXT NOT NULL,
+ status TEXT NOT NULL CHECK(status IN ('pending','approved','denied','redeemed')),
+ code_hash TEXT,
+ created_at TEXT NOT NULL,
+ expires_at TEXT NOT NULL,
+ decided_at TEXT,
+ redeemed_at TEXT
+);
+CREATE INDEX link_requests_account ON link_requests(partner_id,account_id,status);
+CREATE TABLE partner_entitlements(
+ account_id TEXT NOT NULL REFERENCES accounts(id),
+ partner_id TEXT NOT NULL REFERENCES partners(id),
+ tier TEXT NOT NULL CHECK(tier IN ('free','pro')),
+ expires_at TEXT,
+ updated_at TEXT NOT NULL,
+ PRIMARY KEY(account_id,partner_id)
+);
+ALTER TABLE client_credentials ADD COLUMN partner_id TEXT;
+CREATE INDEX client_credentials_partner ON client_credentials(account_id,partner_id) WHERE partner_id IS NOT NULL;
+ALTER TABLE accounts ADD COLUMN created_by_partner TEXT;
+CREATE INDEX accounts_created_by_partner ON accounts(created_by_partner,status) WHERE created_by_partner IS NOT NULL;
+INSERT INTO schema_migrations(version,applied_at) VALUES(8,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+`
