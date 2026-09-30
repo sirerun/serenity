@@ -12,8 +12,8 @@
       "Type": "AWS::EC2::AvailabilityZone::Name"
     },
     "ImageId": {
-      "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
-      "Default": "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
+      "Type": "AWS::EC2::Image::Id",
+      "Description": "Explicit ARM64 AMI pin. On updates, preserve the running instance AMI unless an instance replacement has been separately authorized."
     }
   },
   "Resources": {
