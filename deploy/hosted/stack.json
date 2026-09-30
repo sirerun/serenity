@@ -201,6 +201,9 @@
                     },
                     {
                       "Ref": "StripeWebhookSecret"
+                    },
+                    {
+                      "Ref": "BlinkPartnerSecret"
                     }
                   ]
                 },
@@ -428,6 +431,17 @@
         "Threshold": 1,
         "ComparisonOperator": "GreaterThanOrEqualToThreshold",
         "TreatMissingData": "breaching"
+      }
+    },
+    "BlinkPartnerSecret": {
+      "Type": "AWS::SecretsManager::Secret",
+      "Properties": {
+        "Name": "serenity/hosted/BLINK_PARTNER_SECRET",
+        "Description": "First-party Blink partner authentication; seed through the local admin socket.",
+        "GenerateSecretString": {
+          "PasswordLength": 64,
+          "ExcludePunctuation": true
+        }
       }
     }
   },
