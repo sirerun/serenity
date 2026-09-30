@@ -37,6 +37,36 @@ func TestRewriteForgottenPathWithThousandFacts(t *testing.T) {
 	}
 }
 
+func TestFailedHistoryRewriteDoesNotMarkForcePush(t *testing.T) {
+	root, git := gitRepoFixture(t)
+	relPath := filepath.Join("brain", "sources", "failed", "bytes")
+	path := filepath.Join(root, relPath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", relPath)
+	git("commit", "--quiet", "-m", "fact to forget")
+	actualGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	shim := "#!/bin/sh\nfor arg in \"$@\"; do\n  if [ \"$arg\" = filter-branch ]; then exit 7; fi\ndone\nexec \"" + actualGit + "\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(shim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if err := rewriteForgottenPath(root, filepath.ToSlash(filepath.Dir(relPath))); err == nil {
+		t.Fatal("injected filter-branch failure was not reported")
+	}
+	if _, err := os.Stat(filepath.Join(root, ".git", "serenity-history-rewrite-push")); !os.IsNotExist(err) {
+		t.Fatalf("failed rewrite left a force-push marker: %v", err)
+	}
+}
+
 func TestRewriteForgottenPathRemovesHistoricalBlobs(t *testing.T) {
 	root, git := gitRepoFixture(t)
 	path := filepath.Join("brain", "sources", "ab", strings.Repeat("a", 64), "bytes")

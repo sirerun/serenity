@@ -81,9 +81,6 @@ func rewriteForgottenPath(root, relPath string) (retErr error) {
 	defer func() {
 		_ = git.Run(ctx, "worktree", "remove", "--force", worktree)
 	}()
-	if err := os.WriteFile(markerPath, []byte("forgotten source path rewritten\n"), 0o600); err != nil {
-		return fmt.Errorf("writer: write history rewrite marker: %w", err)
-	}
 	filter := "git rm --cached --ignore-unmatch -r -- '" + relPath + "'"
 	filterCmd, err := gitrun.Brain(worktree).Command(ctx, "filter-branch", "--force", "--index-filter", filter, "--", "--all")
 	if err != nil {
@@ -94,6 +91,12 @@ func rewriteForgottenPath(root, relPath string) (retErr error) {
 	filterCmd.Env = append(filterCmd.Env, "FILTER_BRANCH_SQUELCH_WARNING=1")
 	if out, err := filterCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("writer: rewrite forgotten path history: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	// A failed filter-branch must never mark an unrevised brain for a later
+	// force-with-lease push. Once refs have changed, retain the marker even if
+	// pruning fails so a retry can still publish the rewritten history.
+	if err := os.WriteFile(markerPath, []byte("forgotten source path rewritten\n"), 0o600); err != nil {
+		return fmt.Errorf("writer: write history rewrite marker: %w", err)
 	}
 	if err := git.Run(ctx, "worktree", "remove", "--force", worktree); err != nil {
 		return fmt.Errorf("writer: remove history rewrite worktree: %w", err)
