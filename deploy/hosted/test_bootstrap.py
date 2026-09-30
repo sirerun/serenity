@@ -30,6 +30,12 @@ class BootstrapContractTests(unittest.TestCase):
         self.assertLess(text.index('"$script_dir/bootstrap.sh"'), text.index('mountpoint -q /var/lib/serenity'))
         self.assertLess(text.index('"$script_dir/bootstrap.sh"'), text.index('command -v caddy'))
 
+    def test_deploy_installs_the_same_caddyfile_that_it_validates(self):
+        text = (ROOT / "deploy.sh").read_text()
+        self.assertIn('caddy validate --config "$script_dir/Caddyfile" --adapter caddyfile', text)
+        self.assertIn('install -m 0644 "$script_dir/Caddyfile" /etc/caddy/Caddyfile', text)
+        self.assertNotIn('$caddy_config', text)
+
 
 if __name__ == "__main__":
     unittest.main()
