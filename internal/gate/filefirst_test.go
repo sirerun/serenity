@@ -56,6 +56,10 @@ var allowlist = []string{
 	"internal/eval/brainbench/",
 }
 
+// astScanSourceRoots are the production source roots checked by both static
+// safety scanners. Keep pkg/ and cmd/ covered as code moves out of internal/.
+var astScanSourceRoots = []string{"internal", "pkg", "cmd"}
+
 // violation is one disallowed write call site.
 type violation struct {
 	file string // repo-root-relative path
@@ -90,51 +94,57 @@ func allowed(relPath string) bool {
 // violations and allowlist matches are both reported relative to it (e.g.
 // "internal/index/rebuild.go").
 func scanForViolations(root string) ([]violation, error) {
-	start := filepath.Join(root, "internal")
 	fset := token.NewFileSet()
 	var out []violation
-
-	err := filepath.WalkDir(start, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	for _, sourceRoot := range astScanSourceRoots {
+		start := filepath.Join(root, sourceRoot)
+		if _, err := os.Stat(start); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return nil, err
 		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-
-		f, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			return fmt.Errorf("parse %s: %w", path, err)
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
-
-		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
+		err := filepath.WalkDir(start, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
 			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || !writeCalls[sel.Sel.Name] {
-				return true
+			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
 			}
-			if allowed(rel) {
-				return true
+
+			f, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				return fmt.Errorf("parse %s: %w", path, err)
 			}
-			out = append(out, violation{
-				file: rel,
-				line: fset.Position(call.Pos()).Line,
-				call: sel.Sel.Name,
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			rel = filepath.ToSlash(rel)
+
+			ast.Inspect(f, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || !writeCalls[sel.Sel.Name] {
+					return true
+				}
+				if allowed(rel) {
+					return true
+				}
+				out = append(out, violation{
+					file: rel,
+					line: fset.Position(call.Pos()).Line,
+					call: sel.Sel.Name,
+				})
+				return true
 			})
-			return true
+			return nil
 		})
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	sort.Slice(out, func(i, j int) bool {

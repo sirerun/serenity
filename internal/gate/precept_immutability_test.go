@@ -85,63 +85,69 @@ func containsDiraLiteral(n ast.Node) bool {
 	return found
 }
 
-// scanForDiraWrites walks root/internal, parses every non-test .go file with
-// go/ast, and reports every call to a diraWriteCalls function whose argument
-// list names a .dira path and whose calling file is not in diraAllowlist.
-// Mirrors scanForViolations (filefirst_test.go) structurally.
+// scanForDiraWrites walks every astScanSourceRoots directory, parses each
+// non-test .go file with go/ast, and reports every call to a diraWriteCalls
+// function whose argument list names a .dira path and whose calling file is
+// not in diraAllowlist. Mirrors scanForViolations structurally.
 func scanForDiraWrites(root string) ([]violation, error) {
-	start := filepath.Join(root, "internal")
 	fset := token.NewFileSet()
 	var out []violation
+	for _, sourceRoot := range astScanSourceRoots {
+		start := filepath.Join(root, sourceRoot)
+		if _, err := os.Stat(start); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		err := filepath.WalkDir(start, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
 
-	err := filepath.WalkDir(start, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
+			f, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				return fmt.Errorf("parse %s: %w", path, err)
+			}
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			rel = filepath.ToSlash(rel)
 
-		f, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			return fmt.Errorf("parse %s: %w", path, err)
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
-
-		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
+			ast.Inspect(f, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || !diraWriteCalls[sel.Sel.Name] {
+					return true
+				}
+				pkgIdent, ok := sel.X.(*ast.Ident)
+				if !ok || pkgIdent.Name != "os" {
+					return true
+				}
+				if !containsDiraLiteral(call) {
+					return true
+				}
+				if allowedDiraWriter(rel) {
+					return true
+				}
+				out = append(out, violation{
+					file: rel,
+					line: fset.Position(call.Pos()).Line,
+					call: sel.Sel.Name,
+				})
 				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || !diraWriteCalls[sel.Sel.Name] {
-				return true
-			}
-			pkgIdent, ok := sel.X.(*ast.Ident)
-			if !ok || pkgIdent.Name != "os" {
-				return true
-			}
-			if !containsDiraLiteral(call) {
-				return true
-			}
-			if allowedDiraWriter(rel) {
-				return true
-			}
-			out = append(out, violation{
-				file: rel,
-				line: fset.Position(call.Pos()).Line,
-				call: sel.Sel.Name,
 			})
-			return true
+			return nil
 		})
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	sort.Slice(out, func(i, j int) bool {

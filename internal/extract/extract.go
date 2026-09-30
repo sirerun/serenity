@@ -65,6 +65,12 @@ import (
 // train-split example of the identical fact.
 const PromptVersion = "v4"
 
+// candidateSubjectSlugValid is fixed to the domain slug predicate in
+// production. The adversarial release test's test-only initializer replaces
+// it in one subprocess to prove that an invalid subject would escape if the
+// model-boundary check were removed.
+var candidateSubjectSlugValid = domain.ValidSlug
+
 // familyGuidance supplies extra per-predicate disambiguation for the four
 // families T1.28 root-caused: TP=0 across every held-out span in T1.23's
 // live eval (docs/evals/m1-report.md), even after the object-normalization
@@ -580,7 +586,7 @@ func filterCandidates(raw []Candidate, vocab map[string]bool) (accepted []Candid
 		// control character can split a table row or a shard line. Either
 		// drops this one candidate and counts it; the rest of the batch
 		// proceeds (FUN-03).
-		if !domain.ValidSlug(subject) || strings.IndexFunc(object, unicode.IsControl) >= 0 {
+		if !candidateSubjectSlugValid(subject) || strings.IndexFunc(object, unicode.IsControl) >= 0 {
 			rejected++
 			continue
 		}
