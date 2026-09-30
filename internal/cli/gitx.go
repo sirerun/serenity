@@ -83,9 +83,18 @@ func installPostCommitPush(root string) (installed bool, err error) {
 		return false, nil
 	}
 	script := `#!/bin/sh
-# serenity durability floor (RFC 0001 §7.7): "no DB backups" assumes a
-# healthy remote — push after every commit and warn loudly on failure.
-git push --quiet 2>/dev/null || echo "serenity: warning: post-commit push failed (no remote, offline, or rejected)" >&2
+# serenity durability floor; forget may rewrite this brain's source history.
+marker=$(git rev-parse --git-path serenity-history-rewrite-push 2>/dev/null) || marker=
+if [ -n "$marker" ] && [ -f "$marker" ]; then
+  if git push --force-with-lease --quiet 2>/dev/null; then
+    rm -f -- "$marker"
+    echo "serenity: warning: brain history was rewritten; other clones must re-clone" >&2
+  else
+    echo "serenity: warning: post-commit history rewrite push failed (no remote, offline, or rejected)" >&2
+  fi
+else
+  git push --quiet 2>/dev/null || echo "serenity: warning: post-commit push failed (no remote, offline, or rejected)" >&2
+fi
 `
 	if err := os.WriteFile(hookPath, []byte(script), 0o755); err != nil {
 		return false, err
