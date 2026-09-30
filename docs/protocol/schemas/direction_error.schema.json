@@ -16,9 +16,14 @@
         "invalid_action",
         "invalid_kind",
         "invalid_payload",
+        "provider_error",
         "internal_error"
       ]
     },
-    "message": { "type": "string" }
+    "message": { "type": "string" },
+    "provider_status": {
+      "type": "integer",
+      "description": "The provider's HTTP response status, present when a provider_error includes one."
+    }
   }
 }
