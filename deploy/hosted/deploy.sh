@@ -29,7 +29,10 @@ id serenity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/serenity --s
 install -d -m 0700 -o serenity -g serenity /etc/serenity /etc/serenity/secrets
 for name in RESEND_API_KEY EMBEDDINGS_API_KEY; do
     aws --region us-west-2 secretsmanager get-secret-value --secret-id "serenity/hosted/$name" --query SecretString --output text > "$work/$name"
-    [[ -s "$work/$name" ]] && ! grep -qx UNCONFIGURED "$work/$name" || { echo "Required secret $name is unconfigured" >&2; exit 1; }
+    if [[ ! -s "$work/$name" ]] || grep -qx UNCONFIGURED "$work/$name"; then
+        echo "Required secret $name is unconfigured" >&2
+        exit 1
+    fi
     install -m 0600 -o serenity -g serenity "$work/$name" "/etc/serenity/secrets/$name"
 done
 # Billing is enabled separately after test-mode qualification; its secrets are
