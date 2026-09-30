@@ -1,0 +1,8 @@
+[Unit]
+Description=Report Serenity hosted backup failure
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/logger -p daemon.err -t serenity-backup-failed "serenity-backup.service failed; inspect its journal entries"
+StandardOutput=journal
+StandardError=journal

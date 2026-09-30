@@ -13,6 +13,7 @@ export SERENITY_DOMAIN_CUTOVER=0
 [[ "$checksum" =~ ^[a-f0-9]{64}$ ]] || { echo 'Invalid SHA256' >&2; exit 1; }
 [[ $(id -u) == 0 ]] || { echo 'Run through SSM as root' >&2; exit 1; }
 script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
+source "$script_dir/readiness.sh"
 "$script_dir/bootstrap.sh"
 command -v caddy >/dev/null
 command -v aws >/dev/null
@@ -52,6 +53,12 @@ if [[ ! -d "$rollback" && -f /etc/caddy/Caddyfile && -L /usr/local/bin/serenity 
     mv "$snapshot" "$rollback"
 fi
 install -d -m 0755 /usr/local/lib/serenity
+# Retain the exact currently selected binary so a failed readiness check can
+# restore it even though the active path is a symlink to a versioned binary.
+if [[ -x /usr/local/bin/serenity ]]; then
+    previous_target=$(readlink -f -- /usr/local/bin/serenity)
+    [[ -x "$previous_target" ]] && ln -sfn -- "$previous_target" /usr/local/bin/serenity.prev
+fi
 install -m 0755 "$work/serenity" "/usr/local/lib/serenity/serenity-${number}"
 ln -sfn "/usr/local/lib/serenity/serenity-${number}" /usr/local/bin/serenity
 chown serenity:serenity /var/lib/serenity
@@ -92,6 +99,7 @@ install -m 0755 "$script_dir/backup.sh" /opt/serenity-hosted/backup.sh
 printf 'SERENITY_BACKUP_BUCKET=%s\n' "$backup_bucket" > "$work/backup.env"
 install -m 0600 -o serenity -g serenity "$work/backup.env" /etc/serenity/backup.env
 install -m 0644 "$script_dir/serenity-backup.service" /etc/systemd/system/serenity-backup.service
+install -m 0644 "$script_dir/serenity-backup-failed.service" /etc/systemd/system/serenity-backup-failed.service
 install -m 0644 "$script_dir/serenity-backup.timer" /etc/systemd/system/serenity-backup.timer
 install -m 0644 "$script_dir/caddy.service" /etc/systemd/system/caddy.service
 systemctl daemon-reload
@@ -106,7 +114,9 @@ if [[ -S /run/caddy/admin.sock ]]; then
 else
     systemctl restart caddy
 fi
-curl --fail --retry 5 --retry-connrefused --max-time 10 http://127.0.0.1:8090/readyz
+if ! serenity_rollback_on_readiness_failure /usr/local/bin/serenity /usr/local/bin/serenity.prev serenity-hosted http://127.0.0.1:8090/readyz; then
+    exit 1
+fi
 systemctl start serenity-backup.service
 systemctl enable --now serenity-backup.timer
 echo "Hosted Serenity ${number} is locally ready. Public smoke and release acceptance are separate."
