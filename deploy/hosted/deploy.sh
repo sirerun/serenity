@@ -83,7 +83,7 @@ if [[ -f /etc/systemd/system/caddy.service ]] && ! cmp -s "$script_dir/caddy.ser
     cp -p /etc/systemd/system/caddy.service /root/serenity-caddy-rollback/caddy.service
     [[ ! -f /etc/caddy/Caddyfile ]] || cp -p /etc/caddy/Caddyfile /root/serenity-caddy-rollback/Caddyfile
 fi
-install -m 0644 "$caddy_config" /etc/caddy/Caddyfile
+install -m 0644 "$script_dir/Caddyfile" /etc/caddy/Caddyfile
 install -d -m 0755 /opt/serenity-hosted
 install -m 0755 "$script_dir/backup.sh" /opt/serenity-hosted/backup.sh
 printf 'SERENITY_BACKUP_BUCKET=%s\n' "$backup_bucket" > "$work/backup.env"
