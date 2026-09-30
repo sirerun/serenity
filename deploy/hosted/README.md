@@ -44,3 +44,9 @@ URL `https://serenity.sire.run`, and a base64-encoded 32-byte encryption key in
 Blink SSM. Secret values must stay out of shell traces, command bodies, logs,
 PRs, and project channels. Configure all values before restarting Blink's
 server and worker. Verify the partnership with test accounts separately.
+
+The stack requires an explicit ARM64 AMI ID for `ImageId`. On an existing
+stack update, pass the current instance's AMI ID. The previous SSM "latest"
+AMI parameter could resolve to a different AMI during an unrelated update,
+causing an unintended instance and data-attachment replacement. Inspect the
+CloudFormation change set and reject replacements during partner-secret setup.

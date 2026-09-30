@@ -57,6 +57,12 @@ class BootstrapContractTests(unittest.TestCase):
         self.assertIn('"redirect_prefix":"blink://serenity-linked"', text)
         self.assertNotIn('"secret":', text)
 
+    def test_stack_requires_an_explicit_ami_to_avoid_latest_image_replacement(self):
+        stack = json.loads((ROOT / "stack.json").read_text())
+        ami = stack["Parameters"]["ImageId"]
+        self.assertEqual(ami["Type"], "AWS::EC2::Image::Id")
+        self.assertNotIn("Default", ami)
+
 
 if __name__ == "__main__":
     unittest.main()
