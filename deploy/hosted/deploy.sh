@@ -18,11 +18,16 @@ command -v caddy >/dev/null
 command -v aws >/dev/null
 command -v git >/dev/null
 command -v curl >/dev/null
+command -v cosign >/dev/null || { echo 'Cosign is required to verify release signatures' >&2; exit 1; }
 mountpoint -q /var/lib/serenity || { echo 'Persistent data volume is not mounted' >&2; exit 1; }
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 number=${version#v}
-curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 "https://github.com/sirerun/serenity/releases/download/v${number}/serenity_${number}_linux_arm64.tar.gz" --output "$work/release.tar.gz"
+release_tag="v${number}"
+release_url="https://github.com/sirerun/serenity/releases/download/${release_tag}"
+curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 "$release_url/serenity_${number}_linux_arm64.tar.gz" --output "$work/release.tar.gz"
+curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 "$release_url/serenity_${number}_linux_arm64.tar.gz.sigstore.json" --output "$work/release.tar.gz.sigstore.json"
+"$script_dir/verify-release.sh" "$work/release.tar.gz" "$work/release.tar.gz.sigstore.json" "$release_tag"
 printf '%s  %s\n' "$checksum" "$work/release.tar.gz" | sha256sum --check --status
 tar -xzf "$work/release.tar.gz" -C "$work" serenity
 id serenity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/serenity --shell /sbin/nologin serenity

@@ -9,15 +9,36 @@ permissions:
   contents: read
 
 jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
+        with:
+          go-version-file: go.mod
+      - name: Scan reachable Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
+
   hosted-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -27,7 +48,7 @@ jobs:
       - run: npm run test:hosted
         env:
           SERENITY_TEST_BINARY: ${{ runner.temp }}/serenity
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
           name: hosted-browser-results
@@ -37,12 +58,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
       - name: Hosted edge unit contracts (ADR 020)
-        run: python3 -m unittest -v deploy/hosted/tests/test_units.py
+        run: python3 -m unittest -v deploy/hosted/tests/test_units.py deploy/hosted/tests/test_supply_chain.py
       - run: go vet ./...
       - run: go build ./...
       - run: go test -race -timeout 600s ./...
@@ -50,11 +71,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v9.3.0
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.11.4
 
@@ -65,8 +86,8 @@ jobs:
     # needs network access to install the pinned upstream binary.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
       - run: scripts/verify-dira-cli.sh
@@ -90,11 +111,11 @@ jobs:
     env:
       GBRAIN_PIN: d35c9c9e441e6cfc86dd5e84b0b168c6b18ee775
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Checkout dndungu/gbrain @ pin
         run: |
           git init -q "$RUNNER_TEMP/gbrain"
@@ -129,8 +150,8 @@ jobs:
     # is a pure function scored directly, not a cached model prediction.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
       - run: go run ./cmd/eval-runner -mode cached -corpus evals/corpora/ava -fixture evals/fixtures/ava-cached-predictions.yaml -direction-corpus evals/corpora/direction -direction-fixture evals/fixtures/direction-cached-predictions.yaml -reconcile-corpus evals/corpora/reconcile -out "$RUNNER_TEMP/report.json"
@@ -146,12 +167,12 @@ jobs:
     # trend across runs and renders the chart into the docs site.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
       - run: go run evals/brainbench/gen_trend.go
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: brainbench-trend
           path: evals/brainbench-trend.json
@@ -166,8 +187,8 @@ jobs:
           - { goos: linux, goarch: amd64 }
           - { goos: linux, goarch: arm64 }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
       - run: CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build ./cmd/serenity
@@ -183,8 +204,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
       - run: scripts/install-verify.sh
@@ -192,8 +213,8 @@ jobs:
   gbrain-public-fixture:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
       - name: Clone the public synthetic fixture at its pinned commit
@@ -223,7 +244,7 @@ jobs:
           assert any(e['Action'] == 'pass' and 'Test' not in e for e in events), 'package did not complete'
           print('Public pinned fixture: nine passing cases, eight rows, zero skips.')
           PY
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
           name: gbrain-public-fixture-roundtrip
