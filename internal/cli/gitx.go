@@ -86,7 +86,20 @@ func installPostCommitPush(root string) (installed bool, err error) {
 # serenity durability floor; forget may rewrite this brain's source history.
 marker=$(git rev-parse --git-path serenity-history-rewrite-push 2>/dev/null) || marker=
 if [ -n "$marker" ] && [ -f "$marker" ]; then
-  if git push --force-with-lease --quiet 2>/dev/null; then
+  expected=$(cat "$marker")
+  branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null) || branch=
+  merge_ref=$(git config --get "branch.$branch.merge" 2>/dev/null) || merge_ref=
+  case "$merge_ref" in
+    refs/heads/*)
+      if printf '%s' "$expected" | grep -Eq '^[0-9a-f]{40,64}$'; then
+        git push --force-with-lease="$merge_ref:$expected" --quiet 2>/dev/null
+      else
+        git push --force-with-lease --quiet 2>/dev/null
+      fi
+      ;;
+    *) git push --force-with-lease --quiet 2>/dev/null ;;
+  esac
+  if [ "$?" -eq 0 ]; then
     rm -f -- "$marker"
     echo "serenity: warning: brain history was rewritten; other clones must re-clone" >&2
   else

@@ -67,6 +67,48 @@ func TestFailedHistoryRewriteDoesNotMarkForcePush(t *testing.T) {
 	}
 }
 
+func TestRewrittenHistoryPushHonorsRemoteLease(t *testing.T) {
+	root, git := gitRepoFixture(t)
+	relPath := filepath.Join("brain", "sources", "remote", "bytes")
+	path := filepath.Join(root, relPath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("remote secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", relPath)
+	git("commit", "--quiet", "-m", "fact to forget")
+	remote := t.TempDir()
+	cmd := exec.Command("git", "init", "--bare", "--quiet", remote)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("init bare remote: %v: %s", err, out)
+	}
+	git("remote", "add", "origin", remote)
+	git("push", "--quiet", "-u", "origin", "HEAD")
+	oldRemoteTip := strings.TrimSpace(git("rev-parse", "@{upstream}"))
+	if err := rewriteForgottenPath(root, filepath.ToSlash(filepath.Dir(relPath))); err != nil {
+		t.Fatal(err)
+	}
+	marker, err := os.ReadFile(filepath.Join(root, ".git", "serenity-history-rewrite-push"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(marker)) != oldRemoteTip {
+		t.Fatalf("force-push marker should retain pre-rewrite remote tip: got %q want %q", marker, oldRemoteTip)
+	}
+	branch := strings.TrimSpace(git("symbolic-ref", "--short", "HEAD"))
+	cmd = exec.Command("git", "push", "--force-with-lease=refs/heads/"+branch+":"+oldRemoteTip, "--quiet")
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("push rewritten history with remote lease: %v: %s", err, out)
+	}
+	cmd = exec.Command("git", "--git-dir", remote, "rev-list", "--all", "--", filepath.ToSlash(filepath.Dir(relPath)))
+	if out, err := cmd.CombinedOutput(); err != nil || len(strings.TrimSpace(string(out))) != 0 {
+		t.Fatalf("remote retained forgotten source history: err=%v output=%s", err, out)
+	}
+}
+
 func TestRewriteForgottenPathRemovesHistoricalBlobs(t *testing.T) {
 	root, git := gitRepoFixture(t)
 	path := filepath.Join("brain", "sources", "ab", strings.Repeat("a", 64), "bytes")

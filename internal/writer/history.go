@@ -56,6 +56,13 @@ func rewriteForgottenPath(root, relPath string) (retErr error) {
 	if !filepath.IsAbs(markerPath) {
 		markerPath = filepath.Join(root, markerPath)
 	}
+	// filter-branch --all also rewrites local remote-tracking refs. Preserve
+	// the remote tip observed before that rewrite: the hook needs this exact
+	// old value for force-with-lease rather than the rewritten tracking ref.
+	expectedRemoteTip := "no-upstream"
+	if out, err := git.Output(ctx, "rev-parse", "--verify", "@{upstream}"); err == nil {
+		expectedRemoteTip = strings.TrimSpace(string(out))
+	}
 	// Remove the forgotten path from the live index too. Git's object walk
 	// treats index entries as roots, so pruning history alone would leave the
 	// bytes recoverable from the index until a later Flush.
@@ -95,7 +102,7 @@ func rewriteForgottenPath(root, relPath string) (retErr error) {
 	// A failed filter-branch must never mark an unrevised brain for a later
 	// force-with-lease push. Once refs have changed, retain the marker even if
 	// pruning fails so a retry can still publish the rewritten history.
-	if err := os.WriteFile(markerPath, []byte("forgotten source path rewritten\n"), 0o600); err != nil {
+	if err := os.WriteFile(markerPath, []byte(expectedRemoteTip+"\n"), 0o600); err != nil {
 		return fmt.Errorf("writer: write history rewrite marker: %w", err)
 	}
 	if err := git.Run(ctx, "worktree", "remove", "--force", worktree); err != nil {
