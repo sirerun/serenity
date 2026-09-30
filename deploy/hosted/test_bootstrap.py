@@ -11,7 +11,7 @@ class BootstrapContractTests(unittest.TestCase):
         self.assertIn("set -euo pipefail", text)
         self.assertIn('[[ $(uname -m) == aarch64 ]]', text)
         self.assertRegex(text, r"CADDY_VERSION=\$\{CADDY_VERSION:-2\.8\.4\}")
-        self.assertRegex(text, r"CADDY_SHA256=\$\{CADDY_SHA256:-[0-9a-f]{128}\}")
+        self.assertRegex(text, r"CADDY_SHA256=\$\{CADDY_SHA256:-[0-9a-f]{64}\}")
         self.assertIn('sha256sum --check --status', text)
 
     def test_blank_volume_is_never_formatted_without_empty_probe(self):
