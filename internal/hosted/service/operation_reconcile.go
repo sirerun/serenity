@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
+	"github.com/sirerun/serenity/internal/hosted/gateway"
 )
 
 const operationSweepTimeout = 5 * time.Second
@@ -14,9 +15,17 @@ const operationSweepTimeout = 5 * time.Second
 // remains capacity-holding pending_review; no automatic operator resolution or
 // absence verdict is introduced.
 func (s *Service) reconcileOperations(ctx context.Context) (contracts.ReconcileReport, error) {
+	return s.reconcileWith(ctx, s.operationReconciler)
+}
+
+func (s *Service) reconcileStartupOperations(ctx context.Context) (contracts.ReconcileReport, error) {
+	return s.reconcileWith(ctx, gateway.NewStartupOperationReconciler(s.Gateway))
+}
+
+func (s *Service) reconcileWith(ctx context.Context, reconciler *gateway.OperationReconciler) (contracts.ReconcileReport, error) {
 	sweepCtx, cancel := context.WithTimeout(ctx, operationSweepTimeout)
 	defer cancel()
-	report, err := s.operations.ReconcilePending(sweepCtx, s.operationReconciler, s.operationReconciler)
+	report, err := s.operations.ReconcilePending(sweepCtx, reconciler, reconciler)
 	if err == nil {
 		err = sweepCtx.Err()
 	}

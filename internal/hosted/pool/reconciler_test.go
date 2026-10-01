@@ -280,3 +280,40 @@ func TestReconcilerCheckHonorsCancellation(t *testing.T) {
 		t.Fatalf("canceled canonical check = %+v, %v; want Unknown and context.Canceled", verdict, err)
 	}
 }
+
+func TestExistingReconcilerNeverOpensOrReopensColdRuntime(t *testing.T) {
+	p, brainID, _ := newReconcilerTestPool(t, 1, 4)
+	r := NewExistingReconciler(p)
+	ctx := context.Background()
+	if _, err := r.Fence(ctx, brainID); !errors.Is(err, contracts.ErrBrainNotQuiescent) {
+		t.Fatalf("cold runtime admitted: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(p.BrainsRoot(), brainID, ".git")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cold brain initialized: %v", err)
+	}
+	runtime, leave, err := p.Acquire(ctx, brainID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leave()
+	release, err := r.Fence(ctx, brainID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.held[brainID].runtime != runtime {
+		t.Fatal("existing adapter substituted runtime")
+	}
+	if err = p.Drop(brainID); !errors.Is(err, ErrCapacity) {
+		t.Fatalf("held runtime dropped: %v", err)
+	}
+	release()
+	if err = p.Drop(brainID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = r.Fence(ctx, brainID); !errors.Is(err, contracts.ErrBrainNotQuiescent) {
+		t.Fatalf("dropped runtime reopened: %v", err)
+	}
+	if p.open[brainID] != nil {
+		t.Fatal("existing adapter recreated dropped runtime")
+	}
+}

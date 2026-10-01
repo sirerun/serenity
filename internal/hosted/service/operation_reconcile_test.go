@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -90,5 +91,50 @@ func TestServiceCloseJoinsOperationWorker(t *testing.T) {
 	case <-done:
 	default:
 		t.Fatal("Close returned before worker joined")
+	}
+}
+
+func TestTickerReconciliationDefersColdRuntimeWithoutInitializingIt(t *testing.T) {
+	db, cfg, account, path := deletionFixture(t)
+	svc, err := assembleForTest(t, cfg, true, db, nil, deletionEmbedding{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := reserveInterruptedForTest(t, db, account, filepath.Base(path))
+	ctx, cancel := context.WithCancel(context.Background())
+	ticks := make(chan time.Time)
+	reports := make(chan contracts.ReconcileReport, 1)
+	errs := make(chan error, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runOperationReconcileLoop(ctx, ticks, func(ctx context.Context) error {
+			report, err := svc.reconcileOperations(ctx)
+			reports <- report
+			errs <- err
+			return err
+		})
+	}()
+	ticks <- time.Now()
+	report := <-reports
+	if err = <-errs; err != nil {
+		cancel()
+		<-done
+		t.Fatal(err)
+	}
+	cancel()
+	<-done
+	if report.Deferred != 1 || report.Committed != 0 || report.Released != 0 {
+		t.Fatalf("cold ticker report %+v", report)
+	}
+	var phase string
+	if err = db.DB().QueryRow("SELECT phase FROM operations WHERE id=?", rec.ID).Scan(&phase); err != nil {
+		t.Fatal(err)
+	}
+	if phase != string(contracts.OperationReserved) {
+		t.Fatalf("cold operation changed %s", phase)
+	}
+	if _, err = os.Lstat(filepath.Join(path, ".git")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("ticker initialized cold brain: %v", err)
 	}
 }

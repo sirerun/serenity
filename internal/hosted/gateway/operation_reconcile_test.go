@@ -27,7 +27,7 @@ func (p *reconciliationFenceProbe) Fence(context.Context, string) (func(), error
 	p.calls++
 	return func() { p.released++ }, nil
 }
-func TestOperationReconciliationHoldsLifecycleLocks(t *testing.T) {
+func TestOperationReconciliationHoldsMaintenanceWithoutAccountLock(t *testing.T) {
 	ctx := context.Background()
 	db, err := store.Open(filepath.Join(t.TempDir(), "control.db"))
 	if err != nil {
@@ -68,10 +68,10 @@ func TestOperationReconciliationHoldsLifecycleLocks(t *testing.T) {
 	}
 	hash := sha256.Sum256([]byte(account.ID))
 	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
-	if lock.TryLock() {
-		lock.Unlock()
-		t.Fatal("account lock not retained")
+	if !lock.TryLock() {
+		t.Fatal("reconciler illegally took account lock")
 	}
+	lock.Unlock()
 	leave()
 	leave()
 	if probe.calls != 1 || probe.released != 1 {

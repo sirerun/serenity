@@ -67,6 +67,16 @@ func (p *Pool) BrainsRoot() string {
 }
 
 func (p *Pool) Acquire(ctx context.Context, id string) (*Runtime, func(), error) {
+	return p.acquire(ctx, id, false)
+}
+
+// AcquireExisting pins an already-open runtime without opening, initializing,
+// recovering or evicting brain storage. Absence is a deferred capacity result.
+func (p *Pool) AcquireExisting(ctx context.Context, id string) (*Runtime, func(), error) {
+	return p.acquire(ctx, id, true)
+}
+
+func (p *Pool) acquire(ctx context.Context, id string, existingOnly bool) (*Runtime, func(), error) {
 	if !p.mu.TryLock() {
 		return nil, nil, ErrCapacity
 	}
@@ -74,16 +84,21 @@ func (p *Pool) Acquire(ctx context.Context, id string) (*Runtime, func(), error)
 	if p.closed || p.inFlight >= p.cfg.MaxInFlight {
 		return nil, nil, ErrCapacity
 	}
-	for key, item := range p.open {
-		if item.users == 0 && p.cfg.IdleTimeout > 0 && time.Since(item.last) >= p.cfg.IdleTimeout {
-			if err := item.close(); err != nil {
-				return nil, nil, err
+	if !existingOnly {
+		for key, item := range p.open {
+			if item.users == 0 && p.cfg.IdleTimeout > 0 && time.Since(item.last) >= p.cfg.IdleTimeout {
+				if err := item.close(); err != nil {
+					return nil, nil, err
+				}
+				delete(p.open, key)
 			}
-			delete(p.open, key)
 		}
 	}
 	r := p.open[id]
 	if r == nil {
+		if existingOnly {
+			return nil, nil, ErrCapacity
+		}
 		if len(p.open) >= p.cfg.MaxOpen {
 			var oldest string
 			var candidate *Runtime

@@ -12,7 +12,8 @@ import (
 // leased Runtime. The caller must keep the release returned by Fence until its
 // ledger transition has completed.
 type Reconciler struct {
-	pool *Pool
+	pool         *Pool
+	existingOnly bool
 
 	mu       sync.Mutex
 	starting map[string]struct{}
@@ -35,6 +36,21 @@ func NewReconciler(p *Pool) *Reconciler {
 	}
 }
 
+// NewExistingReconciler never opens a cold runtime. It is safe to use while
+// deletion can Drop and remove brains: a missing runtime remains deferred.
+func NewExistingReconciler(p *Pool) *Reconciler {
+	r := NewReconciler(p)
+	r.existingOnly = true
+	return r
+}
+
+func (r *Reconciler) acquirePool(ctx context.Context, brainID string) (*Runtime, func(), error) {
+	if r.existingOnly {
+		return r.pool.AcquireExisting(ctx, brainID)
+	}
+	return r.pool.Acquire(ctx, brainID)
+}
+
 // EnterCommit acquires the Runtime matching brainID and opens its shared
 // queue commit section. Both resources remain leased until leave is called.
 func (r *Reconciler) EnterCommit(ctx context.Context, brainID string) (func(), error) {
@@ -47,7 +63,7 @@ func (r *Reconciler) EnterCommit(ctx context.Context, brainID string) (func(), e
 	if r == nil || r.pool == nil || brainID == "" {
 		return nil, contracts.ErrBrainNotQuiescent
 	}
-	runtime, releasePool, err := r.pool.Acquire(ctx, brainID)
+	runtime, releasePool, err := r.acquirePool(ctx, brainID)
 	if err != nil {
 		if errors.Is(err, ErrCapacity) {
 			return nil, errors.Join(contracts.ErrBrainNotQuiescent, err, ctx.Err())
@@ -101,7 +117,7 @@ func (r *Reconciler) Fence(ctx context.Context, brainID string) (func(), error) 
 		r.mu.Unlock()
 	}
 
-	runtime, releasePool, err := r.pool.Acquire(ctx, brainID)
+	runtime, releasePool, err := r.acquirePool(ctx, brainID)
 	if err != nil {
 		clearStarting()
 		if errors.Is(err, ErrCapacity) {

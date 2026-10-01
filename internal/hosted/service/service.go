@@ -394,7 +394,7 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	if err = provisioner.Recover(ctx); err != nil {
 		return nil, errors.Join(err, p.Close())
 	}
-	if _, err = s.reconcileOperations(ctx); err != nil {
+	if _, err = s.reconcileStartupOperations(ctx); err != nil {
 		return nil, errors.Join(fmt.Errorf("hosted: reconcile interrupted operations before handler admission: %w", err), p.Close())
 	}
 	mux := http.NewServeMux()
