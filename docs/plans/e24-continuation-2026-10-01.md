@@ -43,8 +43,9 @@ Source-history regression independently reproduced on unchanged main7b0baad:
 reachable source history, its old reflog entry, and its old blob survived.
 The writer fix removes all three, preserves unrelated history and supports
 idempotent retries. Author's full writer race suite and coordinator's focused
-race tests pass. The existing supersession cascade must use this serialized
-entry point as well; that integration is in progress. This does not expose a
+race tests pass. The existing supersession cascade now uses this serialized
+entry point as well; its runtime regression verifies both history and index
+purge. Index-owning callers supply its optional SourceIndex purger. This does not expose a
 new source-delete CLI or MCP verb.
 
 The new partner best-effort audit failure now logs a fixed, sanitized error
