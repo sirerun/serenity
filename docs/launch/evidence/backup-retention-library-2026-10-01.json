@@ -1,0 +1,21 @@
+{
+  "source": "db7ec5628a939f0f86030727e0760a0d2bac2ae8",
+  "integrated_source": "9d50835",
+  "independent_review": "4feb391e7994793ed8e5f5f3a0505c2abe5fba82",
+  "scope": "unused snapshot-prefix all-version retention planner/executor; caller supplies storage adapter",
+  "validation": {
+    "retention_tests": 22,
+    "existing_hosted_deployment_tests": 42,
+    "skips": 0,
+    "ruff": "PASS",
+    "diff_check": "PASS",
+    "mutations": "wrong-bucket call refused by guarded adapter; cutoff-broadening mutation deletes out-of-plan boundary object and is detected; original restored GREEN"
+  },
+  "initial_review": "741db0 bucket identity and one-second approval blockers corrected in db7ec56; initial receipt preserved",
+  "limits": [
+    "No AWS adapter/API, credentials, IAM/lifecycle, scheduler or uploader wiring.",
+    "Approved cutoffs stay fixed; newly aged objects require a fresh reviewed plan.",
+    "Caller must map only authoritative NoSuchUpload to typed absence, enforce bounded API deadlines and inventory/concurrent-writer control.",
+    "No production purge, 31-day retention acceptance, deployment or launch proof."
+  ]
+}
