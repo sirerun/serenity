@@ -265,6 +265,9 @@ func New(cfg Config, dev bool, devOutput io.Writer) (*Service, error) {
 // NewWithDependencies constructs a hosted service only after validating the
 // required journal, build identity, and trusted startup recovery admission.
 func NewWithDependencies(ctx context.Context, cfg Config, dev bool, devOutput io.Writer, deps LifecycleDependencies) (*Service, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("%w: startup context is required", ErrStartupUnavailable)
+	}
 	if err := deps.validate(); err != nil {
 		return nil, err
 	}
@@ -323,6 +326,9 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 // AssembleWithDependencies admits startup only after a provenance-validated
 // watermark and a sealed, complete journal read have been replayed.
 func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *store.Store, sender identity.Sender, embedding embed.Embedder, deps LifecycleDependencies) (*Service, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("%w: startup context is required", ErrStartupUnavailable)
+	}
 	if err := deps.validate(); err != nil {
 		return nil, err
 	}

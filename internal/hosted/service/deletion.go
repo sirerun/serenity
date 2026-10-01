@@ -16,6 +16,11 @@ func (s *Service) DeleteAccount(ctx context.Context, accountID string) error {
 }
 
 func (s *Service) accountDeletionPreflight(ctx context.Context, accountID string) (bool, error) {
+	return s.deletionPreflight(ctx, accountID, false)
+}
+
+// deletionPreflight permits restored frozen state only for admitted startup replay.
+func (s *Service) deletionPreflight(ctx context.Context, accountID string, admittedReplay bool) (bool, error) {
 	var status, customer string
 	var subscriptions bool
 	var alreadyDeleted bool
@@ -25,10 +30,10 @@ func (s *Service) accountDeletionPreflight(ctx context.Context, accountID string
 		}
 		if status == "deleted" {
 			alreadyDeleted = true
-		} else if status != "active" && status != "deleting" {
+		} else if status != "active" && status != "deleting" && !(admittedReplay && status == "restore_pending") {
 			return contracts.ErrBillingAccountFrozen
 		} else {
-			if _, err := tx.ExecContext(ctx, `UPDATE accounts SET status='deleting' WHERE id=? AND status='active'`, accountID); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE accounts SET status='deleting' WHERE id=? AND (status='active' OR (? AND status='restore_pending'))`, accountID, admittedReplay); err != nil {
 				return err
 			}
 		}
@@ -58,5 +63,7 @@ func (s *Service) accountDeletionPreflight(ctx context.Context, accountID string
 }
 
 func (s *Service) recoverDeletions(ctx context.Context, entries []contracts.DeletionEntry) error {
-	return s.Gateway.ReplayDeletions(ctx, filepath.Join(s.cfg.DataDir, "brains"), entries, s.accountDeletionPreflight)
+	return s.Gateway.ReplayDeletions(ctx, filepath.Join(s.cfg.DataDir, "brains"), entries, func(replayCtx context.Context, accountID string) (bool, error) {
+		return s.deletionPreflight(replayCtx, accountID, true)
+	})
 }
