@@ -212,8 +212,9 @@ class DeployTests(unittest.TestCase):
     def test_first_start_under_the_new_unit_restarts_instead_of_reloading(self):
         self.assertRegex(
             self.text,
-            r"if \[\[ -S /run/caddy/admin\.sock \]\]; then\n\s+caddy reload [^\n]*\nelse\n\s+systemctl restart caddy\nfi",
+            r"if \[\[ -S /run/caddy/admin\.sock \]\]; then\n\s+if ! caddy reload [^\n]*; then",
         )
+        self.assertIn("if ! systemctl restart caddy; then", self.text)
 
 
 class AppAndBackupServiceTests(unittest.TestCase):
@@ -232,6 +233,13 @@ class AppAndBackupServiceTests(unittest.TestCase):
 
 
 class ReadinessRollbackTests(unittest.TestCase):
+    def test_probe_budget_covers_server_check_and_cached_failure(self):
+        helper = READINESS_HELPER.read_text()
+        max_time = int(re.search(r"--max-time (\d+)", helper).group(1))
+        retry_max_time = int(re.search(r"--retry-max-time (\d+)", helper).group(1))
+        self.assertGreater(max_time, 5, "server readiness permits a five-second provider call")
+        self.assertGreater(retry_max_time, 60, "server caches failed readiness for one minute")
+
     def test_deploy_keeps_previous_binary_and_rolls_back_after_readiness_failure(self):
         self.assertTrue(READINESS_HELPER.is_file(), "deploy readiness helper must exist")
         helper = READINESS_HELPER.read_text()
@@ -240,6 +248,8 @@ class ReadinessRollbackTests(unittest.TestCase):
         deploy = DEPLOY.read_text()
         self.assertIn("serenity-hosted", deploy)
         self.assertIn("serenity.prev", deploy)
+        self.assertLess(deploy.index("systemctl enable --now caddy"), deploy.index('ln -sfn "/usr/local/lib/serenity/serenity-${number}" /usr/local/bin/serenity'))
+        self.assertRegex(deploy, r"if ! systemctl enable --now serenity-hosted \|\| ! systemctl restart serenity-hosted; then\n\s+serenity_restore_previous_binary")
 
     def test_readiness_helper_restores_previous_binary_after_failed_probe(self):
         self.assertTrue(READINESS_HELPER.is_file(), "deploy readiness helper must exist")
@@ -284,6 +294,22 @@ class ReadinessRollbackTests(unittest.TestCase):
             self.assertIn("ROLLED BACK", result.stderr)
             self.assertEqual(active.resolve(), old.resolve())
             self.assertEqual(log.read_text().strip(), "restart serenity-hosted")
+
+            # A failed systemd activation must restore the old binary even if
+            # the old process would still answer a readiness probe.
+            active.unlink()
+            active.symlink_to(new.name)
+            (fake_dir / "curl").write_text("#!/bin/sh\nexit 0\n")
+            result = subprocess.run(
+                ["bash", "-c", 'source "$1"; serenity_restore_previous_binary "$2" "$3" serenity-hosted', "test", str(READINESS_HELPER), str(active), str(previous)],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("ROLLED BACK", result.stderr)
+            self.assertEqual(active.resolve(), old.resolve())
 
 
 if __name__ == "__main__":
