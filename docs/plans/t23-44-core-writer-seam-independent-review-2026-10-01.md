@@ -32,3 +32,7 @@ Ran the focused race tests in the isolated corrected checkout:
 Result: PASS (`2.868s`). I attempted the full package race suite against the pre-correction baseline but interrupted my own run after it remained at zero CPU for over two minutes while other builds were active. I did not repeat the full suite; the author reports a separate full writer race pass on the corrected source. No production code was changed by this review.
 
 The seam remains unconnected to hosted remember/reconciliation. Plain `Submit` and ordinary `Flush` remain outside the fence, so production integration must route every canonical source write and publication through the gated path and keep checker callbacks free of queue operations. This review does not claim T23.44 acceptance, checker activation, or hosted qualification.
+
+## Coordinator regression correction
+
+An omitted-inline-flush mutation revealed that the publication hook test called the fixture Git helper, which invokes testing.Fatal inside the drain goroutine on a missing committed path and prevents the job reply. The test also ignored the checker error. The coordinator changes only this test to return Git errors and join checker/acquisition errors, preserving all assertions and production code. A clean negative-control rerun and restored focused check are required before the integration gate.

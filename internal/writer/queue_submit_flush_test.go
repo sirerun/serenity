@@ -12,7 +12,7 @@ import (
 )
 
 func TestSubmitAndFlushPublishesBeforeHookAndLeavesGuards(t *testing.T) {
-	root, run := gitRepoFixture(t)
+	root, _ := gitRepoFixture(t)
 	path := filepath.Join(root, "canonical.md")
 	var q *Queue
 	var hookMu sync.Mutex
@@ -26,8 +26,12 @@ func TestSubmitAndFlushPublishesBeforeHookAndLeavesGuards(t *testing.T) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		_, acquireErr := q.WithCommitFence(ctx, func(context.Context) error {
-			committed := strings.TrimSpace(run("show", "HEAD:canonical.md"))
+		checkErr, acquireErr := q.WithCommitFence(ctx, func(ctx context.Context) error {
+			raw, err := runGit(ctx, root, "show", "HEAD:canonical.md")
+			if err != nil {
+				return err
+			}
+			committed := strings.TrimSpace(string(raw))
 			if committed != "canonical fact" {
 				return errors.New("hook observed source before flush")
 			}
@@ -35,7 +39,7 @@ func TestSubmitAndFlushPublishesBeforeHookAndLeavesGuards(t *testing.T) {
 		})
 		hookMu.Lock()
 		defer hookMu.Unlock()
-		hookErr = acquireErr
+		hookErr = errors.Join(checkErr, acquireErr)
 	})
 	defer q.Close()
 
