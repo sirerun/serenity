@@ -8,11 +8,14 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -368,6 +371,72 @@ func TestCanonicalReadOnlyIgnoresReplacementRefs(t *testing.T) {
 	if string(canonicalBytes) != "v1\n" {
 		t.Fatalf("canonical reader followed replacement ref: %q", canonicalBytes)
 	}
+}
+
+func TestCanonicalReadOnlyDisablesPromisorFetch(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		http.Error(w, "test fetch endpoint", http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = withoutGitEnvironment(os.Environ())
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "--quiet")
+	git("config", "user.name", "promisor test")
+	git("config", "user.email", "promisor@example.test")
+	if err := os.WriteFile(filepath.Join(dir, "fact.md"), []byte("promised content\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "fact.md")
+	git("commit", "--quiet", "-m", "promised content")
+	blob := git("rev-parse", "HEAD:fact.md")
+	if len(blob) != 40 && len(blob) != 64 {
+		t.Fatalf("blob object ID = %q", blob)
+	}
+	if err := os.Remove(filepath.Join(dir, ".git", "objects", blob[:2], blob[2:])); err != nil {
+		t.Fatal(err)
+	}
+	git("config", "extensions.partialClone", "origin")
+	git("config", "remote.origin.url", server.URL+"/brain.git")
+	git("config", "remote.origin.promisor", "true")
+
+	control := exec.Command("git", "-C", dir, "cat-file", "blob", blob)
+	control.Env = withoutGitEnvironment(os.Environ())
+	if _, err := control.CombinedOutput(); err == nil {
+		t.Fatal("promisor control unexpectedly read a missing blob")
+	}
+	if got := requests.Load(); got == 0 {
+		t.Fatal("promisor fixture was not live: ordinary Git control made no loopback request")
+	}
+	controlRequests := requests.Load()
+	if _, err := gitrun.CanonicalReadOnly(dir).Output(context.Background(), "cat-file", "blob", blob); err == nil {
+		t.Fatal("canonical reader unexpectedly read a missing blob")
+	}
+	if got := requests.Load(); got != controlRequests {
+		t.Fatalf("canonical reader made %d loopback requests after control count %d", got-controlRequests, controlRequests)
+	}
+}
+
+func withoutGitEnvironment(env []string) []string {
+	filtered := make([]string, 0, len(env)+2)
+	for _, item := range env {
+		key, _, _ := strings.Cut(item, "=")
+		if !strings.HasPrefix(key, "GIT_") {
+			filtered = append(filtered, item)
+		}
+	}
+	return append(filtered, "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0")
 }
 
 func TestReservedOptionsRejected(t *testing.T) {
