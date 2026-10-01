@@ -17,3 +17,13 @@ Service Backup holds the maintenance write fence, flushes runtimes, and calls ma
 Current qualification holds: gateway deleted/absent subject cleanup proofs and backup parser duplicate/unknown JSON rejection. Root service regressions cover pre-cut intent, rejected unsealed/wrong-checkpoint histories, privileged restored state and nil contexts, but are not yet qualified against the pending gateway correction. No full integration PASS is claimed.
 
 T23.48/T23.49 remain partial. Scoped production credentials, retained journal IAM/lifecycle, live conditional-write qualification, authoritative T23.50 adoption/fence receipts, reserved-ledger lifecycle settlement, operator activation, actual remote backup/retention/restore qualification and launch/provider gates remain open.
+
+## Review corrections assembled on October 1
+
+The earlier gateway and manifest parser holds have source corrections. Manifest parsing rejects duplicate, unknown and differently cased field aliases, limits bytes and nesting, and publication uses atomic no-replace OS primitives. Unsupported platforms or filesystems fail closed rather than fall back to a replace-capable rename. Independent review of source 8a03db12 clears the bounded backup library, including a real no-replace mutation failure; Linux compile evidence is not live Linux syscall qualification.
+
+Startup propagates its context into provisioning recovery, checks cancellation before handlers are published, and refuses SQL deleting accounts that lack a requested intent in verified complete journal history. The provider-closure startup regression now uses an actual requested event, seal and active successor fixture. These corrections have focused author race evidence, with final integration qualification still pending.
+
+Both hosted backup and restore CLI commands now return ErrStartupUnavailable before filesystem or service I/O. Their former signatures and direct restore path cannot supply the required provenance admission and journal-aware operator coordinator. This restriction is part of the development boundary: no fabricated nil journal, empty build identity, implicit genesis or production credential default is used to make old commands appear operational. The hosted plans command remains available. Production serving already requires a reviewed dependency factory.
+
+The coordinator preserved a worker's accidental source-checkout branch switch without losing source or resetting files; branch refs were reconciled with exact compare-and-swap and the worker moved to its own full external clone. A mistakenly acquired source resource on the build-lease remote was released by its exact owner SHA and reacquired on the canonical source remote. Neither incident is validation evidence.
