@@ -153,7 +153,7 @@ func createPlanWithSync(ctx context.Context, dir string, input PlanInput, syncDi
 
 // LoadPlan reloads the exact hash-named artifact the operator approved. It
 // rejects noncanonical encodings, unsafe files, stale hashes and extra JSON.
-func LoadPlan(ctx context.Context, dir, expectedHash string) (Plan, error) {
+func LoadPlan(ctx context.Context, dir, expectedHash string) (loaded Plan, retErr error) {
 	if err := requireContext(ctx); err != nil {
 		return Plan{}, err
 	}
@@ -170,7 +170,11 @@ func LoadPlan(ctx context.Context, dir, expectedHash string) (Plan, error) {
 	if err != nil {
 		return Plan{}, fmt.Errorf("hosted/recovery: open immutable plan: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("hosted/recovery: close immutable plan: %w", closeErr))
+		}
+	}()
 	info, err := f.Stat()
 	if err != nil {
 		return Plan{}, fmt.Errorf("hosted/recovery: stat immutable plan: %w", err)
