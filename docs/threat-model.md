@@ -375,10 +375,12 @@ erased fact by its opaque id succeeds with `expired: false`; its legacy
 numeric id no longer resolves. Index rebuild keeps no rows for expired or
 erased facts.
 
-The rewrite applies to memory facts forgotten with `forget`; source tombstones
-currently remove source bytes and index rows from the working tree but do not
-rewrite older Git commits. A prior commit can therefore still contain
-tombstoned source bytes. For a local brain with a configured remote, the
+The rewrite applies to memory facts forgotten with `forget` and ordinary
+source tombstones submitted through the serialized writer entry point. It
+removes the target source path from all refs, expires reflogs, and prunes
+unreachable objects while preserving unrelated history. Source deletion is
+an internal API; this does not add a source-delete CLI command. For a local
+brain with a configured remote, the
 post-commit hook pushes the rewritten history with `--force-with-lease` and
 warns that existing clones must be re-cloned. Copies already made outside
 Serenity's control, including user-held clones and exports, cannot be revoked.

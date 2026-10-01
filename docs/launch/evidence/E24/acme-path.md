@@ -12,7 +12,10 @@ Current live Caddy runs as `caddy:caddy`, is active, and uses
 `unix//run/caddy/admin.sock|0600`; the TCP listener query found no port 2019
 listener. Its trusted-proxy ranges match the static Cloudflare list in the
 reviewed Caddyfile. Authoritative range source: https://www.cloudflare.com/ips/
-(the list has not been freshly fetched in this inspection).
+Freshly retrieved https://www.cloudflare.com/ips-v4 and
+https://www.cloudflare.com/ips-v6 on 2026-10-01; all 15 IPv4 and seven IPv6
+ranges match the inspected live trusted-proxy list. This comparison does not
+prove renewal through a restricted security group.
 
 Live app `IPAddressDeny` and backup `OnFailure` are empty. Therefore PR310's
 unit hardening is merged but **not live-qualified**. No configuration change or

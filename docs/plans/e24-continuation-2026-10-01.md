@@ -27,3 +27,33 @@ Reviewed app/backup unit hardening is now installed on the existing host;
 readiness and a cgroup IMDS refusal probe passed. The binary was not replaced.
 See `docs/launch/evidence/E24/unit-hardening-2026-10-01.md`. T24.42 remains
 partial until renewal behind origin lock-down is established.
+
+## Docs-chat live inspection
+
+A read-only Lambda configuration check found the existing docs-chat function
+still uses plaintext `RATE_SALT` and no secret-reference variable. Its last
+reported update is 2026-09-08. Merged T24.27 local code/tests therefore do not
+establish live docs-chat hardening. The secret value was never printed or
+stored in evidence. A scoped, reviewed deployment/migration remains needed;
+no Lambda or secret was changed by this inspection.
+
+## Source and audit follow-ups
+
+Source-history regression independently reproduced on unchanged main7b0baad:
+reachable source history, its old reflog entry, and its old blob survived.
+The writer fix removes all three, preserves unrelated history and supports
+idempotent retries. Author's full writer race suite and coordinator's focused
+race tests pass. The existing supersession cascade must use this serialized
+entry point as well; that integration is in progress. This does not expose a
+new source-delete CLI or MCP verb.
+
+The new partner best-effort audit failure now logs a fixed, sanitized error
+while preserving the successful mutation response. Its regression injects a
+missing audit table and checks that partner/account/secret/database details
+are absent from the diagnostic. It does not invent a successful audit row.
+
+The scoped docs-chat change set was subsequently executed: existing Lambda
+and role updated without replacement; generated RateSaltSecret added. The
+read-only environment check and four live checks passed. The secret adds
+$0.40/month plus retrieval-call charges at published AWS rates. No GitHub
+billing purchase was made. See E24/docs-chat-hardening-2026-10-01.md.

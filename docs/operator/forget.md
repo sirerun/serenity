@@ -17,9 +17,11 @@ Use `serenity forget --help` for the command-line summary. The CLI command
 explains the MCP path and does not directly perform forget; use
 `serenity serve --stdio` or `serenity serve --http` to expose the tool.
 
-This procedure covers memory facts. Source tombstones remove a source from
-the current working tree and search indexes but do not rewrite older Git
-commits, so earlier source bytes can remain in repository history.
+This MCP procedure covers memory facts. The internal serialized source-tombstone
+writer also purges the target source path from Git history, reflogs and
+unreachable objects, alongside removal of current bytes and index rows. It
+preserves unrelated history and supports retries. No source-delete CLI command
+is added by that internal API change.
 
 ## Hosted backups and exports
 
