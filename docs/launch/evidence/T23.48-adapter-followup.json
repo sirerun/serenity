@@ -7,13 +7,16 @@
   "implemented": [
     "Selective port of the historical S3 object-store adapter, hash-chained generation journal, explicit filesystem fake, focused package tests, and opt-in S3 qualification test.",
     "Strict journal-object decoding and validation: canonical JSON with no unknown fields; positive matching coordinates; non-empty writer identity; UTC timestamp; correctly shaped predecessor hash; known entry/seal kind; valid opaque entry payload; and empty deletion payload on seals.",
-    "Resume-watermark validation now rejects an object whose embedded generation/sequence do not match the referenced key, as well as malformed/unknown entries and seals."
+    "Resume-watermark validation now rejects an object whose embedded generation/sequence do not match the referenced key, as well as malformed/unknown entries and seals.",
+    "ReadThrough now rejects any visible same-generation tail after a seal watermark (including malformed objects and delete markers), and fails incomplete when a later generation is visible beyond a missing intermediate generation. Valid contiguous successors remain readable."
   ],
   "verification": {
     "red_baseline": "Before the validator patch, the focused malformed-record tests ran against the original adapter and all five then-present cases failed at runtime: ReadThrough returned nil error for unknown kind, invalid entry payload, malformed seal payload, mismatched resume coordinates, and unknown kind at the resume position.",
     "focused_green": "go test -mod=mod -modfile=/Volumes/BuildOffload/tmp/t23-48-journal-port-20261001/module-proof/verify.mod ./internal/hosted/deletion -run '^TestReadThroughRejectsMalformed' -count=1 passed after the patch; the suite now covers seven malformed zero/resume-watermark cases.",
-    "package_race": "go test -race -mod=mod -modfile=/Volumes/BuildOffload/tmp/t23-48-journal-port-20261001/module-proof/verify.mod -count=1 ./internal/hosted/deletion passed (1.406s).",
-    "aws_calls": "None. SERENITY_T2348_S3_QUALIFY was explicitly empty; TestS3Qualification was skipped."
+    "package_race": "go test -race -mod=mod -modfile=/Volumes/BuildOffload/tmp/t23-48-journal-port-20261001/module-proof/verify.mod -count=1 ./internal/hosted/deletion passed (1.474s).",
+    "aws_calls": "None. SERENITY_T2348_S3_QUALIFY was explicitly empty; TestS3Qualification was skipped.",
+    "seal_and_generation_red_baseline": "Against banked strict-validation commit 82763466b4b33679508350803041b327c458e8f7, runtime regressions reproduced: a valid same-generation post-seal entry was accepted; malformed and delete-marker tails returned incomplete instead of fence-violated; and a visible generation 3 after absent generation 2 was accepted.",
+    "seal_and_generation_green": "Focused regressions plus TestJournalContract passed. Cases cover valid/malformed/delete-marker same-generation tails after a resumed seal; gap detection from zero and from a seal; and valid contiguous successors above configured generation."
   },
   "test_module_file": {
     "path": "/Volumes/BuildOffload/tmp/t23-48-journal-port-20261001/module-proof/verify.mod",
@@ -48,7 +51,8 @@
     "NewAWSJournal still uses the AWS SDK default credential chain. The app service denies IMDS; retain that deny and require a separately reviewed, explicitly scoped credential source before deployment. No credential or IAM workaround is part of this candidate.",
     "T23.54 must provide the dedicated versioned journal bucket, conditional-create policy, deny-delete policy, retained lifecycle configuration, least-privilege IAM, and runtime bucket/region configuration.",
     "T23.47 live billing closure qualification and the T23.50 cross-host activation fence/credential-revocation proof remain independent gates.",
-    "The historical disposable S3 receipt is not re-run or treated as current stack/IAM qualification."
+    "The historical disposable S3 receipt is not re-run or treated as current stack/IAM qualification.",
+    "A visible generation after a missing intermediate generation is rejected. If later configured generations are empty/invisible, ReadThrough returns the older seal it actually reached; this library behavior does not establish that seal as the adopted/current generation for T23.50. Expected-generation adoption remains a separate activation gate."
   ],
   "production_merge_gate": "HOLD: banked candidate only; not merged or accepted"
 }

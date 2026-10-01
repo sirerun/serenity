@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -264,6 +265,40 @@ func (j *Journal) AppendDeletion(ctx context.Context, e contracts.DeletionEntry)
 	return contracts.DeletionEntry{}, lastErr
 }
 
+func (j *Journal) firstVisibleGenerationAfter(ctx context.Context, key string) (int64, bool, error) {
+	keys, _, err := j.store.ListAfter(ctx, "deletion-journal/", key, 1)
+	if err != nil || len(keys) == 0 {
+		return 0, false, err
+	}
+	parts := strings.SplitN(strings.TrimPrefix(keys[0], "deletion-journal/"), "/", 2)
+	if len(parts) != 2 {
+		return 0, false, fmt.Errorf("%w: malformed journal key %q", contracts.ErrDeletionJournalIncomplete, keys[0])
+	}
+	generation, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || generation < 1 || !strings.HasPrefix(keys[0], contracts.JournalPrefix(generation)) {
+		return 0, false, fmt.Errorf("%w: malformed journal generation in key %q", contracts.ErrDeletionJournalIncomplete, keys[0])
+	}
+	return generation, true, nil
+}
+
+func (j *Journal) verifyNoTailAfter(ctx context.Context, generation int64, afterSequence int64, sealed bool) error {
+	startAfter := contracts.JournalPrefix(generation)
+	if afterSequence > 0 {
+		startAfter = contracts.JournalKey(generation, afterSequence)
+	}
+	next, found, err := j.firstVisibleGenerationAfter(ctx, startAfter)
+	if err != nil || !found {
+		return err
+	}
+	if next == generation && sealed {
+		return contracts.ErrDeletionJournalFenceViolated
+	}
+	if next <= generation+1 {
+		return fmt.Errorf("%w: journal changed while reading generation %d", contracts.ErrDeletionJournalIncomplete, generation)
+	}
+	return fmt.Errorf("%w: generation %d has objects after missing generation %d", contracts.ErrDeletionJournalIncomplete, next, generation+1)
+}
+
 func (j *Journal) ReadThrough(ctx context.Context, from contracts.DeletionWatermark) (contracts.DeletionRead, error) {
 	gen, afterSeq, prev := int64(1), int64(0), ""
 	lastSeal := false
@@ -280,6 +315,19 @@ func (j *Journal) ReadThrough(ctx context.Context, from contracts.DeletionWaterm
 			return contracts.DeletionRead{}, contracts.ErrDeletionJournalHistoryMismatch
 		}
 		gen, afterSeq, prev, lastSeal = from.Generation, from.SequenceID, from.EntryHash, obj.Kind == contracts.JournalKindSeal
+		if lastSeal {
+			// A resumed read starts strictly after the watermark, so readGen's
+			// seal check cannot see whether this generation already has a tail.
+			// A sealed generation is terminal: even a malformed object or a
+			// delete marker beyond the seal invalidates the fence.
+			tail, _, tailErr := j.store.ListAfter(ctx, contracts.JournalPrefix(gen), contracts.JournalKey(gen, afterSeq), 1)
+			if tailErr != nil {
+				return contracts.DeletionRead{}, tailErr
+			}
+			if len(tail) > 0 {
+				return contracts.DeletionRead{}, contracts.ErrDeletionJournalFenceViolated
+			}
+		}
 	}
 	if from.IsZero() {
 		var err error
@@ -311,6 +359,13 @@ func (j *Journal) ReadThrough(ctx context.Context, from contracts.DeletionWaterm
 			if len(next) > 0 {
 				return contracts.DeletionRead{}, fmt.Errorf("%w: generation %d has objects but generation %d is not sealed", contracts.ErrDeletionJournalIncomplete, gen+1, gen)
 			}
+			afterSequence := int64(0)
+			if res.To.Generation == gen {
+				afterSequence = res.To.SequenceID
+			}
+			if err := j.verifyNoTailAfter(ctx, gen, afterSequence, false); err != nil {
+				return contracts.DeletionRead{}, err
+			}
 			return res, nil
 		}
 		// Sealed: continue into the successor generation if it has begun.
@@ -319,6 +374,17 @@ func (j *Journal) ReadThrough(ctx context.Context, from contracts.DeletionWaterm
 			return contracts.DeletionRead{}, err
 		}
 		if len(nextObjs) == 0 {
+			afterSequence := int64(0)
+			if res.To.Generation == gen {
+				afterSequence = res.To.SequenceID
+			}
+			if err := j.verifyNoTailAfter(ctx, gen, afterSequence, true); err != nil {
+				return contracts.DeletionRead{}, err
+			}
+			// If a later configured generation is empty, there is no stored
+			// generation-start object to distinguish it from an unused successor.
+			// Return only the watermark reached here; activation must separately
+			// bind that watermark to its adopted generation.
 			return res, nil
 		}
 		gen, afterSeq, prev = gen+1, 0, res.To.EntryHash
