@@ -299,6 +299,7 @@ func TestStartupDeletionClosesBillingBeforePurging(t *testing.T) {
 	for _, unavailable := range []bool{true, false} {
 		t.Run(map[bool]string{true: "unavailable", false: "closed"}[unavailable], func(t *testing.T) {
 			db, cfg, accountID, path := deletionFixture(t)
+			deps := testLifecycleDependenciesWithEntries(t, contracts.DeletionEntry{SubjectType: contracts.DeletionSubjectAccount, SubjectID: accountID, Outcome: contracts.DeletionIntentRequested})
 			if _, err := db.DB().Exec(`UPDATE accounts SET status='deleting',stripe_customer_id='cus_startup' WHERE id=?`, accountID); err != nil {
 				t.Fatal(err)
 			}
@@ -318,7 +319,7 @@ func TestStartupDeletionClosesBillingBeforePurging(t *testing.T) {
 			defer provider.Close()
 			cfg.BillingEnabled = true
 			cfg.billingConfig = &billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}
-			s, err := assembleForTest(t, cfg, true, db, nil, deletionEmbedding{})
+			s, err := AssembleWithDependencies(context.Background(), cfg, true, db, nil, deletionEmbedding{}, deps)
 			if s != nil {
 				defer func() { s.Gateway.Close(); _ = s.Pool.Close() }()
 			}

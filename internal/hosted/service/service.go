@@ -356,6 +356,12 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	if !cutRead.Sealed || !fullRead.Sealed || cutRead.To != fullRead.To {
 		return nil, fmt.Errorf("%w: admitted and complete deletion journal reads do not share a sealed boundary", contracts.ErrDeletionJournalIncomplete)
 	}
+	if err = ctx.Err(); err != nil {
+		return nil, fmt.Errorf("hosted: startup canceled after deletion journal verification: %w", err)
+	}
+	if err = verifyPendingDeletionIntents(ctx, db, fullRead.Entries); err != nil {
+		return nil, err
+	}
 	p, err := pool.New(pool.Config{MaxOpen: cfg.MaxOpen, MaxInFlight: cfg.MaxInFlight, IdleTimeout: 10 * time.Minute, BrainsRoot: filepath.Join(cfg.DataDir, "brains"), Embedder: embedding})
 	if err != nil {
 		return nil, err
@@ -369,9 +375,6 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	}
 	id := &identity.Service{Store: db, Sender: sender, Origin: cfg.PublicOrigin, AccountCap: cfg.AccountCap, RegistrationMode: cfg.RegistrationMode, InviteAllowlist: allowlist}
 	provisioner := &provision.Provisioner{Store: db, BrainsRoot: filepath.Join(cfg.DataDir, "brains")}
-	if err = provisioner.Recover(context.Background()); err != nil {
-		return nil, errors.Join(err, p.Close())
-	}
 	dash := &dashboard.Dashboard{Gateway: g, Identity: id, Provision: provisioner, Issuer: issuer, Meter: metering, Origin: cfg.PublicOrigin, Dev: dev, Billing: cfg.BillingEnabled}
 	s := &Service{Store: db, Pool: p, Gateway: g, journal: deps.Journal, buildSHA: deps.BuildSHA, cfg: cfg, embedder: embedding}
 	if cfg.billingConfig != nil {
@@ -381,6 +384,9 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	}
 	dash.DeleteAccount = s.DeleteAccount
 	if err = s.recoverDeletions(ctx, fullRead.Entries); err != nil {
+		return nil, errors.Join(err, p.Close())
+	}
+	if err = provisioner.Recover(ctx); err != nil {
 		return nil, errors.Join(err, p.Close())
 	}
 	mux := http.NewServeMux()
@@ -407,6 +413,9 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	mux.HandleFunc("GET /readyz", s.readiness)
 	mux.Handle("/", dash.Handler())
+	if err = ctx.Err(); err != nil {
+		return nil, errors.Join(fmt.Errorf("hosted: startup canceled before handler admission: %w", err), p.Close())
+	}
 	s.Handler = mux
 	if s.billingReconciler != nil {
 		s.startBillingReconciler()

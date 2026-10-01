@@ -28,12 +28,21 @@ func (a testRecoveryAdmission) Admit(_ context.Context, journal contracts.Deleti
 }
 
 func testLifecycleDependencies(t *testing.T) LifecycleDependencies {
+	return testLifecycleDependenciesWithEntries(t)
+}
+
+func testLifecycleDependenciesWithEntries(t *testing.T, entries ...contracts.DeletionEntry) LifecycleDependencies {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
 	prior, err := deletion.NewFilesystemJournal(root, "test-prior-writer", 1, time.Now)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if _, err := prior.AppendDeletion(ctx, entry); err != nil {
+			t.Fatalf("append explicit test recovery entry: %v", err)
+		}
 	}
 	seal, err := prior.Seal(ctx, 1)
 	if err != nil {

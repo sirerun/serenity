@@ -4,10 +4,42 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
+	"github.com/sirerun/serenity/internal/hosted/store"
 )
+
+func verifyPendingDeletionIntents(ctx context.Context, db *store.Store, entries []contracts.DeletionEntry) error {
+	if db == nil {
+		return errors.New("hosted: control store is required to verify pending deletion intents")
+	}
+	requested := make(map[string]struct{})
+	for _, entry := range entries {
+		if entry.SubjectType == contracts.DeletionSubjectAccount && entry.Outcome == contracts.DeletionIntentRequested {
+			requested[entry.SubjectID] = struct{}{}
+		}
+	}
+	rows, err := db.DB().QueryContext(ctx, `SELECT id FROM accounts WHERE status='deleting'`)
+	if err != nil {
+		return fmt.Errorf("hosted: inspect pending account deletions: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var accountID string
+		if err := rows.Scan(&accountID); err != nil {
+			return fmt.Errorf("hosted: read pending account deletion: %w", err)
+		}
+		if _, ok := requested[accountID]; !ok {
+			return fmt.Errorf("%w: pending account deletion has no verified journal intent", contracts.ErrDeletionJournalIncomplete)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("hosted: finish pending deletion scan: %w", err)
+	}
+	return nil
+}
 
 // DeleteAccount freezes access before resolving provider closure. Uncertain
 // closure retains the account and brain files for a later deletion retry.
