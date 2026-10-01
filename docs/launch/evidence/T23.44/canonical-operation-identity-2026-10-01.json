@@ -1,0 +1,89 @@
+{
+  "task_id": "T23.44",
+  "profile": "paid",
+  "status": "PARTIAL",
+  "source_sha": "cbc066c30ca1dc289a24ea219579c44d6aa642a9",
+  "recorded_at": "2026-10-01T11:08:00Z",
+  "evidence_level": "local-process",
+  "dependencies": {
+    "T23.41": "c61ab91bb48099dfbfcfec2ee86ea2cd590439c4"
+  },
+  "commands": [
+    "go test ./internal/writer -count=1",
+    "go test -race ./internal/writer -count=1",
+    "go test ./internal/server/memory -count=1",
+    "go test ./internal/store -count=1",
+    "go test ./internal/hosted/gateway -count=1",
+    "git diff --check"
+  ],
+  "cases": {
+    "planned": 4,
+    "executed": 4,
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0,
+    "skip_reasons": []
+  },
+  "acceptance": [
+    {
+      "criterion": "Hosted ledger identity enters the canonical writer before the first source byte",
+      "observed": "Gateway passes a private trusted context callback; MemoryFact invokes EnterCanonical inside Queue.Submit after validation/dedup/cancellation checks. A regression confirms the callback runs before source persistence and that the distinct canonical_operation_id survives source encoding/decoding.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "A refused EnterCanonical leaves no canonical source",
+      "observed": "Writer regression makes the callback return an error and verifies the source store remains empty.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Deterministically malformed remember does not enter canonical state",
+      "observed": "Server-handler regression supplies the private callback with blank fact input and confirms validation returns an error without invoking it. Gateway memory/storage limit checks also precede context callback installation by code inspection; no end-to-end quota route harness was run.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Client cannot choose the canonical operation identity",
+      "observed": "A memory-handler regression supplies canonical_operation_id in the public JSON request and verifies the persisted canonical payload leaves it empty without trusted internal context.",
+      "status": "PASS"
+    },
+    {
+      "criterion": "Full T23.44 recoverable quota accounting and physical storage admission",
+      "observed": "Still partial: production checker/fence/reconciler and hard allocation-based OS staging admission are not implemented in this change.",
+      "status": "BLOCKED"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "internal/hosted/gateway/gateway.go",
+      "sha256": "85cfa52b1fb0375fe621335015883aee7a2c009d6f34262a30859203a0b1059b"
+    },
+    {
+      "path": "internal/server/memory/remember.go",
+      "sha256": "6b03bceb422dca5209d6b32540153cecae5b8bd5f6e3f2966a0f44962f5cbc4d"
+    },
+    {
+      "path": "internal/server/memory/operation_test.go",
+      "sha256": "4a6894deaaba648ab417176fb3f447f367763401534378f8a71eeeb388307c04"
+    },
+    {
+      "path": "internal/store/memoryfact.go",
+      "sha256": "69182d7eeb8380277180e80a4a4dcf8797731504dd6f30773e6c22fb28914f80"
+    },
+    {
+      "path": "internal/writer/canonical_operation.go",
+      "sha256": "d02c06eaa92c99f7776365b9358e3ab8828e0cbb616864ee971f271d9689cb6c"
+    },
+    {
+      "path": "internal/writer/memoryfact.go",
+      "sha256": "9a87646dc817ba328646b1222dc9c88cca4a40e553ea083455d0a7d3a1e311d4"
+    },
+    {
+      "path": "internal/writer/memory_operation_test.go",
+      "sha256": "13e6354626b82445bf9d1544f048dc7f98ab5a12616d7db39496476dd3d97fd9"
+    }
+  ],
+  "limitations": [
+    "Local tests only; no service deployment or provider qualification was performed.",
+    "The writer queue lock covers the source write callback; full brain-fence extent through Git Flush remains for the recovery integration owner.",
+    "This change does not implement period-scoped keys, production reconciliation/admin resolution, full normalized-field fingerprints, or physical storage qualification."
+  ]
+}

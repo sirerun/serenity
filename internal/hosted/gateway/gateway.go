@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -26,6 +27,8 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/operation"
 	"github.com/sirerun/serenity/internal/hosted/pool"
 	"github.com/sirerun/serenity/internal/server/mcp"
+	memoryserver "github.com/sirerun/serenity/internal/server/memory"
+	writerpkg "github.com/sirerun/serenity/internal/writer"
 )
 
 type requestCredentialKey struct{}
@@ -263,6 +266,18 @@ func failureBody(code string, reset time.Time, bucket string) mcp.Result {
 	b, _ := json.Marshal(body)
 	return mcp.Result{IsError: true, Content: []mcp.Content{{Type: "text", Text: string(b)}}}
 }
+
+func rememberValidationFailure(validation memoryserver.VerbError) (mcp.Result, error) {
+	body, err := json.Marshal(validation)
+	if err != nil {
+		return mcp.Result{}, fmt.Errorf("encode remember validation failure: %w", err)
+	}
+	return mcp.Result{
+		IsError: true,
+		Content: []mcp.Content{{Type: "text", Text: string(body)}},
+	}, nil
+}
+
 func (g *Gateway) call(ctx context.Context, raw, name string, args json.RawMessage) (result mcp.Result, err error) {
 	binding, err := g.Issuer.Verify(ctx, raw)
 	if err != nil {
@@ -390,12 +405,33 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 					return result, e
 				}
 			}
-			fingerprint, e := contracts.RequestFingerprint("remember", []contracts.FingerprintField{{Name: "brain", Value: []byte(binding.BrainID)}, {Name: "fact", Value: []byte(input.Fact)}})
+			normalized, validation, invalid := memoryserver.NormalizeRememberRequest(args, time.Now())
+			if invalid {
+				return rememberValidationFailure(validation)
+			}
+			ttl := ""
+			if normalized.ValidUntil != nil {
+				ttl = normalized.ValidUntil.UTC().Format(time.RFC3339Nano)
+			}
+			fingerprintFields := []contracts.FingerprintField{
+				{Name: "brain", Value: []byte(binding.BrainID)},
+				{Name: "fact", Value: []byte(normalized.Fact)},
+				{Name: "provenance", Value: []byte(normalized.Provenance)},
+				{Name: "visibility", Value: []byte(normalized.Visibility)},
+				{Name: "ttl", Value: []byte(ttl)},
+				{Name: "entity_type", Value: []byte(normalized.EntityType)},
+				{Name: "entity_slug", Value: []byte(normalized.EntitySlug)},
+				{Name: "kind", Value: []byte(normalized.Kind)},
+			}
+			fingerprint, e := contracts.RequestFingerprint("remember", fingerprintFields)
 			if e != nil {
 				return result, e
 			}
 			operationRecord, e = g.Operations.Reserve(ctx, contracts.ReserveRequest{AccountID: binding.AccountID, BrainID: binding.BrainID, ClientKey: clientKey, Fingerprint: fingerprint, QuotaPeriod: entitlement.Window, Source: "gateway.remember", LeaseFor: 5 * time.Minute, Deltas: []contracts.ReserveDelta{{Metric: "writes", Units: 1, Limit: entitlement.Plan.Writes}, {Metric: "input_tokens", Units: int64(count), Limit: entitlement.Plan.InputTokens}}})
 			if e != nil {
+				if errors.Is(e, contracts.ErrOperationKeyReuse) {
+					return rememberValidationFailure(memoryserver.RememberOperationConflict())
+				}
 				if errors.Is(e, contracts.ErrOperationLimitExceeded) {
 					return limitFailure(entitlement.ResetAt, entitlement.Bucket), nil
 				}
@@ -432,10 +468,6 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 					_, finishErr := g.Operations.Finalize(finishCtx, operationRecord.ID, final, evidence)
 					err = errors.Join(err, finishErr)
 				}()
-				if _, e = g.Operations.EnterCanonical(ctx, operationRecord.ID); e != nil {
-					return result, e
-				}
-				operationEntered = true
 			}
 		}
 		if !reservation.Replay && (inventory.Memories >= memoryLimit || inventory.StorageBytes >= storageLimit) {
@@ -448,6 +480,21 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		if tool.Name == name {
 			callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			defer cancel()
+			if name == "remember" && operationRecord.ID != "" && g.Operations != nil {
+				callCtx = writerpkg.WithCanonicalOperation(callCtx, writerpkg.CanonicalOperation{
+					ID: operationRecord.ID,
+					BeforeCommit: func(commitCtx context.Context, operationID string) error {
+						if operationID != operationRecord.ID {
+							return errors.New("hosted: canonical operation identity changed")
+						}
+						if _, enterErr := g.Operations.EnterCanonical(commitCtx, operationRecord.ID); enterErr != nil {
+							return enterErr
+						}
+						operationEntered = true
+						return nil
+					},
+				})
+			}
 			result, err = tool.Handler(callCtx, args)
 			if (name == "remember" || name == "forget") && err == nil && !result.IsError {
 				// Acknowledged writes must already be in the canonical bundle,

@@ -148,7 +148,7 @@ var (
 	// ErrOperationNotFound: no row has this internal ID.
 	ErrOperationNotFound = errors.New("hosted/contracts: operation not found")
 	// ErrOperationInProgress: a live reserved row already holds this
-	// (account, brain, client key). The caller must retry later, not charge.
+	// (account, brain, quota period, client key). The caller must retry later, not charge.
 	ErrOperationInProgress = errors.New("hosted/contracts: operation is in progress")
 	// ErrOperationPendingReview: the row holding this client key is in
 	// pending_review. A retry is refused until an operator resolves it, so a
@@ -241,7 +241,7 @@ type OperationDelta struct {
 }
 
 // OperationRecord is one durable journal row. ClientKey is the optional
-// caller-supplied retry key, scoped to (AccountID, BrainID). A record that is
+// caller-supplied retry key, scoped to (AccountID, BrainID, QuotaPeriod). A record that is
 // already Committed under the same ClientKey is returned by Reserve as a
 // replay; it never charges twice.
 type OperationRecord struct {

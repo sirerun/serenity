@@ -6,11 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"time"
-	"unicode/utf8"
 
 	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/server/mcp"
-	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
 )
 
@@ -66,57 +64,10 @@ func (h *Handlers) rememberTool() mcp.Tool {
 // automatic accepted domain.Claim (memory-compat-mapping.md: "never
 // automatic accepted belief").
 func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, bool, error) {
-	var req rememberRequest
-	if err := json.Unmarshal(args, &req); err != nil {
-		return verbError(ErrCodeInvalidParams, "remember: malformed request", "send a JSON object with \"fact\" and \"provenance\" strings"), true, nil
-	}
-	if !store.ValidMemoryOperationKey(req.OperationKey) {
-		return verbError(ErrCodeInvalidParams, "remember: invalid operation_key", "use at most 128 ASCII letters, digits, dot, colon, underscore or hyphen"), true, nil
-	}
-	if req.OperationKey != "" && ttlDurationPattern.MatchString(req.TTL) {
-		return verbError(ErrCodeInvalidParams, "remember: keyed TTL must be absolute", "use a fixed ISO 8601 timestamp or omit ttl so retries do not move expiry"), true, nil
-	}
-	fact := req.Fact
-	if trimmed(fact) == "" {
-		return verbError(ErrCodeInvalidParams, "remember: fact must be a non-empty string", "pass the claim to remember, e.g. fact: \"picked Stripe over Adyen -- onboarding speed\""), true, nil
-	}
-	provenance := req.Provenance
-	if trimmed(provenance) == "" {
-		return verbError(ErrCodeProvenanceRequired, "remember: provenance is required and must be non-empty", "pass where the fact came from, e.g. provenance: \"user told me, 2026-06-12\" or \"import: notes.md\""), true, nil
-	}
-	if utf8.RuneCountInString(provenance) > provenanceMaxChars {
-		return verbError(ErrCodeInvalidParams, fmt.Sprintf("remember: provenance exceeds %d chars (got %d)", provenanceMaxChars, utf8.RuneCountInString(provenance)), "shorten the attribution -- provenance is a pointer, not a transcript"), true, nil
-	}
-
-	kind := req.Kind
-	if kind == "" {
-		kind = string(store.MemoryFactKindFact)
-	}
-	if !store.ValidMemoryFactKind(kind) {
-		return verbError(ErrCodeInvalidParams, fmt.Sprintf("remember: kind %q is not a fact kind", kind), "use one of: event | preference | commitment | belief | fact"), true, nil
-	}
-
-	visibility := req.Visibility
-	if visibility == "" {
-		visibility = string(store.MemoryVisibilityWorld)
-	}
-	if visibility != string(store.MemoryVisibilityWorld) && visibility != string(store.MemoryVisibilityPrivate) {
-		return verbError(ErrCodeInvalidParams, fmt.Sprintf("remember: visibility %q is not valid", visibility), "use \"world\" (default -- agents can recall it) or \"private\" (local CLI reads only)"), true, nil
-	}
-
 	now := h.deps.now()
-	validUntil, err := parseTTL(req.TTL, now)
-	if err != nil {
-		return verbError(ErrCodeInvalidParams, "remember: "+err.Error(), "use duration shorthand (\"30d\", \"12h\", \"45m\") or an absolute ISO 8601 timestamp (\"2026-07-12T00:00:00Z\"), never an ISO-8601 duration like \"P30D\""), true, nil
-	}
-
-	var entitySlug, entityType string
-	if req.Entity != "" {
-		t, s, ok := canonicalEntityRef(req.Entity)
-		if !ok {
-			return verbError(ErrCodeInvalidParams, "remember: entity is not a valid reference", "pass a plain name or a \"type/slug\" reference with no path separators beyond the one splitting them"), true, nil
-		}
-		entityType, entitySlug = t, s
+	input, validation, invalid := NormalizeRememberRequest(args, now)
+	if invalid {
+		return validation, true, nil
 	}
 
 	writerID := LocalWriter
@@ -124,22 +75,22 @@ func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, boo
 		writerID = p.ID
 	}
 	mw := h.deps.memoryWriter()
-	result, err := mw.Remember(writer.RememberInput{
-		OperationKey: req.OperationKey,
-		Fact:         fact,
-		Provenance:   provenance,
-		EntitySlug:   entitySlug,
-		EntityType:   entityType,
-		Kind:         store.MemoryFactKind(kind),
-		Visibility:   store.MemoryVisibility(visibility),
-		ValidUntil:   validUntil,
+	result, err := mw.RememberContext(ctx, writer.RememberInput{
+		OperationKey: input.OperationKey,
+		Fact:         input.Fact,
+		Provenance:   input.Provenance,
+		EntitySlug:   input.EntitySlug,
+		EntityType:   input.EntityType,
+		Kind:         input.Kind,
+		Visibility:   input.Visibility,
+		ValidUntil:   input.ValidUntil,
 		Writer:       writerID,
 	}, now)
 	if errors.Is(err, writer.ErrMemoryOperationCanceled) {
 		return verbError(ErrCodeOperationCanceled, "remember: operation was canceled, or its fact was forgotten", "do not retry a withdrawn operation with another key"), true, nil
 	}
 	if errors.Is(err, writer.ErrMemoryOperationConflict) {
-		return verbError(ErrCodeOperationConflict, "remember: operation_key already has different input", "retry the original payload; use a new key only for a genuinely new operation"), true, nil
+		return RememberOperationConflict(), true, nil
 	}
 	if err != nil {
 		return nil, false, fmt.Errorf("remember: %w", err)

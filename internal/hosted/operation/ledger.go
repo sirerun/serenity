@@ -77,7 +77,7 @@ func (l *Ledger) Reserve(ctx context.Context, req contracts.ReserveRequest) (out
 	now := l.now()
 	err = l.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		if req.ClientKey != "" {
-			row := tx.QueryRowContext(ctx, recordSelect+` WHERE account_id=? AND brain_id=? AND client_key=? AND phase<>'released' ORDER BY created_at LIMIT 1`, req.AccountID, req.BrainID, req.ClientKey)
+			row := tx.QueryRowContext(ctx, recordSelect+` WHERE account_id=? AND brain_id=? AND quota_period=? AND client_key=? AND phase<>'released' ORDER BY created_at LIMIT 1`, req.AccountID, req.BrainID, req.QuotaPeriod, req.ClientKey)
 			existing, e := scanRecord(row)
 			if e == nil {
 				if existing.Fingerprint != req.Fingerprint || existing.Source != req.Source {

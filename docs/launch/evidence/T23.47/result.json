@@ -119,5 +119,36 @@
   "binary_sha256": null,
   "configuration_sha256": null,
   "corpus_sha256": null,
-  "provider": null
+  "provider": null,
+  "follow_up": {
+    "source_sha": "c4c3d23f5a317bccef52123866e8db0b573fd82b",
+    "recorded_at": "2026-10-01",
+    "status": "PARTIAL",
+    "commands": [
+      "go test -count=1 ./internal/hosted/billing -run 'Test(ReconcilePriorSubscriptionReadFailureRollsBackRenewal|WebhookPriorSubscriptionReadFailureLeavesEventRetryable|ReadPriorSubscriptionAllowsOnlyMissingRow|ReconcileReturnsExpiredGraceDeadlineFromTransaction)$'",
+      "go test -race -count=1 ./internal/hosted/billing",
+      "golangci-lint run ./internal/hosted/billing"
+    ],
+    "cases": {
+      "focused_planned": 4,
+      "focused_executed": 4,
+      "focused_passed": 4,
+      "focused_failed": 0
+    },
+    "observed": [
+      "Both transaction prior-state reads now treat only sql.ErrNoRows as an absent row; other read errors return a typed persistedBillingReadError and abort transaction writes.",
+      "SQLite-backed reconcile and webhook fixtures inject statement-level read failures at a per-Service seam. They verify no subscription/window or closure/reconcile audit mutation; webhook receipt remains unprocessed for retry. The fault is injected; this is not a simulated disk or SQLite engine I/O failure.",
+      "The reconcile grace result now uses the deadline computed inside its transaction, removing the fallible post-commit SELECT. Fixture verifies an expired but nonzero provider-derived deadline is returned exactly.",
+      "The earlier invoice-bound event-clock correction and order-convergence test remain local fixture evidence only; no live Stripe or portal qualification was run."
+    ],
+    "remaining": [
+      "T23.47 remains PARTIAL: hosted service/deletion assembly does not call ReconcileCustomer or CloseBillingAccount; the dashboard still uses the legacy CancelAccount adapter.",
+      "Automatic checkout recovery, full provider lifecycle/portal settings and proration, and live Stripe qualification remain open. Historical receipt acceptance entries are retained above and are not retroactively rewritten."
+    ],
+    "base_sha": "42f6dfd8615b193fffb797175daf4b5f5d02dc94",
+    "artifacts": {
+      "internal/hosted/billing/billing.go": "d266bb05b5160aafedb28b9a6d71bc73fe811ff325ed940c391a1a01d15c8694",
+      "internal/hosted/billing/persisted_read_errors_test.go": "a25b3eb47398d672a4397acb21e16ecbc3fbc81006f0fcbd51013dfa0da724d8"
+    }
+  }
 }
