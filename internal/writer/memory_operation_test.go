@@ -1,6 +1,7 @@
 package writer
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -8,6 +9,62 @@ import (
 
 	"github.com/sirerun/serenity/internal/store"
 )
+
+func TestCanonicalOperationEntersInsideQueueBeforeSourceWrite(t *testing.T) {
+	sources := store.NewSourceStore(t.TempDir())
+	q := NewQueue(nil)
+	defer q.Close()
+	w := MemoryFact{Queue: q, Sources: sources}
+	var entered bool
+	opID := "fedcba9876543210"
+	ctx := WithCanonicalOperation(context.Background(), CanonicalOperation{
+		ID: opID,
+		BeforeCommit: func(_ context.Context, got string) error {
+			if got != opID {
+				t.Fatalf("operation ID = %q, want %q", got, opID)
+			}
+			if all, err := sources.All(); err != nil || len(all) != 0 {
+				t.Fatalf("source write preceded EnterCanonical: facts=%d err=%v", len(all), err)
+			}
+			entered = true
+			return nil
+		},
+	})
+	result, err := w.RememberContext(ctx, RememberInput{Fact: "remembered", Provenance: "test", Kind: store.MemoryFactKindFact, Visibility: store.MemoryVisibilityWorld}, time.Now())
+	if err != nil || !entered {
+		t.Fatalf("RememberContext: entered=%v err=%v", entered, err)
+	}
+	if result.Record.Payload.CanonicalOperationID != opID {
+		t.Fatalf("canonical operation ID = %q", result.Record.Payload.CanonicalOperationID)
+	}
+	data, _, err := sources.Read(result.Record.SHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := store.DecodeMemoryFact(data)
+	if err != nil || decoded.CanonicalOperationID != opID {
+		t.Fatalf("stored canonical operation ID = %q, err=%v", decoded.CanonicalOperationID, err)
+	}
+}
+
+func TestCanonicalOperationCallbackFailureWritesNoSource(t *testing.T) {
+	sources := store.NewSourceStore(t.TempDir())
+	q := NewQueue(nil)
+	defer q.Close()
+	w := MemoryFact{Queue: q, Sources: sources}
+	wantErr := errors.New("ledger refused operation")
+	ctx := WithCanonicalOperation(context.Background(), CanonicalOperation{
+		ID:           "fedcba9876543210",
+		BeforeCommit: func(context.Context, string) error { return wantErr },
+	})
+	_, err := w.RememberContext(ctx, RememberInput{Fact: "must not land", Provenance: "test", Kind: store.MemoryFactKindFact, Visibility: store.MemoryVisibilityWorld}, time.Now())
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("RememberContext err = %v", err)
+	}
+	if all, err := sources.All(); err != nil || len(all) != 0 {
+		t.Fatalf("source persisted after callback refusal: facts=%d err=%v", len(all), err)
+	}
+}
 
 func TestMemoryOperationRecoverySurvivesWithdrawalAndRestart(t *testing.T) {
 	sources := store.NewSourceStore(t.TempDir())

@@ -80,18 +80,19 @@ const (
 // object of its own, and this payload never becomes one (mapping doc:
 // "never automatic accepted belief").
 type MemoryFactPayload struct {
-	OperationKey  string           `json:"operation_key,omitempty"`
-	FormatVersion int              `json:"format_version"`
-	RecordType    string           `json:"record_type"` // always "memory_fact"
-	LegacyID      int64            `json:"legacy_id"`
-	Fact          string           `json:"fact"`
-	Provenance    string           `json:"provenance"`
-	EntitySlug    string           `json:"entity_slug,omitempty"`
-	EntityType    string           `json:"entity_type,omitempty"`
-	Kind          MemoryFactKind   `json:"kind"`
-	Visibility    MemoryVisibility `json:"visibility"`
-	CreatedAt     time.Time        `json:"created_at"`
-	ValidUntil    *time.Time       `json:"valid_until,omitempty"`
+	OperationKey         string           `json:"operation_key,omitempty"`
+	CanonicalOperationID string           `json:"canonical_operation_id,omitempty"`
+	FormatVersion        int              `json:"format_version"`
+	RecordType           string           `json:"record_type"` // always "memory_fact"
+	LegacyID             int64            `json:"legacy_id"`
+	Fact                 string           `json:"fact"`
+	Provenance           string           `json:"provenance"`
+	EntitySlug           string           `json:"entity_slug,omitempty"`
+	EntityType           string           `json:"entity_type,omitempty"`
+	Kind                 MemoryFactKind   `json:"kind"`
+	Visibility           MemoryVisibility `json:"visibility"`
+	CreatedAt            time.Time        `json:"created_at"`
+	ValidUntil           *time.Time       `json:"valid_until,omitempty"`
 }
 
 // MemoryExpiryPayload is the canonical JSON document for a forget/expiry
@@ -194,6 +195,9 @@ func ValidMemoryOperationKey(key string) bool {
 func validateMemoryFact(p MemoryFactPayload) error {
 	if !ValidMemoryOperationKey(p.OperationKey) {
 		return fmt.Errorf("store: invalid memory operation key")
+	}
+	if !ValidMemoryOperationKey(p.CanonicalOperationID) {
+		return fmt.Errorf("store: invalid canonical operation ID")
 	}
 
 	if p.RecordType != SourceKindMemoryFact || p.FormatVersion != MemoryFactFormatVersion {

@@ -26,6 +26,7 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/operation"
 	"github.com/sirerun/serenity/internal/hosted/pool"
 	"github.com/sirerun/serenity/internal/server/mcp"
+	writerpkg "github.com/sirerun/serenity/internal/writer"
 )
 
 type requestCredentialKey struct{}
@@ -432,10 +433,6 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 					_, finishErr := g.Operations.Finalize(finishCtx, operationRecord.ID, final, evidence)
 					err = errors.Join(err, finishErr)
 				}()
-				if _, e = g.Operations.EnterCanonical(ctx, operationRecord.ID); e != nil {
-					return result, e
-				}
-				operationEntered = true
 			}
 		}
 		if !reservation.Replay && (inventory.Memories >= memoryLimit || inventory.StorageBytes >= storageLimit) {
@@ -448,6 +445,21 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		if tool.Name == name {
 			callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			defer cancel()
+			if name == "remember" && operationRecord.ID != "" && g.Operations != nil {
+				callCtx = writerpkg.WithCanonicalOperation(callCtx, writerpkg.CanonicalOperation{
+					ID: operationRecord.ID,
+					BeforeCommit: func(commitCtx context.Context, operationID string) error {
+						if operationID != operationRecord.ID {
+							return errors.New("hosted: canonical operation identity changed")
+						}
+						if _, enterErr := g.Operations.EnterCanonical(commitCtx, operationRecord.ID); enterErr != nil {
+							return enterErr
+						}
+						operationEntered = true
+						return nil
+					},
+				})
+			}
 			result, err = tool.Handler(callCtx, args)
 			if (name == "remember" || name == "forget") && err == nil && !result.IsError {
 				// Acknowledged writes must already be in the canonical bundle,

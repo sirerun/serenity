@@ -82,6 +82,12 @@ type RememberResult struct {
 // Remember writes fact as a new canonical memory_fact source (or resolves
 // it to an existing exact duplicate), fully inside one Queue.Submit call.
 func (w *MemoryFact) Remember(input RememberInput, now time.Time) (RememberResult, error) {
+	return w.RememberContext(context.Background(), input, now)
+}
+
+// RememberContext carries trusted operation metadata through the serialized
+// queue job without exposing it to request decoding or client operation keys.
+func (w *MemoryFact) RememberContext(ctx context.Context, input RememberInput, now time.Time) (RememberResult, error) {
 	if w.Queue == nil || w.Sources == nil {
 		return RememberResult{}, fmt.Errorf("writer: memory writer dependencies unavailable")
 	}
@@ -89,7 +95,7 @@ func (w *MemoryFact) Remember(input RememberInput, now time.Time) (RememberResul
 	var innerErr error
 	res := w.Queue.Submit(Job{
 		Render: func() ([]byte, error) {
-			result, innerErr = w.rememberLocked(input, now)
+			result, innerErr = w.rememberLocked(ctx, input, now, canonicalOperationFromContext(ctx))
 			return nil, innerErr
 		},
 	})
@@ -102,7 +108,7 @@ func (w *MemoryFact) Remember(input RememberInput, now time.Time) (RememberResul
 // rememberLocked runs only from inside the queue's drain goroutine (via
 // Remember's Job.Render) -- the single-writer window every allocation and
 // dedup decision in this method depends on.
-func (w *MemoryFact) rememberLocked(input RememberInput, now time.Time) (RememberResult, error) {
+func (w *MemoryFact) rememberLocked(ctx context.Context, input RememberInput, now time.Time, operation CanonicalOperation) (RememberResult, error) {
 	if !store.ValidMemoryOperationKey(input.OperationKey) {
 		return RememberResult{}, fmt.Errorf("writer: invalid memory operation key")
 	}
@@ -140,19 +146,28 @@ func (w *MemoryFact) rememberLocked(input RememberInput, now time.Time) (Remembe
 	if err != nil {
 		return RememberResult{}, err
 	}
+	if operation.ID != "" {
+		if !store.ValidMemoryOperationKey(operation.ID) || operation.BeforeCommit == nil {
+			return RememberResult{}, fmt.Errorf("writer: invalid canonical operation metadata")
+		}
+		if err := operation.BeforeCommit(ctx, operation.ID); err != nil {
+			return RememberResult{}, err
+		}
+	}
 	payload := store.MemoryFactPayload{
-		OperationKey:  input.OperationKey,
-		FormatVersion: store.MemoryFactFormatVersion,
-		RecordType:    store.SourceKindMemoryFact,
-		LegacyID:      legacyID,
-		Fact:          input.Fact,
-		Provenance:    input.Provenance,
-		EntitySlug:    input.EntitySlug,
-		EntityType:    input.EntityType,
-		Kind:          input.Kind,
-		Visibility:    input.Visibility,
-		CreatedAt:     now,
-		ValidUntil:    input.ValidUntil,
+		OperationKey:         input.OperationKey,
+		CanonicalOperationID: operation.ID,
+		FormatVersion:        store.MemoryFactFormatVersion,
+		RecordType:           store.SourceKindMemoryFact,
+		LegacyID:             legacyID,
+		Fact:                 input.Fact,
+		Provenance:           input.Provenance,
+		EntitySlug:           input.EntitySlug,
+		EntityType:           input.EntityType,
+		Kind:                 input.Kind,
+		Visibility:           input.Visibility,
+		CreatedAt:            now,
+		ValidUntil:           input.ValidUntil,
 	}
 	written, err := w.Sources.WriteMemoryFactBy(payload, input.Writer)
 	if written.SHA256 != "" {

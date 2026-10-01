@@ -124,7 +124,7 @@ func (h *Handlers) remember(ctx context.Context, args json.RawMessage) (any, boo
 		writerID = p.ID
 	}
 	mw := h.deps.memoryWriter()
-	result, err := mw.Remember(writer.RememberInput{
+	result, err := mw.RememberContext(ctx, writer.RememberInput{
 		OperationKey: req.OperationKey,
 		Fact:         fact,
 		Provenance:   provenance,
