@@ -31,7 +31,7 @@ func newReconcileService(t *testing.T, provider http.Handler) (*Service, *store.
 	}
 	server := httptest.NewServer(provider)
 	cfg := Config{
-		DataDir: t.TempDir(), MaxOpen: 2, MaxInFlight: 4,
+		DataDir: t.TempDir(), MaxOpen: 2, MaxInFlight: 4, PublicOrigin: "http://127.0.0.1",
 		billingConfig: &billing.Config{BaseURL: server.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"},
 	}
 	svc, err := Assemble(cfg, true, db, nil, deletionEmbedding{})
@@ -108,7 +108,7 @@ func TestBillingReconcileWorkerDoesNotCallProviderWhenDisabled(t *testing.T) {
 	if _, err = db.DB().Exec(`UPDATE accounts SET stripe_customer_id='cus_worker' WHERE id=?`, account.ID); err != nil {
 		t.Fatal(err)
 	}
-	svc, err := Assemble(Config{DataDir: t.TempDir(), MaxOpen: 2, MaxInFlight: 4}, true, db, nil, deletionEmbedding{})
+	svc, err := Assemble(Config{DataDir: t.TempDir(), MaxOpen: 2, MaxInFlight: 4, PublicOrigin: "http://127.0.0.1"}, true, db, nil, deletionEmbedding{})
 	if err != nil {
 		t.Fatal(err)
 	}
