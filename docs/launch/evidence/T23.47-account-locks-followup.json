@@ -13,13 +13,15 @@
     "A canceled lock waiter returns promptly, preserves an entry still held by another caller, and idle entries are reclaimed."
   ],
   "validation": {
-    "status": "pending",
-    "tests": "Not yet run. The exact billing package checks and race checks will be recorded after the write claim is released."
+    "status": "passed",
+    "command": "env GOMODCACHE=/Volumes/BuildOffload/go/pkg/mod GOCACHE=/Volumes/BuildOffload/go-build TMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-locks-20261001 go test -race -count=1 ./internal/hosted/billing",
+    "result": "passed (6.209s) after narrowing the webhook ordering assertion to persisted subscription status; no provider calls outside httptest fakes."
   },
   "remaining": [
     "No service/dashboard/gateway assembly changes are included.",
     "Provider rate limiting and lock behavior across multiple service processes remain separate concerns.",
-    "No live provider calls or live acceptance qualification were performed."
+    "No live provider calls or live acceptance qualification were performed.",
+    "Independent projection observation: webhook currently assigns account plan from provider price for every status when account is active, while meter entitlement requires active/trialing with a future period end or past_due with future grace. The race fixture observed canceled subscription status with account plan still builder. This separate correction is tracked outside the account-lock implementation commit."
   ],
   "merge_status": "banked candidate only; not merged or accepted"
 }
