@@ -56,6 +56,16 @@ func New(cfg Config) (*Pool, error) {
 	}
 	return &Pool{cfg: cfg, open: map[string]*Runtime{}}, nil
 }
+
+// BrainsRoot returns the configured root used by this pool to open brain
+// runtimes. It exposes the immutable configuration value for preflight checks.
+func (p *Pool) BrainsRoot() string {
+	if p == nil {
+		return ""
+	}
+	return p.cfg.BrainsRoot
+}
+
 func (p *Pool) Acquire(ctx context.Context, id string) (*Runtime, func(), error) {
 	if !p.mu.TryLock() {
 		return nil, nil, ErrCapacity
