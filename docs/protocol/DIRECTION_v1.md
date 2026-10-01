@@ -152,6 +152,7 @@ effect payload; its business validation runs at accept-time.
 |---|---|---|---|
 | `error` | string (enum, below) | yes | |
 | `message` | string | yes | |
+| `provider_status` | integer | no | Provider HTTP status, when a `provider_error` includes one. |
 
 Error codes:
 
@@ -162,6 +163,7 @@ Error codes:
 | `invalid_action` | 400 | An `actions[]` entry names an action outside the closed action set. |
 | `invalid_kind` | 400 | `propose`'s `kind` is not `precept_draft` or `effect`. |
 | `invalid_payload` | 400 | `propose`'s `payload` is missing, empty, or fails kind-specific validation. |
+| `provider_error` | 502 | Model provider failure; `provider_status` records its HTTP status when available. |
 | `internal_error` | 500 | An unclassified internal failure (e.g. a ledger read failure, a malformed `applies_when` clause on an active constraint). |
 
 ## Consumer surfaces
