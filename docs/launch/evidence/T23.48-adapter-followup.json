@@ -22,7 +22,16 @@
     "path": "/Volumes/BuildOffload/tmp/t23-48-journal-port-20261001/module-proof/verify.mod",
     "sha256_after_test": "e24229b735d4dfd1abe085357b25069cbe4a5d353b7e79218b3e9135852e94ce"
   },
-  "module_requirements_not_applied": {
+  "remaining": [
+    "Current main service/gateway/backup and partner-aware assembly wiring is untouched; integrate only after coordinator review and preserve current contracts and billing interfaces.",
+    "NewAWSJournal still uses the AWS SDK default credential chain. The app service denies IMDS; retain that deny and require a separately reviewed, explicitly scoped credential source before deployment. No credential or IAM workaround is part of this candidate.",
+    "T23.54 must provide the dedicated versioned journal bucket, conditional-create policy, deny-delete policy, retained lifecycle configuration, least-privilege IAM, and runtime bucket/region configuration.",
+    "T23.47 live billing closure qualification and the T23.50 cross-host activation fence/credential-revocation proof remain independent gates.",
+    "The historical disposable S3 receipt is not re-run or treated as current stack/IAM qualification.",
+    "A visible generation after a missing intermediate generation is rejected. If later configured generations are empty/invisible, ReadThrough returns the older seal it actually reached; this library behavior does not establish that seal as the adopted/current generation for T23.50. Expected-generation adoption remains a separate activation gate."
+  ],
+  "production_merge_gate": "Unused library merge cleared by independent review and local validation. HOLD production assembly, AWS qualification and deployment until scoped credentials, retained bucket/IAM and authoritative adopted-generation recovery proof are qualified.",
+  "module_requirements": {
     "direct": [
       "github.com/aws/aws-sdk-go-v2 v1.47.1",
       "github.com/aws/aws-sdk-go-v2/config v1.33.6",
@@ -44,15 +53,15 @@
       "github.com/aws/aws-sdk-go-v2/service/sso v1.38.1",
       "github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.1",
       "github.com/aws/aws-sdk-go-v2/service/sts v1.51.1"
-    ]
+    ],
+    "coordinator_applied_revision": "ad3394d"
   },
-  "remaining": [
-    "Current main service/gateway/backup and partner-aware assembly wiring is untouched; integrate only after coordinator review and preserve current contracts and billing interfaces.",
-    "NewAWSJournal still uses the AWS SDK default credential chain. The app service denies IMDS; retain that deny and require a separately reviewed, explicitly scoped credential source before deployment. No credential or IAM workaround is part of this candidate.",
-    "T23.54 must provide the dedicated versioned journal bucket, conditional-create policy, deny-delete policy, retained lifecycle configuration, least-privilege IAM, and runtime bucket/region configuration.",
-    "T23.47 live billing closure qualification and the T23.50 cross-host activation fence/credential-revocation proof remain independent gates.",
-    "The historical disposable S3 receipt is not re-run or treated as current stack/IAM qualification.",
-    "A visible generation after a missing intermediate generation is rejected. If later configured generations are empty/invisible, ReadThrough returns the older seal it actually reached; this library behavior does not establish that seal as the adopted/current generation for T23.50. Expected-generation adoption remains a separate activation gate."
-  ],
-  "production_merge_gate": "HOLD: banked candidate only; not merged or accepted"
+  "coordinator_gate": {
+    "source": "665e891d1ae997fc3ca84b9907edacea8a286c59",
+    "race": "PASS: 79 tested packages; five packages without tests; seven explicit gated test skips including S3 qualification",
+    "vet": "PASS",
+    "lint": "PASS: 0 issues",
+    "module_integrity": "go mod verify PASS",
+    "independent_review": "99fb0e7a33ef4f374f3e0036449231198c641439; no adapter blocker, unused library only"
+  }
 }
