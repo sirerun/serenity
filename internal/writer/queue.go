@@ -33,6 +33,12 @@ type Job struct {
 	Kind   string
 	Path   string
 	Render func() ([]byte, error)
+	// AfterGuard runs on the drain goroutine after the shared commit guard is
+	// released, while runMu still serializes later queue jobs and Flush, and
+	// before the queue hook. It is for ordered derived work such as index
+	// cleanup; it runs even if Render failed so a caller can clean up after a
+	// partial mutation. It must not call back into this Queue.
+	AfterGuard func() error
 }
 
 // kind is the diagnostic name used in a PanicError: Kind, else Path, else
@@ -120,6 +126,7 @@ type submitted struct {
 	flushRoot string
 	flushCtx  context.Context
 	flush     bool
+	canonical bool
 	state     *submissionState
 	reply     chan submitResponse
 }
@@ -178,7 +185,7 @@ func NewQueue(hook func(Result)) *Queue {
 func (q *Queue) drain() {
 	defer q.wg.Done()
 	for s := range q.jobs {
-		if s.flush && !s.state.begin() {
+		if (s.flush || s.canonical) && !s.state.begin() {
 			res := Result{Job: s.job, Seq: s.seq, Err: s.flushCtx.Err()}
 			if res.Err == nil {
 				res.Err = context.Canceled
@@ -192,7 +199,7 @@ func (q *Queue) drain() {
 		var committed bool
 		var leaveCommit func()
 		var err error
-		if s.flush {
+		if s.flush || s.canonical {
 			leaveCommit, err = q.EnterCommit(s.flushCtx)
 		}
 		if err != nil {
@@ -203,7 +210,7 @@ func (q *Queue) drain() {
 			s.reply <- submitResponse{result: res}
 			continue
 		}
-		if s.flush {
+		if s.flush || s.canonical {
 			err = q.runMu.lockContext(s.flushCtx)
 		} else {
 			err = q.runMu.lockContext(context.Background())
@@ -232,15 +239,27 @@ func (q *Queue) drain() {
 			committed, err = flushTouchedLocked(s.flushCtx, q, s.flushRoot)
 		}
 		res := Result{Job: s.job, Seq: s.seq, Bytes: b, Err: err}
-		q.runMu.unlock()
 		if leaveCommit != nil {
 			leaveCommit()
 		}
+		if s.job.AfterGuard != nil {
+			res.Err = errors.Join(res.Err, runAfterGuard(s.job))
+		}
+		q.runMu.unlock()
 		if q.hook != nil {
 			q.hook(res)
 		}
 		s.reply <- submitResponse{result: res, committed: committed}
 	}
+}
+
+func runAfterGuard(j Job) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = &PanicError{Kind: j.kind(), Value: r, Stack: debug.Stack()}
+		}
+	}()
+	return j.AfterGuard()
 }
 
 // run executes one job's Render on the drain goroutine, converting a panic
@@ -284,6 +303,68 @@ func (q *Queue) Submit(j Job) Result {
 	q.jobs <- submitted{job: j, seq: seq, reply: reply}
 	q.submit <- struct{}{}
 	return (<-reply).result
+}
+
+// SubmitCanonical serializes one local canonical source mutation with the
+// queue's exclusive reconciliation fence. The shared commit guard is acquired
+// by the drain goroutine immediately before runMu and released before the hook
+// runs. Unlike SubmitAndFlush, this preserves the ordinary later-Flush
+// contract: it does not publish a Git commit. Callers must keep provider and
+// derived-index work outside Render. An optional AfterGuard callback runs
+// without the shared commit fence but with runMu held, preserving queue/Flush
+// order; hooks run after both locks are released. Cancellation before Render
+// starts skips the job; once Render starts, SubmitCanonical waits for its
+// settled result.
+func (q *Queue) SubmitCanonical(ctx context.Context, j Job) Result {
+	if ctx == nil {
+		return Result{Job: j, Err: ErrNilCommitContext}
+	}
+	select {
+	case <-q.submit:
+	case <-ctx.Done():
+		return Result{Job: j, Err: ctx.Err()}
+	}
+	queued := false
+	defer func() {
+		if !queued {
+			q.submit <- struct{}{}
+		}
+	}()
+	q.mu.Lock()
+	if q.closed {
+		q.mu.Unlock()
+		return Result{Job: j, Err: ErrQueueClosed}
+	}
+	if j.Render == nil {
+		q.mu.Unlock()
+		return Result{Job: j, Err: errors.New("writer: missing render callback")}
+	}
+	q.seq[j.Path]++
+	seq := q.seq[j.Path]
+	reply := make(chan submitResponse, 1)
+	state := &submissionState{}
+	sub := submitted{job: j, seq: seq, flushCtx: ctx, canonical: true, state: state, reply: reply}
+	q.mu.Unlock()
+	select {
+	case q.jobs <- sub:
+		queued = true
+		q.submit <- struct{}{}
+	case <-ctx.Done():
+		q.mu.Lock()
+		q.seq[j.Path]--
+		q.mu.Unlock()
+		return Result{Job: j, Seq: seq, Err: ctx.Err()}
+	}
+	select {
+	case response := <-reply:
+		return response.result
+	case <-ctx.Done():
+		if state.cancelBeforeStart() {
+			return Result{Job: j, Seq: seq, Err: ctx.Err()}
+		}
+		response := <-reply
+		return response.result
+	}
 }
 
 // SubmitAndFlush runs Render and publishes all touched paths before releasing

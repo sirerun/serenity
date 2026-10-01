@@ -3,11 +3,14 @@ package supersede
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/disposition"
@@ -31,6 +34,49 @@ func openTombstoneTestStore(t *testing.T, root string) (*disposition.Store, *ind
 		t.Fatalf("index.Open: %v", err)
 	}
 	return disposition.NewStore(eng), eng
+}
+
+func TestTombstoneCascadeHonorsContextWhileWaitingForCommitFence(t *testing.T) {
+	root, _ := gitRepoFixture(t)
+	q := writer.NewQueue(nil)
+	t.Cleanup(q.Close)
+	sources := store.NewSourceStore(root)
+	src, err := sources.Write([]byte("cascade context fixture"), domain.Source{Kind: "file", URI: "file:///cascade-context.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := New(q, store.NewFenceWriter(root), store.NewShardStore(root), config.Default())
+	leave, err := q.AcquireCommitFence(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var leaveOnce sync.Once
+	releaseFence := func() { leaveOnce.Do(leave) }
+	t.Cleanup(releaseFence)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := w.TombstoneCascade(ctx, nil, sources, src.SHA256, fixedNow)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("TombstoneCascade error = %v, want request deadline", err)
+		}
+	case <-time.After(time.Second):
+		releaseFence()
+		err := <-done
+		t.Fatalf("TombstoneCascade ignored request cancellation; after fence release it returned %v", err)
+	}
+	if _, _, err := sources.Read(src.SHA256); err != nil {
+		t.Fatalf("canceled cascade removed source before fence release: %v", err)
+	}
+	releaseFence()
+	if _, _, err := sources.Read(src.SHA256); err != nil {
+		t.Fatalf("canceled cascade removed source after fence release: %v", err)
+	}
 }
 
 // TestTombstoneCascadeSoleProvenanceRetractedAndSurvivesRebuild is T2.21's

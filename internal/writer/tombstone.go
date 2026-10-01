@@ -11,10 +11,10 @@ import (
 )
 
 // SourceTombstone is the serialized entry point for deleting an ordinary
-// source (ADR 019): one queue job records the tombstone event, deletes the
-// source's FTS and vector rows, and removes its bytes and meta.yaml, and
-// marks every path so the next Flush commits the deletion and the event
-// together.
+// source (ADR 019): one guarded queue job records the tombstone event,
+// removes its bytes and meta.yaml, rewrites its Git history, and marks every
+// path so the next Flush commits the deletion and event together. Derived
+// FTS and vector rows are purged after the queue releases its commit guards.
 type SourceTombstone struct {
 	Queue   *Queue
 	Sources *store.SourceStore
@@ -25,12 +25,24 @@ type SourceTombstone struct {
 // Tombstone deletes the source named by sha and returns the shard claims
 // that cite it, for the retraction path to act on.
 func (w *SourceTombstone) Tombstone(sha string, now time.Time) ([]domain.Claim, error) {
+	return w.TombstoneContext(context.Background(), sha, now)
+}
+
+// TombstoneContext carries cancellation while waiting for the canonical
+// source-mutation section. Its Git history rewrite remains inside that
+// section; derived-index purging runs after the queue releases its guards.
+func (w *SourceTombstone) TombstoneContext(ctx context.Context, sha string, now time.Time) ([]domain.Claim, error) {
+	if ctx == nil {
+		return nil, ErrNilCommitContext
+	}
 	if w.Queue == nil || w.Sources == nil {
 		return nil, fmt.Errorf("writer: tombstone dependencies unavailable")
 	}
 	var citing []domain.Claim
-	res := w.Queue.Submit(Job{Render: func() ([]byte, error) {
+	var sourceMutation bool
+	res := w.Queue.SubmitCanonical(ctx, Job{Render: func() ([]byte, error) {
 		out, err := w.Sources.TombstoneAt(sha, w.Shards, now)
+		sourceMutation = out.Event.SHA256 != "" || len(out.Removed) != 0
 		if out.Event.SHA256 != "" {
 			dir := w.Sources.DirFor(out.Event.SHA256)
 			w.Queue.MarkTouched(filepath.Join(dir, "bytes"))
@@ -41,11 +53,6 @@ func (w *SourceTombstone) Tombstone(sha string, now time.Time) ([]domain.Claim, 
 		}
 		if err != nil {
 			return nil, err
-		}
-		if w.Index != nil {
-			if err := w.Index.PurgeSource(context.Background(), sha); err != nil {
-				return nil, fmt.Errorf("writer: purge tombstoned source index rows: %w", err)
-			}
 		}
 		root, err := filepath.Abs(w.Sources.Root)
 		if err != nil {
@@ -59,11 +66,19 @@ func (w *SourceTombstone) Tombstone(sha string, now time.Time) ([]domain.Claim, 
 		if err != nil {
 			return nil, fmt.Errorf("writer: resolve tombstoned source path: %w", err)
 		}
-		if err := rewriteForgottenPath(root, filepath.ToSlash(relPath)); err != nil {
+		if err := rewriteForgottenPathContext(ctx, root, filepath.ToSlash(relPath)); err != nil {
 			return nil, fmt.Errorf("writer: rewrite tombstoned source history: %w", err)
 		}
 		citing = out.Citing
 		return nil, nil
+	}, AfterGuard: func() error {
+		if w.Index == nil || !sourceMutation {
+			return nil
+		}
+		if err := w.Index.PurgeSource(ctx, sha); err != nil {
+			return fmt.Errorf("writer: purge tombstoned source index rows: %w", err)
+		}
+		return nil
 	}})
 	if res.Err != nil {
 		return nil, res.Err

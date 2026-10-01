@@ -36,7 +36,7 @@ func (h *Handlers) cancelOperation(ctx context.Context, args json.RawMessage) (a
 	if err := json.Unmarshal(args, &req); err != nil || req.OperationKey == "" || !store.ValidMemoryOperationKey(req.OperationKey) {
 		return verbError(ErrCodeInvalidParams, "cancel_memory_operation: a valid operation_key is required", "use the original immutable request key, at most 128 ASCII letters, digits, dot, colon, underscore or hyphen"), true, nil
 	}
-	result, err := h.deps.memoryWriter().CancelRemoteOperation(req.OperationKey, req.Reason, h.deps.now())
+	result, err := h.deps.memoryWriter().CancelRemoteOperationContext(ctx, req.OperationKey, req.Reason, h.deps.now())
 	if errors.Is(err, writer.ErrMemoryScopeDenied) {
 		return verbError(ErrCodeScopeDenied, "Fact is outside the remote scope", "manage private facts through a local interface"), true, nil
 	}

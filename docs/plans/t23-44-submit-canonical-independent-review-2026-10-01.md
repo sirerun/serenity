@@ -1,0 +1,15 @@
+# T23.44 canonical source routing independent review
+
+Reviewed exact source pin `4a33514b62c286c3e50fb6149f59907ca72d74ce` in a fresh external-SSD worktree. The author's adjacent routing receipt is `b5e72cc56373f1c6e3fda886661e7b31c78b4241`. This review made no production edits and is not a merge or T23.44 acceptance.
+
+The queue implementation matches the intended lock boundary in the inspected paths: canonical jobs acquire the shared commit guard before `runMu`; `AfterGuard` runs after releasing the shared guard while holding `runMu`; hooks run after both locks are released. `FlushContext` releases `runMu` while waiting for an exclusive checker and restores touched paths when a Git flush fails. Forget's hosted path is marked inside the gateway, flushes canonical source changes before returning, and purges the derived index in `AfterGuard`; purge failures are joined into the operation error. Optional remember indexing occurs after canonical source commit, and failure leaves the source intact. CLI command ownership is acquired for ordinary mutating commands; `serve` acquires it in `memoryTools`.
+
+Three request-context gaps block acceptance on this source pin:
+
+- `server/memory/cancel.go` calls `CancelRemoteOperation` (the `context.Background()` wrapper) instead of `CancelRemoteOperationContext`. A temporary race-enabled overlay test held the exclusive fence, canceled the request, and observed the handler remain blocked; releasing the fence then wrote the cancellation marker and returned nil. A temporary callsite patch to the Context variant made the same test pass.
+- `supersede/tombstone.go` accepts `ctx` in `TombstoneCascade` but calls `SourceTombstone.Tombstone`, also the `context.Background()` wrapper. A temporary overlay test showed cancellation while waiting for the exclusive fence did not stop the source tombstone after release. A temporary callsite patch to `TombstoneContext(ctx, ...)` made it pass.
+- The non-hosted branches in `server/memory/forget.go` call `MemoryFact.Forget`, which binds `context.Background()`. The hosted gateway does set the trusted publication marker and uses `ForgetContext` with inline flush. A temporary race-enabled overlay test against the non-hosted route showed a canceled request still erased the fact after fence release. Its correction must keep the non-hosted queue-and-later-flush behavior; routing every caller through `ForgetContext` would change batching.
+
+Focused verification on the pinned source: race-enabled canonical queue, post-guard ordering, forget index-purge placement, context-aware cancel/tombstone, and RememberContext writer tests passed in `internal/writer`. Temporary overlay counterexamples for the three context-blind routes went RED as described. The cancel and tombstone callsite-only temporary fixes went GREEN. No tests or source mutations were left in this worktree.
+
+Scope limits: no full repository tests or lint were run. The head checker remains unwired and missing facts must remain Unknown; hosted cancel is not allowlisted. Those deployment and acceptance paths were not exercised here.
