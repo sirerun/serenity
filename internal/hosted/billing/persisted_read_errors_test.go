@@ -179,7 +179,11 @@ func TestReconcileReturnsExpiredGraceDeadlineFromTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := failureAt.Add(72 * time.Hour)
-	if !result.Eligible || !result.GraceUntil.Equal(want) || !result.GraceUntil.Before(time.Now()) {
-		t.Fatalf("reconcile result=%+v, want exact expired grace deadline %v", result, want)
+	if result.Eligible || !result.GraceUntil.Equal(want) || !result.GraceUntil.Before(time.Now()) {
+		t.Fatalf("reconcile result=%+v, want ineligible result with exact expired grace deadline %v", result, want)
+	}
+	var plan string
+	if err = db.DB().QueryRowContext(ctx, `SELECT plan_id FROM accounts WHERE id=?`, account.ID).Scan(&plan); err != nil || plan != "free" {
+		t.Fatalf("expired grace account plan=%q, err=%v; want free", plan, err)
 	}
 }

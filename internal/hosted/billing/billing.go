@@ -231,8 +231,25 @@ func subscriptionTerminal(status string) bool {
 	return status == "canceled" || status == "incomplete_expired"
 }
 
-func subscriptionEntitled(status string) bool {
-	return status == "active" || status == "trialing" || status == "past_due"
+// effectiveSubscriptionAccess mirrors the hosted meter's billing eligibility:
+// active/trialing subscriptions need a live period, while past-due access is
+// limited to the exact persisted grace deadline.
+func effectiveSubscriptionAccess(status string, periodEnd time.Time, graceUntil string, now time.Time) (bool, error) {
+	switch status {
+	case "active", "trialing":
+		return periodEnd.After(now), nil
+	case "past_due":
+		if graceUntil == "" {
+			return false, nil
+		}
+		deadline, err := time.Parse(time.RFC3339Nano, graceUntil)
+		if err != nil {
+			return false, fmt.Errorf("parse reconciled grace deadline: %w", err)
+		}
+		return deadline.After(now), nil
+	default:
+		return false, nil
+	}
 }
 
 // graceDeadline derives a past-due deadline from the first failure event for
@@ -340,6 +357,7 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 
 	now := time.Now().UTC()
 	var chosenGrace string
+	var chosenEligible bool
 	err = s.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		rows, e := tx.QueryContext(ctx, `SELECT id FROM subscriptions WHERE account_id=?`, accountID)
 		if e != nil {
@@ -384,6 +402,10 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 			grace, graceInvoice := graceDeadline(old.status, old.grace, old.graceInvoice, periodChanged, sub.Status, invoice, anchor)
 			if chosen != nil && sub.ID == chosen.ID {
 				chosenGrace = grace
+				chosenEligible, e = effectiveSubscriptionAccess(sub.Status, time.Unix(item.CurrentPeriodEnd, 0).UTC(), grace, now)
+				if e != nil {
+					return e
+				}
 			}
 			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_until,grace_invoice_id) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end,grace_until=excluded.grace_until,grace_invoice_id=excluded.grace_invoice_id`, sub.ID, accountID, item.Price.ID, plan, sub.Status, newPeriodStart, newPeriodEnd, sub.CancelAtPeriodEnd, nullableString(grace), nullableString(graceInvoice))
 			if e != nil {
@@ -397,7 +419,7 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 				}
 			}
 		}
-		if chosen == nil || status != "active" {
+		if chosen == nil || status != "active" || !chosenEligible {
 			_, e = tx.ExecContext(ctx, `UPDATE accounts SET plan_id='free',plan_version=1 WHERE id=?`, accountID)
 		} else {
 			_, e = tx.ExecContext(ctx, `UPDATE accounts SET plan_id=?,plan_version=1 WHERE id=?`, s.planForPrice(chosen.Items.Data[0].Price.ID), accountID)
@@ -419,7 +441,7 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 		return result, nil
 	}
 	item := chosen.Items.Data[0]
-	result.Eligible = subscriptionEntitled(chosen.Status)
+	result.Eligible = chosenEligible
 	result.PlanID = s.planForPrice(item.Price.ID)
 	result.CurrentWindowStart = time.Unix(item.CurrentPeriodStart, 0).UTC()
 	result.CurrentWindowEnd = time.Unix(item.CurrentPeriodEnd, 0).UTC()
@@ -1128,16 +1150,19 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 				}
 			}
 			grace, graceInvoice := graceDeadline(old.status, old.grace, old.graceInvoice, periodChanged, sub.Status, invoice, anchor)
+			eligible, accessErr := effectiveSubscriptionAccess(sub.Status, time.Unix(item.CurrentPeriodEnd, 0).UTC(), grace, time.Now().UTC())
+			if accessErr != nil {
+				return accessErr
+			}
 			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_until,grace_invoice_id) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end,grace_until=excluded.grace_until,grace_invoice_id=excluded.grace_invoice_id`, sub.ID, account, item.Price.ID, plan, sub.Status, newPeriodStart, newPeriodEnd, sub.CancelAtPeriodEnd, nullableString(grace), nullableString(graceInvoice))
 			if e != nil {
 				return e
 			}
-			if accountStatus == "active" {
-				_, e = tx.ExecContext(ctx, `UPDATE accounts SET plan_id=?,plan_version=1 WHERE id=?`, plan, account)
-				if e != nil {
-					return e
-				}
-			} else if _, e = tx.ExecContext(ctx, `UPDATE accounts SET plan_id='free',plan_version=1 WHERE id=?`, account); e != nil {
+			accountPlan := "free"
+			if accountStatus == "active" && eligible {
+				accountPlan = plan
+			}
+			if _, e = tx.ExecContext(ctx, `UPDATE accounts SET plan_id=?,plan_version=1 WHERE id=?`, accountPlan, account); e != nil {
 				return e
 			}
 			_, e = tx.ExecContext(ctx, `UPDATE stripe_events SET processed_at=? WHERE id=?`, store.Stamp(time.Now()), event.ID)
