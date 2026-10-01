@@ -57,3 +57,8 @@ and role updated without replacement; generated RateSaltSecret added. The
 read-only environment check and four live checks passed. The secret adds
 $0.40/month plus retrieval-call charges at published AWS rates. No GitHub
 billing purchase was made. See E24/docs-chat-hardening-2026-10-01.md.
+
+The current running hosted binary predates the local history-purge changes.
+Live unit and docs-chat receipts do not claim those changes are deployed.
+New signed release production is separate from local validation and cannot
+be inferred from a billing-blocked GitHub workflow.

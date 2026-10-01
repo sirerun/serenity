@@ -192,3 +192,20 @@ that any pre-fix hostile brain was scanned and repaired. The project record
 `ajent.social` was read; the Ajent feed MCP/tool was unavailable in this
 environment. These findings are a fresh local trace, not live qualification
 and not completion of T24.39.
+
+## Coordinator live-evidence addendum
+
+After this source-only review, the coordinator verified the live unprivileged
+Caddy user and Unix admin socket, with no TCP2019 listener. App IMDS denial and
+backup OnFailure units were installed with a snapshot and readiness rollback;
+readiness and a host cgroup refusal probe passed. See
+`docs/launch/evidence/E24/unit-hardening-2026-10-01.md`. This supplies specific
+live evidence for the unit boundary; it does not qualify every High, a failed
+release rehearsal, hosted raw Git call migration, or a newer binary rollout.
+
+The synced-config root expansion noted above is explicitly allowed by ADR018
+section3. It remains a design trust boundary to revisit, rather than a failure
+to implement the original T24.8 allowlist contract. Conditional pre-existing
+parseable aliases cannot automatically be treated as malicious without
+provenance; legitimate human aliases must be preserved. These residuals are
+not silently classified as David-accepted risks or overall E24 closure.

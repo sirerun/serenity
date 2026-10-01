@@ -350,7 +350,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In progress
 
-- 2026-10-01 E24 continuation: three isolated GPT-6-Luna lanes audited local acceptance, router/hosted readiness, and erasure disclosures. Ordinary-source history purge is an active ADR019 follow-up. T24.23 is partial until owned hosted export/backup changes meet their contracts. T24.28 and whole-module git drift remain open. Source-pinned evidence and ownership: docs/plans/e24-continuation-2026-10-01.md.
+- 2026-10-01 E24 continuation: three isolated GPT-6-Luna lanes audited local acceptance, router/hosted readiness, and erasure disclosures. Ordinary-source history purge and the supersession cascade correction are ready for final integration checks, alongside safe partner audit-failure diagnostics. T24.23 is partial until owned hosted export/backup changes meet their contracts. Docs-chat secret migration is live, with four public checks passing. T24.28 and whole-module git drift remain open. Source-pinned evidence and ownership: docs/plans/e24-continuation-2026-10-01.md.
 
 
 - 2026 08 27 E0 wave 0a complete (9/9) -- see Shipped entries for T0.1-T0.12.
