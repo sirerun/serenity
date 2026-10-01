@@ -100,21 +100,16 @@ type SubmitAndFlushResult struct {
 // run strictly one at a time, in the order they were submitted.
 type Queue struct {
 	mu     sync.Mutex
-	runMu  sync.Mutex // serializes complete writes with git publication
-	commit commitGate // excludes hosted canonical checkers from source+flush sections
+	runMu  sync.Mutex    // serializes complete writes with git publication
+	commit commitGate    // excludes hosted canonical checkers from source+flush sections
+	submit chan struct{} // serializes ordered sends without holding mu while they block
 	closed bool
 	seq    map[string]uint64
 	jobs   chan submitted
 	wg     sync.WaitGroup
 	hook   func(Result)
 
-	// touchedMu guards touched independently of mu: Submit holds mu while
-	// blocked handing a job to the unbuffered jobs channel, and drain
-	// records the touched path from inside that same handoff (right after
-	// receiving, before it can loop back to receive the next one). Sharing
-	// mu between the two would deadlock -- a second Submit blocked
-	// sending, holding mu, would starve drain of the lock it needs before
-	// it can go back to receiving.
+	// touchedMu guards paths independently of mu and the ordered-submit token.
 	touchedMu sync.Mutex
 	touched   map[string]bool // paths written since the last Flush (§7.7 daemon commits)
 }
@@ -125,12 +120,39 @@ type submitted struct {
 	flushRoot string
 	flushCtx  context.Context
 	flush     bool
+	state     *submissionState
 	reply     chan submitResponse
 }
 
 type submitResponse struct {
 	result    Result
 	committed bool
+}
+
+type submissionState struct {
+	mu       sync.Mutex
+	started  bool
+	canceled bool
+}
+
+func (s *submissionState) begin() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.canceled {
+		return false
+	}
+	s.started = true
+	return true
+}
+
+func (s *submissionState) cancelBeforeStart() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.started {
+		return false
+	}
+	s.canceled = true
+	return true
 }
 
 // NewQueue starts the drain goroutine. hook, if non-nil, is called from
@@ -143,8 +165,10 @@ func NewQueue(hook func(Result)) *Queue {
 		seq:     map[string]uint64{},
 		touched: map[string]bool{},
 		jobs:    make(chan submitted),
+		submit:  make(chan struct{}, 1),
 		hook:    hook,
 	}
+	q.submit <- struct{}{}
 	q.wg.Add(1)
 	go q.drain()
 	return q
@@ -153,13 +177,32 @@ func NewQueue(hook func(Result)) *Queue {
 func (q *Queue) drain() {
 	defer q.wg.Done()
 	for s := range q.jobs {
-		q.runMu.Lock()
+		if s.flush && !s.state.begin() {
+			res := Result{Job: s.job, Seq: s.seq, Err: s.flushCtx.Err()}
+			if res.Err == nil {
+				res.Err = context.Canceled
+			}
+			if q.hook != nil {
+				q.hook(res)
+			}
+			s.reply <- submitResponse{result: res}
+			continue
+		}
 		var committed bool
 		var leaveCommit func()
 		var err error
 		if s.flush {
 			leaveCommit, err = q.EnterCommit(s.flushCtx)
 		}
+		if err != nil {
+			res := Result{Job: s.job, Seq: s.seq, Err: err}
+			if q.hook != nil {
+				q.hook(res)
+			}
+			s.reply <- submitResponse{result: res}
+			continue
+		}
+		q.runMu.Lock()
 		var b []byte
 		if err == nil {
 			b, err = run(s.job)
@@ -173,10 +216,10 @@ func (q *Queue) drain() {
 			committed, err = flushTouchedLocked(s.flushCtx, q, s.flushRoot)
 		}
 		res := Result{Job: s.job, Seq: s.seq, Bytes: b, Err: err}
+		q.runMu.Unlock()
 		if leaveCommit != nil {
 			leaveCommit()
 		}
-		q.runMu.Unlock()
 		if q.hook != nil {
 			q.hook(res)
 		}
@@ -206,32 +249,51 @@ func run(j Job) (b []byte, err error) {
 // drain goroutine, even when many goroutines submit concurrently to the
 // same path.
 func (q *Queue) Submit(j Job) Result {
+	<-q.submit
 	q.mu.Lock()
 	if q.closed {
 		q.mu.Unlock()
+		q.submit <- struct{}{}
 		return Result{Job: j, Err: ErrQueueClosed}
 	}
 	if j.Render == nil {
 		q.mu.Unlock()
+		q.submit <- struct{}{}
 		return Result{Job: j, Err: errors.New("writer: missing render callback")}
 	}
 	q.seq[j.Path]++
 	seq := q.seq[j.Path]
 	reply := make(chan submitResponse, 1)
-	q.jobs <- submitted{job: j, seq: seq, reply: reply}
 	q.mu.Unlock()
+	q.jobs <- submitted{job: j, seq: seq, reply: reply}
+	q.submit <- struct{}{}
 	return (<-reply).result
 }
 
 // SubmitAndFlush runs Render and publishes all touched paths before releasing
-// the queue's run lock. It also enters the per-queue shared commit section for
-// the complete Render+flush interval. Do not wrap this call in EnterCommit:
-// the guard is not recursive. Ordinary Submit intentionally does not acquire
-// the commit guard; callers must route canonical mutation paths explicitly.
+// the queue's run lock. It acquires the per-queue shared commit section before
+// runMu, for the complete Render+flush interval. Do not wrap this call in
+// EnterCommit: the guard is not recursive. Ordinary Submit intentionally does
+// not acquire the commit guard; callers must route canonical mutation paths
+// explicitly. Cancellation before the drain starts the job removes it without
+// rendering. Once started, the call waits for a settled result while the
+// context is propagated to the render closure and Git commands; closures must
+// honor cancellation to keep that boundary bounded.
 func (q *Queue) SubmitAndFlush(ctx context.Context, root string, j Job) SubmitAndFlushResult {
 	if ctx == nil {
 		return SubmitAndFlushResult{Result: Result{Job: j, Err: ErrNilCommitContext}}
 	}
+	select {
+	case <-q.submit:
+	case <-ctx.Done():
+		return SubmitAndFlushResult{Result: Result{Job: j, Err: ctx.Err()}}
+	}
+	queued := false
+	defer func() {
+		if !queued {
+			q.submit <- struct{}{}
+		}
+	}()
 	q.mu.Lock()
 	if q.closed {
 		q.mu.Unlock()
@@ -245,10 +307,29 @@ func (q *Queue) SubmitAndFlush(ctx context.Context, root string, j Job) SubmitAn
 	q.seq[key]++
 	seq := q.seq[key]
 	reply := make(chan submitResponse, 1)
-	q.jobs <- submitted{job: j, seq: seq, flushRoot: root, flushCtx: ctx, flush: true, reply: reply}
+	state := &submissionState{}
+	sub := submitted{job: j, seq: seq, flushRoot: root, flushCtx: ctx, flush: true, state: state, reply: reply}
 	q.mu.Unlock()
-	response := <-reply
-	return SubmitAndFlushResult{Result: response.result, Committed: response.committed}
+	select {
+	case q.jobs <- sub:
+		queued = true
+		q.submit <- struct{}{}
+	case <-ctx.Done():
+		q.mu.Lock()
+		q.seq[key]--
+		q.mu.Unlock()
+		return SubmitAndFlushResult{Result: Result{Job: j, Seq: seq, Err: ctx.Err()}}
+	}
+	select {
+	case response := <-reply:
+		return SubmitAndFlushResult{Result: response.result, Committed: response.committed}
+	case <-ctx.Done():
+		if state.cancelBeforeStart() {
+			return SubmitAndFlushResult{Result: Result{Job: j, Seq: seq, Err: ctx.Err()}}
+		}
+		response := <-reply
+		return SubmitAndFlushResult{Result: response.result, Committed: response.committed}
+	}
 }
 
 // takeTouched returns every path successfully written since the last call
@@ -295,11 +376,13 @@ func (q *Queue) MarkTouched(path string) {
 var ErrQueueClosed = errors.New("writer: queue closed")
 
 func (q *Queue) Close() {
+	<-q.submit
 	q.mu.Lock()
 	if !q.closed {
 		q.closed = true
 		close(q.jobs)
 	}
 	q.mu.Unlock()
+	q.submit <- struct{}{}
 	q.wg.Wait()
 }

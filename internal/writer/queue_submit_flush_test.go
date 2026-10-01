@@ -144,6 +144,40 @@ func TestSubmitAndFlushHonorsContextCancellation(t *testing.T) {
 	}
 }
 
+func TestSubmitAndFlushCancelsWhileWaitingBehindQueueJob(t *testing.T) {
+	root, _ := gitRepoFixture(t)
+	q := NewQueue(nil)
+	defer q.Close()
+	started := make(chan struct{})
+	releaseJob := make(chan struct{})
+	jobDone := make(chan Result, 1)
+	go func() {
+		jobDone <- q.Submit(Job{Render: func() ([]byte, error) {
+			close(started)
+			<-releaseJob
+			return nil, nil
+		}})
+	}()
+	<-started
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	startedAt := time.Now()
+	got := q.SubmitAndFlush(ctx, root, Job{Render: func() ([]byte, error) {
+		t.Fatal("canceled queued job must not render")
+		return nil, nil
+	}})
+	if !errors.Is(got.Result.Err, context.DeadlineExceeded) || got.Committed {
+		t.Fatalf("queued cancellation = %+v", got)
+	}
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("cancellation waited for prior queue job: %s", elapsed)
+	}
+	close(releaseJob)
+	if result := <-jobDone; result.Err != nil {
+		t.Fatalf("blocking ordinary job: %v", result.Err)
+	}
+}
+
 func TestCommitPathsContextHonorsCancellation(t *testing.T) {
 	root, run := gitRepoFixture(t)
 	path := filepath.Join(root, "canceled.md")

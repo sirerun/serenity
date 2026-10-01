@@ -131,7 +131,10 @@ func (q *Queue) EnterCommit(ctx context.Context) (leave func(), err error) {
 // WithCommitFence runs check while no shared canonical-write section is
 // active. checkErr is the checker's outcome; acquireErr reports failure to
 // acquire the exclusive section (including context cancellation while
-// waiting), so callers can distinguish those cases.
+// waiting), so callers can distinguish those cases. The callback must only
+// inspect canonical state and update its ledger; it must not call Submit or
+// Flush, or wait for runMu, because the queue's shared writer order is
+// commit-section then runMu.
 func (q *Queue) WithCommitFence(ctx context.Context, check func(context.Context) error) (checkErr error, acquireErr error) {
 	if check == nil {
 		return nil, ErrNilCommitFence
