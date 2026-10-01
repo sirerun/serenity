@@ -1,8 +1,8 @@
 # Hosted journal and retry followup — 2026-10-01
 
-Baseline: PR326 merged at `b43b66938260b28cdd40e8e7185b3982723e8281`; its tree equals reviewed head `7e16e838019af61e0f60bf3593bbec08748e7456`. Founder-authorized local validation continues under ADR024. The original checkout, recovery branches and draft PR273 remain preserved.
+PR327 merged at `b010d7868c41af44aeb6c8acf2f024a886b8e5d3`, with tree equal to reviewed head `afba4e079c7e1bbda84a9b59f56bac52f86f7ef9`. Baseline: PR326 merged at `b43b66938260b28cdd40e8e7185b3982723e8281`; its tree equals reviewed head `7e16e838019af61e0f60bf3593bbec08748e7456`. Founder-authorized local validation continues under ADR024. The original checkout, recovery branches and draft PR273 remain preserved.
 
-## Delivered on the unmerged followup branch
+## Delivered in PR327
 
 - Unkeyed relative TTL is normalized before a generated key is added, then materialized as one fixed absolute expiry for both the handler and fingerprint. Explicit client keys still require absolute TTL. Restoring the old gateway reproduced `keyed TTL must be absolute` at runtime; restored full service race passed.
 - The canonical writer uses the scoped ledger operation ID as its internal retry key, while the ledger retains the original client key. A real service regression failed with the old gateway in October after using the same key in September. At `d2f30ef`, full service race passes: each period stores a distinct fact and charges one write, while the October retry replays without another charge. Ledger cleanup is armed before canonical-argument encoding. Independent key review `e831cd33` found no blocker and the focused service race passed.
