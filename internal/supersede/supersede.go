@@ -41,6 +41,9 @@ type Writer struct {
 	Queue *writer.Queue
 	Fence *store.FenceWriter
 	Shard *store.ShardStore
+	// SourceIndex purges derived raw-source rows during TombstoneCascade.
+	// It is optional for callers that do not own an index.
+	SourceIndex writer.IndexPurger
 	// Config supplies the tier assignment (config.TierOf) that decides
 	// whether a claim's family lands in a fence or a shard (§7.2a). Nil
 	// falls back to config.Default().

@@ -3,11 +3,11 @@ package supersede
 // TombstoneCascade and ApplyDisposedTombstone implement T2.21's half of RFC
 // 0001's right-to-forget chain (§14, §7.6, docs/threat-model.md's "Right-
 // to-forget: the deletion chain"): "source tombstone -> retraction
-// proposals -> accept rewrites fences/shards and rebuilds." T1.2's
-// store.SourceStore.Tombstone(sha, shardStore) is the read-side "which
-// claims cite this source" lookup (its own doc comment names turning that
-// into retraction proposals as later work) -- this file is that later
-// work, split the same way T2.1/T2.4 split ImportPending (stage) from
+// proposals -> accept rewrites fences/shards and rebuilds." The storage
+// primitive SourceStore.TombstoneAt must be reached through
+// writer.SourceTombstone so source bytes, index rows, and Git history are
+// erased under the writer queue. This file then handles the citing claims,
+// split the same way T2.1/T2.4 split ImportPending (stage) from
 // ApplyDisposedDirtyEdit (accept), and the way internal/reconcile's Engine
 // (T2.2) splits Detect (pure) from Process (stages a disposition item):
 //
@@ -70,14 +70,23 @@ type TombstonePayload struct {
 	SourceSHA256 string       `json:"source_sha256"`
 }
 
-// TombstoneCascade walks every shard-tier claim citing sha (via
-// src.Tombstone) and either stages a retraction proposal or demotes the
-// claim in place, per the package doc comment above. retracted and demoted
+// TombstoneCascade tombstones sha through the serialized writer and walks
+// every shard-tier claim it returns, either staging a retraction proposal
+// or demoting the claim in place, per the package doc comment above.
+// The source deletion is submitted before the cascade loop; wrapping this
+// whole method in another queue job would deadlock when demoteClaim submits.
+// retracted and demoted
 // count how many claims took each path; a citing claim that is no longer
 // live (already superseded or retracted by something else since) takes
 // neither path and is skipped -- there is nothing left to cascade.
 func (w *Writer) TombstoneCascade(ctx context.Context, ds *disposition.Store, src *store.SourceStore, sha string, now time.Time) (retracted, demoted int, err error) {
-	citing, err := src.Tombstone(sha, w.Shard)
+	sourceWriter := writer.SourceTombstone{
+		Queue:   w.Queue,
+		Sources: src,
+		Shards:  w.Shard,
+		Index:   w.SourceIndex,
+	}
+	citing, err := sourceWriter.Tombstone(sha, now)
 	if err != nil {
 		return 0, 0, fmt.Errorf("supersede: tombstone cascade: %w", err)
 	}

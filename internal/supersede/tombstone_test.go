@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -47,7 +48,8 @@ func TestTombstoneCascadeSoleProvenanceRetractedAndSurvivesRebuild(t *testing.T)
 	// A fixture source, written for real so Tombstone's sha is genuine
 	// content-addressed identity, not a made-up string.
 	srcStore := store.NewSourceStore(root)
-	src, err := srcStore.Write([]byte("acme-corp's Q3 balance statement\n"), domain.Source{Kind: "file", URI: "file:///q3.txt"})
+	const sourceBody = "acme-corp's Q3 balance statement\n"
+	src, err := srcStore.Write([]byte(sourceBody), domain.Source{Kind: "file", URI: "file:///q3.txt"})
 	if err != nil {
 		t.Fatalf("write source: %v", err)
 	}
@@ -67,9 +69,27 @@ func TestTombstoneCascadeSoleProvenanceRetractedAndSurvivesRebuild(t *testing.T)
 	}
 	run("add", ".")
 	run("commit", "--quiet", "-m", "seed")
+	relSource, err := filepath.Rel(root, srcStore.DirFor(src.SHA256))
+	if err != nil {
+		t.Fatal(err)
+	}
+	relSource = filepath.ToSlash(relSource)
+	oldCommit := strings.TrimSpace(run("rev-parse", "HEAD"))
+	oldBlob := strings.TrimSpace(run("rev-parse", "HEAD:"+relSource+"/bytes"))
 
 	dispStore, eng := openTombstoneTestStore(t, root)
 	w := New(q, fw, ss, config.Default())
+	w.SourceIndex = eng
+	ctxSourceRef := "src:" + src.SHA256 + ":0-1"
+	if err := eng.InsertChunk(ctx, ctxSourceRef, "", sourceBody, src.SHA256, "file"); err != nil {
+		t.Fatalf("index source chunk: %v", err)
+	}
+	if err := eng.UpsertVector(ctx, ctxSourceRef, "tombstone-cascade@v1", []float32{1, 0}); err != nil {
+		t.Fatalf("index source vector: %v", err)
+	}
+	if has, err := eng.HasVector(ctx, ctxSourceRef, "tombstone-cascade@v1"); err != nil || !has {
+		t.Fatalf("fixture source vector missing: has=%v err=%v", has, err)
+	}
 
 	retracted, demoted, err := w.TombstoneCascade(ctx, dispStore, srcStore, src.SHA256, fixedNow)
 	if err != nil {
@@ -77,6 +97,26 @@ func TestTombstoneCascadeSoleProvenanceRetractedAndSurvivesRebuild(t *testing.T)
 	}
 	if retracted != 1 || demoted != 0 {
 		t.Fatalf("TombstoneCascade = (retracted=%d, demoted=%d), want (1, 0)", retracted, demoted)
+	}
+	chunks, err := eng.AllChunks(ctx)
+	if err != nil {
+		t.Fatalf("AllChunks after source tombstone: %v", err)
+	}
+	remainingChunks := 0
+	for _, chunk := range chunks {
+		if chunk.SourceSHA256 == src.SHA256 {
+			remainingChunks++
+		}
+	}
+	hasVector, err := eng.HasVector(ctx, ctxSourceRef, "tombstone-cascade@v1")
+	if err != nil {
+		t.Fatalf("HasVector after source tombstone: %v", err)
+	}
+	history := strings.TrimSpace(run("rev-list", "--all", "--", relSource))
+	reflog := run("reflog", "--all", "--format=%H")
+	blobPresent := gitObjectExists(root, oldBlob)
+	if history != "" || strings.Contains(reflog, oldCommit) || blobPresent || remainingChunks != 0 || hasVector {
+		t.Fatalf("TombstoneCascade did not erase source fully: refs=%q old_commit_in_reflog=%v old_blob_present=%v chunks=%d vector=%v", history, strings.Contains(reflog, oldCommit), blobPresent, remainingChunks, hasVector)
 	}
 
 	items, err := dispStore.List(ctx)
@@ -179,6 +219,12 @@ func TestTombstoneCascadeSoleProvenanceRetractedAndSurvivesRebuild(t *testing.T)
 	if strings.Contains(dump, claim.ID) {
 		t.Fatalf("retracted claim's id %s leaked into the post-wipe rebuild:\n%s", claim.ID, dump)
 	}
+}
+
+func gitObjectExists(root, object string) bool {
+	cmd := exec.Command("git", "cat-file", "-e", object)
+	cmd.Dir = root
+	return cmd.Run() == nil
 }
 
 // TestTombstoneCascadeMultiProvenanceDemotedNotRetracted is T2.21's acc
