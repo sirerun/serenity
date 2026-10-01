@@ -3,6 +3,7 @@ package billing
 
 import (
 	"errors"
+
 	"github.com/sirerun/serenity/internal/hosted/identity"
 	"io"
 	"net/http"

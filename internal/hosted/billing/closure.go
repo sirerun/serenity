@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"net/url"
 	"strings"
