@@ -488,6 +488,9 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		if tool.Name == name {
 			callCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 			defer cancel()
+			if name == "forget" {
+				callCtx = memoryserver.WithHostedForgetPublication(callCtx)
+			}
 			if name == "remember" && operationRecord.ID != "" && g.Operations != nil {
 				callCtx = writerpkg.WithCanonicalOperation(callCtx, writerpkg.CanonicalOperation{
 					ID: operationRecord.ID,
@@ -509,7 +512,7 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 				})
 			}
 			result, err = tool.Handler(callCtx, args)
-			if (name == "remember" || name == "forget") && err == nil && !result.IsError {
+			if name == "remember" && err == nil && !result.IsError {
 				// Remember's source has already been committed inline, before its
 				// handler performs any optional index/provider work. This flush only
 				// publishes separately touched state such as the search cache.

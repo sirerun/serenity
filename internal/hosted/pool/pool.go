@@ -13,6 +13,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/embed"
+	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/providers"
 	"github.com/sirerun/serenity/internal/server/mcp"
@@ -34,6 +35,8 @@ type Runtime struct {
 	Mutations sync.Mutex
 	Tools     []mcp.Tool
 	Root      string
+	brainID   string
+	queue     *writer.Queue
 	close     func() error
 	users     int
 	last      time.Time
@@ -224,9 +227,12 @@ func open(ctx context.Context, cfg Config, id string) (*Runtime, error) {
 			tools = append(tools, tool)
 		}
 	}
-	return &Runtime{Root: root, Tools: tools, flush: func() error { _, err := writer.Flush(q, root); return err }, close: func() error {
+	return &Runtime{Root: root, brainID: id, queue: q, Tools: tools, flush: func() error {
+		_, err := writer.FlushContext(context.Background(), q, root)
+		return err
+	}, close: func() error {
 		q.Close()
-		_, flushErr := writer.Flush(q, root)
+		_, flushErr := writer.FlushContext(context.Background(), q, root)
 		return errors.Join(flushErr, eng.Close(), owner.Close())
 	}}, nil
 }
@@ -263,4 +269,35 @@ func (p *Pool) FlushAll() error {
 	return nil
 }
 
-func (r *Runtime) Flush() error { return r.flush() }
+func (r *Runtime) Flush() error { return r.FlushContext(context.Background()) }
+
+// FlushContext publishes pending state while honoring cancellation during
+// run-lock or commit-gate waits. Hosted lifecycle callers use this wrapper so
+// they cannot bypass the per-brain checker fence.
+func (r *Runtime) FlushContext(ctx context.Context) error {
+	if r.queue == nil {
+		return r.flush()
+	}
+	_, err := writer.FlushContext(ctx, r.queue, r.Root)
+	return err
+}
+
+var ErrBrainFenceID = errors.New("hosted pool: brain fence ID mismatch")
+
+func (r *Runtime) EnterCommit(ctx context.Context, brainID string) (func(), error) {
+	if brainID != r.brainID || r.queue == nil {
+		return nil, ErrBrainFenceID
+	}
+	return r.queue.EnterCommit(ctx)
+}
+
+func (r *Runtime) Fence(ctx context.Context, brainID string) (func(), error) {
+	if brainID != r.brainID || r.queue == nil {
+		return nil, ErrBrainFenceID
+	}
+	release, err := r.queue.AcquireCommitFence(ctx)
+	if err != nil {
+		return nil, errors.Join(contracts.ErrBrainNotQuiescent, err)
+	}
+	return release, nil
+}

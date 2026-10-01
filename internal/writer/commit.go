@@ -26,9 +26,40 @@ import (
 // writes, but a resubmitted identical write still marks the path
 // touched).
 func Flush(q *Queue, root string) (committed bool, err error) {
-	q.runMu.Lock()
-	defer q.runMu.Unlock()
-	return flushTouchedLocked(context.Background(), q, root)
+	return FlushContext(context.Background(), q, root)
+}
+
+// FlushContext publishes touched paths, honoring cancellation while waiting
+// for either the render lock or the canonical commit gate. It never holds the
+// shared commit gate while waiting for runLock, because provider-only jobs
+// intentionally use runLock without entering the commit section.
+func FlushContext(ctx context.Context, q *Queue, root string) (committed bool, err error) {
+	if ctx == nil {
+		return false, ErrNilCommitContext
+	}
+	for {
+		if err := q.runMu.lockContext(ctx); err != nil {
+			return false, err
+		}
+		leave, changed, err := q.commit.tryEnterShared(ctx)
+		if err != nil {
+			q.runMu.unlock()
+			return false, err
+		}
+		if leave == nil {
+			q.runMu.unlock()
+			select {
+			case <-ctx.Done():
+				return false, ctx.Err()
+			case <-changed:
+			}
+			continue
+		}
+		committed, err = flushTouchedLocked(ctx, q, root)
+		leave()
+		q.runMu.unlock()
+		return committed, err
+	}
 }
 
 // flushTouchedLocked publishes touched paths while the caller holds runMu.

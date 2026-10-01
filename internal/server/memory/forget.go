@@ -12,6 +12,20 @@ import (
 	"github.com/sirerun/serenity/internal/writer"
 )
 
+type hostedForgetPublicationKey struct{}
+
+// WithHostedForgetPublication marks the internal hosted path whose source
+// mutation must commit inline before the handler returns. It is never derived
+// from tool request data.
+func WithHostedForgetPublication(ctx context.Context) context.Context {
+	return context.WithValue(ctx, hostedForgetPublicationKey{}, true)
+}
+
+func hasHostedForgetPublication(ctx context.Context) bool {
+	trusted, _ := ctx.Value(hostedForgetPublicationKey{}).(bool)
+	return trusted
+}
+
 // ErrCodeForbidden is a Serenity extension to the error enum: the caller is
 // authenticated and scoped for forget but is neither the fact's writer nor a
 // human actor (AI-L03).
@@ -108,7 +122,13 @@ func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool,
 		// remains. The writer finishes any partial erasure and reports the
 		// idempotent Expired=false.
 		if _, erased := proj.ErasedExpiry(id); erased {
-			result, err := h.deps.memoryWriter().Forget(id, req.Reason, now)
+			var result writer.ForgetResult
+			var err error
+			if hasHostedForgetPublication(ctx) {
+				result, err = h.deps.memoryWriter().ForgetContext(ctx, id, req.Reason, now)
+			} else {
+				result, err = h.deps.memoryWriter().Forget(id, req.Reason, now)
+			}
 			if err != nil {
 				return nil, false, fmt.Errorf("forget: %w", err)
 			}
@@ -142,7 +162,13 @@ func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool,
 		}
 	}
 	reason := req.Reason
-	result, err := mw.Forget(sha, reason, now)
+	var result writer.ForgetResult
+	var err error
+	if hasHostedForgetPublication(ctx) {
+		result, err = mw.ForgetContext(ctx, sha, reason, now)
+	} else {
+		result, err = mw.Forget(sha, reason, now)
+	}
 	if err != nil {
 		if errors.Is(err, writer.ErrMemoryFactNotFound) {
 			return verbError(ErrCodeNotFound, fmt.Sprintf("no fact with id %q", id), "ids come from remember/recall (facts[].fact_id). recall the entity first to find the right fact"), true, nil

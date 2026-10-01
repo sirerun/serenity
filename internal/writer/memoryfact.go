@@ -243,6 +243,32 @@ func (w *MemoryFact) Forget(targetSHA256, reason string, now time.Time) (ForgetR
 	return result, nil
 }
 
+// ForgetContext runs the hosted, fenced variant of forget: its source expiry
+// and erasure are rendered and flushed under one shared canonical commit
+// section. Local callers retain Forget's historical queue-and-later-flush
+// behavior.
+func (w *MemoryFact) ForgetContext(ctx context.Context, targetSHA256, reason string, now time.Time) (ForgetResult, error) {
+	if ctx == nil {
+		return ForgetResult{}, ErrNilCommitContext
+	}
+	if w.Queue == nil || w.Sources == nil {
+		return ForgetResult{}, fmt.Errorf("writer: memory writer dependencies unavailable")
+	}
+	var result ForgetResult
+	flushed := w.Queue.SubmitAndFlush(ctx, w.Sources.Root, Job{
+		Kind: "hosted memory forget",
+		Render: func() ([]byte, error) {
+			var err error
+			result, err = w.forgetLocked(targetSHA256, reason, now)
+			return nil, err
+		},
+	})
+	if flushed.Result.Err != nil {
+		return ForgetResult{}, flushed.Result.Err
+	}
+	return result, nil
+}
+
 func (w *MemoryFact) forgetLocked(targetSHA256, reason string, now time.Time) (ForgetResult, error) {
 	proj, err := store.LoadMemoryProjection(w.Sources)
 	if err != nil {
