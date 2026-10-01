@@ -335,6 +335,23 @@ func TestReplayFailsClosedForUnsafeBrainExternalReference(t *testing.T) {
 	}
 }
 
+func TestValidateBrainTreeRejectsAnyExternalCoreWorktreeValue(t *testing.T) {
+	root := t.TempDir()
+	brain := "b123456789abcdef"
+	brainDir := filepath.Join(root, brain)
+	gitDir := filepath.Join(brainDir, ".git")
+	if err := os.MkdirAll(gitDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	config := "[core]\n\tworktree = /external/brain\n\tworktree = " + brainDir + "\n"
+	if err := os.WriteFile(filepath.Join(gitDir, "config"), []byte(config), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := validateBrainTree(context.Background(), root, brain); !errors.Is(err, ErrDeletionSubjectStateUnknown) {
+		t.Fatalf("validateBrainTree with hidden external worktree = %v", err)
+	}
+}
+
 func TestReplayDoesNotAcknowledgeAbsentAccountWithoutClosureProof(t *testing.T) {
 	db, err := hoststore.Open(filepath.Join(t.TempDir(), "control.db"))
 	if err != nil {

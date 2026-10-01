@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirerun/serenity/internal/gitrun"
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 	hoststore "github.com/sirerun/serenity/internal/hosted/store"
 	brainstore "github.com/sirerun/serenity/internal/store"
@@ -181,7 +182,10 @@ func brainPathUnderRoot(root, key string) (string, error) {
 	return path, nil
 }
 
-func validateBrainTree(root, key string) (string, bool, error) {
+func validateBrainTree(ctx context.Context, root, key string) (string, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return "", false, err
+	}
 	path, err := brainPathUnderRoot(root, key)
 	if err != nil {
 		return "", false, err
@@ -199,6 +203,9 @@ func validateBrainTree(root, key string) (string, bool, error) {
 		return "", false, fmt.Errorf("hosted: inspect brain tree: %w", err)
 	}
 	err = filepath.WalkDir(path, func(p string, d os.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -228,15 +235,20 @@ func validateBrainTree(root, key string) (string, bool, error) {
 		return "", false, fmt.Errorf("hosted: validate brain tree before purge: %w", err)
 	}
 	if info, e := os.Lstat(filepath.Join(path, ".git")); e == nil && info.IsDir() {
-		out, e := exec.Command("git", "config", "--file", filepath.Join(path, ".git", "config"), "--get", "core.worktree").Output()
+		gitCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		out, e := gitrun.Brain(path).Output(gitCtx, "config", "--local", "--no-includes", "--null", "--get-all", "core.worktree")
 		if e != nil {
 			var exit *exec.ExitError
 			if !errors.As(e, &exit) || exit.ExitCode() != 1 {
 				return "", false, fmt.Errorf("hosted: inspect Git worktree ownership: %w", e)
 			}
 		} else {
-			worktree := strings.TrimSpace(string(out))
-			if worktree != "" {
+			for _, worktree := range strings.Split(string(out), "\x00") {
+				worktree = strings.TrimSpace(worktree)
+				if worktree == "" {
+					continue
+				}
 				if !filepath.IsAbs(worktree) {
 					worktree = filepath.Join(path, worktree)
 				}
@@ -256,13 +268,19 @@ func validateBrainTree(root, key string) (string, bool, error) {
 	return path, true, nil
 }
 
-func removeBrainTree(root, key string) error {
-	path, present, err := validateBrainTree(root, key)
+func removeBrainTree(ctx context.Context, root, key string) error {
+	path, present, err := validateBrainTree(ctx, root, key)
 	if err != nil || !present {
+		return err
+	}
+	if err = ctx.Err(); err != nil {
 		return err
 	}
 	if err = os.RemoveAll(path); err != nil {
 		return fmt.Errorf("hosted: remove brain tree: %w", err)
+	}
+	if err = ctx.Err(); err != nil {
+		return err
 	}
 	if _, err = os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 		if err == nil {
@@ -270,7 +288,7 @@ func removeBrainTree(root, key string) error {
 		}
 		return fmt.Errorf("hosted: verify brain tree removal: %w", err)
 	}
-	return nil
+	return ctx.Err()
 }
 
 // deleteBrainUnderAccountLock requires the caller to hold Maintenance and
@@ -285,7 +303,7 @@ func (g *Gateway) deleteBrainUnderAccountLock(ctx context.Context, account, brai
 	if owned.PathKey != owned.ID || !validBrainPathKey(owned.PathKey) {
 		return errors.New("invalid stored brain path")
 	}
-	if _, _, err = validateBrainTree(root, owned.PathKey); err != nil {
+	if _, _, err = validateBrainTree(ctx, root, owned.PathKey); err != nil {
 		return err
 	}
 	if g.Pool == nil {
@@ -308,7 +326,7 @@ func (g *Gateway) deleteBrainUnderAccountLock(ctx context.Context, account, brai
 	if err != nil {
 		return err
 	}
-	return removeBrainTree(root, owned.PathKey)
+	return removeBrainTree(ctx, root, owned.PathKey)
 }
 
 // AccountDeletePreflight runs while the maintenance read fence and account
@@ -608,7 +626,7 @@ func (g *Gateway) replayAccountDeletion(ctx context.Context, root, account strin
 }
 
 func (g *Gateway) purgeOrphanBrain(ctx context.Context, root, brain string) error {
-	_, _, err := validateBrainTree(root, brain)
+	_, _, err := validateBrainTree(ctx, root, brain)
 	if err != nil {
 		return err
 	}
@@ -632,7 +650,7 @@ func (g *Gateway) purgeOrphanBrain(ctx context.Context, root, brain string) erro
 	}); err != nil {
 		return fmt.Errorf("hosted: revoke orphaned brain credentials: %w", err)
 	}
-	if err = removeBrainTree(root, brain); err != nil {
+	if err = removeBrainTree(ctx, root, brain); err != nil {
 		return fmt.Errorf("hosted: remove orphaned brain path: %w", err)
 	}
 	return nil
