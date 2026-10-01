@@ -260,7 +260,7 @@ func Create(ctx context.Context, dataDir, destination, buildSHA string, journal 
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return statErr
 	}
-	if err = os.Rename(staging, destination); err != nil {
+	if err = renameNoReplace(staging, destination); err != nil {
 		return fmt.Errorf("hosted/backup: publish snapshot: %w", err)
 	}
 	published = true
@@ -735,7 +735,7 @@ func Restore(ctx context.Context, snapshot, destination string) (err error) {
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return statErr
 	}
-	if err = os.Rename(staging, destination); err != nil {
+	if err = renameNoReplace(staging, destination); err != nil {
 		return fmt.Errorf("hosted/backup: publish restore: %w", err)
 	}
 	published = true
