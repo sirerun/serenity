@@ -1,6 +1,6 @@
 {
   "date": "2026-10-01",
-  "source": "e0e705d",
+  "source": "0ac66c44cb7cd05c311f70338be3b5416fb345c7",
   "scope": "Unused owner-only Unix admin transport; no human approval or production mount",
   "results": {
     "peer-control": 1,
@@ -50,6 +50,16 @@
     }
   ],
   "runtime": "Darwin peer tests; Linux ARM64 compile only",
-  "independent_review": "pending",
-  "production_mount": false
+  "independent_review": "81451db64a137af994d910ea7ff8acc576df91f3",
+  "production_mount": false,
+  "initial_source": "e0e705d",
+  "superseded_initial_review": "2264c32be1d6cec27fbb6f54ae466aae4c156da8",
+  "containment_controls": {
+    "higher_ancestor_old_source": "RED",
+    "ownership_disabled_mount_guard_bypass": "RED",
+    "corrected_focused_checks": "PASS"
+  },
+  "fixture": "Task-owned SSD-backed ownership-enabled APFS sparse image; not production physical quota qualification",
+  "nonqualifying_attempt": "Initial corrected positive fixtures on ownership-disabled shared volume failed; raw log pathname reused, original raw log not retained",
+  "combined_full_gate": "pending"
 }
