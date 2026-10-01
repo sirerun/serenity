@@ -146,6 +146,26 @@ func TestClosePreservesReplacementAndIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestUnsafeHigherAncestorRefusedBeforeSocketCreation(t *testing.T) {
+	base := filepath.Dir(privatePath(t))
+	if err := os.Chmod(base, 0777); err != nil {
+		t.Fatal(err)
+	}
+	parent := filepath.Join(base, "p")
+	child := filepath.Join(parent, "s")
+	if err := os.MkdirAll(child, 0700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(child, "admin.sock")
+	if l, err := Listen(context.Background(), path); err == nil {
+		t.Cleanup(func() { _ = l.Close() })
+		t.Fatal("private subtree under non-sticky writable ancestor accepted")
+	}
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("unsafe ancestor check published socket")
+	}
+}
+
 func TestWrongOrUnavailablePeerCredentialsNeverReachHandler(t *testing.T) {
 	for _, failed := range []bool{false, true} {
 		t.Run(map[bool]string{false: "wrong_uid", true: "credential_error"}[failed], func(t *testing.T) {

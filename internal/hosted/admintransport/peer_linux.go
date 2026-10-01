@@ -8,6 +8,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Linux has no Darwin-style owners-disabled mount mode. The VFS supplies
+// the UID and permission bits checked for every ancestor by Listen.
+func ownershipEnforced(string) error { return nil }
+
 func fileUID(info os.FileInfo) (uint32, bool) {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {

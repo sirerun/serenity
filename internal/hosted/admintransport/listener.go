@@ -73,6 +73,26 @@ func listen(ctx context.Context, path string, credentials func(*net.UnixConn) (u
 	if uid, ok := fileUID(info); !ok || uid != owner {
 		return nil, errors.New("admin transport: directory owner mismatch")
 	}
+	// A private final directory is insufficient if another user can rename
+	// an ancestor. Trust only root/the creating UID and sticky-protected
+	// shared ancestors; check every component through the filesystem root.
+	for ancestor := parent; ; ancestor = filepath.Dir(ancestor) {
+		if err := ownershipEnforced(ancestor); err != nil {
+			return nil, err
+		}
+		entry, statErr := os.Lstat(ancestor)
+		if statErr != nil {
+			return nil, statErr
+		}
+		uid, ok := fileUID(entry)
+		if !entry.IsDir() || !ok || (uid != owner && uid != 0) ||
+			(entry.Mode().Perm()&0022 != 0 && entry.Mode()&os.ModeSticky == 0) {
+			return nil, errors.New("admin transport: unsafe ancestor directory")
+		}
+		if ancestor == filepath.Dir(ancestor) {
+			break
+		}
+	}
 	if _, err = os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 		if err == nil {
 			return nil, errors.New("admin transport: socket path exists")

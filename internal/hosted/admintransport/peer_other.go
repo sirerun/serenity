@@ -9,6 +9,9 @@ import (
 )
 
 func fileUID(os.FileInfo) (uint32, bool) { return 0, false }
+func ownershipEnforced(string) error {
+	return errors.New("admin transport: filesystem ownership verification unsupported")
+}
 func osPeerUID(*net.UnixConn) (uint32, error) {
 	return 0, errors.New("admin transport: peer credentials unsupported")
 }
