@@ -10,18 +10,27 @@
     "A blocked provider call for account A does not prevent account B reconciliation.",
     "Checkout and closure for one account do not overlap provider reads.",
     "A webhook identity fetch paused before its account lock cannot apply its stale snapshot after reconciliation; it refetches under the account lock.",
-    "A canceled lock waiter returns promptly, preserves an entry still held by another caller, and idle entries are reclaimed."
+    "A canceled lock waiter returns promptly, preserves an entry still held by another caller, and idle entries are reclaimed.",
+    "Webhook and reconciliation reject canceled/unpaid/paused, expired active periods, and expired past_due grace for account-plan eligibility; active/future period and future grace retain plan.",
+    "Deleting and restore_pending account states remain free and reconciliation remains frozen.",
+    "Expired grace keeps the exact persisted deadline while returning ineligible; malformed persisted grace aborts reconciliation without partial plan/subscription updates."
   ],
   "validation": {
-    "status": "passed",
-    "command": "env GOMODCACHE=/Volumes/BuildOffload/go/pkg/mod GOCACHE=/Volumes/BuildOffload/go-build TMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-locks-20261001 go test -race -count=1 ./internal/hosted/billing",
-    "result": "passed (6.209s) after narrowing the webhook ordering assertion to persisted subscription status; no provider calls outside httptest fakes."
+    "red_baseline": "Runtime regressions on the old projection reproduced account plan builder for canceled/unpaid/paused and expired active/past_due states, incorrect Eligible=true for expired active/past_due, and malformed-grace error after a partial plan update.",
+    "focused_green": "env GOMODCACHE=/Volumes/BuildOffload/go/pkg/mod GOCACHE=/Volumes/BuildOffload/go-build TMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-locks-20261001 go test -count=1 ./internal/hosted/billing -run \"TestBillingAccountPlanTracksEffectiveSubscriptionAccess|TestReconcileMalformedPersistedGraceRollsBack|TestReconcileReturnsExpiredGraceDeadlineFromTransaction\" passed (0.559s).",
+    "package_race": "env GOMODCACHE=/Volumes/BuildOffload/go/pkg/mod GOCACHE=/Volumes/BuildOffload/go-build TMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-locks-20261001 go test -race -count=1 ./internal/hosted/billing passed (8.069s) after the fake-provider teardown fix.",
+    "load_note": "The uptime sample immediately before the final package race command reported one-minute load 13.75; no additional local checks were started afterward.",
+    "provider_calls": "All provider interactions were httptest fakes. No live provider calls or acceptance qualification were performed."
   },
   "remaining": [
     "No service/dashboard/gateway assembly changes are included.",
     "Provider rate limiting and lock behavior across multiple service processes remain separate concerns.",
-    "No live provider calls or live acceptance qualification were performed.",
-    "Independent projection observation: webhook currently assigns account plan from provider price for every status when account is active, while meter entitlement requires active/trialing with a future period end or past_due with future grace. The race fixture observed canceled subscription status with account plan still builder. This separate correction is tracked outside the account-lock implementation commit."
+    "No live provider calls or live acceptance qualification were performed."
   ],
-  "merge_status": "banked candidate only; not merged or accepted"
+  "merge_status": "banked candidate only; not merged or accepted",
+  "implementation": [
+    "Added context-aware ref-counted per-account and per-event locks. Map mutex protects only registry/ref bookkeeping; provider work runs outside it. Cancellation drops waiter references without removing a still-held entry.",
+    "Webhook first read resolves only validated subscription/customer identity, then checks the server-owned account binding under lock and refetches authoritative subscription state before projection.",
+    "Aligned account plan projection and ReconcileResult.Eligible with effective access: active/trialing require future period end; past_due requires its unchanged persisted grace deadline to remain in the future; non-active account states remain free."
+  ]
 }
