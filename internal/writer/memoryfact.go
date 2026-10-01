@@ -233,7 +233,7 @@ func (w *MemoryFact) Forget(targetSHA256, reason string, now time.Time) (ForgetR
 	var innerErr error
 	res := w.Queue.Submit(Job{
 		Render: func() ([]byte, error) {
-			result, innerErr = w.forgetLocked(targetSHA256, reason, now)
+			result, innerErr = w.forgetLockedContext(context.Background(), targetSHA256, reason, now)
 			return nil, innerErr
 		},
 	})
@@ -259,7 +259,7 @@ func (w *MemoryFact) ForgetContext(ctx context.Context, targetSHA256, reason str
 		Kind: "hosted memory forget",
 		Render: func() ([]byte, error) {
 			var err error
-			result, err = w.forgetLocked(targetSHA256, reason, now)
+			result, err = w.forgetLockedContext(ctx, targetSHA256, reason, now)
 			return nil, err
 		},
 	})
@@ -269,7 +269,10 @@ func (w *MemoryFact) ForgetContext(ctx context.Context, targetSHA256, reason str
 	return result, nil
 }
 
-func (w *MemoryFact) forgetLocked(targetSHA256, reason string, now time.Time) (ForgetResult, error) {
+func (w *MemoryFact) forgetLockedContext(ctx context.Context, targetSHA256, reason string, now time.Time) (ForgetResult, error) {
+	if ctx == nil {
+		return ForgetResult{}, ErrNilCommitContext
+	}
 	proj, err := store.LoadMemoryProjection(w.Sources)
 	if err != nil {
 		return ForgetResult{}, err
@@ -282,11 +285,11 @@ func (w *MemoryFact) forgetLocked(targetSHA256, reason string, now time.Time) (F
 		}
 		rec = store.MemoryFactRecord{SHA256: targetSHA256, ExpirySHA256: expiry}
 		w.markSource(expiry)
-		return ForgetResult{Record: rec, Expired: false}, w.eraseFact(targetSHA256, "", proj, now)
+		return ForgetResult{Record: rec, Expired: false}, w.eraseFactContext(ctx, targetSHA256, "", proj, now)
 	}
 	if rec.ExpirySHA256 != "" {
 		w.markSource(rec.ExpirySHA256)
-		return ForgetResult{Record: rec, Expired: false}, w.eraseFact(rec.SHA256, rec.Payload.OperationKey, proj, now)
+		return ForgetResult{Record: rec, Expired: false}, w.eraseFactContext(ctx, rec.SHA256, rec.Payload.OperationKey, proj, now)
 	}
 	// A fact past its own TTL is already unavailable, but erasing it still
 	// needs the expiry event as its audit record and idempotency trace.
@@ -308,12 +311,12 @@ func (w *MemoryFact) forgetLocked(targetSHA256, reason string, now time.Time) (F
 	}
 	rec.ExpirySHA256 = written.SHA256
 	if ttlExpired {
-		return ForgetResult{Record: rec, Expired: false}, w.eraseFact(rec.SHA256, rec.Payload.OperationKey, proj, now)
+		return ForgetResult{Record: rec, Expired: false}, w.eraseFactContext(ctx, rec.SHA256, rec.Payload.OperationKey, proj, now)
 	}
 
 	rec.ExpiredAt = &now
 	rec.ExpiredReason = reason
-	return ForgetResult{Record: rec, Expired: true}, w.eraseFact(rec.SHA256, rec.Payload.OperationKey, proj, now)
+	return ForgetResult{Record: rec, Expired: true}, w.eraseFactContext(ctx, rec.SHA256, rec.Payload.OperationKey, proj, now)
 }
 
 // eraseFact runs inside the queue job, after the expiry event exists: it
@@ -321,7 +324,10 @@ func (w *MemoryFact) forgetLocked(targetSHA256, reason string, now time.Time) (F
 // bytes and meta.yaml and marks both paths so the next Flush stages the
 // deletion. Each step is idempotent, so a retried forget completes a
 // partial erasure.
-func (w *MemoryFact) eraseFact(sha, operationKey string, proj *store.MemoryProjection, now time.Time) error {
+func (w *MemoryFact) eraseFactContext(ctx context.Context, sha, operationKey string, proj *store.MemoryProjection, now time.Time) error {
+	if ctx == nil {
+		return ErrNilCommitContext
+	}
 	if operationKey != "" {
 		if fence, canceled := proj.OperationCancellation(operationKey); canceled {
 			w.markSource(fence)
@@ -336,7 +342,7 @@ func (w *MemoryFact) eraseFact(sha, operationKey string, proj *store.MemoryProje
 		}
 	}
 	if w.Index != nil {
-		if err := w.Index.PurgeSource(context.Background(), sha); err != nil {
+		if err := w.Index.PurgeSource(ctx, sha); err != nil {
 			return fmt.Errorf("writer: purge forgotten fact index rows: %w", err)
 		}
 	}
@@ -356,7 +362,7 @@ func (w *MemoryFact) eraseFact(sha, operationKey string, proj *store.MemoryProje
 	if err != nil {
 		return fmt.Errorf("writer: resolve forgotten source path: %w", err)
 	}
-	if err := rewriteForgottenPath(root, path); err != nil {
+	if err := rewriteForgottenPathContext(ctx, root, path); err != nil {
 		return err
 	}
 	return nil

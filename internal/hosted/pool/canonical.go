@@ -63,8 +63,8 @@ type treeBlob struct {
 }
 
 type sourceTree struct {
-	meta  []byte
-	bytes []byte
+	metaObject  string
+	bytesObject string
 }
 
 func findCommittedOperation(ctx context.Context, root, operationID string) (head, factID string, found, safe bool) {
@@ -101,43 +101,49 @@ func findCommittedOperation(ctx context.Context, root, operationID string) (head
 			source = &sourceTree{}
 			sources[sha] = source
 		}
-		data, err := runner.Output(ctx, "cat-file", "blob", blob.sha)
-		if err != nil {
-			return "", "", false, false
-		}
 		switch parts[4] {
 		case "meta.yaml":
-			source.meta = data
+			source.metaObject = blob.sha
 		case "bytes":
-			source.bytes = data
+			source.bytesObject = blob.sha
 		}
 	}
 	var exact []string
 	for sha, source := range sources {
-		if len(source.meta) == 0 || len(source.bytes) == 0 {
+		if source.metaObject == "" || source.bytesObject == "" {
+			return "", "", false, false
+		}
+		metaBytes, err := runner.Output(ctx, "cat-file", "blob", source.metaObject)
+		if err != nil {
 			return "", "", false, false
 		}
 		var meta struct {
 			Kind string `yaml:"kind"`
 		}
-		if err := yaml.Unmarshal(source.meta, &meta); err != nil || strings.TrimSpace(meta.Kind) == "" {
+		if err := yaml.Unmarshal(metaBytes, &meta); err != nil || strings.TrimSpace(meta.Kind) == "" {
+			return "", "", false, false
+		}
+		metaBytes = nil
+		factBytes, err := runner.Output(ctx, "cat-file", "blob", source.bytesObject)
+		if err != nil {
 			return "", "", false, false
 		}
 		var envelope struct {
 			RecordType string `json:"record_type"`
 		}
-		jsonErr := json.Unmarshal(source.bytes, &envelope)
+		jsonErr := json.Unmarshal(factBytes, &envelope)
 		if meta.Kind != store.SourceKindMemoryFact {
 			if jsonErr == nil && envelope.RecordType == store.SourceKindMemoryFact {
 				return "", "", false, false
 			}
+			factBytes = nil
 			continue
 		}
-		payload, err := store.DecodeMemoryFact(source.bytes)
+		payload, err := store.DecodeMemoryFact(factBytes)
 		if err != nil {
 			return "", "", false, false
 		}
-		digest := sha256.Sum256(source.bytes)
+		digest := sha256.Sum256(factBytes)
 		if hex.EncodeToString(digest[:]) != sha {
 			return "", "", false, false
 		}
@@ -149,6 +155,7 @@ func findCommittedOperation(ctx context.Context, root, operationID string) (head
 		if idMatch && keyMatch {
 			exact = append(exact, sha)
 		}
+		factBytes = nil
 	}
 	if len(exact) > 1 {
 		return "", "", false, false
