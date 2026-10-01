@@ -11,12 +11,13 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/sirerun/serenity/internal/hosted/contracts"
-	"github.com/sirerun/serenity/internal/hosted/store"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sirerun/serenity/internal/hosted/contracts"
+	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
 func VerifySignature(body []byte, header, secret string, now time.Time) bool {

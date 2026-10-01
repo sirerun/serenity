@@ -4,11 +4,12 @@ package billing
 import (
 	"errors"
 
-	"github.com/sirerun/serenity/internal/hosted/identity"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/sirerun/serenity/internal/hosted/identity"
 )
 
 func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {

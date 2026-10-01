@@ -7,12 +7,13 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/sirerun/serenity/internal/hosted/contracts"
-	"github.com/sirerun/serenity/internal/hosted/store"
-	"github.com/sirerun/serenity/internal/hosted/testhooks"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/sirerun/serenity/internal/hosted/contracts"
+	"github.com/sirerun/serenity/internal/hosted/store"
+	"github.com/sirerun/serenity/internal/hosted/testhooks"
 )
 
 func (s *Service) readPriorSubscription(ctx context.Context, tx *sql.Tx, subscriptionID, accountID string) (priorSubscription, error) {

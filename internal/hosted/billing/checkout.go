@@ -7,11 +7,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/sirerun/serenity/internal/hosted/contracts"
-	"github.com/sirerun/serenity/internal/hosted/store"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/sirerun/serenity/internal/hosted/contracts"
+	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
 func (s *Service) customer(ctx context.Context, account string) (string, error) {

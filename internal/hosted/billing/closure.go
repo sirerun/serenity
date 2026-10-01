@@ -7,9 +7,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"net/url"
 	"strings"
+
+	"github.com/sirerun/serenity/internal/hosted/contracts"
 )
 
 func (s *Service) expireCheckout(ctx context.Context, sessionID string) error {

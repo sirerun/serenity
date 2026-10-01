@@ -79,6 +79,20 @@
         "http": "Billing-local typed CheckoutRateLimitError is mapped by billing.Service.ServeHTTP to 429 with Retry-After seconds.",
         "coverage": "Limiter window/isolation/cap/cleanup/cancellation, invalid/frozen/local-subscription no-charge behavior, provider-failure charging, typed error, and HTTP retry guidance are covered by focused tests."
       }
-    }
+    },
+    "author_final_source": "e7f77b846d4c7d1683164a00a083b79d3705c3f3",
+    "author_final_validation": {
+      "red_baseline": "Runtime regressions on the old projection reproduced account plan builder for canceled/unpaid/paused and expired active/past_due states, incorrect Eligible=true for expired active/past_due, and malformed-grace error after a partial plan update.",
+      "focused_green": "env GOMODCACHE=/Volumes/BuildOffload/go/pkg/mod GOCACHE=/Volumes/BuildOffload/go-build TMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-locks-20261001 go test -count=1 ./internal/hosted/billing -run \"TestBillingAccountPlanTracksEffectiveSubscriptionAccess|TestReconcileMalformedPersistedGraceRollsBack|TestReconcileReturnsExpiredGraceDeadlineFromTransaction\" passed (0.559s).",
+      "package_race": "env GOMODCACHE=/Volumes/BuildOffload/go/pkg/mod GOCACHE=/Volumes/BuildOffload/go-build TMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-locks-20261001 go test -race -count=1 ./internal/hosted/billing passed (8.069s) after the fake-provider teardown fix.",
+      "load_note": "The uptime sample immediately before the final billing race command reported one-minute load 13.75. Because the command was chained directly after that sample, the test launched above the <=10 limit; its pass is explicitly nonqualifying. Coordinator rerun remains required. Subsequent Checkout limiter package race run was launched only after a fresh uptime sample of 9.96 and passed; the earlier run remains nonqualifying.",
+      "provider_calls": "All provider interactions were httptest fakes. No live provider calls or acceptance qualification were performed.",
+      "prior_high_load_race_correction": "The local billing race command returned pass (8.069s), but it was launched in a chained `uptime && go test` immediately after uptime reported one-minute load 13.75. This run is nonqualifying under the <=10 rule; coordinator rerun required.",
+      "checkout_rate_limit": "Focused `go test -count=1 ./internal/hosted/billing -run ^TestCheckout` passed (0.707s) after correcting the HTTP fixture to use the required 43-character session token. Full `go test -race -count=1 ./internal/hosted/billing` passed (9.631s); uptime was sampled at 9.96 immediately before launch, within the <=10 limit. Build caches and TMPDIR were on /Volumes/BuildOffload.",
+      "final_split_tree_race": "After the mechanical billing file split and import cleanup, `env GOMODCACHE=/Volumes/BuildOffload/go/pkg/mod GOCACHE=/Volumes/BuildOffload/go-build TMPDIR=/Volumes/BuildOffload/tmp/t23-47-checkout-limit-20261001 go test -race -count=1 ./internal/hosted/billing` passed (7.105s). The immediately prior uptime sample reported one-minute load 9.77 (within <=10).",
+      "final_split_tree_scope": "Mechanical declaration movement only: checkout, reconciliation, webhook, HTTP, and closure methods now live in focused files; public APIs and runtime logic were unchanged."
+    },
+    "independent_review": "pending",
+    "scope": "Per-process5provider-capablecheckoutattempts/account/60s, bounded10000trackedaccounts; mechanicalfileextraction; no provider activation or live qualification."
   }
 }

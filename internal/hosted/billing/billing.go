@@ -8,14 +8,15 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/sirerun/serenity/internal/hosted/contracts"
-	"github.com/sirerun/serenity/internal/hosted/identity"
-	"github.com/sirerun/serenity/internal/hosted/store"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/sirerun/serenity/internal/hosted/contracts"
+	"github.com/sirerun/serenity/internal/hosted/identity"
+	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
 const APIVersion = "2025-06-30.basil"
