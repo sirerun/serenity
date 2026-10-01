@@ -89,6 +89,56 @@ func TestCreateAndLoadPlanIsCanonicalAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestCreatePlanRetriesDirectorySyncForExistingIdenticalPlan(t *testing.T) {
+	dir := privatePlanDir(t)
+	input := validPlanInput()
+	created, err := CreatePlan(context.Background(), dir, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	syncErr := errors.New("injected directory sync failure")
+	var calls int
+	failed, err := createPlanWithSync(context.Background(), dir, input, func(string) error {
+		calls++
+		return syncErr
+	})
+	if !errors.Is(err, syncErr) {
+		t.Fatalf("existing-plan retry error = %v, want sync failure", err)
+	}
+	if failed.PlanHash != "" || calls != 1 {
+		t.Fatalf("failed sync returned plan %+v after %d sync calls", failed, calls)
+	}
+
+	var retries int
+	retried, err := createPlanWithSync(context.Background(), dir, input, func(string) error {
+		retries++
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("retry after sync failure: %v", err)
+	}
+	if retries != 1 || !plansEqual(retried, created) {
+		t.Fatalf("retry result = %+v, sync calls = %d", retried, retries)
+	}
+}
+
+func TestCreatePlanRejectsNonUTF8AccountBeforePublication(t *testing.T) {
+	dir := privatePlanDir(t)
+	input := validPlanInput()
+	input.Accounts = []string{"account-\xff"}
+	if _, err := CreatePlan(context.Background(), dir, input); !errors.Is(err, ErrPlanInvalid) {
+		t.Fatalf("CreatePlan error = %v, want ErrPlanInvalid", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("invalid UTF-8 account published %d filesystem entries", len(entries))
+	}
+}
+
 func TestLoadPlanRejectsUnchangedHashMismatch(t *testing.T) {
 	dir := privatePlanDir(t)
 	plan, err := CreatePlan(context.Background(), dir, validPlanInput())
@@ -292,6 +342,11 @@ func TestCreatePlanRejectsMalformedInputs(t *testing.T) {
 		"older fence generation":    func(in *PlanInput) { in.FenceGeneration = 0 },
 		"duplicate account":         func(in *PlanInput) { in.Accounts = []string{"same", "same"} },
 		"activate all alias":        func(in *PlanInput) { in.Accounts = []string{"all"} },
+		"invalid UTF-8 account":     func(in *PlanInput) { in.Accounts = []string{"bad\xffid"} },
+		"NUL account":               func(in *PlanInput) { in.Accounts = []string{"bad\x00id"} },
+		"control account":           func(in *PlanInput) { in.Accounts = []string{"bad\x7fid"} },
+		"NBSP account":              func(in *PlanInput) { in.Accounts = []string{"bad\u00a0id"} },
+		"Unicode line separator":    func(in *PlanInput) { in.Accounts = []string{"bad\u2028id"} },
 		"zero provider observation": func(in *PlanInput) { in.ProviderObserved = time.Time{} },
 	}
 	for name, mutate := range cases {

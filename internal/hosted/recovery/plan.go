@@ -17,6 +17,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 )
@@ -76,8 +78,18 @@ type planDocument struct {
 // An identical existing plan is returned idempotently. The directory must
 // already be an absolute, private, non-symlink operator-owned directory.
 func CreatePlan(ctx context.Context, dir string, input PlanInput) (Plan, error) {
+	return createPlanWithSync(ctx, dir, input, syncPlanDirectory)
+}
+
+// createPlanWithSync keeps directory syncing injectable for deterministic
+// durability-retry tests. Production always calls CreatePlan, which supplies
+// the real filesystem sync implementation.
+func createPlanWithSync(ctx context.Context, dir string, input PlanInput, syncDirectory func(string) error) (Plan, error) {
 	if err := requireContext(ctx); err != nil {
 		return Plan{}, err
+	}
+	if syncDirectory == nil {
+		return Plan{}, errors.New("hosted/recovery: directory sync function is required")
 	}
 	var err error
 	dir, err = privateDirectoryPath(dir)
@@ -128,9 +140,12 @@ func CreatePlan(ctx context.Context, dir string, input PlanInput) (Plan, error) 
 		if loadErr != nil || !plansEqual(existing, plan) {
 			return Plan{}, errors.Join(ErrPlanExists, loadErr)
 		}
+		if err = syncDirectory(dir); err != nil {
+			return Plan{}, fmt.Errorf("hosted/recovery: sync plan directory: %w", err)
+		}
 		return existing, nil
 	}
-	if err = syncPlanDirectory(dir); err != nil {
+	if err = syncDirectory(dir); err != nil {
 		return Plan{}, fmt.Errorf("hosted/recovery: sync plan directory: %w", err)
 	}
 	return plan, nil
@@ -251,7 +266,7 @@ func validatePlanPayload(plan Plan) error {
 		return fmt.Errorf("%w: account scope is empty or exceeds its bound", ErrPlanInvalid)
 	}
 	for i, account := range plan.Accounts {
-		if account == "" || len(account) > maxAccountIDBytes || account == "*" || strings.EqualFold(account, "all") || strings.ContainsAny(account, "@ \t\r\n/") {
+		if !utf8.ValidString(account) || account == "" || len(account) > maxAccountIDBytes || account == "*" || strings.EqualFold(account, "all") || strings.ContainsAny(account, "@/\\") || containsAccountWhitespaceOrControl(account) {
 			return fmt.Errorf("%w: account scope contains an invalid opaque identifier", ErrPlanInvalid)
 		}
 		if i > 0 && plan.Accounts[i-1] >= account {
@@ -259,6 +274,15 @@ func validatePlanPayload(plan Plan) error {
 		}
 	}
 	return nil
+}
+
+func containsAccountWhitespaceOrControl(account string) bool {
+	for _, r := range account {
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			return true
+		}
+	}
+	return false
 }
 
 func payloadFromPlan(plan Plan) planPayload {
