@@ -352,7 +352,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In progress
 
-- 2026-10-01 Hosted freeze recovery (Codex coordinator, Luna workers): current-main audits and banked fixes cover billing read errors, quota-period retry identity, trusted canonical operation IDs, and backup manifest-v2 recovery. PR326 is draft pending the reviewed fingerprint correction and final checks. T23.44/47/49 remain PARTIAL; journal/service/physical-storage and lifecycle qualification stay explicit. Ownership and next steps: docs/plans/hosted-recovery-implementation-2026-10-01.md.
+- 2026-10-01 Hosted freeze recovery (Codex coordinator, Luna workers): current-main audits and banked fixes cover billing read errors, quota-period retry identity, trusted canonical operation IDs, and backup manifest-v2 recovery. PR326 is locally validated and independently reviewed, pending merge. T23.44/47/49 remain PARTIAL; journal/service/physical-storage and lifecycle qualification stay explicit. Ownership and next steps: docs/plans/hosted-recovery-implementation-2026-10-01.md.
 
 
 - 2026 08 27 E0 wave 0a complete (9/9) -- see Shipped entries for T0.1-T0.12.
@@ -368,7 +368,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In flight (PRs open)
 
-- 2026-10-01 [PR326](https://github.com/sirerun/serenity/pull/326), Codex: hosted retry/accounting and billing read recovery, with canonical write ordering and isolated bundle-clone helper. Draft held for normalized remember fingerprint correction/review; local full race/vet/lint evidence recorded, no paid Actions prerequisite.
+- 2026-10-01 [PR326](https://github.com/sirerun/serenity/pull/326), Codex: hosted retry/accounting and billing read recovery, with canonical write ordering and isolated bundle-clone helper. Normalized remember fingerprint correction/review cleared; local full race/vet/lint evidence recorded, no paid Actions prerequisite.
 
 - 2026-09-07 /apply --pool wave dispatched after T4.7 shipped (PR #162/#163): claims WON for T4.13 (conformance fixture set under testdata/conformance/, deps T4.7 met), T1.29 (close the P>=0.90/R>=0.80 recall bar for the 12 partially-scoring ava extraction families) -- **shipped, PR #179, see Shipped above** --, T4.21 (authenticated Streamable HTTP MCP endpoint at /mcp, deps T4.1/T4.2/T4.3/T4.20 all met), T4.16 (protocol governance documents MEMORY_VERBS_v1.md/DISPOSITION_v1.md/DIRECTION_v1.md, deps T4.7 met). Frontier scan confirmed only 5 tasks are mechanically dispatchable right now (ADR 011: deps+blocked-by fields are authoritative, not epic-rollup prose) -- T5.5 (adversarial corpus release gate, deps T1.20/T3.12/T4.11 all met, no blocked-by on its own line despite E5's general "gated behind M1+M4" framing) is the 5th, queued for whoever frees up first; no file/package collision expected across all 5. T5.1/T5.9 remain correctly held on blocked-by:[T4.17] (M4 exit, David-only, unchecked). Owner: pool.
 
