@@ -3,8 +3,8 @@ package writer
 import (
 	"context"
 	"errors"
-	"runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -67,48 +67,23 @@ func TestFlushContextReleasesRunLockWhileExclusiveFenceWaits(t *testing.T) {
 	}
 	defer releaseFence()
 
-	// Occupy runLock first so the flush attempt is known to be queued on it.
-	if err := q.runMu.lockContext(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(q.runMu.unlock)
+	ctx := &flushPhaseContext{Context: context.Background(), sharedTry: make(chan struct{})}
 	flushDone := make(chan error, 1)
 	go func() {
-		_, err := FlushContext(context.Background(), q, root)
+		_, err := FlushContext(ctx, q, root)
 		flushDone <- err
 	}()
-	deadline := time.After(time.Second)
-	for {
-		q.runMu.mu.Lock()
-		waiters := q.runMu.waiters
-		q.runMu.mu.Unlock()
-		if waiters > 0 {
-			break
-		}
-		select {
-		case <-deadline:
-			t.Fatal("FlushContext never queued for the occupied runLock")
-		default:
-			runtime.Gosched()
-		}
+	select {
+	case <-ctx.sharedTry:
+	case <-time.After(time.Second):
+		t.Fatal("FlushContext did not reach the shared-fence attempt while holding runLock")
+	}
+	lockCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := q.runMu.lockContext(lockCtx); err != nil {
+		t.Fatalf("FlushContext retained runLock while waiting for exclusive fence: %v", err)
 	}
 	q.runMu.unlock()
-
-	deadline = time.After(time.Second)
-	for {
-		q.runMu.mu.Lock()
-		held, waiters := q.runMu.held, q.runMu.waiters
-		q.runMu.mu.Unlock()
-		if !held && waiters == 0 {
-			break
-		}
-		select {
-		case <-deadline:
-			t.Fatal("FlushContext retained runLock while waiting for exclusive fence")
-		default:
-			runtime.Gosched()
-		}
-	}
 	select {
 	case err := <-flushDone:
 		t.Fatalf("FlushContext completed under exclusive fence: %v", err)
@@ -124,4 +99,18 @@ func TestFlushContextReleasesRunLockWhileExclusiveFenceWaits(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("FlushContext did not resume after exclusive fence release")
 	}
+}
+
+type flushPhaseContext struct {
+	context.Context
+	calls     atomic.Int32
+	sharedTry chan struct{}
+	once      sync.Once
+}
+
+func (c *flushPhaseContext) Err() error {
+	if c.calls.Add(1) == 2 {
+		c.once.Do(func() { close(c.sharedTry) })
+	}
+	return c.Context.Err()
 }
