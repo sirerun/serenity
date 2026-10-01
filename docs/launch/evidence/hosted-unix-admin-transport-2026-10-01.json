@@ -61,5 +61,5 @@
   },
   "fixture": "Task-owned SSD-backed ownership-enabled APFS sparse image; not production physical quota qualification",
   "nonqualifying_attempt": "Initial corrected positive fixtures on ownership-disabled shared volume failed; raw log pathname reused, original raw log not retained",
-  "combined_full_gate": "pending"
+  "combined_full_gate": "PASS: source8fdd32f race81 packages2833 tests, vet/lint/Linux ARM64 build0; see combined evidence"
 }
