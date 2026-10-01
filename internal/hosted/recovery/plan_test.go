@@ -30,11 +30,24 @@ func validPlanInput() PlanInput {
 
 func privatePlanDir(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
+	dir := recoveryTestTempDir(t)
 	if err := os.Chmod(dir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+func recoveryTestTempDir(t *testing.T) string {
+	t.Helper()
+	if base := os.Getenv("SERENITY_RECOVERY_TEST_TMPDIR"); base != "" {
+		dir, err := os.MkdirTemp(base, "recovery-plan-test-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(dir) })
+		return dir
+	}
+	return t.TempDir()
 }
 
 func TestCreateAndLoadPlanIsCanonicalAndIdempotent(t *testing.T) {
@@ -110,7 +123,7 @@ func TestLoadPlanRejectsUnchangedHashMismatch(t *testing.T) {
 }
 
 func TestCreatePlanRejectsWritableHigherAncestor(t *testing.T) {
-	base := t.TempDir()
+	base := recoveryTestTempDir(t)
 	unsafe := filepath.Join(base, "writable")
 	if err := os.Mkdir(unsafe, 0700); err != nil {
 		t.Fatal(err)
@@ -202,7 +215,7 @@ func TestCreatePlanNeverOverwritesExistingArtifactOrFollowsSymlink(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-		victim := filepath.Join(t.TempDir(), "victim")
+		victim := filepath.Join(recoveryTestTempDir(t), "victim")
 		original := []byte("outside plan root")
 		if err = os.WriteFile(victim, original, 0600); err != nil {
 			t.Fatal(err)
@@ -222,7 +235,7 @@ func TestCreatePlanNeverOverwritesExistingArtifactOrFollowsSymlink(t *testing.T)
 }
 
 func TestCreatePlanRejectsSymlinkDirectoryAndCanceledContextBeforeIO(t *testing.T) {
-	parent := t.TempDir()
+	parent := recoveryTestTempDir(t)
 	realDir := filepath.Join(parent, "real")
 	if err := os.Mkdir(realDir, 0700); err != nil {
 		t.Fatal(err)
