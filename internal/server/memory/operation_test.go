@@ -2,10 +2,44 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
+	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
 )
+
+func TestRememberIgnoresClientCanonicalOperationID(t *testing.T) {
+	h, _ := newTestHandlers(t)
+	request := map[string]any{
+		"fact":                   "client marker must not be trusted",
+		"provenance":             "test",
+		"canonical_operation_id": "client-controlled-id",
+	}
+	args, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, isError, err := h.remember(context.Background(), args)
+	if err != nil || isError {
+		t.Fatalf("remember response=%+v isError=%v err=%v", response, isError, err)
+	}
+	result, ok := response.(rememberResponse)
+	if !ok {
+		t.Fatalf("remember response type = %T", response)
+	}
+	data, _, err := h.deps.Sources.Read(result.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := store.DecodeMemoryFact(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.CanonicalOperationID != "" {
+		t.Fatalf("client controlled canonical operation ID %q", payload.CanonicalOperationID)
+	}
+}
 
 func TestRememberValidationRunsBeforeCanonicalOperationCallback(t *testing.T) {
 	h, _ := newTestHandlers(t)
