@@ -47,7 +47,7 @@ func privateDirectoryPath(path string) (string, error) {
 			if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 				return "", fmt.Errorf("%w: unsafe directory component", ErrPlanUntrustedDir)
 			}
-			if current != clean && info.Mode().Perm()&0022 != 0 && info.Mode()&os.ModeSticky == 0 {
+			if current == filepath.Dir(clean) && info.Mode().Perm()&0022 != 0 && info.Mode()&os.ModeSticky == 0 {
 				return "", fmt.Errorf("%w: writable non-sticky parent directory", ErrPlanUntrustedDir)
 			}
 		}
