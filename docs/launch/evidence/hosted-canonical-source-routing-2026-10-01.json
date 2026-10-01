@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-01",
+  "scope": "Canonical source-only queue routing and context propagation; legacy batching preserved",
+  "full_source": "c3f4f1dbeed7a3b2cd458ca06bb0d8453ae7952c",
+  "final_test_source": "f72cfd3b82a6b0a6ca311bda728492a29771a41b",
+  "full_checks": {
+    "race": 0,
+    "passing_packages": 79,
+    "passing_tests_and_subtests": 2688,
+    "packages_without_tests": 5,
+    "vet": 0,
+    "lint": 0,
+    "linux_arm64_build": 0
+  },
+  "gated_skips": [
+    "github.com/sirerun/serenity/evals/importbudget:TestImportBudget10K",
+    "github.com/sirerun/serenity/internal/cli:TestGbrainProtocolConformance",
+    "github.com/sirerun/serenity/internal/conformance:TestBootDeliberatelyBrokenBuildFailsDisposeConformance",
+    "github.com/sirerun/serenity/internal/hosted/deletion:TestS3Qualification",
+    "github.com/sirerun/serenity/internal/import/gbrain:TestImportCrashHelper",
+    "github.com/sirerun/serenity/pkg/serenity:TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request",
+    "github.com/sirerun/serenity/pkg/serenity:TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+  ],
+  "full_build_lease": "2ef6a3a6fe395bda6dcd8950307ff004abfa6df5",
+  "lease_released": true,
+  "load_at_start": 4.32,
+  "go_package_parallelism": 2,
+  "test_only_followup": {
+    "change": "Replace sleep with explicit competing-path phase barriers",
+    "writer_focused_race": 0,
+    "writer_lint": 0,
+    "load_at_start": 3.32,
+    "single_package": true
+  },
+  "independent_reviews": [
+    "57b200ec0adfdd8fed49e6cd14316ed235a457e4",
+    "58ca63363a164d167c55042fdf005f5f05c24508"
+  ],
+  "negative_controls": "Three reachable request-context gaps fail on original routing source and pass on correction; reviewer independently reproduced",
+  "artifact_sha256": {
+    "canonical-submit-race.jsonl": "51991d7615b5788132f09a4abf8a990078baf6926c59a3201ef1d00908d93678",
+    "canonical-submit-vet.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "canonical-submit-lint.log": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47",
+    "canonical-submit-linux-arm64-build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "canonical-submit-testfix-race.jsonl": "fd3156f22a1419533d6e04466a4fb8284bf772641fb90e4abb5fb6a94fe386d9",
+    "canonical-submit-testfix-lint.log": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+  },
+  "limits": [
+    "No checker startup/ticker/operator activation or authoritative absence proof",
+    "AfterGuard releases commit fence but intentionally retains runMu through optional derived work",
+    "Missing or erased canonical evidence remains Unknown",
+    "No physical staging quota qualification, deployment or full T23.44 acceptance"
+  ]
+}
