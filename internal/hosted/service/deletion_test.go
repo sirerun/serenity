@@ -60,7 +60,7 @@ func deletionFixture(t *testing.T) (*store.Store, Config, string, string) {
 
 func TestDeleteAccountFreezesBeforeClosureAndRetainsUntilClosed(t *testing.T) {
 	db, cfg, accountID, path := deletionFixture(t)
-	s, err := Assemble(cfg, true, db, nil, deletionEmbedding{})
+	s, err := assembleForTest(t, cfg, true, db, nil, deletionEmbedding{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestDeleteAccountFreezesBeforeClosureAndRetainsUntilClosed(t *testing.T) {
 
 func TestAccountDeletionMaintenanceFenceBlocksBackupUntilPurgeCompletes(t *testing.T) {
 	db, cfg, accountID, brainPath := deletionFixture(t)
-	s, err := Assemble(cfg, true, db, nil, deletionEmbedding{})
+	s, err := assembleForTest(t, cfg, true, db, nil, deletionEmbedding{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +196,7 @@ func TestAccountDeletionMaintenanceFenceBlocksBackupUntilPurgeCompletes(t *testi
 
 func TestDeletionWithoutConfiguredCloserRetainsExistingCustomer(t *testing.T) {
 	db, cfg, accountID, path := deletionFixture(t)
-	s, err := Assemble(cfg, true, db, nil, deletionEmbedding{})
+	s, err := assembleForTest(t, cfg, true, db, nil, deletionEmbedding{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,9 +212,38 @@ func TestDeletionWithoutConfiguredCloserRetainsExistingCustomer(t *testing.T) {
 	}
 }
 
+func TestReplayPreflightStillClosesBillingForDeletedAccount(t *testing.T) {
+	db, cfg, accountID, _ := deletionFixture(t)
+	if _, err := db.DB().Exec(`UPDATE accounts SET status='deleted',stripe_customer_id='cus_replay' WHERE id=?`, accountID); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	s := &Service{Store: db, cfg: cfg, billingCloser: deletionCloser(func(context.Context, string) (contracts.CloseResult, error) {
+		calls++
+		return contracts.CloseResult{Status: contracts.CloseStatusClosed}, nil
+	})}
+	proceed, err := s.accountDeletionPreflight(context.Background(), accountID)
+	if err != nil {
+		t.Fatalf("preflight for deleted account: %v", err)
+	}
+	if proceed {
+		t.Fatal("already-deleted account should not be destructively reprocessed after billing reconciliation")
+	}
+	if calls != 1 {
+		t.Fatalf("deleted account billing closure calls=%d, want 1", calls)
+	}
+	var status string
+	if err := db.DB().QueryRow(`SELECT status FROM accounts WHERE id=?`, accountID).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "deleted" {
+		t.Fatalf("billing preflight changed terminal account status to %q", status)
+	}
+}
+
 func TestDashboardPendingDeletionFreezesAndRetriesRetainingMemory(t *testing.T) {
 	db, cfg, accountID, path := deletionFixture(t)
-	s, err := Assemble(cfg, true, db, nil, deletionEmbedding{})
+	s, err := assembleForTest(t, cfg, true, db, nil, deletionEmbedding{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +318,7 @@ func TestStartupDeletionClosesBillingBeforePurging(t *testing.T) {
 			defer provider.Close()
 			cfg.BillingEnabled = true
 			cfg.billingConfig = &billing.Config{BaseURL: provider.URL, BuilderPrice: "price_builder", ScalePrice: "price_scale"}
-			s, err := Assemble(cfg, true, db, nil, deletionEmbedding{})
+			s, err := assembleForTest(t, cfg, true, db, nil, deletionEmbedding{})
 			if s != nil {
 				defer func() { s.Gateway.Close(); _ = s.Pool.Close() }()
 			}

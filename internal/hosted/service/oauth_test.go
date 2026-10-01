@@ -36,7 +36,7 @@ func testOAuthBrowserConsentMCPAndRevocation(t *testing.T, callback string) {
 	ts := httptest.NewUnstartedServer(nil)
 	origin := "http://" + ts.Listener.Addr().String()
 	mail := &sender{}
-	svc, err := service.Assemble(service.Config{DataDir: dir, PublicOrigin: origin, MaxOpen: 2, MaxInFlight: 4, AccountCap: 10}, true, db, mail, embedding{})
+	svc, err := assembleForTest(t, service.Config{DataDir: dir, PublicOrigin: origin, MaxOpen: 2, MaxInFlight: 4, AccountCap: 10}, true, db, mail, embedding{})
 	if err != nil {
 		t.Fatal(err)
 	}
