@@ -10,6 +10,11 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-10-01 [PR330](https://github.com/sirerun/serenity/pull/330) merged at9e6db7e4: hosted remember commits canonical source before optional search indexing; provider/index failure preserves committed accounting and retry identity. Full local race79/vet/lint0 and independent failure/retry review passed. ADR025 records the narrow ordering clarification. No deployment or hosted-completion acceptance.
+- 2026-10-01 [PR329](https://github.com/sirerun/serenity/pull/329) merged atd661a4a: deletion freezes accounts before provider closure and preserves files while closure is pending; dashboard retries use the service coordinator. Checkout attempts are throttled per account, and the reviewed writer commit-guard seam is available. Full local race79/vet/lint0 and independent reviews passed; ordinary flush/forget fencing remains in progress.
+- 2026-10-01 [PR328](https://github.com/sirerun/serenity/pull/328) merged at5da90c4: account/event billing locks and authoritative refetch prevent stale projection; period/grace eligibility fails closed. Full local race79/vet and final full lint0 passed, with independent mutation reviews. Production billing remains disabled.
+- 2026-10-01 [PR327](https://github.com/sirerun/serenity/pull/327) merged atb010d786: relative TTL and cross-period retry identity fixed; strict deletion-journal adapter added as an unused library. Full local race79/vet/lint0 passed, including independent seal/tail review. Live S3 qualification and scoped credential/service wiring remain open.
+
 - 2026-10-01 PR325 merged at42f6dfd: source tombstones and supersession cascades purge local Git history; failed partner audit persistence emits a sanitized diagnostic. Independent runtime mutations and local validation recorded; full later recovery race/vet/lint also passed. Hosted erasure/export/backup acceptance remains separate.
 
 - 2026-10-01 E24 recovered work merged: PR310 hosted rollback/units, PR311 supply chain, PR312 adversarial pipeline gate, PR313 local fact-history erasure, and PR314 DIRECTION schema correction. Main7b0baad exactly matches the independently reviewed integration tree. Full race/vet/lint and 29 hosted contracts pass locally. Reviewed app IMDS deny and backup OnFailure units are live; app readiness passes. Binary remains the prior partner candidate; no full new-release or live failure-rehearsal claim. David authorized local merge gates during the Actions billing lock (ADR024).
@@ -354,7 +359,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In progress
 
-- 2026-10-01 Hosted freeze recovery (Codex coordinator, Luna workers): current-main audits and banked fixes cover billing read errors, quota-period retry identity, trusted canonical operation IDs, and backup manifest-v2 recovery. PR326 merged at b43b669 after local validation and independent review. The next unmerged followup covers unkeyed relative TTL and a deletion journal adapter held for resume-seal and generation-completeness fixes. T23.44/47/49 remain PARTIAL; journal/service/physical-storage and lifecycle qualification stay explicit. Ownership and next steps: docs/plans/hosted-recovery-implementation-2026-10-01.md.
+- 2026-10-01 Hosted freeze recovery (Codex coordinator, Luna workers): PR325–330 merged under founder-authorized local validation and independent review. Isolated next lanes are bounded billing reconciliation with retry/cursor/shutdown verification, and hosted forget/flush fencing plus a conservative HEAD checker without startup/ticker/operator activation. Entered missing or erased canonical evidence remains Unknown; no new retained applied marker. T23.44/47/48/49/50/52 remain PARTIAL or unassembled; physical staging, journal credentials/authority, backup-v2 callers, recovery activation and live qualification remain open. Receipts: docs/plans/hosted-billing-canonical-followup-2026-10-01.md and docs/launch/evidence/hosted-remember-durability-2026-10-01.json.
 
 
 - 2026 08 27 E0 wave 0a complete (9/9) -- see Shipped entries for T0.1-T0.12.
@@ -398,6 +403,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 - 2026 08 28 RESOLVED, machine-wide (not serenity-specific): `/apply --pool` claim pushes for the E1/E3 wave failed with `key ... marked as read only` -- `~/.ssh/config` was force-pinning all github.com SSH traffic to a read-only, repo-scoped deploy key (`gbrain_deploy_ed25519`, `IdentitiesOnly yes`), which also broke the machine's auto-syncing `claude-global-config` repo push, which in turn corrupted the symlinked `~/.gitconfig` on its next rebase and bricked git machine-wide (including its own conflict-abort path). Root-caused and fixed by an Opus agent under the quiet-hours delegated-decision protocol (David, 23:32-23:39 PDT): SSH config now defaults `github.com` to the account key with the deploy key moved to an opt-in `github.com-gbrain` alias; the gitconfig conflict resolved as a union with backups left at `~/.ssh/config.bak-20260827-quiethours` and `~/gitconfig.bak-conflicted`. Serenity's own tree was untouched throughout (verified clean at `4f4cba9`). Full writeup: `[[gitconfig-symlink-landmine]]` in session memory. Open question for David: why the override was added at 21:00 and whether any gbrain workflow still needs it on the bare `github.com` host.
 
 ## Decisions
+
+- 2026-10-01 ADR024: founder-authorized local validation while Actions is unavailable for billing; ordinary expected-head merges retain trusted holds. ADR025: optional derived remember indexing may follow a completed canonical commit and remains outside its guard; recovery, privacy, provider and launch gates are unchanged.
 
 - 2026 08 27 ADR 001 Gmail app-password IMAP certified (David).
 - 2026 08 27 ADR 002 code complete = M0-M5 ACs green; M6 is a post-code-complete soak (David).
