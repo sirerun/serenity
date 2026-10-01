@@ -19,7 +19,7 @@
     "red_baseline": "Runtime regressions on the old projection reproduced account plan builder for canceled/unpaid/paused and expired active/past_due states, incorrect Eligible=true for expired active/past_due, and malformed-grace error after a partial plan update.",
     "focused_green": "env GOMODCACHE=/Volumes/BuildOffload/go/pkg/mod GOCACHE=/Volumes/BuildOffload/go-build TMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-locks-20261001 go test -count=1 ./internal/hosted/billing -run \"TestBillingAccountPlanTracksEffectiveSubscriptionAccess|TestReconcileMalformedPersistedGraceRollsBack|TestReconcileReturnsExpiredGraceDeadlineFromTransaction\" passed (0.559s).",
     "package_race": "env GOMODCACHE=/Volumes/BuildOffload/go/pkg/mod GOCACHE=/Volumes/BuildOffload/go-build TMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-locks-20261001 go test -race -count=1 ./internal/hosted/billing passed (8.069s) after the fake-provider teardown fix.",
-    "load_note": "The uptime sample immediately before the final package race command reported one-minute load 13.75; no additional local checks were started afterward.",
+    "load_note": "Author final8.069s run launched at load13.75 and is nonqualifying. Coordinator independently reran package race at load7.59, then final corrected fixture package race10.061s and full lint0 at load6.32 under a shared build lease; only these qualifying runs are relied on.",
     "provider_calls": "All provider interactions were httptest fakes. No live provider calls or acceptance qualification were performed."
   },
   "remaining": [
@@ -32,5 +32,20 @@
     "Added context-aware ref-counted per-account and per-event locks. Map mutex protects only registry/ref bookkeeping; provider work runs outside it. Cancellation drops waiter references without removing a still-held entry.",
     "Webhook first read resolves only validated subscription/customer identity, then checks the server-owned account binding under lock and refetches authoritative subscription state before projection.",
     "Aligned account plan projection and ReconcileResult.Eligible with effective access: active/trialing require future period end; past_due requires its unchanged persisted grace deadline to remain in the future; non-active account states remain free."
-  ]
+  ],
+  "coordinator_validation": {
+    "full_source": "5339e9e2ddb5352d5ae7945279adee47107658f3",
+    "full_race": "PASS:79 tested packages;5 no-test packages;7 explicitly gated test skips",
+    "full_vet": "PASS",
+    "first_full_lint": "1 test-only QF1003 finding, corrected by aab9b09",
+    "corrected_source": "aab9b098a34dbf019f13beb393d4b970130cd6e4",
+    "corrected_package_race": "PASS:10.061s",
+    "corrected_full_lint": "PASS:0 issues",
+    "independent_reviews": [
+      "9e94d4c34aef1afb83d0103776b0ed7978c6d586",
+      "2d1dadc672e4afbaca154c1842d985c079e36424",
+      "6e7d3fd53fd4a1a1b6f42b9c51e8a98aaebcbc3a"
+    ],
+    "local_gate": "Founder-authorized ADR024; no green Actions result or branch-protection bypass"
+  }
 }
