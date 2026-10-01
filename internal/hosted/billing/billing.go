@@ -31,10 +31,11 @@ type Config struct {
 	BaseURL                                                    string
 }
 type Service struct {
-	Store    *store.Store
-	Identity *identity.Service
-	Config   Config
-	locks    keyedLocks
+	Store           *store.Store
+	Identity        *identity.Service
+	Config          Config
+	locks           keyedLocks
+	checkoutLimiter checkoutRateLimiter
 	// priorSubscriptionReader is nil in production. It lets package tests inject
 	// a statement-level read failure while exercising the real SQLite
 	// transaction and its rollback behavior.
@@ -511,6 +512,20 @@ func (s *Service) Checkout(ctx context.Context, account, plan string) (string, e
 	}
 	if n > 0 {
 		return "", errors.New("manage your existing subscription through billing")
+	}
+	var accountStatus string
+	if err := s.Store.DB().QueryRowContext(ctx, `SELECT status FROM accounts WHERE id=? AND status='active'`, account).Scan(&accountStatus); err != nil {
+		return "", err
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	allowed, retryAfter, err := s.checkoutLimiter.charge(ctx, account, time.Now().UTC())
+	if err != nil {
+		return "", err
+	}
+	if !allowed {
+		return "", &CheckoutRateLimitError{retryAfter: retryAfter}
 	}
 	customer, err := s.customer(ctx, account)
 	if err != nil {
@@ -1228,6 +1243,12 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		var limitErr *CheckoutRateLimitError
+		if errors.As(err, &limitErr) {
+			w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSeconds(limitErr.RetryAfter()), 10))
+			http.Error(w, "Checkout rate limit exceeded. Please try again shortly.", http.StatusTooManyRequests)
+			return
+		}
 		http.Error(w, "Billing is temporarily unavailable. Your existing memory remains accessible.", http.StatusServiceUnavailable)
 		return
 	}

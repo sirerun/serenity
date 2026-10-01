@@ -47,5 +47,38 @@
       "6e7d3fd53fd4a1a1b6f42b9c51e8a98aaebcbc3a"
     ],
     "local_gate": "Founder-authorized ADR024; no green Actions result or branch-protection bypass"
+  },
+  "checkout_followup": {
+    "source": "074bfad02f6b7c2d77dafe834a7e13055fb87cc3",
+    "author_changes": {
+      "validation": {
+        "red_baseline": "Runtime regressions on the old projection reproduced account plan builder for canceled/unpaid/paused and expired active/past_due states, incorrect Eligible=true for expired active/past_due, and malformed-grace error after a partial plan update.",
+        "focused_green": "env GOMODCACHE=/Volumes/BuildOffload/go/pkg/mod GOCACHE=/Volumes/BuildOffload/go-build TMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-locks-20261001 go test -count=1 ./internal/hosted/billing -run \"TestBillingAccountPlanTracksEffectiveSubscriptionAccess|TestReconcileMalformedPersistedGraceRollsBack|TestReconcileReturnsExpiredGraceDeadlineFromTransaction\" passed (0.559s).",
+        "package_race": "env GOMODCACHE=/Volumes/BuildOffload/go/pkg/mod GOCACHE=/Volumes/BuildOffload/go-build TMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-locks-20261001 go test -race -count=1 ./internal/hosted/billing passed (8.069s) after the fake-provider teardown fix.",
+        "load_note": "The uptime sample immediately before the final billing race command reported one-minute load 13.75. Because the command was chained directly after that sample, the test launched above the <=10 limit; its pass is explicitly nonqualifying. Coordinator rerun remains required.",
+        "provider_calls": "All provider interactions were httptest fakes. No live provider calls or acceptance qualification were performed.",
+        "prior_high_load_race_correction": "The local billing race command returned pass (8.069s), but it was launched in a chained `uptime && go test` immediately after uptime reported one-minute load 13.75. This run is nonqualifying under the <=10 rule; coordinator rerun required.",
+        "checkout_rate_limit": "Pending: limiter changes are banked before tests; run focused and package race checks only after release and with uptime <=10."
+      },
+      "remaining": [
+        "No service/dashboard/gateway assembly changes are included.",
+        "Provider rate limiting and lock behavior across multiple service processes remain separate concerns.",
+        "No live provider calls or live acceptance qualification were performed.",
+        "The limiter is per process. Distributed rate limiting and live provider qualification remain out of scope.",
+        "Per-instance in-memory limiting does not coordinate multiple service processes; distributed throttling is outside this change."
+      ],
+      "implementation": [
+        "Added context-aware ref-counted per-account and per-event locks. Map mutex protects only registry/ref bookkeeping; provider work runs outside it. Cancellation drops waiter references without removing a still-held entry.",
+        "Webhook first read resolves only validated subscription/customer identity, then checks the server-owned account binding under lock and refetches authoritative subscription state before projection.",
+        "Aligned account plan projection and ReconcileResult.Eligible with effective access: active/trialing require future period end; past_due requires its unchanged persisted grace deadline to remain in the future; non-active account states remain free.",
+        "Checkout rate limiting admits five provider-capable attempts per account per 60-second fixed window, bounds account tracking to 10,000 keys with idle sweeping/fail-closed saturation, and maps a typed local error to HTTP 429 with Retry-After."
+      ],
+      "checkout_rate_limit": {
+        "policy": "5 provider-capable Checkout attempts per server-owned account per 60-second fixed window; the current hosted assembly uses one Billing Service instance per process. At most 10,000 tracked account keys are retained, with idle-window sweeping and fail-closed saturation.",
+        "placement": "After plan, account-active and local-subscription preflight; before customer creation or provider reads. Context cancellation is checked before charging.",
+        "http": "Billing-local typed CheckoutRateLimitError is mapped by billing.Service.ServeHTTP to 429 with Retry-After seconds.",
+        "coverage": "Limiter window/isolation/cap/cleanup/cancellation, invalid/frozen/local-subscription no-charge behavior, provider-failure charging, typed error, and HTTP retry guidance are covered by focused tests."
+      }
+    }
   }
 }
