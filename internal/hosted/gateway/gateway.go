@@ -389,6 +389,10 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 			return result, e
 		}
 		if g.Operations != nil {
+			normalized, validation, invalid := memoryserver.NormalizeRememberRequest(args, time.Now())
+			if invalid {
+				return rememberValidationFailure(validation)
+			}
 			clientKey := input.OperationKey
 			if clientKey == "" {
 				clientKey = "hosted:" + hoststore.ID()
@@ -400,14 +404,16 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 				if e != nil {
 					return result, e
 				}
+				if normalized.ValidUntil != nil {
+					fields["ttl"], e = json.Marshal(normalized.ValidUntil.UTC().Format(time.RFC3339Nano))
+					if e != nil {
+						return result, e
+					}
+				}
 				args, e = json.Marshal(fields)
 				if e != nil {
 					return result, e
 				}
-			}
-			normalized, validation, invalid := memoryserver.NormalizeRememberRequest(args, time.Now())
-			if invalid {
-				return rememberValidationFailure(validation)
 			}
 			ttl := ""
 			if normalized.ValidUntil != nil {
@@ -468,6 +474,21 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 					_, finishErr := g.Operations.Finalize(finishCtx, operationRecord.ID, final, evidence)
 					err = errors.Join(err, finishErr)
 				}()
+			}
+			// The client key belongs to the ledger's account/brain/period scope.
+			// The canonical writer has a brain-wide key namespace, so use this
+			// operation's stable internal ID rather than forwarding the raw key.
+			var canonicalArgs map[string]json.RawMessage
+			if e = json.Unmarshal(args, &canonicalArgs); e != nil {
+				return result, e
+			}
+			canonicalArgs["operation_key"], e = json.Marshal(operationRecord.ID)
+			if e != nil {
+				return result, e
+			}
+			args, e = json.Marshal(canonicalArgs)
+			if e != nil {
+				return result, e
 			}
 		}
 		if !reservation.Replay && (inventory.Memories >= memoryLimit || inventory.StorageBytes >= storageLimit) {
