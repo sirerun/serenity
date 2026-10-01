@@ -85,9 +85,9 @@ func TestHostedRememberAfterFlushDoesNotPromoteDuplicatesOrRefusals(t *testing.T
 	defer q.Close()
 	w := MemoryFact{Queue: q, Sources: sources}
 	var beforeCalls, afterCalls int
-	newContext := func(refuse bool) context.Context {
+	newContext := func(operationID string, refuse bool) context.Context {
 		return WithCanonicalOperation(context.Background(), CanonicalOperation{
-			ID: "fedcba9876543210",
+			ID: operationID,
 			BeforeCommit: func(context.Context, string) error {
 				beforeCalls++
 				if refuse {
@@ -99,24 +99,24 @@ func TestHostedRememberAfterFlushDoesNotPromoteDuplicatesOrRefusals(t *testing.T
 		})
 	}
 	input := RememberInput{OperationKey: "fedcba9876543210", Fact: "same fact", Provenance: "test", Kind: store.MemoryFactKindFact, Visibility: store.MemoryVisibilityWorld}
-	if _, err := w.RememberContext(newContext(false), input, time.Now().UTC()); err != nil {
+	if _, err := w.RememberContext(newContext(input.OperationKey, false), input, time.Now().UTC()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.RememberContext(newContext(false), input, time.Now().UTC()); err != nil {
+	if _, err := w.RememberContext(newContext(input.OperationKey, false), input, time.Now().UTC()); err != nil {
 		t.Fatalf("exact retry: %v", err)
 	}
 	if beforeCalls != 1 || afterCalls != 1 {
 		t.Fatalf("exact retry synthesized callbacks: before=%d after=%d", beforeCalls, afterCalls)
 	}
 	input.OperationKey = "different-trusted-key"
-	if _, err := w.RememberContext(newContext(false), input, time.Now().UTC()); err == nil {
+	if _, err := w.RememberContext(newContext("fedcba9876543210", false), input, time.Now().UTC()); err == nil {
 		t.Fatal("mismatched operation key unexpectedly entered canonical writer")
 	}
 	if beforeCalls != 1 || afterCalls != 1 {
 		t.Fatalf("mismatched key synthesized callbacks: before=%d after=%d", beforeCalls, afterCalls)
 	}
 	input.OperationKey = "1111111111111111"
-	if _, err := w.RememberContext(newContext(true), input, time.Now().UTC()); err == nil {
+	if _, err := w.RememberContext(newContext(input.OperationKey, true), input, time.Now().UTC()); err == nil {
 		t.Fatal("refused canonical entry unexpectedly succeeded")
 	}
 	if beforeCalls != 2 || afterCalls != 1 {
