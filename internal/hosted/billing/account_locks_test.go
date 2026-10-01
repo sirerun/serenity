@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -48,6 +49,8 @@ func TestAccountLocksAllowUnrelatedReconciliationDuringProviderWait(t *testing.T
 	accountB := createBillingAccount(t, db, "b@example.test", "cus_b")
 	enteredA := make(chan struct{})
 	releaseA := make(chan struct{})
+	var releaseAOnce sync.Once
+	unblockA := func() { releaseAOnce.Do(func() { close(releaseA) }) }
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/subscriptions" {
 			http.Error(w, "unexpected provider operation", http.StatusNotFound)
@@ -64,7 +67,7 @@ func TestAccountLocksAllowUnrelatedReconciliationDuringProviderWait(t *testing.T
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[],"has_more":false}`))
 	}))
-	defer provider.Close()
+	defer func() { unblockA(); provider.Close() }()
 	svc := &billing.Service{Store: db, Config: billing.Config{BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}
 	resultA := make(chan error, 1)
 	go func() {
@@ -89,7 +92,7 @@ func TestAccountLocksAllowUnrelatedReconciliationDuringProviderWait(t *testing.T
 	case <-time.After(time.Second):
 		t.Fatal("account B was blocked by account A's provider call")
 	}
-	close(releaseA)
+	unblockA()
 	if err := <-resultA; err != nil {
 		t.Fatalf("account A reconcile: %v", err)
 	}
@@ -100,6 +103,8 @@ func TestCheckoutAndClosureSerializeForSameAccount(t *testing.T) {
 	account := createBillingAccount(t, db, "same@example.test", "cus_same")
 	firstList := make(chan struct{})
 	releaseFirst := make(chan struct{})
+	var releaseFirstOnce sync.Once
+	unblockFirst := func() { releaseFirstOnce.Do(func() { close(releaseFirst) }) }
 	secondList := make(chan struct{})
 	var lists atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +127,7 @@ func TestCheckoutAndClosureSerializeForSameAccount(t *testing.T) {
 			http.Error(w, "unexpected provider operation", http.StatusNotFound)
 		}
 	}))
-	defer provider.Close()
+	defer func() { unblockFirst(); provider.Close() }()
 	svc := &billing.Service{Store: db, Config: billing.Config{BuilderPrice: "price_builder", ScalePrice: "price_scale", Origin: "https://app.example.test", BaseURL: provider.URL}}
 	checkout := make(chan error, 1)
 	go func() {
@@ -141,7 +146,7 @@ func TestCheckoutAndClosureSerializeForSameAccount(t *testing.T) {
 		t.Fatal("closure reached provider while checkout still held the account lock")
 	case <-time.After(100 * time.Millisecond):
 	}
-	close(releaseFirst)
+	unblockFirst()
 	if err := <-checkout; err != nil {
 		t.Fatalf("checkout: %v", err)
 	}
@@ -160,6 +165,8 @@ func TestWebhookRefetchesAfterReconcileWinsAccountLock(t *testing.T) {
 	account := createBillingAccount(t, db, "ordering@example.test", "cus_ordering")
 	firstFetch := make(chan struct{})
 	releaseFirst := make(chan struct{})
+	var releaseFirstOnce sync.Once
+	unblockFirst := func() { releaseFirstOnce.Do(func() { close(releaseFirst) }) }
 	var subscriptionReads atomic.Int32
 	now := time.Now().UTC()
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -181,7 +188,7 @@ func TestWebhookRefetchesAfterReconcileWinsAccountLock(t *testing.T) {
 		}
 		_, _ = fmt.Fprintf(w, `{"id":"sub_ordering","customer":"cus_ordering","status":%q,"items":{"data":[{"price":{"id":"price_builder"},"current_period_start":%d,"current_period_end":%d}]}}`, status, now.Unix(), now.Add(24*time.Hour).Unix())
 	}))
-	defer provider.Close()
+	defer func() { unblockFirst(); provider.Close() }()
 	svc := &billing.Service{Store: db, Config: billing.Config{WebhookSecret: "secret", BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}
 	body, err := json.Marshal(map[string]any{
 		"id": "evt_ordering", "type": "customer.subscription.updated", "created": time.Now().Unix(),
@@ -210,7 +217,7 @@ func TestWebhookRefetchesAfterReconcileWinsAccountLock(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("pre-lock webhook provider read blocked same-account reconcile")
 	}
-	close(releaseFirst)
+	unblockFirst()
 	if err = <-webhook; err != nil {
 		t.Fatalf("webhook: %v", err)
 	}
