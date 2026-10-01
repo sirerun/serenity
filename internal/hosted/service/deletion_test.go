@@ -8,7 +8,9 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -97,6 +99,100 @@ func TestDeleteAccountFreezesBeforeClosureAndRetainsUntilClosed(t *testing.T) {
 	}
 	if _, err = os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("brain retained after certified closure: %v", err)
+	}
+}
+
+func TestAccountDeletionMaintenanceFenceBlocksBackupUntilPurgeCompletes(t *testing.T) {
+	db, cfg, accountID, brainPath := deletionFixture(t)
+	s, err := Assemble(cfg, true, db, nil, deletionEmbedding{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Pool.Close(); s.Gateway.Close() })
+	if _, err = db.DB().Exec(`UPDATE accounts SET stripe_customer_id='cus_fence' WHERE id=?`, accountID); err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	releaseClosure := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseProvider := func() { releaseOnce.Do(func() { close(releaseClosure) }) }
+	t.Cleanup(releaseProvider)
+	s.billingCloser = deletionCloser(func(context.Context, string) (contracts.CloseResult, error) {
+		close(entered)
+		<-releaseClosure
+		return contracts.CloseResult{Status: contracts.CloseStatusClosed}, nil
+	})
+	deleteDone := make(chan error, 1)
+	go func() { deleteDone <- s.DeleteAccount(context.Background(), accountID) }()
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("billing preflight did not start")
+	}
+	if s.Gateway.Maintenance.TryLock() {
+		s.Gateway.Maintenance.Unlock()
+		t.Fatal("maintenance write lock was available during provider closure")
+	}
+
+	snapshot := filepath.Join(cfg.DataDir, "fenced-snapshot")
+	backupStarted := make(chan struct{})
+	backupDone := make(chan error, 1)
+	go func() {
+		close(backupStarted)
+		backupDone <- s.Backup(context.Background(), snapshot)
+	}()
+	<-backupStarted
+	queueDeadline := time.NewTimer(5 * time.Second)
+	defer queueDeadline.Stop()
+	for {
+		if !s.Gateway.Maintenance.TryRLock() {
+			break // the backup's exclusive lock is queued behind deletion's read lock
+		}
+		s.Gateway.Maintenance.RUnlock()
+		runtime.Gosched()
+		select {
+		case err = <-backupDone:
+			t.Fatalf("backup completed while deletion was between freeze and purge: %v", err)
+		case <-queueDeadline.C:
+			t.Fatal("backup did not queue behind the account deletion fence")
+		default:
+		}
+	}
+	if _, err = os.Stat(brainPath); err != nil {
+		t.Fatalf("brain was purged before provider closure completed: %v", err)
+	}
+
+	releaseProvider()
+	select {
+	case err = <-deleteDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("account and brain helpers deadlocked behind the queued backup writer")
+	}
+	select {
+	case err = <-backupDone:
+		if err != nil {
+			t.Fatalf("queued backup failed after deletion released its fence: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("queued backup did not acquire the maintenance fence after deletion")
+	}
+	if _, err = os.Stat(brainPath); !os.IsNotExist(err) {
+		t.Fatalf("brain remains after completed deletion: %v", err)
+	}
+	snapshotDB, err := store.Open(filepath.Join(snapshot, "control.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = snapshotDB.Close() }()
+	var state string
+	if err = snapshotDB.DB().QueryRow(`SELECT status FROM accounts WHERE id=?`, accountID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "deleted" {
+		t.Fatalf("snapshot captured account between freeze and purge: status=%q", state)
 	}
 }
 

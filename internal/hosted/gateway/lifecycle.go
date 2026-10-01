@@ -20,6 +20,8 @@ import (
 
 // Export requires an account-owned brain and bypasses ordinary usage allowances.
 func (g *Gateway) Export(ctx context.Context, account, brain string, out io.Writer) (err error) {
+	g.Maintenance.RLock()
+	defer g.Maintenance.RUnlock()
 	hash := sha256.Sum256([]byte(account))
 	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
 	lock.Lock()
@@ -84,6 +86,13 @@ func (g *Gateway) DeleteBrain(ctx context.Context, account, brain string, root s
 	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
 	lock.Lock()
 	defer lock.Unlock()
+	return g.deleteBrainUnderAccountLock(ctx, account, brain, root)
+}
+
+// deleteBrainUnderAccountLock requires the caller to hold Maintenance and
+// the account lock. Account deletion reuses it without recursively acquiring
+// either lock while a backup writer may be waiting.
+func (g *Gateway) deleteBrainUnderAccountLock(ctx context.Context, account, brain, root string) error {
 	var owned hoststore.Brain
 	err := g.Issuer.Store.DB().QueryRowContext(ctx, `SELECT id,account_id,state,path_key FROM brains WHERE id=? AND account_id=?`, brain, account).Scan(&owned.ID, &owned.AccountID, &owned.State, &owned.PathKey)
 	if err != nil {
@@ -112,7 +121,59 @@ func (g *Gateway) DeleteBrain(ctx context.Context, account, brain string, root s
 	return os.RemoveAll(filepath.Join(root, owned.PathKey))
 }
 
+// AccountDeletePreflight runs while the maintenance read fence and account
+// mutex are held.
+// It returns false when the account was already fully deleted and no purge is
+// needed. Errors leave the operation pending for a later retry.
+type AccountDeletePreflight func(context.Context, string) (proceed bool, err error)
+
 func (g *Gateway) DeleteAccount(ctx context.Context, account, root string) error {
+	return g.DeleteAccountWithPreflight(ctx, account, root, func(ctx context.Context, account string) (bool, error) {
+		var status string
+		var customer string
+		var subscriptions bool
+		err := g.Issuer.Store.DB().QueryRowContext(ctx, `SELECT status,COALESCE(stripe_customer_id,''),EXISTS(SELECT 1 FROM subscriptions WHERE account_id=accounts.id) FROM accounts WHERE id=?`, account).Scan(&status, &customer, &subscriptions)
+		if err != nil {
+			return false, err
+		}
+		if status == "deleted" {
+			return false, nil
+		}
+		if status != "active" && status != "deleting" {
+			return false, errors.New("hosted: account is not deletable")
+		}
+		if customer != "" || subscriptions {
+			return false, errors.New("hosted: billing closure requires the service deletion path")
+		}
+		return true, nil
+	})
+}
+
+// DeleteAccountWithPreflight holds the maintenance read fence across the
+// trusted service preflight (freeze and provider closure) and all account and
+// brain cleanup. The per-account lock serializes the target account while
+// allowing unrelated accounts to proceed. Private helpers do not reacquire
+// either lock.
+func (g *Gateway) DeleteAccountWithPreflight(ctx context.Context, account, root string, preflight AccountDeletePreflight) error {
+	if preflight == nil {
+		return errors.New("hosted: account deletion preflight is required")
+	}
+	g.Maintenance.RLock()
+	defer g.Maintenance.RUnlock()
+	hash := sha256.Sum256([]byte(account))
+	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
+	lock.Lock()
+	defer lock.Unlock()
+	proceed, err := preflight(ctx, account)
+	if err != nil || !proceed {
+		return err
+	}
+	return g.deleteAccountUnderMaintenance(ctx, account, root)
+}
+
+// deleteAccountUnderMaintenance requires the caller to hold Maintenance and
+// the account lock.
+func (g *Gateway) deleteAccountUnderMaintenance(ctx context.Context, account, root string) error {
 	if err := g.Issuer.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		_, e := tx.ExecContext(ctx, `UPDATE accounts SET status='deleting' WHERE id=? AND status IN ('active','deleting')`, account)
 		return e
@@ -136,14 +197,10 @@ func (g *Gateway) DeleteAccount(ctx context.Context, account, root string) error
 		return err
 	}
 	for _, id := range ids {
-		if err = g.DeleteBrain(ctx, account, id, root); err != nil {
+		if err = g.deleteBrainUnderAccountLock(ctx, account, id, root); err != nil {
 			return err
 		}
 	}
-	hash := sha256.Sum256([]byte(account))
-	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
-	lock.Lock()
-	defer lock.Unlock()
 	return g.Issuer.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		var email string
 		if e := tx.QueryRowContext(ctx, `SELECT email FROM accounts WHERE id=?`, account).Scan(&email); e != nil {
@@ -170,6 +227,29 @@ func (g *Gateway) DeleteAccount(ctx context.Context, account, root string) error
 }
 
 func (g *Gateway) RecoverDeletions(ctx context.Context, root string) error {
+	return g.RecoverDeletionsWithPreflight(ctx, root, func(ctx context.Context, account string) (bool, error) {
+		var customer string
+		var subscriptions bool
+		err := g.Issuer.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(stripe_customer_id,''),EXISTS(SELECT 1 FROM subscriptions WHERE account_id=accounts.id) FROM accounts WHERE id=?`, account).Scan(&customer, &subscriptions)
+		if err != nil {
+			return false, err
+		}
+		if customer != "" || subscriptions {
+			return false, errors.New("hosted: billing closure requires the service deletion path")
+		}
+		return true, nil
+	})
+}
+
+// RecoverDeletionsWithPreflight holds the maintenance read fence for the
+// complete recovery pass and invokes the trusted service closure check under
+// each account lock before that account is purged.
+func (g *Gateway) RecoverDeletionsWithPreflight(ctx context.Context, root string, preflight AccountDeletePreflight) error {
+	if preflight == nil {
+		return errors.New("hosted: account deletion preflight is required")
+	}
+	g.Maintenance.RLock()
+	defer g.Maintenance.RUnlock()
 	rows, err := g.Issuer.Store.DB().QueryContext(ctx, `SELECT id FROM accounts WHERE status='deleting'`)
 	if err != nil {
 		return err
@@ -191,9 +271,23 @@ func (g *Gateway) RecoverDeletions(ctx context.Context, root string) error {
 		return err
 	}
 	for _, id := range accounts {
-		if err = g.DeleteAccount(ctx, id, root); err != nil {
+		hash := sha256.Sum256([]byte(id))
+		lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
+		lock.Lock()
+		proceed, preflightErr := preflight(ctx, id)
+		if preflightErr != nil {
+			lock.Unlock()
+			return preflightErr
+		}
+		if !proceed {
+			lock.Unlock()
+			continue
+		}
+		if err = g.deleteAccountUnderMaintenance(ctx, id, root); err != nil {
+			lock.Unlock()
 			return err
 		}
+		lock.Unlock()
 	}
 	rows, err = g.Issuer.Store.DB().QueryContext(ctx, `SELECT id,path_key FROM brains WHERE state='deleted'`)
 	if err != nil {
