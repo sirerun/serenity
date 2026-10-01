@@ -70,6 +70,31 @@ func scanRecord(row interface{ Scan(...any) error }) (contracts.OperationRecord,
 
 const recordSelect = `SELECT id,account_id,brain_id,client_key,fingerprint,deltas_json,quota_period,phase,source,evidence_kind,evidence_ref,COALESCE(canonical_entered_at,''),lease_expires_at,created_at,COALESCE(finalized_at,'') FROM operations`
 
+// Lookup reads one operation by its opaque, ledger-generated internal ID.
+// It is intentionally a concrete Ledger method rather than part of the frozen
+// OperationLedger contract: callers may use the result for internal review
+// orchestration, but the operation ID does not authorize a state transition.
+func (l *Ledger) Lookup(ctx context.Context, operationID string) (contracts.OperationRecord, error) {
+	var zero contracts.OperationRecord
+	if ctx == nil {
+		return zero, fmt.Errorf("%w: nil lookup context", contracts.ErrOperationInvalid)
+	}
+	if err := ctx.Err(); err != nil {
+		return zero, err
+	}
+	if l == nil || l.Store == nil {
+		return zero, errors.New("hosted operation: ledger unavailable")
+	}
+	if operationID == "" {
+		return zero, contracts.ErrOperationNotFound
+	}
+	r, err := scanRecord(l.Store.DB().QueryRowContext(ctx, recordSelect+` WHERE id=?`, operationID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return zero, contracts.ErrOperationNotFound
+	}
+	return r, err
+}
+
 func (l *Ledger) Reserve(ctx context.Context, req contracts.ReserveRequest) (out contracts.OperationRecord, err error) {
 	if err = req.Validate(); err != nil {
 		return out, err

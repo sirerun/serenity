@@ -1,0 +1,82 @@
+{
+  "date": "2026-10-01",
+  "source": "8fdd32ffdcee5fa069625d33207f0b36a914b9a5",
+  "scope": "Positive-proof private operator resolver and owner-only Unix admin transport, with read-only ledger lookup",
+  "runtime": "go1.27.1 darwin/arm64; Linux ARM64 build only",
+  "results": {
+    "race": 0,
+    "vet": 0,
+    "lint": 0,
+    "linux-arm64-build": 0
+  },
+  "passing_packages": 81,
+  "passing_tests_and_subtests": 2833,
+  "no_test_packages": 4,
+  "gated_test_skips": [
+    {
+      "package": "github.com/sirerun/serenity/evals/importbudget",
+      "test": "TestImportBudget10K"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/cli",
+      "test": "TestGbrainProtocolConformance"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/conformance",
+      "test": "TestBootDeliberatelyBrokenBuildFailsDisposeConformance"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/hosted/deletion",
+      "test": "TestS3Qualification"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/import/gbrain",
+      "test": "TestImportCrashHelper"
+    },
+    {
+      "package": "github.com/sirerun/serenity/pkg/serenity",
+      "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request"
+    },
+    {
+      "package": "github.com/sirerun/serenity/pkg/serenity",
+      "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+    }
+  ],
+  "shared_build_lease": "3ea4f84a4a1f027a2759e8b7096375b143e55b61",
+  "independent_reviews": [
+    "28ebabc5c82b7f554f01243ade4e566525d6ad8d",
+    "e076e42dec180cf421c0fb00213053ecee1b57ac",
+    "81451db64a137af994d910ea7ff8acc576df91f3",
+    "0eeaa5e809dca94a01b47e1ec8e0d81432d702c6"
+  ],
+  "production_human_admission": false,
+  "production_listener_mount": false,
+  "deployment": false,
+  "whole_task_acceptance": false,
+  "artifacts": [
+    {
+      "name": "operator-resolution-full-source.txt",
+      "sha256": "39202e0dc798b9e083d67c0f7e0bce0b4852521ee3459a23ae22c66efbd54545"
+    },
+    {
+      "name": "operator-resolution-full-race.jsonl",
+      "sha256": "4d979b85bd4ae6a07eccd3b193e7b9b315ec11fa8e68cc65d65846fe54b25d54"
+    },
+    {
+      "name": "operator-resolution-full-vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "operator-resolution-full-lint.log",
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "name": "operator-resolution-full-linux-arm64-build.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "operator-resolution-full-check-status.json",
+      "sha256": "32506ec475a31f814af25cb537a9d1404fbd424d680728e2014a9f7fd5c761d7"
+    }
+  ]
+}
