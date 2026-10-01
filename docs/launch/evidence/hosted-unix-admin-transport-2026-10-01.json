@@ -1,0 +1,55 @@
+{
+  "date": "2026-10-01",
+  "source": "e0e705d",
+  "scope": "Unused owner-only Unix admin transport; no human approval or production mount",
+  "results": {
+    "peer-control": 1,
+    "public-control": 1,
+    "replacement-control": 1,
+    "final-race": 0,
+    "vet": 0,
+    "lint": 0,
+    "linux-arm64-compile": 0
+  },
+  "artifacts": [
+    {
+      "name": "admintransport-initial-race.log",
+      "sha256": "5f5b9d4dd85cd2dc391bbfe1e5965febe33234fd2499b839043ec4b575c926c0"
+    },
+    {
+      "name": "admintransport-peer-control.log",
+      "sha256": "4ea03d731d245a5e2b32fc6e367712d04ce92c164cd2d03b0c29074a33762131"
+    },
+    {
+      "name": "admintransport-public-control.log",
+      "sha256": "eb25a6584ac25eef47d48633eb69d3c1c314e0956139f21525c9ca31f4a79318"
+    },
+    {
+      "name": "admintransport-replacement-control.log",
+      "sha256": "5c98ded4845f9322198761900624827e5d687f9af7a6e88aa759ec1fd7210d49"
+    },
+    {
+      "name": "admintransport-final-race.log",
+      "sha256": "9443f808ed8f0f5d11a0eb51abbbbd496c7f385e5be03ae38a4cd68948ed1003"
+    },
+    {
+      "name": "admintransport-vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "admintransport-lint.log",
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "name": "admintransport-linux-arm64-compile.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "admintransport-check-status.json",
+      "sha256": "e119d0e97035f11c9b126ef02fe048622f8dde18100d25ef59a3e30498722367"
+    }
+  ],
+  "runtime": "Darwin peer tests; Linux ARM64 compile only",
+  "independent_review": "pending",
+  "production_mount": false
+}
