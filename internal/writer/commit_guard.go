@@ -7,8 +7,11 @@ import (
 )
 
 var (
+	// ErrNilCommitContext indicates that a context-aware commit operation was
+	// called without a context.
 	ErrNilCommitContext = errors.New("writer: nil commit context")
-	ErrNilCommitFence   = errors.New("writer: nil commit fence callback")
+	// ErrNilCommitFence indicates that no checker callback was supplied.
+	ErrNilCommitFence = errors.New("writer: nil commit fence callback")
 )
 
 // commitGate is a context-aware, writer-preferring read/write gate. The

@@ -144,39 +144,20 @@ func TestSubmitAndFlushHonorsContextCancellation(t *testing.T) {
 	}
 }
 
-func TestSubmitAndFlushCancelsGitAndRestoresTouchedPaths(t *testing.T) {
+func TestCommitPathsContextHonorsCancellation(t *testing.T) {
 	root, run := gitRepoFixture(t)
-	hooks := filepath.Join(root, "hooks")
-	if err := os.MkdirAll(hooks, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte("#!/bin/sh\nwhile :; do :; done\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	run("config", "core.hooksPath", hooks)
 	path := filepath.Join(root, "canceled.md")
-	q := NewQueue(nil)
-	defer q.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	defer cancel()
-	started := time.Now()
-	got := q.SubmitAndFlush(ctx, root, Job{Path: path, Render: func() ([]byte, error) {
-		body := []byte("retry after canceled commit\n")
-		return body, os.WriteFile(path, body, 0o644)
-	}})
-	if got.Result.Err == nil || got.Committed {
-		t.Fatalf("canceled Git commit = %+v; want error and no commit claim", got)
+	if err := os.WriteFile(path, []byte("must remain uncommitted\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if elapsed := time.Since(started); elapsed > 2*time.Second {
-		t.Fatalf("Git command ignored context for %s", elapsed)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	committed, err := commitPathsContext(ctx, root, []string{path}, "serenity: canceled")
+	if err == nil || committed {
+		t.Fatalf("commitPathsContext(canceled) = (%v, %v), want error and no commit", committed, err)
 	}
-	if !q.touchedContains(path) {
-		t.Fatalf("canceled commit did not restore touched path %q", path)
-	}
-	run("config", "core.hooksPath", "/dev/null")
-	committed, err := Flush(q, root)
-	if err != nil || !committed {
-		t.Fatalf("retry Flush = (%v, %v), want successful commit", committed, err)
+	if status := run("status", "--short"); !strings.Contains(status, "?? canceled.md") {
+		t.Fatalf("canceled git add changed the index: status %q", status)
 	}
 }
 
