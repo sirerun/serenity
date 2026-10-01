@@ -90,6 +90,13 @@ func TestLoadPlanRejectsUnchangedHashMismatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	copiedPath := filepath.Join(dir, other+".json")
+	if err = os.WriteFile(copiedPath, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = LoadPlan(context.Background(), dir, other); !errors.Is(err, ErrPlanInvalid) {
+		t.Fatalf("LoadPlan accepted valid artifact bytes copied under wrong approved hash: %v", err)
+	}
 	changed := bytes.Replace(data, []byte(`"fence_generation":2`), []byte(`"fence_generation":3`), 1)
 	if bytes.Equal(changed, data) {
 		t.Fatal("fixture did not change plan payload")
@@ -99,6 +106,28 @@ func TestLoadPlanRejectsUnchangedHashMismatch(t *testing.T) {
 	}
 	if _, err = LoadPlan(context.Background(), dir, plan.PlanHash); err == nil {
 		t.Fatal("LoadPlan accepted content changed under the approved hash")
+	}
+}
+
+func TestCreatePlanRejectsWritableHigherAncestor(t *testing.T) {
+	base := t.TempDir()
+	unsafe := filepath.Join(base, "writable")
+	if err := os.Mkdir(unsafe, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(unsafe, 0777); err != nil {
+		t.Fatal(err)
+	}
+	parent := filepath.Join(unsafe, "protected")
+	if err := os.Mkdir(parent, 0700); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(parent, "plans")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreatePlan(context.Background(), dir, validPlanInput()); !errors.Is(err, ErrPlanUntrustedDir) {
+		t.Fatalf("CreatePlan accepted writable higher ancestor: %v", err)
 	}
 }
 

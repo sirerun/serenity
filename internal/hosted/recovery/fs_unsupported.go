@@ -10,6 +10,9 @@ import (
 func privateDirectoryPath(string) (string, error) {
 	return "", errors.New("hosted/recovery: safe plan filesystem unsupported")
 }
+func verifyFilesystemOwnership(string) error {
+	return errors.New("hosted/recovery: safe plan filesystem unsupported")
+}
 func openPlanNoFollow(string) (*os.File, error) {
 	return nil, errors.New("hosted/recovery: safe plan filesystem unsupported")
 }

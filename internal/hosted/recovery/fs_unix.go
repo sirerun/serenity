@@ -36,6 +36,9 @@ func privateDirectoryPath(path string) (string, error) {
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return "", fmt.Errorf("%w: unsafe filesystem root", ErrPlanUntrustedDir)
 	}
+	if err = validateTrustedAncestor(root, info); err != nil {
+		return "", err
+	}
 	rest := strings.TrimPrefix(strings.TrimPrefix(clean, volume), string(filepath.Separator))
 	current := root
 	if rest != "" {
@@ -48,8 +51,8 @@ func privateDirectoryPath(path string) (string, error) {
 			if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 				return "", fmt.Errorf("%w: unsafe directory component", ErrPlanUntrustedDir)
 			}
-			if current == filepath.Dir(clean) && info.Mode().Perm()&0022 != 0 && info.Mode()&os.ModeSticky == 0 {
-				return "", fmt.Errorf("%w: writable non-sticky parent directory", ErrPlanUntrustedDir)
+			if err = validateTrustedAncestor(current, info); err != nil {
+				return "", err
 			}
 		}
 	}
@@ -60,7 +63,21 @@ func privateDirectoryPath(path string) (string, error) {
 	if !ok || int(stat.Uid) != os.Geteuid() {
 		return "", fmt.Errorf("%w: directory is not owned by the current user", ErrPlanUntrustedDir)
 	}
+	if err = verifyFilesystemOwnership(clean); err != nil {
+		return "", err
+	}
 	return clean, nil
+}
+
+func validateTrustedAncestor(path string, info os.FileInfo) error {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || (int(stat.Uid) != 0 && int(stat.Uid) != os.Geteuid()) {
+		return fmt.Errorf("%w: path ancestor %q is not owned by root or the current user", ErrPlanUntrustedDir, path)
+	}
+	if info.Mode().Perm()&0022 != 0 && info.Mode()&os.ModeSticky == 0 {
+		return fmt.Errorf("%w: path ancestor %q is group/world writable without sticky protection", ErrPlanUntrustedDir, path)
+	}
+	return nil
 }
 
 func openPlanNoFollow(path string) (*os.File, error) {
