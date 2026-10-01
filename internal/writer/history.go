@@ -42,9 +42,16 @@ func rewriteForgottenPath(root, relPath string) (retErr error) {
 	}
 	if len(strings.TrimSpace(string(historical))) == 0 {
 		// A retry after a successful rewrite must not create another force-push
-		// marker or print the other-clones warning again.
+		// marker or print the other-clones warning again. Reflogs can still
+		// retain the path after a branch was reset or deleted, so prune them.
 		if out, err := git.CombinedOutput(ctx, "rm", "--cached", "--ignore-unmatch", "-r", "--", relPath); err != nil {
 			return fmt.Errorf("writer: remove forgotten path from brain index: %w: %s", err, strings.TrimSpace(string(out)))
+		}
+		if err := git.Run(ctx, "reflog", "expire", "--expire=now", "--all"); err != nil {
+			return fmt.Errorf("writer: expire brain reflogs: %w", err)
+		}
+		if err := git.Run(ctx, "gc", "--prune=now"); err != nil {
+			return fmt.Errorf("writer: prune forgotten brain objects: %w", err)
 		}
 		return nil
 	}
@@ -62,6 +69,16 @@ func rewriteForgottenPath(root, relPath string) (retErr error) {
 	expectedRemoteTip := "no-upstream"
 	if out, err := git.Output(ctx, "rev-parse", "--verify", "@{upstream}"); err == nil {
 		expectedRemoteTip = strings.TrimSpace(string(out))
+	}
+	// An earlier offline forget may already have rewritten the tracking ref.
+	// Its marker still holds the original remote SHA, which is the only safe
+	// lease for publishing both rewrites together.
+	if existing, err := os.ReadFile(markerPath); err == nil {
+		if previous := strings.TrimSpace(string(existing)); previous != "" {
+			expectedRemoteTip = previous
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("writer: read existing history rewrite marker: %w", err)
 	}
 	// Remove the forgotten path from the live index too. Git's object walk
 	// treats index entries as roots, so pruning history alone would leave the

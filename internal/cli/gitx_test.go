@@ -12,6 +12,42 @@ import (
 	"github.com/sirerun/serenity/internal/writer"
 )
 
+func TestInstallPostCommitPushUpgradesOnlyManagedLegacyHook(t *testing.T) {
+	root := t.TempDir()
+	cmd := exec.Command("git", "init", "--quiet", root)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	hookPath := filepath.Join(root, ".git", "hooks", "post-commit")
+	if err := os.WriteFile(hookPath, []byte(legacyPostCommitPush), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := installPostCommitPush(root); err != nil || !changed {
+		t.Fatalf("legacy hook was not upgraded: changed=%v err=%v", changed, err)
+	}
+	upgraded, err := os.ReadFile(hookPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(upgraded), "--force-with-lease") {
+		t.Fatalf("upgraded hook lacks rewrite push handling: %s", upgraded)
+	}
+	if changed, err := installPostCommitPush(root); err != nil || changed {
+		t.Fatalf("current hook should be idempotent: changed=%v err=%v", changed, err)
+	}
+	custom := "#!/bin/sh\necho custom\n"
+	if err := os.WriteFile(hookPath, []byte(custom), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := installPostCommitPush(root); err != nil || changed {
+		t.Fatalf("custom hook should be preserved: changed=%v err=%v", changed, err)
+	}
+	retained, err := os.ReadFile(hookPath)
+	if err != nil || string(retained) != custom {
+		t.Fatalf("custom hook changed: %q err=%v", retained, err)
+	}
+}
+
 func TestPostCommitPushPublishesRewrittenHistoryToRealRemote(t *testing.T) {
 	root := t.TempDir()
 	git := func(args ...string) string {

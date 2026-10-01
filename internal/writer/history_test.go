@@ -70,6 +70,7 @@ func TestFailedHistoryRewriteDoesNotMarkForcePush(t *testing.T) {
 func TestRewrittenHistoryPushHonorsRemoteLease(t *testing.T) {
 	root, git := gitRepoFixture(t)
 	relPath := filepath.Join("brain", "sources", "remote", "bytes")
+	secondRelPath := filepath.Join("brain", "sources", "offline-second", "bytes")
 	path := filepath.Join(root, relPath)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
@@ -77,7 +78,13 @@ func TestRewrittenHistoryPushHonorsRemoteLease(t *testing.T) {
 	if err := os.WriteFile(path, []byte("remote secret"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	git("add", relPath)
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, secondRelPath)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, secondRelPath), []byte("second secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", relPath, secondRelPath)
 	git("commit", "--quiet", "-m", "fact to forget")
 	remote := t.TempDir()
 	cmd := exec.Command("git", "init", "--bare", "--quiet", remote)
@@ -88,6 +95,9 @@ func TestRewrittenHistoryPushHonorsRemoteLease(t *testing.T) {
 	git("push", "--quiet", "-u", "origin", "HEAD")
 	oldRemoteTip := strings.TrimSpace(git("rev-parse", "@{upstream}"))
 	if err := rewriteForgottenPath(root, filepath.ToSlash(filepath.Dir(relPath))); err != nil {
+		t.Fatal(err)
+	}
+	if err := rewriteForgottenPath(root, filepath.ToSlash(filepath.Dir(secondRelPath))); err != nil {
 		t.Fatal(err)
 	}
 	marker, err := os.ReadFile(filepath.Join(root, ".git", "serenity-history-rewrite-push"))
@@ -103,9 +113,41 @@ func TestRewrittenHistoryPushHonorsRemoteLease(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("push rewritten history with remote lease: %v: %s", err, out)
 	}
-	cmd = exec.Command("git", "--git-dir", remote, "rev-list", "--all", "--", filepath.ToSlash(filepath.Dir(relPath)))
-	if out, err := cmd.CombinedOutput(); err != nil || len(strings.TrimSpace(string(out))) != 0 {
-		t.Fatalf("remote retained forgotten source history: err=%v output=%s", err, out)
+	for _, forgotten := range []string{relPath, secondRelPath} {
+		cmd = exec.Command("git", "--git-dir", remote, "rev-list", "--all", "--", filepath.ToSlash(filepath.Dir(forgotten)))
+		if out, err := cmd.CombinedOutput(); err != nil || len(strings.TrimSpace(string(out))) != 0 {
+			t.Fatalf("remote retained forgotten source history for %s: err=%v output=%s", forgotten, err, out)
+		}
+	}
+}
+
+func TestRewriteForgottenPathPrunesReflogOnlyBlob(t *testing.T) {
+	root, git := gitRepoFixture(t)
+	base := strings.TrimSpace(git("rev-parse", "HEAD"))
+	relPath := filepath.Join("brain", "sources", "reflog-only", "bytes")
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(root, relPath)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, relPath), []byte("reflog secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git("add", relPath)
+	git("commit", "--quiet", "-m", "transient secret")
+	blob := strings.TrimSpace(git("rev-parse", "HEAD:"+filepath.ToSlash(relPath)))
+	git("reset", "--hard", base)
+	if history := strings.TrimSpace(git("rev-list", "--all", "--", filepath.ToSlash(relPath))); history != "" {
+		t.Fatalf("fixture path still reachable from a ref: %s", history)
+	}
+	if err := rewriteForgottenPath(root, filepath.ToSlash(relPath)); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "cat-file", "-e", blob)
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("reflog-only forgotten blob still exists: %s", out)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".git", "serenity-history-rewrite-push")); !os.IsNotExist(err) {
+		t.Fatalf("local-only pruning should not create a remote rewrite marker: %v", err)
 	}
 }
 
