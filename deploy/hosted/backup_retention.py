@@ -23,22 +23,31 @@ class RetentionError(ValueError):
     """Inventory, authorization, or execution was incomplete or unsafe."""
 
 
-class Storage(Protocol):
-    """Minimal storage seam; implementations must return one raw API page."""
+class UploadNotFound(Exception):
+    """Adapter signal for an authoritative S3 NoSuchUpload response."""
 
-    def list_object_versions(self, *, prefix: str, key_marker: str | None,
+
+class Storage(Protocol):
+    """Minimal storage seam; every operation is bound to bucket and owner.
+
+    A ListParts NoSuchUpload response must raise UploadNotFound. Other API
+    errors must propagate; adapters must never turn them into an empty Parts
+    page.
+    """
+
+    def list_object_versions(self, *, bucket: str, prefix: str, key_marker: str | None,
                              version_id_marker: str | None, expected_owner: str) -> Mapping[str, Any]: ...
 
-    def list_multipart_uploads(self, *, prefix: str, key_marker: str | None,
+    def list_multipart_uploads(self, *, bucket: str, prefix: str, key_marker: str | None,
                                upload_id_marker: str | None, expected_owner: str) -> Mapping[str, Any]: ...
 
-    def list_parts(self, *, key: str, upload_id: str, part_number_marker: int | None,
+    def list_parts(self, *, bucket: str, key: str, upload_id: str, part_number_marker: int | None,
                    expected_owner: str) -> Mapping[str, Any]: ...
 
-    def delete_versions(self, *, objects: Sequence[Mapping[str, str]],
+    def delete_versions(self, *, bucket: str, objects: Sequence[Mapping[str, str]],
                         expected_owner: str) -> Mapping[str, Any]: ...
 
-    def abort_multipart(self, *, key: str, upload_id: str, expected_owner: str) -> None: ...
+    def abort_multipart(self, *, bucket: str, key: str, upload_id: str, expected_owner: str) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -90,6 +99,8 @@ class Plan:
 @dataclass(frozen=True)
 class Result:
     plan_sha256: str
+    verified_cutoff: str
+    verified_multipart_cutoff: str
     deleted_versions: int
     aborted_uploads: int
     oldest_surviving_snapshot: str | None
@@ -101,7 +112,7 @@ class Result:
 def _utc(value: datetime, label: str) -> datetime:
     if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
         raise RetentionError(f"{label} must be timezone-aware")
-    return value.astimezone(timezone.utc).replace(microsecond=0)
+    return value.astimezone(timezone.utc)
 
 
 def _iso(value: datetime) -> str:
@@ -109,6 +120,8 @@ def _iso(value: datetime) -> str:
 
 
 def _parse_time(value: Any, label: str) -> datetime:
+    if isinstance(value, datetime):
+        return _utc(value, label)
     if not isinstance(value, str):
         raise RetentionError(f"malformed {label}")
     try:
@@ -240,7 +253,7 @@ def inventory(storage: Storage, *, bucket: str, expected_owner: str,
     while True:
         page_no += 1
         _checked_page_count(page_no, limits)
-        page = _mapping(storage.list_object_versions(prefix=SNAPSHOTS_PREFIX, key_marker=key_marker,
+        page = _mapping(storage.list_object_versions(bucket=bucket, prefix=SNAPSHOTS_PREFIX, key_marker=key_marker,
                                                       version_id_marker=version_marker,
                                                       expected_owner=expected_owner), "version")
         for field, marker in (("Versions", False), ("DeleteMarkers", True)):
@@ -252,8 +265,13 @@ def inventory(storage: Storage, *, bucket: str, expected_owner: str,
                 key, version_id = record.get("Key"), record.get("VersionId")
                 if not isinstance(version_id, str) or not version_id or len(version_id) > 1024:
                     raise RetentionError("malformed version identifier")
-                prefix, _ = _snapshot_prefix(key)
-                modified = _iso(_parse_time(record.get("LastModified"), "LastModified"))
+                prefix, snapshot_time = _snapshot_prefix(key)
+                last_modified = _parse_time(record.get("LastModified"), "LastModified")
+                if type(record.get("IsLatest")) is not bool:
+                    raise RetentionError("malformed IsLatest flag")
+                if snapshot_time > captured or last_modified > captured:
+                    raise RetentionError("future version timestamp")
+                modified = _iso(last_modified)
                 versions.append(Version(key, version_id, marker, modified, prefix))
                 if len(versions) > limits.versions:
                     raise RetentionError("version inventory limit exceeded")
@@ -267,10 +285,12 @@ def inventory(storage: Storage, *, bucket: str, expected_owner: str,
 
     key_marker = upload_marker = None
     seen_upload_tokens: set[tuple[str, str]] = set()
+    seen_upload_ids: set[str] = set()
+    seen_upload_pairs: set[tuple[str, str]] = set()
     while True:
         page_no += 1
         _checked_page_count(page_no, limits)
-        page = _mapping(storage.list_multipart_uploads(prefix=SNAPSHOTS_PREFIX, key_marker=key_marker,
+        page = _mapping(storage.list_multipart_uploads(bucket=bucket, prefix=SNAPSHOTS_PREFIX, key_marker=key_marker,
                                                         upload_id_marker=upload_marker,
                                                         expected_owner=expected_owner), "multipart")
         records = page.get("Uploads")
@@ -281,8 +301,16 @@ def inventory(storage: Storage, *, bucket: str, expected_owner: str,
             key, upload_id = record.get("Key"), record.get("UploadId")
             if not isinstance(upload_id, str) or not upload_id or len(upload_id) > 1024:
                 raise RetentionError("malformed upload identifier")
-            prefix, _ = _snapshot_prefix(key)
-            initiated = _iso(_parse_time(record.get("Initiated"), "multipart Initiated"))
+            prefix, snapshot_time = _snapshot_prefix(key)
+            initiated_time = _parse_time(record.get("Initiated"), "multipart Initiated")
+            if snapshot_time > captured or initiated_time > captured:
+                raise RetentionError("future multipart timestamp")
+            pair = (key, upload_id)
+            if pair in seen_upload_pairs or upload_id in seen_upload_ids:
+                raise RetentionError("duplicate multipart upload identifier")
+            seen_upload_pairs.add(pair)
+            seen_upload_ids.add(upload_id)
+            initiated = _iso(initiated_time)
             uploads.append(Upload(key, upload_id, initiated, prefix))
             if len(uploads) > limits.uploads:
                 raise RetentionError("multipart inventory limit exceeded")
@@ -314,15 +342,19 @@ def _eligible(plan: Plan, item: Version | Upload) -> bool:
     return _parse_time(item.initiated, "multipart Initiated") <= _parse_time(plan.multipart_cutoff, "multipart cutoff")
 
 
-def _parts_empty(storage: Storage, upload: Upload, expected_owner: str, limits: Limits) -> None:
+def _parts_empty(storage: Storage, bucket: str, upload: Upload, expected_owner: str, limits: Limits) -> None:
     marker: int | None = None
     seen: set[int] = set()
     page_no = total = 0
     while True:
         page_no += 1
         _checked_page_count(page_no, limits)
-        page = _mapping(storage.list_parts(key=upload.key, upload_id=upload.upload_id,
-                                           part_number_marker=marker, expected_owner=expected_owner), "parts")
+        try:
+            raw_page = storage.list_parts(bucket=bucket, key=upload.key, upload_id=upload.upload_id,
+                                          part_number_marker=marker, expected_owner=expected_owner)
+        except UploadNotFound:
+            return
+        page = _mapping(raw_page, "parts")
         parts = page.get("Parts")
         if not isinstance(parts, list):
             raise RetentionError("missing or malformed parts inventory")
@@ -379,9 +411,6 @@ def apply(storage: Storage, plan: Plan, *, approved_sha256: str, bucket: str,
     """Apply only an explicitly hash-approved plan after fresh inventory match."""
     current = _utc(now, "now")
     _check_plan(plan, approved_sha256, bucket, expected_owner, current, limits)
-    if (_iso(current - RETENTION_AGE) != plan.cutoff
-            or _iso(current - MULTIPART_AGE) != plan.multipart_cutoff):
-        raise RetentionError("approved cutoff changed; create a new plan")
     fresh = inventory(storage, bucket=bucket, expected_owner=expected_owner, now=current, limits=limits)
     if fresh.versions != plan.versions or fresh.uploads != plan.uploads:
         raise RetentionError("current inventory differs from approved plan")
@@ -390,10 +419,11 @@ def apply(storage: Storage, plan: Plan, *, approved_sha256: str, bucket: str,
     deleted = 0
     for offset in range(0, len(targets), 1000):
         batch = targets[offset:offset + 1000]
-        if any(not _eligible(plan, item) or _snapshot_prefix(item.key)[1] > current - RETENTION_AGE for item in batch):
+        if any(not _eligible(plan, item) for item in batch):
             raise RetentionError("candidate is no longer eligible")
         expected = {(item.key, item.version_id) for item in batch}
-        response = _mapping(storage.delete_versions(objects=[{"Key": item.key, "VersionId": item.version_id} for item in batch],
+        response = _mapping(storage.delete_versions(bucket=bucket,
+                                                    objects=[{"Key": item.key, "VersionId": item.version_id} for item in batch],
                                                     expected_owner=expected_owner), "delete")
         errors = response.get("Errors", [])
         removed = response.get("Deleted")
@@ -412,14 +442,17 @@ def apply(storage: Storage, plan: Plan, *, approved_sha256: str, bucket: str,
 
     mpu_targets = [item for item in plan.uploads if _eligible(plan, item)]
     for upload in mpu_targets:
-        if _parse_time(upload.initiated, "multipart Initiated") > current - MULTIPART_AGE:
+        if not _eligible(plan, upload):
             raise RetentionError("multipart upload is no longer eligible")
-        storage.abort_multipart(key=upload.key, upload_id=upload.upload_id, expected_owner=expected_owner)
-        _parts_empty(storage, upload, expected_owner, limits)
+        storage.abort_multipart(bucket=bucket, key=upload.key, upload_id=upload.upload_id,
+                                expected_owner=expected_owner)
+        _parts_empty(storage, bucket, upload, expected_owner, limits)
 
     after = inventory(storage, bucket=bucket, expected_owner=expected_owner, now=current, limits=limits)
-    remaining = [item for item in after.versions if _snapshot_prefix(item.key)[1] <= current - RETENTION_AGE]
-    remaining_uploads = [item for item in after.uploads if _parse_time(item.initiated, "multipart Initiated") <= current - MULTIPART_AGE]
+    reviewed_cutoff = _parse_time(plan.cutoff, "cutoff")
+    reviewed_multipart_cutoff = _parse_time(plan.multipart_cutoff, "multipart cutoff")
+    remaining = [item for item in after.versions if _snapshot_prefix(item.key)[1] <= reviewed_cutoff]
+    remaining_uploads = [item for item in after.uploads if _parse_time(item.initiated, "multipart Initiated") <= reviewed_multipart_cutoff]
     if remaining or remaining_uploads:
         raise RetentionError("eligible retention data remains after purge")
     surviving = [_snapshot_prefix(item.key)[1] for item in after.versions]
@@ -427,7 +460,7 @@ def apply(storage: Storage, plan: Plan, *, approved_sha256: str, bucket: str,
     oldest_snapshot = min(surviving) if surviving else None
     oldest_modified = min(modified) if modified else None
     return Result(
-        plan.sha256, deleted, len(mpu_targets),
+        plan.sha256, plan.cutoff, plan.multipart_cutoff, deleted, len(mpu_targets),
         _iso(oldest_snapshot) if oldest_snapshot else None,
         _iso(oldest_modified) if oldest_modified else None,
         max(0, int((current - oldest_snapshot).total_seconds())) if oldest_snapshot else None,
