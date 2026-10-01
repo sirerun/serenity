@@ -145,6 +145,10 @@ func TestAdminOperatorReviewOverAuthenticatedUnixSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(socketDir) })
+	socketDir, err = filepath.EvalSymlinks(socketDir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	socketPath := filepath.Join(socketDir, "a.sock")
 	listener, err := admintransport.Listen(context.Background(), socketPath)
 	if err != nil {
