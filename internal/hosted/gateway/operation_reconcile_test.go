@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -41,9 +42,13 @@ func TestOperationReconciliationHoldsLifecycleLocks(t *testing.T) {
 	if _, err = db.InsertBrain(ctx, account.ID, brain, brain, "ready", time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	root := t.TempDir()
+	if err = os.Mkdir(filepath.Join(root, brain), 0700); err != nil {
+		t.Fatal(err)
+	}
 	g := &Gateway{Issuer: &credential.Issuer{Store: db}}
 	probe := &reconciliationFenceProbe{}
-	r := &OperationReconciler{gateway: g, runtimeFence: probe}
+	r := &OperationReconciler{gateway: g, brainsRoot: root, runtimeFence: probe}
 	g.Maintenance.Lock()
 	if _, err = r.Fence(ctx, brain); !errors.Is(err, contracts.ErrBrainNotQuiescent) {
 		t.Fatalf("backup fence bypassed: %v", err)
@@ -86,5 +91,34 @@ func TestOperationReconciliationHoldsLifecycleLocks(t *testing.T) {
 	}
 	if probe.calls != 1 {
 		t.Fatal("frozen accounts reached runtime")
+	}
+}
+
+func TestOperationReconciliationRejectsUnsafeTreeBeforeRuntimeOpen(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "control.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	account, err := db.CreateAccount(ctx, "unsafe@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	brain := store.ID()
+	if _, err = db.InsertBrain(ctx, account.ID, brain, brain, "ready", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err = os.Symlink(t.TempDir(), filepath.Join(root, brain)); err != nil {
+		t.Fatal(err)
+	}
+	probe := &reconciliationFenceProbe{}
+	r := &OperationReconciler{gateway: &Gateway{Issuer: &credential.Issuer{Store: db}}, brainsRoot: root, runtimeFence: probe}
+	if _, err = r.Fence(ctx, brain); !errors.Is(err, ErrDeletionSubjectStateUnknown) {
+		t.Fatalf("unsafe tree admitted: %v", err)
+	}
+	if probe.calls != 0 {
+		t.Fatal("unsafe tree reached runtime open")
 	}
 }

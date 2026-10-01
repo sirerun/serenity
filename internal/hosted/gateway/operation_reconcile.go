@@ -14,6 +14,7 @@ import (
 // adapter keeps the same runtime leased through proof and ledger transition.
 type OperationReconciler struct {
 	gateway      *Gateway
+	brainsRoot   string
 	runtimeFence contracts.BrainFence
 	checker      contracts.CanonicalChecker
 }
@@ -23,7 +24,7 @@ func NewOperationReconciler(g *Gateway) *OperationReconciler {
 		return &OperationReconciler{}
 	}
 	r := pool.NewReconciler(g.Pool)
-	return &OperationReconciler{gateway: g, runtimeFence: r, checker: r}
+	return &OperationReconciler{gateway: g, brainsRoot: g.Pool.BrainsRoot(), runtimeFence: r, checker: r}
 }
 
 func (r *OperationReconciler) Fence(ctx context.Context, brainID string) (func(), error) {
@@ -72,6 +73,14 @@ func (r *OperationReconciler) Fence(ctx context.Context, brainID string) (func()
 	if path != brainID || !validBrainPathKey(path) || state != "ready" || status != "active" {
 		return nil, contracts.ErrBrainNotQuiescent
 	}
+	if r.brainsRoot == "" {
+		return nil, contracts.ErrBrainNotQuiescent
+	}
+	if _, present, err := validateBrainTree(ctx, r.brainsRoot, brainID); err != nil {
+		return nil, err
+	} else if !present {
+		return nil, contracts.ErrBrainNotQuiescent
+	}
 	leave, err := r.runtimeFence.Fence(ctx, brainID)
 	if err != nil {
 		return nil, err
@@ -83,7 +92,7 @@ func (r *OperationReconciler) Fence(ctx context.Context, brainID string) (func()
 }
 
 func (r *OperationReconciler) Check(ctx context.Context, rec contracts.OperationRecord) (contracts.CanonicalVerdict, error) {
-	if r.checker == nil || r.gateway == nil || r.gateway.Issuer == nil {
+	if r.checker == nil || r.gateway == nil || r.gateway.Issuer == nil || r.gateway.Issuer.Store == nil {
 		return contracts.CanonicalVerdict{}, contracts.ErrBrainNotQuiescent
 	}
 	var matches bool
