@@ -1,0 +1,228 @@
+package recovery
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/sirerun/serenity/internal/hosted/contracts"
+)
+
+func validPlanInput() PlanInput {
+	return PlanInput{
+		SnapshotSHA256: strings.Repeat("a", 64),
+		JournalWatermark: contracts.DeletionWatermark{
+			Generation: 1, SequenceID: 3, EntryHash: strings.Repeat("b", 64),
+		},
+		FenceGeneration:  2,
+		ProviderObserved: time.Date(2026, 10, 1, 20, 15, 30, 123000000, time.UTC),
+		Accounts:         []string{"account-z", "account-a"},
+	}
+}
+
+func TestCreateAndLoadPlanIsCanonicalAndIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	input := validPlanInput()
+	created, err := CreatePlan(context.Background(), dir, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.PlanHash == "" || created.SnapshotSHA256 != input.SnapshotSHA256 {
+		t.Fatalf("created plan did not bind snapshot content: %+v", created)
+	}
+	if got := strings.Join(created.Accounts, ","); got != "account-a,account-z" {
+		t.Fatalf("canonical account order = %q", got)
+	}
+	payload, err := json.Marshal(payloadFromPlan(created))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(payload)
+	if created.PlanHash != hex.EncodeToString(sum[:]) {
+		t.Fatal("plan hash does not cover canonical payload")
+	}
+
+	loaded, err := LoadPlan(context.Background(), dir, created.PlanHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plansEqual(loaded, created) {
+		t.Fatalf("reloaded plan differs: got %+v want %+v", loaded, created)
+	}
+	createdAgain, err := CreatePlan(context.Background(), dir, input)
+	if err != nil {
+		t.Fatalf("identical create should be idempotent: %v", err)
+	}
+	if !plansEqual(createdAgain, created) {
+		t.Fatal("idempotent create returned different plan")
+	}
+}
+
+func TestLoadPlanRejectsUnchangedHashMismatch(t *testing.T) {
+	dir := t.TempDir()
+	plan, err := CreatePlan(context.Background(), dir, validPlanInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := strings.Repeat("c", 64)
+	if _, err = LoadPlan(context.Background(), dir, other); err == nil {
+		t.Fatal("LoadPlan accepted a different approved hash")
+	}
+	path := filepath.Join(dir, plan.PlanHash+".json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := bytes.Replace(data, []byte(`"fence_generation":2`), []byte(`"fence_generation":3`), 1)
+	if bytes.Equal(changed, data) {
+		t.Fatal("fixture did not change plan payload")
+	}
+	if err = os.WriteFile(path, changed, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = LoadPlan(context.Background(), dir, plan.PlanHash); err == nil {
+		t.Fatal("LoadPlan accepted content changed under the approved hash")
+	}
+}
+
+func TestLoadPlanRejectsDuplicateUnknownAliasAndTrailingJSON(t *testing.T) {
+	mutations := map[string]func(string, []byte) []byte{
+		"duplicate key": func(hash string, data []byte) []byte {
+			return bytes.Replace(data, []byte(`"payload":`), []byte(`"plan_hash":"`+hash+`","payload":`), 1)
+		},
+		"unknown key": func(_ string, data []byte) []byte {
+			return bytes.Replace(data, []byte(`"payload":`), []byte(`"unexpected":true,"payload":`), 1)
+		},
+		"case alias": func(_ string, data []byte) []byte {
+			return bytes.Replace(data, []byte(`"plan_hash":`), []byte(`"PlanHash":`), 1)
+		},
+		"nested duplicate": func(_ string, data []byte) []byte {
+			return bytes.Replace(data, []byte(`"accounts":[`), []byte(`"accounts":[],"accounts":[`), 1)
+		},
+		"trailing data": func(_ string, data []byte) []byte {
+			return append(data, []byte(`{}`)...)
+		},
+	}
+	for name, mutate := range mutations {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			plan, err := CreatePlan(context.Background(), dir, validPlanInput())
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(dir, plan.PlanHash+".json")
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutated := mutate(plan.PlanHash, data)
+			if bytes.Equal(mutated, data) {
+				t.Fatal("mutation did not change fixture")
+			}
+			if err = os.WriteFile(path, mutated, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = LoadPlan(context.Background(), dir, plan.PlanHash); !errors.Is(err, ErrPlanInvalid) {
+				t.Fatalf("LoadPlan error = %v, want ErrPlanInvalid", err)
+			}
+		})
+	}
+}
+
+func TestCreatePlanNeverOverwritesExistingArtifactOrFollowsSymlink(t *testing.T) {
+	t.Run("corrupt existing file", func(t *testing.T) {
+		dir := t.TempDir()
+		plan, err := newPlan(validPlanInput())
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, plan.PlanHash+".json")
+		original := []byte("operator data must remain unchanged\n")
+		if err = os.WriteFile(path, original, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = CreatePlan(context.Background(), dir, validPlanInput()); !errors.Is(err, ErrPlanExists) {
+			t.Fatalf("CreatePlan error = %v, want ErrPlanExists", err)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(got, original) {
+			t.Fatalf("existing bytes changed: %q, %v", got, err)
+		}
+	})
+
+	t.Run("symlink target", func(t *testing.T) {
+		dir := t.TempDir()
+		plan, err := newPlan(validPlanInput())
+		if err != nil {
+			t.Fatal(err)
+		}
+		victim := filepath.Join(t.TempDir(), "victim")
+		original := []byte("outside plan root")
+		if err = os.WriteFile(victim, original, 0600); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, plan.PlanHash+".json")
+		if err = os.Symlink(victim, path); err != nil {
+			t.Fatal(err)
+		}
+		if _, err = CreatePlan(context.Background(), dir, validPlanInput()); err == nil {
+			t.Fatal("CreatePlan accepted symlink plan path")
+		}
+		got, err := os.ReadFile(victim)
+		if err != nil || !bytes.Equal(got, original) {
+			t.Fatalf("symlink target changed: %q, %v", got, err)
+		}
+	})
+}
+
+func TestCreatePlanRejectsSymlinkDirectoryAndCanceledContextBeforeIO(t *testing.T) {
+	parent := t.TempDir()
+	realDir := filepath.Join(parent, "real")
+	if err := os.Mkdir(realDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(parent, "alias")
+	if err := os.Symlink(realDir, alias); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CreatePlan(context.Background(), alias, validPlanInput()); !errors.Is(err, ErrPlanUntrustedDir) {
+		t.Fatalf("CreatePlan symlink directory error = %v", err)
+	}
+
+	missing := filepath.Join(parent, "missing")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := CreatePlan(ctx, missing, validPlanInput()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("CreatePlan canceled error = %v", err)
+	}
+	if _, err := os.Lstat(missing); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("canceled create touched target directory: %v", err)
+	}
+}
+
+func TestCreatePlanRejectsMalformedInputs(t *testing.T) {
+	cases := map[string]func(*PlanInput){
+		"uppercase snapshot digest": func(in *PlanInput) { in.SnapshotSHA256 = strings.Repeat("A", 64) },
+		"older fence generation":    func(in *PlanInput) { in.FenceGeneration = 0 },
+		"duplicate account":         func(in *PlanInput) { in.Accounts = []string{"same", "same"} },
+		"activate all alias":        func(in *PlanInput) { in.Accounts = []string{"all"} },
+		"zero provider observation": func(in *PlanInput) { in.ProviderObserved = time.Time{} },
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			in := validPlanInput()
+			mutate(&in)
+			if _, err := newPlan(in); !errors.Is(err, ErrPlanInvalid) {
+				t.Fatalf("newPlan error = %v, want ErrPlanInvalid", err)
+			}
+		})
+	}
+}

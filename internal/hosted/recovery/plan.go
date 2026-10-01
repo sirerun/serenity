@@ -355,11 +355,11 @@ func scanValue(dec *json.Decoder, path string) error {
 		}
 		return nil
 	case json.Delim('['):
-		if path != "payload.accounts" {
+		if path != "root.payload.accounts" {
 			return fmt.Errorf("unexpected array at %s", path)
 		}
 		for dec.More() {
-			if err = scanValue(dec, "payload.accounts[]"); err != nil {
+			if err = scanValue(dec, "root.payload.accounts[]"); err != nil {
 				return err
 			}
 		}
@@ -368,7 +368,7 @@ func scanValue(dec *json.Decoder, path string) error {
 	case json.Delim(']'), json.Delim('}'):
 		return fmt.Errorf("unexpected delimiter at %s", path)
 	default:
-		if path == "payload.accounts[]" {
+		if path == "root.payload.accounts[]" {
 			if _, ok := token.(string); !ok {
 				return errors.New("account scope entries must be strings")
 			}

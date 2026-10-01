@@ -16,7 +16,12 @@ func privateDirectoryPath(path string) (string, error) {
 	if !filepath.IsAbs(path) {
 		return "", fmt.Errorf("%w: directory path must be absolute", ErrPlanUntrustedDir)
 	}
-	clean, err := filepath.EvalSymlinks(filepath.Clean(path))
+	requested := filepath.Clean(path)
+	requestedInfo, err := os.Lstat(requested)
+	if err != nil || !requestedInfo.IsDir() || requestedInfo.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("%w: plan directory must be a real directory", ErrPlanUntrustedDir)
+	}
+	clean, err := filepath.EvalSymlinks(requested)
 	if err != nil {
 		return "", fmt.Errorf("%w: directory path cannot be resolved", ErrPlanUntrustedDir)
 	}
