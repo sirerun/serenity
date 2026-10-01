@@ -28,6 +28,14 @@ func NewOperationReconciler(g *Gateway) *OperationReconciler {
 }
 
 func (r *OperationReconciler) Fence(ctx context.Context, brainID string) (func(), error) {
+	return r.acquire(ctx, brainID, false)
+}
+
+func (r *OperationReconciler) EnterCommit(ctx context.Context, brainID string) (func(), error) {
+	return r.acquire(ctx, brainID, true)
+}
+
+func (r *OperationReconciler) acquire(ctx context.Context, brainID string, commit bool) (func(), error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -81,7 +89,13 @@ func (r *OperationReconciler) Fence(ctx context.Context, brainID string) (func()
 	} else if !present {
 		return nil, contracts.ErrBrainNotQuiescent
 	}
-	leave, err := r.runtimeFence.Fence(ctx, brainID)
+	var leave func()
+	var err error
+	if commit {
+		leave, err = r.runtimeFence.EnterCommit(ctx, brainID)
+	} else {
+		leave, err = r.runtimeFence.Fence(ctx, brainID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -104,3 +118,6 @@ func (r *OperationReconciler) Check(ctx context.Context, rec contracts.Operation
 	}
 	return r.checker.Check(ctx, rec)
 }
+
+var _ contracts.BrainFence = (*OperationReconciler)(nil)
+var _ contracts.CanonicalChecker = (*OperationReconciler)(nil)

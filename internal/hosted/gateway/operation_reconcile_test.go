@@ -19,6 +19,10 @@ type reconciliationFenceProbe struct {
 	released int
 }
 
+func (p *reconciliationFenceProbe) EnterCommit(ctx context.Context, brain string) (func(), error) {
+	return p.Fence(ctx, brain)
+}
+
 func (p *reconciliationFenceProbe) Fence(context.Context, string) (func(), error) {
 	p.calls++
 	return func() { p.released++ }, nil
