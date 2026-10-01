@@ -21,3 +21,13 @@ The adapter also implements the writer half of `BrainFence` through the same acc
 ## Validation limits
 
 This was a static review of the pinned source and existing focused tests. No Go test was run: the observed host load was 17.02 at review time, above the repository's load limit of 10. No provider, cloud, or service actions were performed. This receipt does not qualify a full build or the broader T23.44 work.
+
+## Correction review
+
+Follow-up source reviewed: `54c68582aa80b96485f155ce34dfc440b9c97e64` (production changes through `12db5d8b7da9be9c8d783c7b41627e6d33239d3f`). The two contract blockers above are corrected by this pin; I found no additional static blocker in the Gateway/Service wiring.
+
+`OperationReconciler.Fence` now retains only the maintenance read fence and makes its active/ready account+brain query, owned-tree preflight, and runtime fence without acquiring an account lock. Its `EnterCommit` delegates directly to the pool adapter's exact runtime queue section. The service uses a warm-only `NewExistingReconciler` for periodic work; `AcquireExisting` neither opens nor evicts runtimes, so a concurrent `Drop` either sees the lease or wins first and causes a safe deferred result. Startup explicitly uses `NewStartupOperationReconciler` while the pool and service are still private, before handler publication or worker startup, allowing it to open cold runtimes for the initial conservative sweep. The added ticker regression covers cold deferral without creating a `.git` directory. Account binding and ready/active checks remain in the Gateway adapter and checker.
+
+The earlier findings about exact Runtime retention, Landed-only positive proof, Unknown staying capacity-holding in `pending_review`, and reserved-only automatic reconciliation still apply. The separate positive Landed startup-counter test was not part of this source pin, so that case remains unverified here.
+
+No Go checks were run: coordinator reported load 16.22, above the repository threshold of 10. This follow-up is a static review only and does not qualify full integration, production activation, or live behavior.
