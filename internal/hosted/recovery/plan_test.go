@@ -125,7 +125,8 @@ func TestLoadPlanRejectsUnchangedHashMismatch(t *testing.T) {
 
 func TestLoadPlanRejectsFIFOWithoutBlocking(t *testing.T) {
 	dir := privatePlanDir(t)
-	fifoPath := filepath.Join(dir, "fifo.plan")
+	approvedHash := strings.Repeat("a", 64)
+	fifoPath := filepath.Join(dir, approvedHash+".json")
 	if err := syscall.Mkfifo(fifoPath, 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +135,7 @@ func TestLoadPlanRejectsFIFOWithoutBlocking(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		_, err := LoadPlan(ctx, dir, strings.Repeat("a", 64))
+		_, err := LoadPlan(ctx, dir, approvedHash)
 		done <- err
 	}()
 
