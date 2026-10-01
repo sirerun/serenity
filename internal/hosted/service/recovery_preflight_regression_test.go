@@ -11,12 +11,14 @@ import (
 type nilStartupContext struct{ context.Context }
 
 func TestStartupRejectsNilContextBeforeDependencies(t *testing.T) {
+	db, cfg, _, _ := deletionFixture(t)
+	deps := testLifecycleDependencies(t)
 	var typedNil *nilStartupContext
 	for _, ctx := range []context.Context{nil, typedNil} {
-		if _, err := NewWithDependencies(ctx, Config{}, true, nil, LifecycleDependencies{}); !errors.Is(err, ErrStartupUnavailable) {
+		if _, err := NewWithDependencies(ctx, cfg, true, nil, deps); !errors.Is(err, ErrStartupUnavailable) {
 			t.Fatalf("nil startup context: %v", err)
 		}
-		if _, err := AssembleWithDependencies(ctx, Config{}, true, nil, nil, nil, LifecycleDependencies{}); !errors.Is(err, ErrStartupUnavailable) {
+		if _, err := AssembleWithDependencies(ctx, cfg, true, db, nil, deletionEmbedding{}, deps); !errors.Is(err, ErrStartupUnavailable) {
 			t.Fatalf("nil assembly context: %v", err)
 		}
 	}
