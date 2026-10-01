@@ -15,7 +15,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
@@ -35,7 +34,7 @@ type Service struct {
 	Store    *store.Store
 	Identity *identity.Service
 	Config   Config
-	mu       sync.Mutex
+	locks    keyedLocks
 	// priorSubscriptionReader is nil in production. It lets package tests inject
 	// a statement-level read failure while exercising the real SQLite
 	// transaction and its rollback behavior.
@@ -232,8 +231,25 @@ func subscriptionTerminal(status string) bool {
 	return status == "canceled" || status == "incomplete_expired"
 }
 
-func subscriptionEntitled(status string) bool {
-	return status == "active" || status == "trialing" || status == "past_due"
+// effectiveSubscriptionAccess mirrors the hosted meter's billing eligibility:
+// active/trialing subscriptions need a live period, while past-due access is
+// limited to the exact persisted grace deadline.
+func effectiveSubscriptionAccess(status string, periodEnd time.Time, graceUntil string, now time.Time) (bool, error) {
+	switch status {
+	case "active", "trialing":
+		return periodEnd.After(now), nil
+	case "past_due":
+		if graceUntil == "" {
+			return false, nil
+		}
+		deadline, err := time.Parse(time.RFC3339Nano, graceUntil)
+		if err != nil {
+			return false, fmt.Errorf("parse reconciled grace deadline: %w", err)
+		}
+		return deadline.After(now), nil
+	default:
+		return false, nil
+	}
 }
 
 // graceDeadline derives a past-due deadline from the first failure event for
@@ -277,8 +293,11 @@ func recordWindowClosed(ctx context.Context, tx *sql.Tx, accountID, subscription
 // the account, then replaces the local subscription projection atomically.
 // Frozen accounts are reconciled for bookkeeping but never receive access.
 func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (contracts.ReconcileResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	release, err := s.locks.acquire(ctx, "account:"+accountID)
+	if err != nil {
+		return contracts.ReconcileResult{}, err
+	}
+	defer release()
 	var result contracts.ReconcileResult
 	var customer, status string
 	if err := s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(stripe_customer_id,''),status FROM accounts WHERE id=?`, accountID).Scan(&customer, &status); err != nil {
@@ -338,6 +357,7 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 
 	now := time.Now().UTC()
 	var chosenGrace string
+	var chosenEligible bool
 	err = s.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		rows, e := tx.QueryContext(ctx, `SELECT id FROM subscriptions WHERE account_id=?`, accountID)
 		if e != nil {
@@ -382,6 +402,10 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 			grace, graceInvoice := graceDeadline(old.status, old.grace, old.graceInvoice, periodChanged, sub.Status, invoice, anchor)
 			if chosen != nil && sub.ID == chosen.ID {
 				chosenGrace = grace
+				chosenEligible, e = effectiveSubscriptionAccess(sub.Status, time.Unix(item.CurrentPeriodEnd, 0).UTC(), grace, now)
+				if e != nil {
+					return e
+				}
 			}
 			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_until,grace_invoice_id) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end,grace_until=excluded.grace_until,grace_invoice_id=excluded.grace_invoice_id`, sub.ID, accountID, item.Price.ID, plan, sub.Status, newPeriodStart, newPeriodEnd, sub.CancelAtPeriodEnd, nullableString(grace), nullableString(graceInvoice))
 			if e != nil {
@@ -395,7 +419,7 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 				}
 			}
 		}
-		if chosen == nil || status != "active" {
+		if chosen == nil || status != "active" || !chosenEligible {
 			_, e = tx.ExecContext(ctx, `UPDATE accounts SET plan_id='free',plan_version=1 WHERE id=?`, accountID)
 		} else {
 			_, e = tx.ExecContext(ctx, `UPDATE accounts SET plan_id=?,plan_version=1 WHERE id=?`, s.planForPrice(chosen.Items.Data[0].Price.ID), accountID)
@@ -417,7 +441,7 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 		return result, nil
 	}
 	item := chosen.Items.Data[0]
-	result.Eligible = subscriptionEntitled(chosen.Status)
+	result.Eligible = chosenEligible
 	result.PlanID = s.planForPrice(item.Price.ID)
 	result.CurrentWindowStart = time.Unix(item.CurrentPeriodStart, 0).UTC()
 	result.CurrentWindowEnd = time.Unix(item.CurrentPeriodEnd, 0).UTC()
@@ -466,8 +490,11 @@ func (s *Service) customer(ctx context.Context, account string) (string, error) 
 	return created.ID, err
 }
 func (s *Service) Checkout(ctx context.Context, account, plan string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	release, err := s.locks.acquire(ctx, "account:"+account)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	price := ""
 	switch plan {
 	case "builder":
@@ -999,11 +1026,16 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 	if event.Created <= 0 {
 		return errors.New("missing event creation time")
 	}
-	// Serializing fetch + commit prevents a slower old fetch overwriting newer state.
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Serialize duplicate delivery by event ID. The account key is resolved from
+	// a provider-owned customer ID below, then locked before the authoritative
+	// subscription refetch and projection commit.
+	releaseEvent, err := s.locks.acquire(ctx, "event:"+event.ID)
+	if err != nil {
+		return err
+	}
+	defer releaseEvent()
 	var processed sql.NullString
-	err := s.Store.DB().QueryRowContext(ctx, `SELECT processed_at FROM stripe_events WHERE id=?`, event.ID).Scan(&processed)
+	err = s.Store.DB().QueryRowContext(ctx, `SELECT processed_at FROM stripe_events WHERE id=?`, event.ID).Scan(&processed)
 	if err == nil && processed.Valid {
 		return nil
 	}
@@ -1040,10 +1072,45 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 			return errors.New("invalid subscription reference")
 		}
 		var sub subscription
-		if err = s.request(ctx, "GET", "/subscriptions/"+id, nil, "", &sub); err != nil {
+		if err = s.providerRequest(ctx, "GET", "/subscriptions/"+url.PathEscape(id), nil, "", &sub); err != nil {
 			return err
 		}
-		if sub.ID != id || len(sub.Items.Data) != 1 {
+		if sub.ID != id || !strings.HasPrefix(sub.Customer, "cus_") || strings.ContainsAny(sub.Customer, "/?#") {
+			return contracts.ErrBillingProviderAmbiguous
+		}
+		var account, accountStatus, boundCustomer string
+		e := s.Store.DB().QueryRowContext(ctx, `SELECT id,status,stripe_customer_id FROM accounts WHERE stripe_customer_id=?`, sub.Customer).Scan(&account, &accountStatus, &boundCustomer)
+		if errors.Is(e, sql.ErrNoRows) {
+			// The account may have completed deletion after the provider emitted
+			// this event. Acknowledge it without creating an entitlement.
+			return s.Store.Transaction(ctx, func(tx *sql.Tx) error {
+				_, e := tx.ExecContext(ctx, `UPDATE stripe_events SET processed_at=? WHERE id=?`, store.Stamp(time.Now()), event.ID)
+				return e
+			})
+		}
+		if e != nil {
+			return e
+		}
+		releaseAccount, lockErr := s.locks.acquire(ctx, "account:"+account)
+		if lockErr != nil {
+			return lockErr
+		}
+		defer releaseAccount()
+		var currentCustomer, currentStatus string
+		if e = s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(stripe_customer_id,''),status FROM accounts WHERE id=?`, account).Scan(&currentCustomer, &currentStatus); e != nil {
+			return e
+		}
+		if currentCustomer != boundCustomer || currentCustomer != sub.Customer {
+			return contracts.ErrBillingProviderAmbiguous
+		}
+		accountStatus = currentStatus
+		// This second provider read is the only subscription snapshot used for
+		// projection. The first snapshot established only the trusted lock key.
+		sub = subscription{}
+		if err = s.providerRequest(ctx, "GET", "/subscriptions/"+url.PathEscape(id), nil, "", &sub); err != nil {
+			return err
+		}
+		if sub.ID != id || sub.Customer != currentCustomer || len(sub.Items.Data) != 1 {
 			return errors.New("unsupported subscription shape")
 		}
 		item := sub.Items.Data[0]
@@ -1056,19 +1123,6 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 		}
 		if plan == "" {
 			return errors.New("subscription price is not a Serenity price")
-		}
-		var account, accountStatus string
-		e := s.Store.DB().QueryRowContext(ctx, `SELECT id,status FROM accounts WHERE stripe_customer_id=?`, sub.Customer).Scan(&account, &accountStatus)
-		if errors.Is(e, sql.ErrNoRows) {
-			// The account may have completed deletion after the provider emitted
-			// this event. Acknowledge it without creating an entitlement.
-			return s.Store.Transaction(ctx, func(tx *sql.Tx) error {
-				_, e := tx.ExecContext(ctx, `UPDATE stripe_events SET processed_at=? WHERE id=?`, store.Stamp(time.Now()), event.ID)
-				return e
-			})
-		}
-		if e != nil {
-			return e
 		}
 		anchor := time.Unix(item.CurrentPeriodStart, 0).UTC()
 		invoice := ""
@@ -1096,16 +1150,19 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 				}
 			}
 			grace, graceInvoice := graceDeadline(old.status, old.grace, old.graceInvoice, periodChanged, sub.Status, invoice, anchor)
+			eligible, accessErr := effectiveSubscriptionAccess(sub.Status, time.Unix(item.CurrentPeriodEnd, 0).UTC(), grace, time.Now().UTC())
+			if accessErr != nil {
+				return accessErr
+			}
 			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_until,grace_invoice_id) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end,grace_until=excluded.grace_until,grace_invoice_id=excluded.grace_invoice_id`, sub.ID, account, item.Price.ID, plan, sub.Status, newPeriodStart, newPeriodEnd, sub.CancelAtPeriodEnd, nullableString(grace), nullableString(graceInvoice))
 			if e != nil {
 				return e
 			}
-			if accountStatus == "active" {
-				_, e = tx.ExecContext(ctx, `UPDATE accounts SET plan_id=?,plan_version=1 WHERE id=?`, plan, account)
-				if e != nil {
-					return e
-				}
-			} else if _, e = tx.ExecContext(ctx, `UPDATE accounts SET plan_id='free',plan_version=1 WHERE id=?`, account); e != nil {
+			accountPlan := "free"
+			if accountStatus == "active" && eligible {
+				accountPlan = plan
+			}
+			if _, e = tx.ExecContext(ctx, `UPDATE accounts SET plan_id=?,plan_version=1 WHERE id=?`, accountPlan, account); e != nil {
 				return e
 			}
 			_, e = tx.ExecContext(ctx, `UPDATE stripe_events SET processed_at=? WHERE id=?`, store.Stamp(time.Now()), event.ID)
@@ -1211,8 +1268,11 @@ func (s *Service) expireCheckout(ctx context.Context, sessionID string) error {
 // closeBilling is shared by deletion lifecycle callers and the legacy
 // CancelAccount adapter. It certifies provider closure before returning.
 func (s *Service) closeBilling(ctx context.Context, account string, requireDeleting bool) (contracts.CloseResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	release, err := s.locks.acquire(ctx, "account:"+account)
+	if err != nil {
+		return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "account operation lock unavailable"}, err
+	}
+	defer release()
 	var customer, status string
 	if err := s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(stripe_customer_id,''),status FROM accounts WHERE id=?`, account).Scan(&customer, &status); err != nil {
 		return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "account lookup failed"}, err
