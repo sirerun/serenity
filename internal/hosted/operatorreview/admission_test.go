@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -80,7 +81,7 @@ func TestAdmissionUsesRealUnixPeerAndReturnsExactProof(t *testing.T) {
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	keyID := publicKeyID(publicKey)
 	keys := &testKeys{key: validTrustedKey(publicKey, "operator-7")}
-	admission, err := New(privateDir, keys, validPolicy())
+	admission, err := New(context.Background(), privateDir, keys, validPolicy())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +137,7 @@ func TestUnauthenticatedAndForgedRequestsDoNotReadCaseOrTrust(t *testing.T) {
 	dir := makePrivateDir(t)
 	privateKey := ed25519.NewKeyFromSeed(fixedSeed[:])
 	keys := &testKeys{key: validTrustedKey(privateKey.Public().(ed25519.PublicKey), "operator-7")}
-	admission, err := New(dir, keys, validPolicy())
+	admission, err := New(context.Background(), dir, keys, validPolicy())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,12 +155,24 @@ func TestUnauthenticatedAndForgedRequestsDoNotReadCaseOrTrust(t *testing.T) {
 func TestConstructorRejectsMissingAndTypedNilTrustSource(t *testing.T) {
 	dir := makePrivateDir(t)
 	policy := validPolicy()
-	if _, err := New(dir, nil, policy); err == nil {
+	if _, err := New(context.Background(), dir, nil, policy); err == nil {
 		t.Fatal("missing trust source accepted")
 	}
 	var typedNil *testKeys
-	if _, err := New(dir, typedNil, policy); err == nil {
+	if _, err := New(context.Background(), dir, typedNil, policy); err == nil {
 		t.Fatal("typed nil trust source accepted")
+	}
+}
+
+func TestConstructorHonorsCanceledContextBeforeFilesystemAccess(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	keys := &testKeys{}
+	if _, err := New(ctx, filepath.Join(os.TempDir(), "nonexistent-operator-case-directory"), keys, validPolicy()); !errors.Is(err, context.Canceled) {
+		t.Fatalf("New with canceled context = %v", err)
+	}
+	if keys.calls.Load() != 0 {
+		t.Fatalf("constructor accessed trust source: %d", keys.calls.Load())
 	}
 }
 
@@ -168,7 +181,7 @@ func TestAdmissionRequiresFreshCurrentTrustAndSignature(t *testing.T) {
 	privateKey := ed25519.NewKeyFromSeed(fixedSeed[:])
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	keys := &testKeys{key: validTrustedKey(publicKey, "operator-7")}
-	admission, err := New(dir, keys, validPolicy())
+	admission, err := New(context.Background(), dir, keys, validPolicy())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +223,7 @@ func TestRevocationAfterSnapshotAllowsAdmittedCallButDeniesNext(t *testing.T) {
 	privateKey := ed25519.NewKeyFromSeed(fixedSeed[:])
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	keys := &barrierKeys{key: validTrustedKey(publicKey, "operator-7"), snapshotted: make(chan struct{}), resume: make(chan struct{})}
-	admission, err := New(dir, keys, validPolicy())
+	admission, err := New(context.Background(), dir, keys, validPolicy())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,7 +283,7 @@ func TestOperationOutcomeProofAndTimeBinding(t *testing.T) {
 	privateKey := ed25519.NewKeyFromSeed(fixedSeed[:])
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	keys := &testKeys{key: validTrustedKey(publicKey, "operator-7")}
-	admission, err := New(dir, keys, validPolicy())
+	admission, err := New(context.Background(), dir, keys, validPolicy())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,13 +312,68 @@ func TestTrustMappingMustMatchSignedOperatorID(t *testing.T) {
 	privateKey := ed25519.NewKeyFromSeed(fixedSeed[:])
 	publicKey := privateKey.Public().(ed25519.PublicKey)
 	keys := &testKeys{key: validTrustedKey(publicKey, "different-operator")}
-	admission, err := New(dir, keys, validPolicy())
+	admission, err := New(context.Background(), dir, keys, validPolicy())
 	if err != nil {
 		t.Fatal(err)
 	}
 	ref := writeCase(t, dir, privateKey, publicKeyID(publicKey), "operator-7", "operation-17", "committed", "fact:"+strings.Repeat("f", 64), testUnix, "2026-10-01T17:20:00Z")
 	if _, err := authorizeOverUnix(t, admission, "operation-17", ref); !errors.Is(err, errDenied) {
 		t.Fatalf("mismatched trusted operator mapping accepted: %v", err)
+	}
+}
+
+func TestMalformedKeyIDIsRejectedBeforeTrustLookup(t *testing.T) {
+	dir := makePrivateDir(t)
+	privateKey := ed25519.NewKeyFromSeed(fixedSeed[:])
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+	keys := &testKeys{key: validTrustedKey(publicKey, "operator-7")}
+	admission, err := New(context.Background(), dir, keys, validPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := writeCase(t, dir, privateKey, "bad-key-id", "operator-7", "operation-17", "committed", "fact:"+strings.Repeat("a", 64), testUnix, "2026-10-01T17:20:00Z")
+	if _, err := authorizeOverUnix(t, admission, "operation-17", ref); !errors.Is(err, errDenied) {
+		t.Fatalf("malformed key ID admitted: %v", err)
+	}
+	if got := keys.calls.Load(); got != 0 {
+		t.Fatalf("malformed key ID reached trust source: calls=%d", got)
+	}
+}
+
+func TestDurationBoundsDoNotSaturateAtMaxInt64(t *testing.T) {
+	dir := makePrivateDir(t)
+	privateKey := ed25519.NewKeyFromSeed(fixedSeed[:])
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+	keys := &testKeys{key: validTrustedKey(publicKey, "operator-7")}
+	keys.key.NotBefore, _ = time.Parse(time.RFC3339, "0001-01-02T00:00:00Z")
+	keys.key.NotAfter, _ = time.Parse(time.RFC3339, "9999-12-31T23:59:59Z")
+	policy := validPolicy()
+	policy.MaxCaseAge = time.Duration(math.MaxInt64)
+	policy.MaxCaseLifetime = time.Duration(math.MaxInt64)
+	admission, err := New(context.Background(), dir, keys, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := writeCase(t, dir, privateKey, publicKeyID(publicKey), "operator-7", "operation-17", "committed", "fact:"+strings.Repeat("a", 64), "1000-01-01T00:00:00Z", "9000-01-01T00:00:00Z")
+	if _, err := authorizeOverUnix(t, admission, "operation-17", ref); !errors.Is(err, errDenied) {
+		t.Fatalf("duration subtraction overflow admitted centuries-old case: %v", err)
+	}
+}
+
+func TestZeroClockCannotAdmitCase(t *testing.T) {
+	dir := makePrivateDir(t)
+	privateKey := ed25519.NewKeyFromSeed(fixedSeed[:])
+	publicKey := privateKey.Public().(ed25519.PublicKey)
+	keys := &testKeys{key: validTrustedKey(publicKey, "operator-7")}
+	policy := validPolicy()
+	policy.Now = func() time.Time { return time.Time{} }
+	admission, err := New(context.Background(), dir, keys, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := writeCase(t, dir, privateKey, publicKeyID(publicKey), "operator-7", "operation-17", "committed", "fact:"+strings.Repeat("a", 64), testUnix, "2026-10-01T17:20:00Z")
+	if _, err := authorizeOverUnix(t, admission, "operation-17", ref); !errors.Is(err, errDenied) {
+		t.Fatalf("zero clock admitted case: %v", err)
 	}
 }
 

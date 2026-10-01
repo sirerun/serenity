@@ -7,7 +7,6 @@ package privatefs
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"math"
 	"os"
@@ -61,7 +60,7 @@ func ValidateDirectory(ctx context.Context, path string) error {
 
 // ReadFile reads one private regular file by basename. It rejects links,
 // ownership changes, non-private modes, and files larger than maxBytes.
-func ReadFile(ctx context.Context, directory, basename string, maxBytes int64) ([]byte, error) {
+func ReadFile(ctx context.Context, directory, basename string, maxBytes int64) (result []byte, resultErr error) {
 	if ctx == nil {
 		return nil, errors.New("privatefs: context required")
 	}
@@ -83,7 +82,12 @@ func ReadFile(ctx context.Context, directory, basename string, maxBytes int64) (
 		return nil, err
 	}
 	file := os.NewFile(uintptr(fd), path)
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			result = nil
+			resultErr = errors.Join(resultErr, errors.New("privatefs: file close failed"))
+		}
+	}()
 	var before syscall.Stat_t
 	if err := syscall.Fstat(fd, &before); err != nil {
 		return nil, err
@@ -106,7 +110,7 @@ func ReadFile(ctx context.Context, directory, basename string, maxBytes int64) (
 		return nil, err
 	}
 	if !sameFileSnapshot(&before, &after) {
-		return nil, fmt.Errorf("privatefs: file changed during read")
+		return nil, errors.New("privatefs: file changed during read")
 	}
 	return data, nil
 }

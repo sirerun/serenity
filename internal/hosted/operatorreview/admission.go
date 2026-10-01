@@ -70,7 +70,13 @@ type Admission struct {
 	policy        Policy
 }
 
-func New(caseDirectory string, keys TrustedKeySource, policy Policy) (*Admission, error) {
+func New(ctx context.Context, caseDirectory string, keys TrustedKeySource, policy Policy) (*Admission, error) {
+	if ctx == nil {
+		return nil, errors.New("operator review: context required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if isNil(keys) {
 		return nil, errors.New("operator review: explicit trust source and policy required")
 	}
@@ -80,7 +86,7 @@ func New(caseDirectory string, keys TrustedKeySource, policy Policy) (*Admission
 	if policy.ExpectedPeerUID != uint32(os.Geteuid()) {
 		return nil, errors.New("operator review: peer UID must match service effective UID")
 	}
-	if err := privatefs.ValidateDirectory(context.Background(), caseDirectory); err != nil {
+	if err := privatefs.ValidateDirectory(ctx, caseDirectory); err != nil {
 		return nil, fmt.Errorf("operator review: invalid case directory: %w", err)
 	}
 	return &Admission{caseDirectory: caseDirectory, keys: keys, policy: policy}, nil
@@ -113,7 +119,7 @@ func (a *Admission) Authorize(ctx context.Context, request *http.Request, operat
 		return service.ApprovedOperatorReview{}, errDenied
 	}
 	envelope, err := parseEnvelope(caseBytes)
-	if err != nil || envelope.OperationID != operationID || envelope.Outcome != "committed" || !validOpaque(envelope.OperatorID) || !validOpaque(envelope.KeyID) || !validFactRef(envelope.ExpectedCanonicalRef) {
+	if err != nil || envelope.OperationID != operationID || envelope.Outcome != "committed" || !validOpaque(envelope.OperatorID) || !validKeyID(envelope.KeyID) || !validFactRef(envelope.ExpectedCanonicalRef) {
 		return service.ApprovedOperatorReview{}, errDenied
 	}
 	approvedAt, err := parseCanonicalTime(envelope.ApprovedAt)
@@ -139,10 +145,14 @@ func (a *Admission) Authorize(ctx context.Context, request *http.Request, operat
 	if envelope.KeyID != "ed25519-sha256:"+hex.EncodeToString(keyID[:]) {
 		return service.ApprovedOperatorReview{}, errDenied
 	}
-	now := a.policy.Now().UTC()
+	now := a.policy.Now()
+	if now.IsZero() || approvedAt.IsZero() || expiresAt.IsZero() {
+		return service.ApprovedOperatorReview{}, errDenied
+	}
+	now = now.UTC()
 	if key.NotBefore.IsZero() || key.NotAfter.IsZero() || now.Before(key.NotBefore) || !now.Before(key.NotAfter) ||
 		approvedAt.Before(key.NotBefore) || approvedAt.After(now) || !expiresAt.After(approvedAt) || !now.Before(expiresAt) ||
-		now.Sub(approvedAt) > a.policy.MaxCaseAge || expiresAt.Sub(approvedAt) > a.policy.MaxCaseLifetime {
+		approvedAt.Before(now.Add(-a.policy.MaxCaseAge)) || expiresAt.After(approvedAt.Add(a.policy.MaxCaseLifetime)) {
 		return service.ApprovedOperatorReview{}, errDenied
 	}
 	payload, err := canonicalPayload(envelope)
@@ -280,15 +290,13 @@ func parseCanonicalTime(value string) (time.Time, error) {
 }
 
 func validReviewRef(value string) bool {
-	if len(value) != len("sha256:")+64 || !strings.HasPrefix(value, "sha256:") {
-		return false
-	}
-	for _, c := range value[len("sha256:"):] {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
-			return false
-		}
-	}
-	return true
+	const prefix = "sha256:"
+	return len(value) == len(prefix)+64 && strings.HasPrefix(value, prefix) && isLowerHex(value[len(prefix):])
+}
+
+func validKeyID(value string) bool {
+	const prefix = "ed25519-sha256:"
+	return len(value) == len(prefix)+64 && strings.HasPrefix(value, prefix) && isLowerHex(value[len(prefix):])
 }
 
 func validFactRef(value string) bool {
@@ -312,7 +320,10 @@ func isLowerHex(value string) bool {
 		return false
 	}
 	for _, c := range []byte(value) {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+		if c >= '0' && c <= '9' {
+			continue
+		}
+		if c < 'a' || c > 'f' {
 			return false
 		}
 	}

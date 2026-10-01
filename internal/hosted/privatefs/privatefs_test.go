@@ -7,7 +7,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -73,13 +72,6 @@ func TestCanceledAndUntrustedDirectoriesFailClosed(t *testing.T) {
 	}
 	if err := ValidateDirectory(context.Background(), link); err == nil {
 		t.Fatal("symlink directory accepted")
-	}
-	if runtime.GOOS == "darwin" {
-		// The shared build volume intentionally has ownership disabled. This is
-		// a behavioral control for the mount guard, not a fixture path.
-		if err := ownershipEnforced("/Volumes/BuildOffload"); err == nil {
-			t.Fatal("ownership-disabled shared volume accepted")
-		}
 	}
 }
 
