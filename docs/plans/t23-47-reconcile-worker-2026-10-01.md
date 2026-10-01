@@ -16,8 +16,9 @@ back off from 1 minute to a 1-hour cap. A change in failure class resets that
 account's exponent. Page/database read failures use the transient 1-minute to
 1-hour backoff. The per-account retry map is bounded at 1,024 entries; under
 pressure, its least recently touched entry can be evicted and lose its saved
-backoff. Structured warning/error logs include only a failure category and
-retry delay, never an account/customer identifier or raw provider error.
+backoff. Per-customer warnings include only a failure category; page-error records
+also include the retry delay. Neither includes account/customer identifiers
+or raw provider error text.
 
 The worker never changes account lifecycle status or uses reconciliation
 eligibility to activate an account. A restore-pending result remains frozen;
