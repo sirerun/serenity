@@ -237,29 +237,25 @@ func validateBrainTree(ctx context.Context, root, key string) (string, bool, err
 	if info, e := os.Lstat(filepath.Join(path, ".git")); e == nil && info.IsDir() {
 		gitCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		out, e := gitrun.Brain(path).Output(gitCtx, "config", "--local", "--no-includes", "--null", "--get-all", "core.worktree")
+		out, e := gitrun.Brain(path).Output(gitCtx, "config", "--local", "--no-includes", "--null", "--list")
 		if e != nil {
-			var exit *exec.ExitError
-			if !errors.As(e, &exit) || exit.ExitCode() != 1 {
-				return "", false, fmt.Errorf("hosted: inspect Git worktree ownership: %w", e)
+			return "", false, fmt.Errorf("hosted: inspect Git worktree ownership: %w", e)
+		}
+		for _, item := range strings.Split(string(out), "\x00") {
+			name, worktree, ok := strings.Cut(item, "=")
+			if !ok || !strings.EqualFold(name, "core.worktree") || strings.TrimSpace(worktree) == "" {
+				continue
 			}
-		} else {
-			for _, worktree := range strings.Split(string(out), "\x00") {
-				worktree = strings.TrimSpace(worktree)
-				if worktree == "" {
-					continue
-				}
-				if !filepath.IsAbs(worktree) {
-					worktree = filepath.Join(path, worktree)
-				}
-				worktree, e = filepath.Abs(worktree)
-				if e != nil {
-					return "", false, e
-				}
-				rel, e := filepath.Rel(path, worktree)
-				if e != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-					return "", false, fmt.Errorf("%w: Git worktree escapes brain root", ErrDeletionSubjectStateUnknown)
-				}
+			if !filepath.IsAbs(worktree) {
+				worktree = filepath.Join(path, worktree)
+			}
+			worktree, e = filepath.Abs(worktree)
+			if e != nil {
+				return "", false, e
+			}
+			rel, e := filepath.Rel(path, worktree)
+			if e != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				return "", false, fmt.Errorf("%w: Git worktree escapes brain root", ErrDeletionSubjectStateUnknown)
 			}
 		}
 	} else if e != nil && !errors.Is(e, os.ErrNotExist) {
