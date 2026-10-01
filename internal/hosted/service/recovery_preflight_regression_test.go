@@ -8,14 +8,20 @@ import (
 	"testing"
 )
 
+type nilStartupContext struct{ context.Context }
+
 func TestStartupRejectsNilContextBeforeDependencies(t *testing.T) {
-	if _, err := NewWithDependencies(nil, Config{}, true, nil, LifecycleDependencies{}); !errors.Is(err, ErrStartupUnavailable) {
-		t.Fatalf("nil startup context: %v", err)
-	}
-	if _, err := AssembleWithDependencies(nil, Config{}, true, nil, nil, nil, LifecycleDependencies{}); !errors.Is(err, ErrStartupUnavailable) {
-		t.Fatalf("nil assembly context: %v", err)
+	var typedNil *nilStartupContext
+	for _, ctx := range []context.Context{nil, typedNil} {
+		if _, err := NewWithDependencies(ctx, Config{}, true, nil, LifecycleDependencies{}); !errors.Is(err, ErrStartupUnavailable) {
+			t.Fatalf("nil startup context: %v", err)
+		}
+		if _, err := AssembleWithDependencies(ctx, Config{}, true, nil, nil, nil, LifecycleDependencies{}); !errors.Is(err, ErrStartupUnavailable) {
+			t.Fatalf("nil assembly context: %v", err)
+		}
 	}
 }
+
 func TestRestorePendingPreflightRequiresAdmittedReplay(t *testing.T) {
 	db, cfg, accountID, path := deletionFixture(t)
 	if _, err := db.DB().Exec("UPDATE accounts SET status='restore_pending' WHERE id=?", accountID); err != nil {
