@@ -112,10 +112,11 @@ func TestCheckoutAndClosureSerializeForSameAccount(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/subscriptions":
 			n := lists.Add(1)
-			if n == 1 {
+			switch n {
+			case 1:
 				close(firstList)
 				<-releaseFirst
-			} else if n == 2 {
+			case 2:
 				close(secondList)
 			}
 			_, _ = w.Write([]byte(`{"data":[],"has_more":false}`))
