@@ -176,17 +176,22 @@ func readSecret(dir, name string) (string, error) {
 }
 
 type Service struct {
-	Store         *store.Store
-	Pool          *pool.Pool
-	Gateway       *gateway.Gateway
-	Partner       *partner.Service
-	Handler       http.Handler
-	cfg           Config
-	embedder      embed.Embedder
-	readyMu       sync.Mutex
-	readyAt       time.Time
-	ready         bool
-	billingCloser contracts.BillingCloser
+	Store               *store.Store
+	Pool                *pool.Pool
+	Gateway             *gateway.Gateway
+	Partner             *partner.Service
+	Handler             http.Handler
+	cfg                 Config
+	embedder            embed.Embedder
+	readyMu             sync.Mutex
+	readyAt             time.Time
+	ready               bool
+	billingCloser       contracts.BillingCloser
+	billingReconciler   contracts.BillingReconciler
+	billingWorkerCancel context.CancelFunc
+	billingWorkerDone   chan struct{}
+	closeOnce           sync.Once
+	closeErr            error
 }
 type ledger struct{ db *store.Store }
 
@@ -271,6 +276,7 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 	if cfg.billingConfig != nil {
 		dash.BillingService = &billing.Service{Store: db, Identity: id, Config: *cfg.billingConfig}
 		s.billingCloser = dash.BillingService
+		s.billingReconciler = dash.BillingService
 	}
 	dash.DeleteAccount = s.DeleteAccount
 	if err = s.recoverDeletions(context.Background()); err != nil {
@@ -301,6 +307,9 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 	mux.HandleFunc("GET /readyz", s.readiness)
 	mux.Handle("/", dash.Handler())
 	s.Handler = mux
+	if s.billingReconciler != nil {
+		s.startBillingReconciler()
+	}
 	return s, nil
 }
 func (s *Service) readiness(w http.ResponseWriter, r *http.Request) {
@@ -335,8 +344,15 @@ func (s *Service) readiness(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(200)
 }
 func (s *Service) Close() error {
-	s.Gateway.Close()
-	return errors.Join(s.Pool.Close(), s.Store.Close())
+	s.closeOnce.Do(func() {
+		if s.billingWorkerCancel != nil {
+			s.billingWorkerCancel()
+			<-s.billingWorkerDone
+		}
+		s.Gateway.Close()
+		s.closeErr = errors.Join(s.Pool.Close(), s.Store.Close())
+	})
+	return s.closeErr
 }
 
 func (s *Service) Backup(ctx context.Context, destination string) error {
