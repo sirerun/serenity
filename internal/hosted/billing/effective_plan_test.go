@@ -130,6 +130,8 @@ func TestReconcileMalformedPersistedGraceRollsBack(t *testing.T) {
 	svc := &billing.Service{Store: db, Config: billing.Config{BuilderPrice: "price_builder", ScalePrice: "price_scale", BaseURL: provider.URL}}
 	if _, err := svc.ReconcileCustomer(ctx, account); err == nil {
 		t.Fatal("malformed persisted grace was accepted")
+	} else {
+		t.Logf("reconcile rejected malformed grace: %v", err)
 	}
 	var status, grace, invoice string
 	if err := db.DB().QueryRowContext(ctx, `SELECT status,grace_until,grace_invoice_id FROM subscriptions WHERE id='sub_bad_grace'`).Scan(&status, &grace, &invoice); err != nil {
