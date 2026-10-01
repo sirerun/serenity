@@ -42,10 +42,12 @@ func TestInvalidRememberReleasesOperationBeforeCanonicalEntry(t *testing.T) {
 		t.Fatalf("invalid TTL accepted: %+v %v", result, err)
 	}
 	var phase, entered string
-	if err := db.DB().QueryRowContext(ctx, `SELECT phase,COALESCE(canonical_entered_at,'') FROM operations WHERE account_id=?`, account.ID).Scan(&phase, &entered); err != nil {
+	if err := db.DB().QueryRowContext(ctx, `SELECT COALESCE((SELECT phase FROM operations WHERE account_id=? LIMIT 1),'none'),COALESCE((SELECT canonical_entered_at FROM operations WHERE account_id=? LIMIT 1),'')`, account.ID, account.ID).Scan(&phase, &entered); err != nil {
 		t.Fatal(err)
 	}
-	if phase != "released" || entered != "" {
+	// Preflight may reject before reserving; a reservation is also safe if
+	// released without ever entering the canonical writer.
+	if (phase != "released" && phase != "none") || entered != "" {
 		t.Fatalf("invalid request held quota/canonical entry: phase=%s entered=%s", phase, entered)
 	}
 	projection, err := brainstore.LoadMemoryProjection(brainstore.NewSourceStore(filepath.Join(dir, "brains", brain.ID)))
