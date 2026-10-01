@@ -1,0 +1,15 @@
+# Conservative operation reconciliation assembly
+
+This lane starts from merged PR337 (06e22d019dccd04963f6309c13e0b45f441c7e8a). It wires the existing conservative canonical checker into admitted service startup and a background ticker without changing the frozen operator-resolution contract or claiming physical storage enforcement.
+
+Automatic reconciliation processes only expired reserved rows. A verified exact entered fact in canonical HEAD can become committed with its original multi-counter deltas. Missing, erased, uncommitted or insufficient evidence remains Unknown and becomes capacity-holding pending_review. No retained applied marker or CanonicalAbsent proof is introduced. Pending-review rows remain operator-only under contracts/operations.go; the task registry's request to reconcile pending_review automatically conflicts with that frozen contract and is not implemented without a reviewed contract amendment.
+
+The Pool adapter retains the same Runtime lease and that Runtime's queue fence from Fence through Check and the ledger transition until release. It does not construct a second queue for a cold brain. Ordinary Pool.Acquire semantics may initialize the existing hosted configuration and recover a derived index; this behavior is not an absence proof and is not represented as read-only cold recovery. The shared maintenance read fence excludes backups, and the account stripe excludes concurrent deletion/client operations. Fresh metadata must bind the brain path and account to an active account and ready brain before acquiring the runtime.
+
+Service retains the same ledger used by Gateway, runs one bounded-time sweep after admitted journal replay and provisioning recovery but before publishing handlers, then starts a context-cancelable periodic worker. Close cancels and joins that worker before closing Pool or Store. Busy or ineligible brains are deferred; context, malformed state and unknown evidence cannot release capacity. Upstream errors are classified with fixed log strings, avoiding source-path leakage.
+
+Two real races were reproduced in the ledger: a client finalized a reservation while the reconciler waited for its fence, and a client finalized another while the checker ran. Each previously caused a terminal-to-pending transition conflict and aborted later rows. The corrected ledger rechecks still-reserved and expired eligibility both before proof and inside the final transition transaction. Its deterministic regression uses channel barriers and verifies a later Landed row is still committed. Original and intermediate sources were RED; the author's operation package race suite is GREEN.
+
+A suspected single-connection database deadlock was not reproduced: exhausting Rows.Next automatically closes its rows. Explicit checked Close is cleanup and error handling, not evidence of a reproduced deadlock.
+
+Current qualification is pending Pool integration, independent exact-source reviews and coordinator local gates. No deployment, provider call, production factory/adoption, operator resolution endpoint, physical allocation ceiling, live restore or hosted-completion acceptance is claimed.
