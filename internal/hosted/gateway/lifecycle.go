@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
@@ -25,6 +26,7 @@ var (
 	ErrDeletionJournalUnavailable              = errors.New("hosted: deletion journal is required")
 	ErrDeletionRecoveryRequiresVerifiedHistory = errors.New("hosted: deletion recovery requires verified journal history")
 	ErrDeletionPreflightDeclined               = errors.New("hosted: deletion preflight did not authorize cleanup")
+	ErrDeletionSubjectStateUnknown             = errors.New("hosted: deletion subject state is unknown")
 )
 
 func (g *Gateway) requireDeletionJournal() error {
@@ -161,6 +163,116 @@ func validBrainPathKey(key string) bool {
 	return key != "" && key != "." && key != ".." && len(key) >= 16 && !filepath.IsAbs(key) && filepath.Clean(key) == key && filepath.Base(key) == key
 }
 
+func brainPathUnderRoot(root, key string) (string, error) {
+	if !validBrainPathKey(key) || strings.TrimSpace(root) == "" {
+		return "", fmt.Errorf("%w: unsafe brain path", ErrDeletionSubjectStateUnknown)
+	}
+	base, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	if base == string(filepath.Separator) {
+		return "", fmt.Errorf("%w: brain root is not a safe data directory", ErrDeletionSubjectStateUnknown)
+	}
+	path := filepath.Join(base, key)
+	if filepath.Dir(path) != base {
+		return "", fmt.Errorf("%w: brain path escapes root", ErrDeletionSubjectStateUnknown)
+	}
+	return path, nil
+}
+
+func validateBrainTree(root, key string) (string, bool, error) {
+	path, err := brainPathUnderRoot(root, key)
+	if err != nil {
+		return "", false, err
+	}
+	rootInfo, rootErr := os.Lstat(filepath.Dir(path))
+	if rootErr != nil && !errors.Is(rootErr, os.ErrNotExist) {
+		return "", false, fmt.Errorf("hosted: inspect brain root: %w", rootErr)
+	}
+	if rootErr == nil && (rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir()) {
+		return "", false, fmt.Errorf("%w: brain root is not a plain directory", ErrDeletionSubjectStateUnknown)
+	}
+	if _, err = os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+		return path, false, nil
+	} else if err != nil {
+		return "", false, fmt.Errorf("hosted: inspect brain tree: %w", err)
+	}
+	err = filepath.WalkDir(path, func(p string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%w: brain tree contains a symlink", ErrDeletionSubjectStateUnknown)
+		}
+		if filepath.Base(p) == ".git" && !d.IsDir() {
+			return fmt.Errorf("%w: brain tree has an external Git directory pointer", ErrDeletionSubjectStateUnknown)
+		}
+		rel, e := filepath.Rel(path, p)
+		if e != nil {
+			return e
+		}
+		rel = filepath.Clean(rel)
+		parts := strings.Split(rel, string(filepath.Separator))
+		for i := 0; i < len(parts); i++ {
+			if parts[i] != ".git" || i+1 >= len(parts) {
+				continue
+			}
+			if parts[i+1] == "worktrees" || filepath.Base(rel) == "commondir" || filepath.Base(rel) == "alternates" || filepath.Base(rel) == "gitdir" {
+				return fmt.Errorf("%w: Git metadata refers to external repository storage", ErrDeletionSubjectStateUnknown)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return "", false, fmt.Errorf("hosted: validate brain tree before purge: %w", err)
+	}
+	if info, e := os.Lstat(filepath.Join(path, ".git")); e == nil && info.IsDir() {
+		out, e := exec.Command("git", "config", "--file", filepath.Join(path, ".git", "config"), "--get", "core.worktree").Output()
+		if e != nil {
+			var exit *exec.ExitError
+			if !errors.As(e, &exit) || exit.ExitCode() != 1 {
+				return "", false, fmt.Errorf("hosted: inspect Git worktree ownership: %w", e)
+			}
+		} else {
+			worktree := strings.TrimSpace(string(out))
+			if worktree != "" {
+				if !filepath.IsAbs(worktree) {
+					worktree = filepath.Join(path, worktree)
+				}
+				worktree, e = filepath.Abs(worktree)
+				if e != nil {
+					return "", false, e
+				}
+				rel, e := filepath.Rel(path, worktree)
+				if e != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+					return "", false, fmt.Errorf("%w: Git worktree escapes brain root", ErrDeletionSubjectStateUnknown)
+				}
+			}
+		}
+	} else if e != nil && !errors.Is(e, os.ErrNotExist) {
+		return "", false, e
+	}
+	return path, true, nil
+}
+
+func removeBrainTree(root, key string) error {
+	path, present, err := validateBrainTree(root, key)
+	if err != nil || !present {
+		return err
+	}
+	if err = os.RemoveAll(path); err != nil {
+		return fmt.Errorf("hosted: remove brain tree: %w", err)
+	}
+	if _, err = os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+		if err == nil {
+			return errors.New("hosted: brain tree remains after purge")
+		}
+		return fmt.Errorf("hosted: verify brain tree removal: %w", err)
+	}
+	return nil
+}
+
 // deleteBrainUnderAccountLock requires the caller to hold Maintenance and
 // the account lock. Account deletion reuses it without recursively acquiring
 // either lock while a backup writer may be waiting.
@@ -172,6 +284,12 @@ func (g *Gateway) deleteBrainUnderAccountLock(ctx context.Context, account, brai
 	}
 	if owned.PathKey != owned.ID || !validBrainPathKey(owned.PathKey) {
 		return errors.New("invalid stored brain path")
+	}
+	if _, _, err = validateBrainTree(root, owned.PathKey); err != nil {
+		return err
+	}
+	if g.Pool == nil {
+		return fmt.Errorf("%w: runtime pool is unavailable", ErrDeletionSubjectStateUnknown)
 	}
 	if err = g.Pool.Drop(brain); err != nil {
 		return err
@@ -190,7 +308,7 @@ func (g *Gateway) deleteBrainUnderAccountLock(ctx context.Context, account, brai
 	if err != nil {
 		return err
 	}
-	return os.RemoveAll(filepath.Join(root, owned.PathKey))
+	return removeBrainTree(root, owned.PathKey)
 }
 
 // AccountDeletePreflight runs while the maintenance read fence and account
@@ -243,10 +361,7 @@ func (g *Gateway) DeleteAccountWithPreflight(ctx context.Context, account, root 
 	if err != nil {
 		return err
 	}
-	if status == "deleted" {
-		return g.appendDeletion(ctx, contracts.DeletionSubjectAccount, account, contracts.DeletionOutcomePurged)
-	}
-	if status != "active" && status != "deleting" {
+	if status != "active" && status != "deleting" && status != "deleted" {
 		return errors.New("hosted: account is not deletable")
 	}
 	if err = g.appendDeletion(ctx, contracts.DeletionSubjectAccount, account, contracts.DeletionIntentRequested); err != nil {
@@ -257,14 +372,16 @@ func (g *Gateway) DeleteAccountWithPreflight(ctx context.Context, account, root 
 		return err
 	}
 	if !proceed {
-		status, err = g.deletionAccountStatus(ctx, account)
-		if err != nil {
-			return err
+		if status != "deleted" {
+			return ErrDeletionPreflightDeclined
 		}
-		if status == "deleted" {
-			return g.appendDeletion(ctx, contracts.DeletionSubjectAccount, account, contracts.DeletionOutcomePurged)
+		hasBilling, e := g.accountHasBillingAssociation(ctx, account)
+		if e != nil {
+			return e
 		}
-		return ErrDeletionPreflightDeclined
+		if hasBilling {
+			return ErrDeletionPreflightDeclined
+		}
 	}
 	if err = g.deleteAccountUnderMaintenance(ctx, account, root); err != nil {
 		return err
@@ -279,6 +396,12 @@ func (g *Gateway) deletionAccountStatus(ctx context.Context, account string) (st
 		return "", err
 	}
 	return status, nil
+}
+
+func (g *Gateway) accountHasBillingAssociation(ctx context.Context, account string) (bool, error) {
+	var associated bool
+	err := g.Issuer.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(stripe_customer_id,'')<>'' OR EXISTS(SELECT 1 FROM subscriptions WHERE account_id=accounts.id) FROM accounts WHERE id=?`, account).Scan(&associated)
+	return associated, err
 }
 
 // deleteAccountUnderMaintenance requires the caller to hold Maintenance and
@@ -422,6 +545,9 @@ func (g *Gateway) ReplayDeletions(ctx context.Context, root string, entries []co
 			var owner string
 			err := g.Issuer.Store.DB().QueryRowContext(ctx, `SELECT account_id FROM brains WHERE id=?`, entry.SubjectID).Scan(&owner)
 			if errors.Is(err, sql.ErrNoRows) {
+				if err = g.purgeOrphanBrain(ctx, root, entry.SubjectID); err != nil {
+					return err
+				}
 				if !terminal[key] {
 					if err = g.appendDeletion(ctx, contracts.DeletionSubjectBrain, entry.SubjectID, contracts.DeletionOutcomePurged); err != nil {
 						return err
@@ -451,10 +577,7 @@ func (g *Gateway) ReplayDeletions(ctx context.Context, root string, entries []co
 func (g *Gateway) replayAccountDeletion(ctx context.Context, root, account string, preflight AccountDeletePreflight, alreadyTerminal bool) error {
 	status, err := g.deletionAccountStatus(ctx, account)
 	if errors.Is(err, sql.ErrNoRows) {
-		if !alreadyTerminal {
-			return g.appendDeletion(ctx, contracts.DeletionSubjectAccount, account, contracts.DeletionOutcomePurged)
-		}
-		return nil
+		return fmt.Errorf("%w: account %q is absent; provider closure cannot be verified", ErrDeletionSubjectStateUnknown, account)
 	}
 	if err != nil {
 		return err
@@ -467,16 +590,50 @@ func (g *Gateway) replayAccountDeletion(ctx context.Context, root, account strin
 		if status != "deleted" {
 			return ErrDeletionPreflightDeclined
 		}
-		if !alreadyTerminal {
-			return g.appendDeletion(ctx, contracts.DeletionSubjectAccount, account, contracts.DeletionOutcomePurged)
+		hasBilling, e := g.accountHasBillingAssociation(ctx, account)
+		if e != nil {
+			return e
 		}
-		return nil
+		if hasBilling {
+			return ErrDeletionPreflightDeclined
+		}
 	}
 	if err = g.deleteAccountUnderMaintenance(ctx, account, root); err != nil {
 		return err
 	}
 	if !alreadyTerminal {
 		return g.appendDeletion(ctx, contracts.DeletionSubjectAccount, account, contracts.DeletionOutcomePurged)
+	}
+	return nil
+}
+
+func (g *Gateway) purgeOrphanBrain(ctx context.Context, root, brain string) error {
+	_, _, err := validateBrainTree(root, brain)
+	if err != nil {
+		return err
+	}
+	if g.Pool == nil {
+		return fmt.Errorf("%w: runtime pool is unavailable", ErrDeletionSubjectStateUnknown)
+	}
+	if err = g.Pool.Drop(brain); err != nil {
+		return fmt.Errorf("hosted: drop orphaned brain runtime: %w", err)
+	}
+	if err = g.Issuer.Store.Transaction(ctx, func(tx *sql.Tx) error {
+		now := hoststore.Stamp(time.Now())
+		if _, e := tx.ExecContext(ctx, `UPDATE client_credentials SET revoked_at=? WHERE brain_id=? AND revoked_at IS NULL`, now, brain); e != nil {
+			return e
+		}
+		for _, table := range []string{"oauth_grants", "oauth_codes"} {
+			if _, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE substr(json_extract(record,'$.binding'),1,?)=?`, len(brain)+1, brain+"."); e != nil {
+				return e
+			}
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("hosted: revoke orphaned brain credentials: %w", err)
+	}
+	if err = removeBrainTree(root, brain); err != nil {
+		return fmt.Errorf("hosted: remove orphaned brain path: %w", err)
 	}
 	return nil
 }
