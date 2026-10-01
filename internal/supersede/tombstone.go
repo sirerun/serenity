@@ -86,7 +86,7 @@ func (w *Writer) TombstoneCascade(ctx context.Context, ds *disposition.Store, sr
 		Shards:  w.Shard,
 		Index:   w.SourceIndex,
 	}
-	citing, err := sourceWriter.Tombstone(sha, now)
+	citing, err := sourceWriter.TombstoneContext(ctx, sha, now)
 	if err != nil {
 		return 0, 0, fmt.Errorf("supersede: tombstone cascade: %w", err)
 	}

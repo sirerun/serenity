@@ -127,7 +127,7 @@ func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool,
 			if hasHostedForgetPublication(ctx) {
 				result, err = h.deps.memoryWriter().ForgetContext(ctx, id, req.Reason, now)
 			} else {
-				result, err = h.deps.memoryWriter().Forget(id, req.Reason, now)
+				result, err = h.deps.memoryWriter().ForgetQueuedContext(ctx, id, req.Reason, now)
 			}
 			if err != nil {
 				return nil, false, fmt.Errorf("forget: %w", err)
@@ -166,7 +166,7 @@ func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool,
 	if hasHostedForgetPublication(ctx) {
 		result, err = mw.ForgetContext(ctx, sha, reason, now)
 	} else {
-		result, err = mw.Forget(sha, reason, now)
+		result, err = mw.ForgetQueuedContext(ctx, sha, reason, now)
 	}
 	if err != nil {
 		if errors.Is(err, writer.ErrMemoryFactNotFound) {

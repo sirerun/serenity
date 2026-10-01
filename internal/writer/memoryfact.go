@@ -227,17 +227,27 @@ type ForgetResult struct {
 // erasure already completed. An unknown target returns
 // ErrMemoryFactNotFound.
 func (w *MemoryFact) Forget(targetSHA256, reason string, now time.Time) (ForgetResult, error) {
+	return w.ForgetQueuedContext(context.Background(), targetSHA256, reason, now)
+}
+
+// ForgetQueuedContext preserves Forget's queue-and-later-flush contract while
+// honoring cancellation before the guarded source mutation starts. Hosted
+// callers that require inline publication use ForgetContext instead.
+func (w *MemoryFact) ForgetQueuedContext(ctx context.Context, targetSHA256, reason string, now time.Time) (ForgetResult, error) {
+	if ctx == nil {
+		return ForgetResult{}, ErrNilCommitContext
+	}
 	if w.Queue == nil || w.Sources == nil {
 		return ForgetResult{}, fmt.Errorf("writer: memory writer dependencies unavailable")
 	}
 	var result ForgetResult
 	var innerErr error
-	res := w.Queue.SubmitCanonical(context.Background(), Job{
+	res := w.Queue.SubmitCanonical(ctx, Job{
 		Render: func() ([]byte, error) {
-			result, innerErr = w.forgetLockedContext(context.Background(), targetSHA256, reason, now)
+			result, innerErr = w.forgetLockedContext(ctx, targetSHA256, reason, now)
 			return nil, innerErr
 		},
-		AfterGuard: func() error { return w.purgeForgottenIndex(context.Background(), result.Record.SHA256) },
+		AfterGuard: func() error { return w.purgeForgottenIndex(ctx, result.Record.SHA256) },
 	})
 	if res.Err != nil {
 		return ForgetResult{}, res.Err
