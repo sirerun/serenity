@@ -1,0 +1,50 @@
+{
+  "task_id": "T23.48-followup",
+  "status": "PARTIAL",
+  "review_base": "1815e70b8c0f0378f119fc286ebffb0a46854564",
+  "adapter_source": "2c6238d1a408ee88789b0245cfce4a0ef94fa14a",
+  "summary": "Banked a code-only deletion journal adapter candidate under internal/hosted/deletion. This is not task acceptance, production wiring, AWS qualification, or deployment approval.",
+  "implemented": [
+    "Selective port of the historical S3 object-store adapter, hash-chained generation journal, explicit filesystem fake, focused package tests, and opt-in S3 qualification test.",
+    "Strict journal-object decoding and validation: canonical JSON with no unknown fields; positive matching coordinates; non-empty writer identity; UTC timestamp; correctly shaped predecessor hash; known entry/seal kind; valid opaque entry payload; and empty deletion payload on seals.",
+    "Resume-watermark validation now rejects an object whose embedded generation/sequence do not match the referenced key, as well as malformed/unknown entries and seals."
+  ],
+  "verification": {
+    "red_baseline": "Before the validator patch, the focused malformed-record tests ran against the original adapter and all five then-present cases failed at runtime: ReadThrough returned nil error for unknown kind, invalid entry payload, malformed seal payload, mismatched resume coordinates, and unknown kind at the resume position.",
+    "focused_green": "go test -mod=mod -modfile=/Volumes/BuildOffload/tmp/t23-48-journal-port-20261001/review.mod ./internal/hosted/deletion -run '^TestReadThroughRejectsMalformed' -count=1 passed after the patch; the suite now covers seven malformed zero/resume-watermark cases.",
+    "package_race": "go test -race -mod=mod -modfile=/Volumes/BuildOffload/tmp/t23-48-journal-port-20261001/review.mod -count=1 ./internal/hosted/deletion passed (1.446s).",
+    "aws_calls": "None. SERENITY_T2348_S3_QUALIFY was explicitly empty; TestS3Qualification was skipped."
+  },
+  "module_requirements_not_applied": {
+    "direct": [
+      "github.com/aws/aws-sdk-go-v2 v1.47.1",
+      "github.com/aws/aws-sdk-go-v2/config v1.33.6",
+      "github.com/aws/aws-sdk-go-v2/credentials v1.20.6 (test-only static credentials)",
+      "github.com/aws/aws-sdk-go-v2/service/s3 v1.113.4",
+      "github.com/aws/smithy-go v1.28.1"
+    ],
+    "indirect": [
+      "github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.20",
+      "github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.1",
+      "github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.4",
+      "github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.4",
+      "github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.4",
+      "github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.19",
+      "github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.11.5",
+      "github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.4",
+      "github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.20.4",
+      "github.com/aws/aws-sdk-go-v2/service/signin v1.10.1",
+      "github.com/aws/aws-sdk-go-v2/service/sso v1.38.1",
+      "github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.1",
+      "github.com/aws/aws-sdk-go-v2/service/sts v1.51.1"
+    ]
+  },
+  "remaining": [
+    "Current main service/gateway/backup and partner-aware assembly wiring is untouched; integrate only after coordinator review and preserve current contracts and billing interfaces.",
+    "NewAWSJournal still uses the AWS SDK default credential chain. The app service denies IMDS; retain that deny and require a separately reviewed, explicitly scoped credential source before deployment. No credential or IAM workaround is part of this candidate.",
+    "T23.54 must provide the dedicated versioned journal bucket, conditional-create policy, deny-delete policy, retained lifecycle configuration, least-privilege IAM, and runtime bucket/region configuration.",
+    "T23.47 live billing closure qualification and the T23.50 cross-host activation fence/credential-revocation proof remain independent gates.",
+    "The historical disposable S3 receipt is not re-run or treated as current stack/IAM qualification."
+  ],
+  "production_merge_gate": "HOLD: banked candidate only; not merged or accepted"
+}
