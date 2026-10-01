@@ -1,3 +1,4 @@
+import json
 import re
 import unittest
 from pathlib import Path
@@ -11,7 +12,7 @@ class BootstrapContractTests(unittest.TestCase):
         self.assertIn("set -euo pipefail", text)
         self.assertIn('[[ $(uname -m) == aarch64 ]]', text)
         self.assertRegex(text, r"CADDY_VERSION=\$\{CADDY_VERSION:-2\.8\.4\}")
-        self.assertRegex(text, r"CADDY_SHA256=\$\{CADDY_SHA256:-[0-9a-f]{128}\}")
+        self.assertRegex(text, r"CADDY_SHA256=\$\{CADDY_SHA256:-[0-9a-f]{64}\}")
         self.assertIn('sha256sum --check --status', text)
 
     def test_blank_volume_is_never_formatted_without_empty_probe(self):
@@ -29,6 +30,38 @@ class BootstrapContractTests(unittest.TestCase):
         text = (ROOT / "deploy.sh").read_text()
         self.assertLess(text.index('"$script_dir/bootstrap.sh"'), text.index('mountpoint -q /var/lib/serenity'))
         self.assertLess(text.index('"$script_dir/bootstrap.sh"'), text.index('command -v caddy'))
+
+    def test_deploy_installs_the_same_caddyfile_that_it_validates(self):
+        text = (ROOT / "deploy.sh").read_text()
+        self.assertIn('caddy validate --config "$script_dir/Caddyfile" --adapter caddyfile', text)
+        self.assertIn('install -m 0644 "$script_dir/Caddyfile" /etc/caddy/Caddyfile', text)
+        self.assertNotIn('$caddy_config', text)
+
+    def test_blink_partner_secret_is_generated_and_scoped_to_host_read(self):
+        stack = json.loads((ROOT / "stack.json").read_text())
+        secret = stack["Resources"]["BlinkPartnerSecret"]["Properties"]
+        self.assertEqual(secret["Name"], "serenity/hosted/BLINK_PARTNER_SECRET")
+        self.assertNotIn("SecretString", secret)
+        self.assertGreaterEqual(secret["GenerateSecretString"]["PasswordLength"], 32)
+        statements = stack["Resources"]["Role"]["Properties"]["Policies"][0]["PolicyDocument"]["Statement"]
+        reads = [s for s in statements if "secretsmanager:GetSecretValue" in s["Action"]]
+        self.assertEqual(len(reads), 1)
+        self.assertIn({"Ref": "BlinkPartnerSecret"}, reads[0]["Resource"])
+        self.assertNotIn("*", reads[0]["Resource"])
+
+    def test_blink_seed_keeps_secret_out_of_the_admin_request(self):
+        text = (ROOT / "seed-blink-partner.sh").read_text()
+        self.assertIn('install -m 0600 -o serenity -g serenity', text)
+        self.assertIn('--unix-socket "$socket"', text)
+        self.assertIn('"secret_file":"/etc/serenity/secrets/BLINK_PARTNER_SECRET"', text)
+        self.assertIn('"redirect_prefix":"blink://serenity-linked"', text)
+        self.assertNotIn('"secret":', text)
+
+    def test_stack_requires_an_explicit_ami_to_avoid_latest_image_replacement(self):
+        stack = json.loads((ROOT / "stack.json").read_text())
+        ami = stack["Parameters"]["ImageId"]
+        self.assertEqual(ami["Type"], "AWS::EC2::Image::Id")
+        self.assertNotIn("Default", ami)
 
 
 if __name__ == "__main__":

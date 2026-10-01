@@ -15,8 +15,8 @@ jobs:
     # proves that untrusted documents cannot mutate .dira/ or mint effects.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
       - run: go test -race -count=1 ./internal/gate
@@ -37,14 +37,25 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the GitHub release and upload its assets
+      id-token: write # keyless Sigstore signatures
+      attestations: write # GitHub provenance attestations
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 # v6.0.0
         with:
           go-version-file: go.mod
-      - uses: goreleaser/goreleaser-action@v6
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
+        with:
+          cosign-release: v3.0.6
+      - name: Install Syft
+        run: |
+          install -d "$RUNNER_TEMP/bin"
+          GOBIN="$RUNNER_TEMP/bin" go install github.com/anchore/syft/cmd/syft@v1.52.0
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           # Exact pin so a release tag always builds with the same goreleaser
           # (deep review 001 SUP-01); bump deliberately, never float.
@@ -54,3 +65,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Brew tap publishing needs a PAT with repo scope on sirerun/homebrew-tap:
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+      - name: Attest release archive provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: dist/*.tar.gz

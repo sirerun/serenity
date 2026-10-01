@@ -229,7 +229,7 @@ class TestLoopbackRules(TmpCase):
 class TestRedaction(unittest.TestCase):
     def test_registered_secrets_and_token_shaped_values_are_replaced(self):
         r = lsf.Redactor()
-        token = "sk_live_a1b2c3d4_" + "A" * 43
+        token = "sk_live_a1b2c3d4_" + "A" * 43  # gitleaks:allow -- deterministic redaction fixture, not a provider credential.
         r.add("bearer", token)
         r.add("cookie", "session-cookie-value-123456")
         r.add("short", "abc")  # too short to register: it would match everywhere

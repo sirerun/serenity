@@ -17,6 +17,10 @@ CADDY_SERVICE = HOSTED / "caddy.service"
 CADDYFILE = HOSTED / "Caddyfile"
 BOOTSTRAP = HOSTED / "bootstrap.sh"
 DEPLOY = HOSTED / "deploy.sh"
+HOSTED_SERVICE = HOSTED / "serenity-hosted.service"
+BACKUP_SERVICE = HOSTED / "serenity-backup.service"
+BACKUP_FAILED_SERVICE = HOSTED / "serenity-backup-failed.service"
+READINESS_HELPER = HOSTED / "readiness.sh"
 
 ADMIN_SOCKET = "unix//run/caddy/admin.sock"
 CLIENT_IP_HEADER = "CF-Connecting-IP"
@@ -203,12 +207,109 @@ class DeployTests(unittest.TestCase):
             self.text,
         )
         self.assertNotIn("systemctl reload caddy", self.text)
+        self.assertIn('install -m 0644 "$script_dir/Caddyfile" /etc/caddy/Caddyfile', self.text)
 
     def test_first_start_under_the_new_unit_restarts_instead_of_reloading(self):
         self.assertRegex(
             self.text,
-            r"if \[\[ -S /run/caddy/admin\.sock \]\]; then\n\s+caddy reload [^\n]*\nelse\n\s+systemctl restart caddy\nfi",
+            r"if \[\[ -S /run/caddy/admin\.sock \]\]; then\n\s+if ! caddy reload [^\n]*; then",
         )
+        self.assertIn("if ! systemctl restart caddy; then", self.text)
+
+
+class AppAndBackupServiceTests(unittest.TestCase):
+    def test_app_service_denies_instance_metadata_service(self):
+        service = parse_unit(HOSTED_SERVICE).get("Service", {})
+        self.assertIn("169.254.169.254", service.get("IPAddressDeny", []))
+
+    def test_backup_keeps_imds_and_routes_failure_to_journal_unit(self):
+        backup = parse_unit(BACKUP_SERVICE)
+        self.assertNotIn("IPAddressDeny", backup.get("Service", {}))
+        self.assertEqual(backup.get("Unit", {}).get("OnFailure"), ["serenity-backup-failed.service"])
+        failed = parse_unit(BACKUP_FAILED_SERVICE)
+        self.assertEqual(failed.get("Service", {}).get("Type"), ["oneshot"])
+        self.assertIn("ExecStart", failed.get("Service", {}))
+        self.assertEqual(failed.get("Service", {}).get("StandardOutput"), ["journal"])
+
+
+class ReadinessRollbackTests(unittest.TestCase):
+    def test_probe_budget_covers_server_check_and_cached_failure(self):
+        helper = READINESS_HELPER.read_text()
+        max_time = int(re.search(r"--max-time (\d+)", helper).group(1))
+        retry_max_time = int(re.search(r"--retry-max-time (\d+)", helper).group(1))
+        self.assertGreater(max_time, 5, "server readiness permits a five-second provider call")
+        self.assertGreater(retry_max_time, 60, "server caches failed readiness for one minute")
+
+    def test_deploy_keeps_previous_binary_and_rolls_back_after_readiness_failure(self):
+        self.assertTrue(READINESS_HELPER.is_file(), "deploy readiness helper must exist")
+        helper = READINESS_HELPER.read_text()
+        self.assertIn("Cache-Control: no-cache", helper)
+        self.assertIn("ROLLED BACK", helper)
+        deploy = DEPLOY.read_text()
+        self.assertIn("serenity-hosted", deploy)
+        self.assertIn("serenity.prev", deploy)
+        self.assertLess(deploy.index("systemctl enable --now caddy"), deploy.index('ln -sfn "/usr/local/lib/serenity/serenity-${number}" /usr/local/bin/serenity'))
+        self.assertRegex(deploy, r"if ! systemctl enable --now serenity-hosted \|\| ! systemctl restart serenity-hosted; then\n\s+serenity_restore_previous_binary")
+
+    def test_readiness_helper_restores_previous_binary_after_failed_probe(self):
+        self.assertTrue(READINESS_HELPER.is_file(), "deploy readiness helper must exist")
+        # The helper accepts explicit paths so the real rollback procedure can
+        # be exercised in a disposable directory without a service manager.
+        import os
+        import subprocess
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bin_dir = root / "bin"
+            fake_dir = root / "fake"
+            bin_dir.mkdir()
+            fake_dir.mkdir()
+            old = bin_dir / "serenity-old"
+            new = bin_dir / "serenity-new"
+            active = bin_dir / "serenity"
+            previous = bin_dir / "serenity.prev"
+            old.write_text("old binary")
+            new.write_text("new binary")
+            old.chmod(0o755)
+            new.chmod(0o755)
+            active.symlink_to(new.name)
+            previous.symlink_to(old.name)
+            (fake_dir / "curl").write_text("#!/bin/sh\nexit 7\n")
+            (fake_dir / "systemctl").write_text("#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$SERENITY_SYSTEMCTL_LOG\"\n")
+            for command in fake_dir.iterdir():
+                command.chmod(0o755)
+            log = root / "systemctl.log"
+            env = os.environ.copy()
+            env["PATH"] = f"{fake_dir}:{env['PATH']}"
+            env["SERENITY_SYSTEMCTL_LOG"] = str(log)
+            result = subprocess.run(
+                ["bash", "-c", 'source "$1"; serenity_rollback_on_readiness_failure "$2" "$3" serenity-hosted http://127.0.0.1/readyz', "test", str(READINESS_HELPER), str(active), str(previous)],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("ROLLED BACK", result.stderr)
+            self.assertEqual(active.resolve(), old.resolve())
+            self.assertEqual(log.read_text().strip(), "restart serenity-hosted")
+
+            # A failed systemd activation must restore the old binary even if
+            # the old process would still answer a readiness probe.
+            active.unlink()
+            active.symlink_to(new.name)
+            (fake_dir / "curl").write_text("#!/bin/sh\nexit 0\n")
+            result = subprocess.run(
+                ["bash", "-c", 'source "$1"; serenity_restore_previous_binary "$2" "$3" serenity-hosted', "test", str(READINESS_HELPER), str(active), str(previous)],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("ROLLED BACK", result.stderr)
+            self.assertEqual(active.resolve(), old.resolve())
 
 
 if __name__ == "__main__":

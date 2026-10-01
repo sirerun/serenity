@@ -14,6 +14,7 @@ RestartSec=5
 TimeoutStopSec=45
 UMask=0077
 NoNewPrivileges=yes
+IPAddressDeny=169.254.169.254
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes

@@ -5,6 +5,8 @@ set -euo pipefail
 
 CADDY_VERSION=${CADDY_VERSION:-2.8.4}
 CADDY_SHA256=${CADDY_SHA256:-93a3eb31883d678c6590c6d823eb6bb9f7a3af66dcd9d53df3eb2c7528b2af05}
+COSIGN_VERSION=3.0.6
+COSIGN_SHA256=bedac92e8c3729864e13d4a17048007cfafa79d5deca993a43a90ffe018ef2b8
 DATA_DEVICE=${SERENITY_DATA_DEVICE:-/dev/sdf}
 DATA_LABEL=serenity-data
 
@@ -42,6 +44,19 @@ mountpoint -q /var/lib/serenity || { echo 'Persistent data volume is not mounted
 # Install only host prerequisites; no application release or provider call occurs here.
 dnf install -y awscli-2 git gzip jq tar util-linux shadow-utils
 command -v curl >/dev/null || { echo 'curl is required (curl-minimal is acceptable)' >&2; exit 1; }
+
+# Install a pinned Cosign verifier for release artifact identity checks.
+if ! command -v cosign >/dev/null || [[ "$(cosign version 2>/dev/null | awk '/GitVersion/ {print $2; exit}' | sed 's/^v//')" != "$COSIGN_VERSION" ]]; then
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 \
+      "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-arm64" \
+      --output "$tmp/cosign"
+    printf '%s  %s\n' "$COSIGN_SHA256" "$tmp/cosign" | sha256sum --check --status
+    install -m 0755 "$tmp/cosign" /usr/local/bin/cosign
+    rm -rf -- "$tmp"
+    trap - EXIT
+fi
 
 # Install a pinned Caddy release for the HTTPS reverse proxy.
 if ! command -v caddy >/dev/null || [[ "$(caddy version 2>/dev/null | awk 'NR==1 {print $1}' | sed 's/^v//')" != "$CADDY_VERSION" ]]; then

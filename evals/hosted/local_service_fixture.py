@@ -1145,13 +1145,13 @@ def _scenario(svc, ev, corpus, fact_by_id, corpus_sha256, template, checks: Chec
     isolation = MCPClient(f"{svc.origin}/mcp", emp.token, [svc.origin])
     with_rate_limit_retry(isolation.initialize, waits)
     written = with_rate_limit_retry(
-        lambda: isolation.call_tool("remember", {"fact": ISOLATION_MARKER, "provenance": "local fixture isolation control", "operation_key": "t2343-isolation-marker"}),
+        lambda: isolation.call_tool("remember", {"fact": ISOLATION_MARKER, "provenance": "local fixture isolation control", "operation_key": "t2343-isolation-marker"}),  # gitleaks:allow -- synthetic local isolation fixture marker, never a credential.
         waits,
     )
     positive_client = MCPClient(f"{svc.origin}/mcp", pos.token, [svc.origin])
     with_rate_limit_retry(positive_client.initialize, waits)
     from_positive = with_rate_limit_retry(lambda: positive_client.call_tool("recall", {"query": ISOLATION_MARKER, "limit": 5}), waits)
-    from_empty = with_rate_limit_retry(lambda: isolation.call_tool("recall", {"query": ft.SENTINEL_FACT_TEXT, "limit": 5}), waits)
+    from_empty = with_rate_limit_retry(lambda: isolation.call_tool("recall", {"query": ft.SENTINEL_FACT_TEXT, "limit": 5}), waits)  # gitleaks:allow -- synthetic local isolation fixture marker, never a credential.
     report["rate_limit"] = {
         "gateway_limit": "120 requests per minute per account (internal/hosted/gateway)",
         "waits_between_phases": window.waits,

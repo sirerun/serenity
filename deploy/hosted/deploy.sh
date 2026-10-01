@@ -13,23 +13,32 @@ export SERENITY_DOMAIN_CUTOVER=0
 [[ "$checksum" =~ ^[a-f0-9]{64}$ ]] || { echo 'Invalid SHA256' >&2; exit 1; }
 [[ $(id -u) == 0 ]] || { echo 'Run through SSM as root' >&2; exit 1; }
 script_dir=$(cd -- "$(dirname -- "$0")" && pwd)
+source "$script_dir/readiness.sh"
 "$script_dir/bootstrap.sh"
 command -v caddy >/dev/null
 command -v aws >/dev/null
 command -v git >/dev/null
 command -v curl >/dev/null
+command -v cosign >/dev/null || { echo 'Cosign is required to verify release signatures' >&2; exit 1; }
 mountpoint -q /var/lib/serenity || { echo 'Persistent data volume is not mounted' >&2; exit 1; }
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
 number=${version#v}
-curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 "https://github.com/sirerun/serenity/releases/download/v${number}/serenity_${number}_linux_arm64.tar.gz" --output "$work/release.tar.gz"
+release_tag="v${number}"
+release_url="https://github.com/sirerun/serenity/releases/download/${release_tag}"
+curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 "$release_url/serenity_${number}_linux_arm64.tar.gz" --output "$work/release.tar.gz"
+curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 "$release_url/serenity_${number}_linux_arm64.tar.gz.sigstore.json" --output "$work/release.tar.gz.sigstore.json"
+"$script_dir/verify-release.sh" "$work/release.tar.gz" "$work/release.tar.gz.sigstore.json" "$release_tag"
 printf '%s  %s\n' "$checksum" "$work/release.tar.gz" | sha256sum --check --status
 tar -xzf "$work/release.tar.gz" -C "$work" serenity
 id serenity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/serenity --shell /sbin/nologin serenity
 install -d -m 0700 -o serenity -g serenity /etc/serenity /etc/serenity/secrets
 for name in RESEND_API_KEY EMBEDDINGS_API_KEY; do
     aws --region us-west-2 secretsmanager get-secret-value --secret-id "serenity/hosted/$name" --query SecretString --output text > "$work/$name"
-    [[ -s "$work/$name" ]] && ! grep -qx UNCONFIGURED "$work/$name" || { echo "Required secret $name is unconfigured" >&2; exit 1; }
+    if [[ ! -s "$work/$name" ]] || grep -qx UNCONFIGURED "$work/$name"; then
+        echo "Required secret $name is unconfigured" >&2
+        exit 1
+    fi
     install -m 0600 -o serenity -g serenity "$work/$name" "/etc/serenity/secrets/$name"
 done
 # Billing is enabled separately after test-mode qualification; its secrets are
@@ -49,8 +58,13 @@ if [[ ! -d "$rollback" && -f /etc/caddy/Caddyfile && -L /usr/local/bin/serenity 
     mv "$snapshot" "$rollback"
 fi
 install -d -m 0755 /usr/local/lib/serenity
+# Retain the exact currently selected binary so a failed readiness check can
+# restore it even though the active path is a symlink to a versioned binary.
+if [[ -x /usr/local/bin/serenity ]]; then
+    previous_target=$(readlink -f -- /usr/local/bin/serenity)
+    [[ -x "$previous_target" ]] && ln -sfn -- "$previous_target" /usr/local/bin/serenity.prev
+fi
 install -m 0755 "$work/serenity" "/usr/local/lib/serenity/serenity-${number}"
-ln -sfn "/usr/local/lib/serenity/serenity-${number}" /usr/local/bin/serenity
 chown serenity:serenity /var/lib/serenity
 install -m 0644 "$script_dir/serenity-hosted.service" /etc/systemd/system/serenity-hosted.service
 # Migrate the old default origin and sender; preserve custom operator settings.
@@ -83,27 +97,43 @@ if [[ -f /etc/systemd/system/caddy.service ]] && ! cmp -s "$script_dir/caddy.ser
     cp -p /etc/systemd/system/caddy.service /root/serenity-caddy-rollback/caddy.service
     [[ ! -f /etc/caddy/Caddyfile ]] || cp -p /etc/caddy/Caddyfile /root/serenity-caddy-rollback/Caddyfile
 fi
-install -m 0644 "$caddy_config" /etc/caddy/Caddyfile
+install -m 0644 "$script_dir/Caddyfile" /etc/caddy/Caddyfile
 install -d -m 0755 /opt/serenity-hosted
 install -m 0755 "$script_dir/backup.sh" /opt/serenity-hosted/backup.sh
 printf 'SERENITY_BACKUP_BUCKET=%s\n' "$backup_bucket" > "$work/backup.env"
 install -m 0600 -o serenity -g serenity "$work/backup.env" /etc/serenity/backup.env
 install -m 0644 "$script_dir/serenity-backup.service" /etc/systemd/system/serenity-backup.service
+install -m 0644 "$script_dir/serenity-backup-failed.service" /etc/systemd/system/serenity-backup-failed.service
 install -m 0644 "$script_dir/serenity-backup.timer" /etc/systemd/system/serenity-backup.timer
 install -m 0644 "$script_dir/caddy.service" /etc/systemd/system/caddy.service
 systemctl daemon-reload
 systemctl enable --now caddy
-systemctl enable --now serenity-hosted
-systemctl restart serenity-hosted
+# Select the new binary only after Caddy and all deployment files are ready;
+# failures above this line leave the previously selected binary untouched.
+ln -sfn "/usr/local/lib/serenity/serenity-${number}" /usr/local/bin/serenity
+if ! systemctl enable --now serenity-hosted || ! systemctl restart serenity-hosted; then
+    serenity_restore_previous_binary /usr/local/bin/serenity /usr/local/bin/serenity.prev serenity-hosted || true
+    exit 1
+fi
 # Reload through the 0600 unix admin socket. A process started under the old
 # root unit has no socket, so the first deploy after the privilege drop
 # restarts Caddy instead; every later deploy is a zero-downtime reload.
 if [[ -S /run/caddy/admin.sock ]]; then
-    caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile --address unix//run/caddy/admin.sock
+    if ! caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile --address unix//run/caddy/admin.sock; then
+        serenity_restore_previous_binary /usr/local/bin/serenity /usr/local/bin/serenity.prev serenity-hosted || true
+        echo 'Caddy reload failed; inspect /root/serenity-caddy-rollback if proxy recovery is needed' >&2
+        exit 1
+    fi
 else
-    systemctl restart caddy
+    if ! systemctl restart caddy; then
+        serenity_restore_previous_binary /usr/local/bin/serenity /usr/local/bin/serenity.prev serenity-hosted || true
+        echo 'Caddy restart failed; inspect /root/serenity-caddy-rollback if proxy recovery is needed' >&2
+        exit 1
+    fi
 fi
-curl --fail --retry 5 --retry-connrefused --max-time 10 http://127.0.0.1:8090/readyz
+if ! serenity_rollback_on_readiness_failure /usr/local/bin/serenity /usr/local/bin/serenity.prev serenity-hosted http://127.0.0.1:8090/readyz; then
+    exit 1
+fi
 systemctl start serenity-backup.service
 systemctl enable --now serenity-backup.timer
 echo "Hosted Serenity ${number} is locally ready. Public smoke and release acceptance are separate."
