@@ -14,5 +14,5 @@ Focused tests cover inline publication/hook timing, preservation of unrelated st
 GOCACHE=/Volumes/BuildOffload/.cache/core-writer/gocache \
 GOTMPDIR=/Volumes/BuildOffload/.cache/core-writer/tmp \
 go test -race ./internal/writer -count=1
-ok   github.com/sirerun/serenity/internal/writer  63.188s
+ok   github.com/sirerun/serenity/internal/writer  165.089s
 ```
