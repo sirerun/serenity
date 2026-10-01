@@ -18,7 +18,7 @@
 //     subcommand that is not on a read-only allowlist.
 //   - Quarantine(dir) is for private owned staging workspaces. It permits
 //     local bundle restoration writes with hooks and global/system config
-//     ignored, and refuses network transports.
+//     ignored. Bundle cloning uses CloneBundle's fresh workspace.
 //
 // All runners scrub the inherited environment: every GIT_* variable is dropped
 // except GIT_SSH_COMMAND (the daemon's key selection), GIT_TERMINAL_PROMPT
@@ -39,6 +39,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -102,9 +103,10 @@ var reservedPrefixes = []string{
 
 // Runner spawns git subcommands in one repository under one trust level.
 type Runner struct {
-	dir        string
-	foreign    bool
-	quarantine bool
+	dir         string
+	foreign     bool
+	quarantine  bool
+	bundleClone bool
 }
 
 // Brain returns a runner for the brain repository this process owns: the
@@ -119,10 +121,53 @@ func Foreign(dir string) *Runner { return &Runner{dir: dir, foreign: true} }
 
 // Quarantine runs Git in an owned private staging workspace. It permits
 // writes needed to restore a local bundle, but ignores hooks and global/system
-// configuration and permits only local file transport. Callers must supply
+// configuration and blocks built-in network transports. Callers must supply
 // trusted command arguments and keep the workspace private until validated.
+// Repository configuration is still read; use CloneBundle for cloning instead
+// of allowing repository URL rewrites to choose a transport.
 // It must not replace Foreign for inspecting someone else's repository.
 func Quarantine(dir string) *Runner { return &Runner{dir: dir, quarantine: true} }
+
+// CloneBundle restores a regular local bundle into a new target directory.
+// Git runs from a fresh private workspace with ancestor discovery disabled,
+// so repository URL rewrites and custom transport policy cannot redirect it.
+// The caller owns the target and must validate it before publication.
+func CloneBundle(ctx context.Context, bundle, target string) (output []byte, err error) {
+	bundle, err = filepath.Abs(bundle)
+	if err != nil {
+		return nil, err
+	}
+	info, err := os.Lstat(bundle)
+	if err != nil {
+		return nil, fmt.Errorf("inspect local Git bundle: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("gitrun: bundle must be a regular local file")
+	}
+	target, err = filepath.Abs(target)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
+		if err == nil {
+			return nil, errors.New("gitrun: bundle target already exists")
+		}
+		return nil, err
+	}
+	workspace, err := os.MkdirTemp("", "serenity-git-bundle-")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { err = errors.Join(err, os.RemoveAll(workspace)) }()
+	runner := Quarantine(workspace)
+	runner.bundleClone = true
+	cmd, err := runner.Command(ctx, "clone", "--quiet", "--", bundle, target)
+	if err != nil {
+		return nil, err
+	}
+	cmd.Env = append(cmd.Env, "GIT_CEILING_DIRECTORIES="+filepath.Dir(workspace))
+	return cmd.CombinedOutput()
+}
 
 // Dir reports the repository directory the runner spawns git in.
 func (r *Runner) Dir() string { return r.dir }
@@ -141,6 +186,9 @@ func (r *Runner) Command(ctx context.Context, args ...string) (*exec.Cmd, error)
 	if r.foreign && !readOnly[sub] {
 		return nil, fmt.Errorf("%w: %s", ErrForeignWrite, sub)
 	}
+	if r.quarantine && sub == "clone" && !r.bundleClone {
+		return nil, errors.New("gitrun: quarantine cloning requires CloneBundle")
+	}
 	full := make([]string, 0, len(hardening)+len(foreignHardening)+len(args))
 	full = append(full, hardening...)
 	if r.foreign || r.quarantine {
@@ -148,6 +196,11 @@ func (r *Runner) Command(ctx context.Context, args ...string) (*exec.Cmd, error)
 	}
 	if r.quarantine {
 		full = append(full, "-c", "protocol.allow=never", "-c", "protocol.file.allow=always")
+		// Per-protocol repository policy overrides protocol.allow's default.
+		// Pin each built-in network transport as well as the default policy.
+		for _, protocol := range []string{"http", "https", "git", "ssh", "ftp", "ftps", "rsync"} {
+			full = append(full, "-c", "protocol."+protocol+".allow=never")
+		}
 	}
 	full = append(full, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
@@ -226,6 +279,9 @@ func (r *Runner) env(inherited []string) []string {
 			"GIT_CONFIG_NOSYSTEM=1",
 			"GIT_OPTIONAL_LOCKS=0",
 		)
+	}
+	if r.quarantine {
+		out = append(out, "GIT_NO_LAZY_FETCH=1")
 	}
 	return out
 }

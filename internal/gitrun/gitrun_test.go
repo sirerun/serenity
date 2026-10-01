@@ -125,17 +125,26 @@ func TestQuarantineLocalBundleRestoreIgnoresHooksAndRemoteTransport(t *testing.T
 	if err := os.Remove(marker); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := gitrun.Quarantine(parent).CombinedOutput(context.Background(), "clone", "--quiet", bundle, filepath.Join(parent, "restored")); err != nil {
+	plainGit(t, parent, "init", "--quiet")
+	// A repository-local rewrite must not turn the bundle path into a remote.
+	plainGit(t, parent, "config", "url.http://127.0.0.1:1/.insteadOf", bundle)
+	t.Setenv("TMPDIR", parent)
+	if out, err := gitrun.CloneBundle(context.Background(), bundle, filepath.Join(parent, "restored")); err != nil {
 		t.Fatalf("restore bundle: %v: %s", err, out)
 	}
 	if markerExists(t, marker) {
 		t.Fatal("quarantine restore executed global hook")
 	}
-	if out, err := gitrun.Quarantine(parent).CombinedOutput(context.Background(), "ls-remote", "https://example.invalid/repo.git"); err == nil || !strings.Contains(string(out), "transport 'https' not allowed") {
+	plainGit(t, parent, "init", "--quiet")
+	plainGit(t, parent, "config", "protocol.http.allow", "always")
+	if out, err := gitrun.Quarantine(parent).CombinedOutput(context.Background(), "ls-remote", "http://127.0.0.1:1/repo.git"); err == nil || !strings.Contains(string(out), "transport 'http' not allowed") {
 		t.Fatalf("remote transport not refused: %v: %s", err, out)
 	}
 	if _, err := gitrun.Foreign(dir).Command(context.Background(), "clone", bundle, "other"); !errors.Is(err, gitrun.ErrForeignWrite) {
 		t.Fatalf("foreign write restriction changed: %v", err)
+	}
+	if _, err := gitrun.Quarantine(parent).Command(context.Background(), "clone", bundle, "other"); err == nil {
+		t.Fatal("generic quarantine clone bypassed bundle-only API")
 	}
 }
 
