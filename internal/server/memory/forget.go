@@ -163,7 +163,6 @@ func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool,
 	}
 	reason := req.Reason
 	var result writer.ForgetResult
-	var err error
 	if hasHostedForgetPublication(ctx) {
 		result, err = mw.ForgetContext(ctx, sha, reason, now)
 	} else {
