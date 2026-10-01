@@ -11,6 +11,7 @@ import (
 type runLock struct {
 	mu      sync.Mutex
 	held    bool
+	waiters int
 	changed chan struct{}
 }
 
@@ -30,24 +31,21 @@ func (l *runLock) lockContext(ctx context.Context) error {
 			l.mu.Unlock()
 			return nil
 		}
+		l.waiters++
 		changed := l.changedLocked()
 		l.mu.Unlock()
 		select {
 		case <-ctx.Done():
+			l.mu.Lock()
+			l.waiters--
+			l.mu.Unlock()
 			return ctx.Err()
 		case <-changed:
+			l.mu.Lock()
+			l.waiters--
+			l.mu.Unlock()
 		}
 	}
-}
-
-func (l *runLock) tryLock() bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.held {
-		return false
-	}
-	l.held = true
-	return true
 }
 
 func (l *runLock) changedLocked() chan struct{} {
@@ -55,15 +53,6 @@ func (l *runLock) changedLocked() chan struct{} {
 		l.changed = make(chan struct{})
 	}
 	return l.changed
-}
-
-// changedChannel snapshots the current release notification. A release
-// racing with the subsequent wait closes this exact channel, so no wakeup is
-// lost.
-func (l *runLock) changedChannel() <-chan struct{} {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.changedLocked()
 }
 
 func (l *runLock) unlock() {

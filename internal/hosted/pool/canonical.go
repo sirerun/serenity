@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -205,15 +206,42 @@ func validateCanonicalRepository(root string) error {
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("unsafe canonical git directory")
 	}
-	for _, rel := range []string{"commondir", "objects/info/alternates", "objects/info/http-alternates"} {
+	for _, rel := range []string{"commondir", "objects/info/alternates", "objects/info/http-alternates", "info/grafts"} {
 		if _, err := os.Lstat(filepath.Join(gitDir, rel)); err == nil || !errors.Is(err, os.ErrNotExist) {
 			return errors.New("canonical git metadata redirects object lookup")
 		}
+	}
+	for _, rel := range []string{"HEAD", "config"} {
+		path := filepath.Join(gitDir, rel)
+		info, err := os.Lstat(path)
+		if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("unsafe canonical git metadata file")
+		}
+	}
+	refs := filepath.Join(gitDir, "refs")
+	if info, err := os.Lstat(refs); err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("unsafe canonical ref directory")
+		}
+		if err := rejectSymlinks(refs); err != nil {
+			return err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	packedRefs := filepath.Join(gitDir, "packed-refs")
+	if info, err := os.Lstat(packedRefs); err == nil && (!info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0) {
+		return errors.New("unsafe packed refs file")
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 	objects := filepath.Join(gitDir, "objects")
 	objectInfo, err := os.Lstat(objects)
 	if err != nil || !objectInfo.IsDir() || objectInfo.Mode()&os.ModeSymlink != 0 {
 		return errors.New("unsafe canonical object directory")
+	}
+	if err := rejectSymlinks(objects); err != nil {
+		return err
 	}
 	for _, rel := range []string{"objects/info", "objects/pack"} {
 		path := filepath.Join(gitDir, rel)
@@ -236,7 +264,26 @@ func validateCanonicalRepository(root string) error {
 	return validateCanonicalGitConfig(filepath.Join(gitDir, "config"))
 }
 
+func rejectSymlinks(root string) error {
+	return filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return errors.New("canonical git metadata contains a symlink")
+		}
+		if entry.Type()&os.ModeType != 0 && !entry.IsDir() {
+			return errors.New("canonical git metadata contains a special file")
+		}
+		return nil
+	})
+}
+
 func validateCanonicalGitConfig(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("unsafe canonical git config file")
+	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return err

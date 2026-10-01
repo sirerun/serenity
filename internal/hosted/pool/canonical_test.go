@@ -19,6 +19,7 @@ import (
 
 func canonicalTestRuntime(t *testing.T) *Runtime {
 	t.Helper()
+	isolateCanonicalTestGit(t)
 	root := t.TempDir()
 	for _, path := range []string{"brain/sources", "brain/entities", "brain/claims"} {
 		if err := os.MkdirAll(filepath.Join(root, path), 0o700); err != nil {
@@ -45,6 +46,36 @@ func canonicalTestRuntime(t *testing.T) *Runtime {
 	q := writer.NewQueue(nil)
 	t.Cleanup(q.Close)
 	return &Runtime{Root: root, brainID: "brain_1234567890abcd", queue: q}
+}
+
+func isolateCanonicalTestGit(t *testing.T) {
+	t.Helper()
+	prior := make(map[string]string)
+	for _, item := range os.Environ() {
+		key, value, ok := strings.Cut(item, "=")
+		if !ok || !strings.HasPrefix(key, "GIT_") {
+			continue
+		}
+		prior[key] = value
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() {
+		for key := range prior {
+			if err := os.Unsetenv(key); err != nil {
+				t.Error(err)
+			}
+		}
+		for key, value := range prior {
+			if err := os.Setenv(key, value); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_TERMINAL_PROMPT", "0")
 }
 
 func TestCanonicalCheckerRequiresEnteredFactInHEAD(t *testing.T) {
@@ -233,5 +264,17 @@ func TestCanonicalCheckerRejectsObjectAlternates(t *testing.T) {
 	got, err := runtime.Check(context.Background(), contracts.OperationRecord{ID: "operation-123", BrainID: runtime.brainID, Source: "gateway.remember"})
 	if err != nil || got.Outcome != contracts.CanonicalUnknown {
 		t.Fatalf("alternate object repository verdict = %+v, %v; want Unknown", got, err)
+	}
+}
+
+func TestCanonicalCheckerRejectsSymlinkedObjectDirectories(t *testing.T) {
+	runtime := canonicalTestRuntime(t)
+	target := t.TempDir()
+	if err := os.Symlink(target, filepath.Join(runtime.Root, ".git", "objects", "zz")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	got, err := runtime.Check(context.Background(), contracts.OperationRecord{ID: "operation-123", BrainID: runtime.brainID, Source: "gateway.remember"})
+	if err != nil || got.Outcome != contracts.CanonicalUnknown || got.Ref != "canonical_head_unavailable" {
+		t.Fatalf("symlink object repository verdict = %+v, %v; want Unknown", got, err)
 	}
 }

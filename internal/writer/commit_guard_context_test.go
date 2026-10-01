@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 )
@@ -11,9 +12,14 @@ import (
 func TestFlushContextCancelsWhileProviderHoldsRunLock(t *testing.T) {
 	root, _ := gitRepoFixture(t)
 	q := NewQueue(nil)
-	defer q.Close()
 	started := make(chan struct{})
 	releaseProvider := make(chan struct{})
+	var releaseOnce sync.Once
+	releaseProviderJob := func() { releaseOnce.Do(func() { close(releaseProvider) }) }
+	t.Cleanup(func() {
+		releaseProviderJob()
+		q.Close()
+	})
 	providerDone := make(chan Result, 1)
 	go func() {
 		providerDone <- q.Submit(Job{Render: func() ([]byte, error) {
@@ -45,7 +51,7 @@ func TestFlushContextCancelsWhileProviderHoldsRunLock(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("FlushContext did not cancel while waiting for provider-held runLock")
 	}
-	close(releaseProvider)
+	releaseProviderJob()
 	if result := <-providerDone; result.Err != nil {
 		t.Fatalf("provider job: %v", result.Err)
 	}
@@ -65,17 +71,35 @@ func TestFlushContextReleasesRunLockWhileExclusiveFenceWaits(t *testing.T) {
 	if err := q.runMu.lockContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(q.runMu.unlock)
 	flushDone := make(chan error, 1)
 	go func() {
 		_, err := FlushContext(context.Background(), q, root)
 		flushDone <- err
 	}()
-	q.runMu.unlock()
-
 	deadline := time.After(time.Second)
 	for {
-		if q.runMu.tryLock() {
-			q.runMu.unlock()
+		q.runMu.mu.Lock()
+		waiters := q.runMu.waiters
+		q.runMu.mu.Unlock()
+		if waiters > 0 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("FlushContext never queued for the occupied runLock")
+		default:
+			runtime.Gosched()
+		}
+	}
+	q.runMu.unlock()
+
+	deadline = time.After(time.Second)
+	for {
+		q.runMu.mu.Lock()
+		held, waiters := q.runMu.held, q.runMu.waiters
+		q.runMu.mu.Unlock()
+		if !held && waiters == 0 {
 			break
 		}
 		select {
