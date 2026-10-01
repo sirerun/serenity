@@ -377,6 +377,64 @@ func TestZeroClockCannotAdmitCase(t *testing.T) {
 	}
 }
 
+func TestZeroApprovalAndExpiryTimesAreRejected(t *testing.T) {
+	tests := []struct {
+		name     string
+		approved string
+		expires  string
+		now      string
+	}{
+		{
+			name:     "zero approval",
+			approved: "0001-01-01T00:00:00Z",
+			expires:  "0001-01-01T00:30:00Z",
+			now:      "0001-01-01T00:00:01Z",
+		},
+		{
+			name:     "zero expiry",
+			approved: "0000-12-31T23:00:00Z",
+			expires:  "0001-01-01T00:00:00Z",
+			now:      "0000-12-31T23:30:00Z",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			dir := makePrivateDir(t)
+			privateKey := ed25519.NewKeyFromSeed(fixedSeed[:])
+			publicKey := privateKey.Public().(ed25519.PublicKey)
+			key := validTrustedKey(publicKey, "operator-7")
+			var err error
+			key.NotBefore, err = time.Parse(time.RFC3339, "0000-01-01T00:00:00Z")
+			if err != nil {
+				t.Fatal(err)
+			}
+			key.NotAfter, err = time.Parse(time.RFC3339, "0002-01-01T00:00:00Z")
+			if err != nil {
+				t.Fatal(err)
+			}
+			keys := &testKeys{key: key}
+			policy := validPolicy()
+			policy.MaxCaseAge = 48 * time.Hour
+			policy.MaxCaseLifetime = 48 * time.Hour
+			policy.Now = func() time.Time {
+				now, parseErr := time.Parse(time.RFC3339, test.now)
+				if parseErr != nil {
+					t.Fatalf("parse now: %v", parseErr)
+				}
+				return now
+			}
+			admission, err := New(context.Background(), dir, keys, policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ref := writeCase(t, dir, privateKey, publicKeyID(publicKey), "operator-7", "operation-17", "committed", "fact:"+strings.Repeat("a", 64), test.approved, test.expires)
+			if _, err := authorizeOverUnix(t, admission, "operation-17", ref); !errors.Is(err, errDenied) {
+				t.Fatalf("case with %s admitted: %v", test.name, err)
+			}
+		})
+	}
+}
+
 func makePrivateDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp(os.Getenv("TMPDIR"), "operator-case-test-")
