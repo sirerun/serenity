@@ -9,6 +9,7 @@
 package writer
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"reflect"
@@ -84,6 +85,15 @@ type Result struct {
 	Err   error
 }
 
+// SubmitAndFlushResult combines the ordinary job outcome with the inline
+// publication result. Result.Err is nil only when both Render and the
+// requested flush succeeded; Committed reports whether Git created a new
+// commit (a successful no-op has Committed=false).
+type SubmitAndFlushResult struct {
+	Result    Result
+	Committed bool
+}
+
 // Queue drains every submitted job through one goroutine, so no two
 // writes -- even to different files -- ever execute concurrently. That
 // trivially satisfies per-file ordering: jobs for a given path always
@@ -91,6 +101,7 @@ type Result struct {
 type Queue struct {
 	mu     sync.Mutex
 	runMu  sync.Mutex // serializes complete writes with git publication
+	commit commitGate // excludes hosted canonical checkers from source+flush sections
 	closed bool
 	seq    map[string]uint64
 	jobs   chan submitted
@@ -109,9 +120,17 @@ type Queue struct {
 }
 
 type submitted struct {
-	job   Job
-	seq   uint64
-	reply chan Result
+	job       Job
+	seq       uint64
+	flushRoot string
+	flushCtx  context.Context
+	flush     bool
+	reply     chan submitResponse
+}
+
+type submitResponse struct {
+	result    Result
+	committed bool
 }
 
 // NewQueue starts the drain goroutine. hook, if non-nil, is called from
@@ -135,18 +154,33 @@ func (q *Queue) drain() {
 	defer q.wg.Done()
 	for s := range q.jobs {
 		q.runMu.Lock()
-		b, err := run(s.job)
-		res := Result{Job: s.job, Seq: s.seq, Bytes: b, Err: err}
+		var committed bool
+		var leaveCommit func()
+		var err error
+		if s.flush {
+			leaveCommit, err = q.EnterCommit(s.flushCtx)
+		}
+		var b []byte
+		if err == nil {
+			b, err = run(s.job)
+		}
 		if err == nil && s.job.Path != "" {
 			q.touchedMu.Lock()
 			q.touched[s.job.Path] = true
 			q.touchedMu.Unlock()
 		}
+		if err == nil && s.flush {
+			committed, err = flushTouchedLocked(s.flushCtx, q, s.flushRoot)
+		}
+		res := Result{Job: s.job, Seq: s.seq, Bytes: b, Err: err}
+		if leaveCommit != nil {
+			leaveCommit()
+		}
 		q.runMu.Unlock()
 		if q.hook != nil {
 			q.hook(res)
 		}
-		s.reply <- res
+		s.reply <- submitResponse{result: res, committed: committed}
 	}
 }
 
@@ -183,10 +217,38 @@ func (q *Queue) Submit(j Job) Result {
 	}
 	q.seq[j.Path]++
 	seq := q.seq[j.Path]
-	reply := make(chan Result, 1)
+	reply := make(chan submitResponse, 1)
 	q.jobs <- submitted{job: j, seq: seq, reply: reply}
 	q.mu.Unlock()
-	return <-reply
+	return (<-reply).result
+}
+
+// SubmitAndFlush runs Render and publishes all touched paths before releasing
+// the queue's run lock. It also enters the per-queue shared commit section for
+// the complete Render+flush interval. Do not wrap this call in EnterCommit:
+// the guard is not recursive. Ordinary Submit intentionally does not acquire
+// the commit guard; callers must route canonical mutation paths explicitly.
+func (q *Queue) SubmitAndFlush(ctx context.Context, root string, j Job) SubmitAndFlushResult {
+	if ctx == nil {
+		return SubmitAndFlushResult{Result: Result{Job: j, Err: ErrNilCommitContext}}
+	}
+	q.mu.Lock()
+	if q.closed {
+		q.mu.Unlock()
+		return SubmitAndFlushResult{Result: Result{Job: j, Err: ErrQueueClosed}}
+	}
+	if j.Render == nil {
+		q.mu.Unlock()
+		return SubmitAndFlushResult{Result: Result{Job: j, Err: errors.New("writer: missing render callback")}}
+	}
+	key := j.Path
+	q.seq[key]++
+	seq := q.seq[key]
+	reply := make(chan submitResponse, 1)
+	q.jobs <- submitted{job: j, seq: seq, flushRoot: root, flushCtx: ctx, flush: true, reply: reply}
+	q.mu.Unlock()
+	response := <-reply
+	return SubmitAndFlushResult{Result: response.result, Committed: response.committed}
 }
 
 // takeTouched returns every path successfully written since the last call
