@@ -44,3 +44,9 @@ Preserved validation logs are in `/Volumes/BuildOffload/tmp/`:
 | `signedcase-operatorreview-green.log` | `28e4f01751e2163d2f9f19389ef528e918f2409acab4242bf56cae0914715d16` |
 
 The corrected code has no additional source blocker from this independent review. The original e55563 hold above is retained as review history. This clearance only addresses this local verifier slice: a valid signature attributes the decision to the injected key and does not establish that a human inspected the case. No production key source, issuance authority, human-review evidence, or activation approval was provided.
+
+## Permanent zero-time regression follow-up
+
+Test-only commit `fb3a0b9ead420fe0723fa941db1f265008150b19` adds permanent subtests for a year-0001 zero approval time and a year-0001 zero expiry time. The test deliberately sets key validity across years 0000–0002 and uses year-boundary `now` values so the values pass the ordinary ordering and configured age/lifetime bounds; the explicit zero-time rejection is the condition under test. These are the same two concrete timestamp cases used by the earlier temporary mutation probe recorded above. With the zero-time guard removed, that probe admitted both cases (RED log SHA-256 `dac65154de3e8f5d272fa1d38dcd81d4ccfd689820771ab0438d8061ade950ff`); the corrected-source probe denied both (GREEN log SHA-256 `64d9e425e29302b711bd350303ea2988953b598038bd9c99972c9a13f9f56d88`). The permanent regression now keeps this coverage in the package suite.
+
+On the permanent-test commit, `go test -race ./internal/hosted/operatorreview -count=1` passed (`ok`, 1.774s) and `golangci-lint run ./internal/hosted/operatorreview` reported `0 issues`. Each launch followed an uptime load check below 10, used external Go caches and the owners-enabled fixture TMPDIR, and ran only the changed package. No production code changed; no multi-package build, provider call, or production activation was performed.
