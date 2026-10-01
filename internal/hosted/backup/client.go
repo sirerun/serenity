@@ -22,6 +22,9 @@ import (
 // path; the online path's in-process Create call is the live service's own
 // responsibility to supply them for (see internal/hosted/service).
 func Request(ctx context.Context, dataDir, destination, buildSHA string, journal contracts.DeletionJournal) error {
+	if isNilInterface(ctx) {
+		return ErrNilContext
+	}
 	socket := filepath.Join(dataDir, ".hosted-admin.sock")
 	if _, err := os.Stat(socket); errors.Is(err, os.ErrNotExist) {
 		owner, e := writer.AcquireBrain(dataDir)

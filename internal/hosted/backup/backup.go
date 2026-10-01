@@ -21,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -59,6 +60,21 @@ var ErrManifestInventoryMismatch = errors.New("hosted/backup: manifest brain inv
 // by a read-only connection before store.Open is ever allowed to migrate it.
 var ErrSchemaMismatch = errors.New("hosted/backup: control database schema does not match the manifest")
 var ErrUnsupportedSchemaVersion = errors.New("hosted/backup: snapshot schema is newer than this binary supports")
+var ErrNilContext = errors.New("hosted/backup: a non-nil context is required")
+var ErrNilDeletionJournal = errors.New("hosted/backup: a non-nil deletion-journal reader is required")
+
+func isNilInterface(value any) bool {
+	if value == nil {
+		return true
+	}
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
 
 // safeID accepts exactly the identifier shape store.go's brain/account IDs
 // use: 16-64 ASCII letters or digits. It is also used as a filesystem path
@@ -120,8 +136,11 @@ func requireRealDir(path string) error {
 // silently claims emptiness without checking a real journal is a caller
 // error this package has no way to detect.
 func Create(ctx context.Context, dataDir, destination, buildSHA string, journal contracts.DeletionJournal) (err error) {
-	if journal == nil {
-		return errors.New("hosted/backup: a deletion-journal reader is required to record the pre-copy watermark")
+	if isNilInterface(ctx) {
+		return ErrNilContext
+	}
+	if isNilInterface(journal) {
+		return ErrNilDeletionJournal
 	}
 	resolvedBuildSHA, err := resolveBuildSHA(buildSHA)
 	if err != nil {
@@ -605,6 +624,9 @@ func resolveBuildSHA(explicit string) (string, error) {
 // failure at any point leaves no destination at all, never a partially
 // restored one that could be mistaken for usable.
 func Restore(ctx context.Context, snapshot, destination string) (err error) {
+	if isNilInterface(ctx) {
+		return ErrNilContext
+	}
 	if err = requireRealDir(snapshot); err != nil {
 		return err
 	}

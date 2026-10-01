@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
+	"github.com/sirerun/serenity/internal/hosted/deletion"
 	"github.com/sirerun/serenity/internal/hosted/store"
 	corestore "github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
@@ -224,6 +225,31 @@ func TestCreateRestoreRoundTrip(t *testing.T) {
 		if !hasHeadRef(heads, "refs/heads/main") || !hasHeadRef(heads, "HEAD") {
 			t.Fatalf("restored brain %s heads = %+v", id, heads)
 		}
+	}
+}
+
+func TestCreateManifestWatermarkComesFromFilesystemJournal(t *testing.T) {
+	ctx := context.Background()
+	journal, err := deletion.NewFilesystemJournal(filepath.Join(t.TempDir(), "journal"), "backup-watermark-test", 1, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := journal.AppendDeletion(ctx, contracts.DeletionEntry{
+		SubjectType: contracts.DeletionSubjectAccount,
+		SubjectID:   "account-backup-watermark",
+		Outcome:     contracts.DeletionIntentRequested,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataDir, _ := newTestDataDir(t, 0)
+	snapshot := filepath.Join(t.TempDir(), "snapshot")
+	if err = Create(ctx, dataDir, snapshot, "filesystem-journal-test-build", journal); err != nil {
+		t.Fatalf("Create with filesystem journal: %v", err)
+	}
+	manifest := readManifestFile(t, snapshot)
+	if manifest.JournalWatermark != entry.Watermark {
+		t.Fatalf("manifest watermark = %+v, want filesystem journal entry watermark %+v", manifest.JournalWatermark, entry.Watermark)
 	}
 }
 
@@ -559,6 +585,31 @@ func TestCreateRequiresJournal(t *testing.T) {
 	}
 	if _, statErr := os.Stat(snapshot); !errors.Is(statErr, os.ErrNotExist) {
 		t.Fatal("destination must not exist when Create fails closed on a missing journal")
+	}
+}
+
+func TestCreateRejectsNilContextAndTypedNilJournal(t *testing.T) {
+	dataDir, _ := newTestDataDir(t, 0)
+	destination := filepath.Join(t.TempDir(), "snapshot")
+	if err := Create(nil, dataDir, destination, "test-build-sha", fakeJournal{}); !errors.Is(err, ErrNilContext) {
+		t.Fatalf("Create with nil context err = %v, want ErrNilContext", err)
+	}
+	if _, err := os.Stat(destination); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Create with nil context touched destination: stat err = %v", err)
+	}
+
+	var typedNilJournal *deletion.Journal
+	if err := Create(context.Background(), dataDir, destination, "test-build-sha", typedNilJournal); !errors.Is(err, ErrNilDeletionJournal) {
+		t.Fatalf("Create with typed-nil journal err = %v, want ErrNilDeletionJournal", err)
+	}
+	if _, err := os.Stat(destination); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Create with typed-nil journal touched destination: stat err = %v", err)
+	}
+	if err := Restore(nil, filepath.Join(t.TempDir(), "missing-snapshot"), filepath.Join(t.TempDir(), "restored")); !errors.Is(err, ErrNilContext) {
+		t.Fatalf("Restore with nil context err = %v, want ErrNilContext", err)
+	}
+	if err := Request(nil, filepath.Join(t.TempDir(), "missing-data"), destination, "test-build-sha", nil); !errors.Is(err, ErrNilContext) {
+		t.Fatalf("Request with nil context err = %v, want ErrNilContext", err)
 	}
 }
 
