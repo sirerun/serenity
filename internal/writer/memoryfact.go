@@ -277,6 +277,21 @@ func (w *MemoryFact) eraseFact(sha, operationKey string, proj *store.MemoryProje
 	if _, err := w.Sources.RemoveSource(sha); err != nil {
 		return fmt.Errorf("writer: remove forgotten fact: %w", err)
 	}
+	root, err := filepath.Abs(w.Sources.Root)
+	if err != nil {
+		return fmt.Errorf("writer: resolve brain root for history rewrite: %w", err)
+	}
+	sourceDir, err := filepath.Abs(w.Sources.DirFor(sha))
+	if err != nil {
+		return fmt.Errorf("writer: resolve forgotten source directory: %w", err)
+	}
+	path, err := filepath.Rel(root, sourceDir)
+	if err != nil {
+		return fmt.Errorf("writer: resolve forgotten source path: %w", err)
+	}
+	if err := rewriteForgottenPath(root, path); err != nil {
+		return err
+	}
 	return nil
 }
 

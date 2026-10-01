@@ -6,12 +6,29 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 
 	"strings"
 	"testing"
 
 	"golang.org/x/sys/unix"
 )
+
+func TestServeDoesNotInstallHookInNonBrainGitRepository(t *testing.T) {
+	root := t.TempDir()
+	if out, err := exec.Command("git", "init", "--quiet", root).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	var stderr bytes.Buffer
+	tools, closeDeps, _, _, err := memoryTools(root, &stderr)
+	if err != nil || len(tools) != 0 || closeDeps != nil {
+		t.Fatalf("non-brain serve changed behavior: tools=%d close=%v err=%v", len(tools), closeDeps != nil, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".git", "hooks", "post-commit")); !os.IsNotExist(err) {
+		t.Fatalf("non-brain repository acquired a post-commit hook: %v", err)
+	}
+}
 
 func TestServeRequiresStdio(t *testing.T) {
 	cmd := newRootCmd()

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -49,14 +50,13 @@ func newServeCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
+		// stdio has no bearer-token authentication at all (RFC-BRAIN-AUTH-02:
+		// "profile+stdio must reject rather than imply HTTP authentication
+		// applies to stdio") -- a profile flag here would silently do nothing.
+		if stdio && hasProfile {
+			return fmt.Errorf("--%s has no effect with --stdio: stdio has no bearer-token authentication to select a credential for", credentialProfileFlagName)
+		}
 		if stdio {
-			// stdio has no bearer-token authentication at all (RFC-BRAIN-AUTH-02:
-			// "profile+stdio must reject rather than imply HTTP authentication
-			// applies to stdio") -- a profile flag here would silently do nothing,
-			// which is worse than refusing.
-			if hasProfile {
-				return fmt.Errorf("--%s has no effect with --stdio: stdio has no bearer-token authentication to select a credential for", credentialProfileFlagName)
-			}
 			return runServeStdio(cmd)
 		}
 		return runServeHTTP(cmd, profile, hasProfile)
@@ -310,6 +310,14 @@ func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, *inde
 	owner, err := writer.AcquireBrain(root)
 	if err != nil {
 		return nil, nil, nil, nil, err
+	}
+	// Only a confirmed brain gets a durability hook. A generic Git repo can
+	// serve MCP transport without MEMORY_VERBS and must not be modified.
+	if _, err := installPostCommitPush(root); err != nil {
+		return nil, nil, nil, nil, errors.Join(fmt.Errorf("serve: prepare brain post-commit hook: %w", err), owner.Close())
+	}
+	if hook, err := os.ReadFile(filepath.Join(root, ".git", "hooks", "post-commit")); err == nil && !strings.Contains(string(hook), "--force-with-lease") {
+		_, _ = fmt.Fprintln(stderr, "serve: warning: custom post-commit hook lacks --force-with-lease; after forget, publish rewritten history manually and verify the remote")
 	}
 	// Re-read under ownership: config may have changed while recognizing the brain.
 	cfg, err := config.Load(filepath.Join(root, config.FileName))

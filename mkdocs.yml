@@ -20,6 +20,7 @@ nav:
       - Configuration: operator/config.md
       - MCP: operator/mcp.md
       - Release verification: operator/release-verification.md
+      - Forgetting facts: operator/forget.md
       - Claude: operator/claude.md
       - Check: operator/check.md
       - Connectors: operator/connect.md
