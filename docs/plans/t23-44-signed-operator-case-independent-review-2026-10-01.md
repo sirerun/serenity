@@ -1,0 +1,15 @@
+# T23.44 signed operator-case initial review hold
+
+Reviewed source pin: `e55563bf1f62443bf276cb933dfd763d5d935d2d`, isolated clone `/Volumes/BuildOffload/worktrees/serenity-signed-case-independent-review-20261001`. Contract references: `849ff76` and the current-key admission clarification `81a70ca` (also imported at `22c15ee`). This is a static review only; no Go tests, mutations, or provider calls were run.
+
+The source has three admission blockers at this pin:
+
+1. `operatorreview.New` performs filesystem I/O through `privatefs.ValidateDirectory(context.Background(), ...)` and offers no caller context (`internal/hosted/operatorreview/admission.go:73-86`). This defeats cancellation and violates the context-first filesystem contract. Root requested a context-taking constructor and cancellation regression.
+2. The signed `key_id` is only checked as generic ASCII opaque text before `TrustedKeySource.Lookup`; the exact `ed25519-sha256:<64 lowercase hex>` digest check occurs after the lookup (`admission.go:115-140`). A malformed case can therefore invoke the trust source before its identifier is structurally valid. Root requested exact-format rejection before lookup and a no-lookup regression.
+3. The age and lifetime checks use `time.Sub` against user-supplied positive durations (`admission.go:142-146`). `time.Time.Sub` saturates at the largest representable `time.Duration`; an extreme positive policy can therefore accept a case whose actual age/lifetime exceeds that bound. The code also lacks explicit rejection of zero `Now`, approval, or expiry times. Root requested overflow-safe instant comparisons and zero-time cases with runtime RED controls.
+
+One qualification-test concern: `TestCanceledAndUntrustedDirectoriesFailClosed` treats any error from `ownershipEnforced("/Volumes/BuildOffload")` as proof ownership is disabled (`privatefs/privatefs_test.go:77-82`). If that mount is absent, the test passes on the resulting lookup error. The test should verify the intended mount exists and that the specific ownership-disabled flag is present, or skip with an explicit reason. The production Darwin check uses `MNT_IGNORE_OWNERSHIP`; this finding concerns test evidence.
+
+The implementation otherwise appears consistent with the frozen contract in the reviewed paths: peer credentials precede case/key reads; the case hash and canonical signed payload are bound; parsing rejects duplicate, unknown, aliased and trailing JSON; each admission performs a fresh injected key lookup; and the deterministic test reflects the stated snapshot-before-revocation policy. This does not establish a production trust source, human review, external immutable issuance, or deployment readiness. A valid signature proves attribution to the supplied key, not that a human inspected the case. Those authorities remain absent and are not supplied by this package.
+
+No merge or runtime qualification recommendation until the three admission blockers are corrected and reviewed. Root owns integration and all production activation gates.
