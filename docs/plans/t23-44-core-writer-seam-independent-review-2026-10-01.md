@@ -36,3 +36,17 @@ The seam remains unconnected to hosted remember/reconciliation. Plain `Submit` a
 ## Coordinator regression correction
 
 An omitted-inline-flush mutation revealed that the publication hook test called the fixture Git helper, which invokes testing.Fatal inside the drain goroutine on a missing committed path and prevents the job reply. The test also ignored the checker error. The coordinator changes only this test to return Git errors and join checker/acquisition errors, preserving all assertions and production code. A clean negative-control rerun and restored focused check are required before the integration gate.
+
+## Follow-up review of hook and deletion-route fixtures
+
+I independently reviewed test-only correction `b032610da7d6835007966c1c10fafd0a023e0e79`. In `TestSubmitAndFlushPublishesBeforeHookAndLeavesGuards`, the hook now runs `git show` through `runGit(ctx, ...)` and returns command errors from the checker. It joins checker and exclusive-acquisition errors before storing the result under the hook mutex. This prevents a `t.Fatalf`/`runtime.Goexit` from terminating the queue drain goroutine and stranding the submitting test while still exposing either failure to the test goroutine. The focused race test passed:
+
+`GOCACHE=/Volumes/BuildOffload/tmp/t23-47-billing-lock-review-gocache GOTMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-lock-review-tmp go test -race -count=1 ./internal/writer -run '^TestSubmitAndFlushPublishesBeforeHookAndLeavesGuards$'`
+
+Result: PASS (`1.710s`). No production source changed in this correction.
+
+I also reviewed test-only commit `246b871613f1545c0297471b3f547668f710ccd2`. The service-level dashboard fixture now exercises the assembled `/account/delete` route: pending closure returns 503 while the account remains `deleting` and brain bytes remain; retrying with the same session cookie and CSRF token succeeds after the closer reports `Closed`, then verifies the brain path is removed. This tests the actual `DeletionSession` retry fallback for a restricted account. The old direct dashboard fixture was removed from `TestLegacyCancelAccountRejectsPendingClosure`, leaving that test scoped to the legacy billing adapter's active account/plan behavior. The focused service race test passed:
+
+`GOCACHE=/Volumes/BuildOffload/tmp/t23-47-billing-lock-review-gocache GOTMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-lock-review-tmp go test -race -count=1 ./internal/hosted/service -run '^TestDashboardPendingDeletionFreezesAndRetriesRetainingMemory$'`
+
+Result: PASS (`1.856s`). The closer is a local fake; no live provider calls occurred. The full integration race/vet/lint gate was reported green by the coordinator, not independently rerun for this append. These remain test-fixture improvements and do not change the earlier limitation that the production canonical checker is not activated.
