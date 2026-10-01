@@ -149,8 +149,8 @@ func TestWebhookReconcilesCurrentStateAndDeduplicates(t *testing.T) {
 		t.Fatalf("entitlement %+v %v", ent, err)
 	}
 	apply("evt_new")
-	if requests.Load() != 1 {
-		t.Fatal("duplicate fetched again")
+	if requests.Load() != 2 {
+		t.Fatalf("expected one identity read and one authoritative read, got %d", requests.Load())
 	}
 	// An unrelated historical subscription must not supply the current plan.
 	if _, err = db.DB().ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end) VALUES('sub_old',?,'price_scale','scale','canceled',?,?)`, a.ID, store.Stamp(now), store.Stamp(now.Add(48*time.Hour))); err != nil {

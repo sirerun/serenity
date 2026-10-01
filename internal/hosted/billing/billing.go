@@ -15,7 +15,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
@@ -35,7 +34,7 @@ type Service struct {
 	Store    *store.Store
 	Identity *identity.Service
 	Config   Config
-	mu       sync.Mutex
+	locks    keyedLocks
 	// priorSubscriptionReader is nil in production. It lets package tests inject
 	// a statement-level read failure while exercising the real SQLite
 	// transaction and its rollback behavior.
@@ -277,8 +276,11 @@ func recordWindowClosed(ctx context.Context, tx *sql.Tx, accountID, subscription
 // the account, then replaces the local subscription projection atomically.
 // Frozen accounts are reconciled for bookkeeping but never receive access.
 func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (contracts.ReconcileResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	release, err := s.locks.acquire(ctx, "account:"+accountID)
+	if err != nil {
+		return contracts.ReconcileResult{}, err
+	}
+	defer release()
 	var result contracts.ReconcileResult
 	var customer, status string
 	if err := s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(stripe_customer_id,''),status FROM accounts WHERE id=?`, accountID).Scan(&customer, &status); err != nil {
@@ -466,8 +468,11 @@ func (s *Service) customer(ctx context.Context, account string) (string, error) 
 	return created.ID, err
 }
 func (s *Service) Checkout(ctx context.Context, account, plan string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	release, err := s.locks.acquire(ctx, "account:"+account)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	price := ""
 	switch plan {
 	case "builder":
@@ -999,11 +1004,16 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 	if event.Created <= 0 {
 		return errors.New("missing event creation time")
 	}
-	// Serializing fetch + commit prevents a slower old fetch overwriting newer state.
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Serialize duplicate delivery by event ID. The account key is resolved from
+	// a provider-owned customer ID below, then locked before the authoritative
+	// subscription refetch and projection commit.
+	releaseEvent, err := s.locks.acquire(ctx, "event:"+event.ID)
+	if err != nil {
+		return err
+	}
+	defer releaseEvent()
 	var processed sql.NullString
-	err := s.Store.DB().QueryRowContext(ctx, `SELECT processed_at FROM stripe_events WHERE id=?`, event.ID).Scan(&processed)
+	err = s.Store.DB().QueryRowContext(ctx, `SELECT processed_at FROM stripe_events WHERE id=?`, event.ID).Scan(&processed)
 	if err == nil && processed.Valid {
 		return nil
 	}
@@ -1040,10 +1050,45 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 			return errors.New("invalid subscription reference")
 		}
 		var sub subscription
-		if err = s.request(ctx, "GET", "/subscriptions/"+id, nil, "", &sub); err != nil {
+		if err = s.providerRequest(ctx, "GET", "/subscriptions/"+url.PathEscape(id), nil, "", &sub); err != nil {
 			return err
 		}
-		if sub.ID != id || len(sub.Items.Data) != 1 {
+		if sub.ID != id || !strings.HasPrefix(sub.Customer, "cus_") || strings.ContainsAny(sub.Customer, "/?#") {
+			return contracts.ErrBillingProviderAmbiguous
+		}
+		var account, accountStatus, boundCustomer string
+		e := s.Store.DB().QueryRowContext(ctx, `SELECT id,status,stripe_customer_id FROM accounts WHERE stripe_customer_id=?`, sub.Customer).Scan(&account, &accountStatus, &boundCustomer)
+		if errors.Is(e, sql.ErrNoRows) {
+			// The account may have completed deletion after the provider emitted
+			// this event. Acknowledge it without creating an entitlement.
+			return s.Store.Transaction(ctx, func(tx *sql.Tx) error {
+				_, e := tx.ExecContext(ctx, `UPDATE stripe_events SET processed_at=? WHERE id=?`, store.Stamp(time.Now()), event.ID)
+				return e
+			})
+		}
+		if e != nil {
+			return e
+		}
+		releaseAccount, lockErr := s.locks.acquire(ctx, "account:"+account)
+		if lockErr != nil {
+			return lockErr
+		}
+		defer releaseAccount()
+		var currentCustomer, currentStatus string
+		if e = s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(stripe_customer_id,''),status FROM accounts WHERE id=?`, account).Scan(&currentCustomer, &currentStatus); e != nil {
+			return e
+		}
+		if currentCustomer != boundCustomer || currentCustomer != sub.Customer {
+			return contracts.ErrBillingProviderAmbiguous
+		}
+		accountStatus = currentStatus
+		// This second provider read is the only subscription snapshot used for
+		// projection. The first snapshot established only the trusted lock key.
+		sub = subscription{}
+		if err = s.providerRequest(ctx, "GET", "/subscriptions/"+url.PathEscape(id), nil, "", &sub); err != nil {
+			return err
+		}
+		if sub.ID != id || sub.Customer != currentCustomer || len(sub.Items.Data) != 1 {
 			return errors.New("unsupported subscription shape")
 		}
 		item := sub.Items.Data[0]
@@ -1056,19 +1101,6 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 		}
 		if plan == "" {
 			return errors.New("subscription price is not a Serenity price")
-		}
-		var account, accountStatus string
-		e := s.Store.DB().QueryRowContext(ctx, `SELECT id,status FROM accounts WHERE stripe_customer_id=?`, sub.Customer).Scan(&account, &accountStatus)
-		if errors.Is(e, sql.ErrNoRows) {
-			// The account may have completed deletion after the provider emitted
-			// this event. Acknowledge it without creating an entitlement.
-			return s.Store.Transaction(ctx, func(tx *sql.Tx) error {
-				_, e := tx.ExecContext(ctx, `UPDATE stripe_events SET processed_at=? WHERE id=?`, store.Stamp(time.Now()), event.ID)
-				return e
-			})
-		}
-		if e != nil {
-			return e
 		}
 		anchor := time.Unix(item.CurrentPeriodStart, 0).UTC()
 		invoice := ""
@@ -1211,8 +1243,11 @@ func (s *Service) expireCheckout(ctx context.Context, sessionID string) error {
 // closeBilling is shared by deletion lifecycle callers and the legacy
 // CancelAccount adapter. It certifies provider closure before returning.
 func (s *Service) closeBilling(ctx context.Context, account string, requireDeleting bool) (contracts.CloseResult, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	release, err := s.locks.acquire(ctx, "account:"+account)
+	if err != nil {
+		return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "account operation lock unavailable"}, err
+	}
+	defer release()
 	var customer, status string
 	if err := s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(stripe_customer_id,''),status FROM accounts WHERE id=?`, account).Scan(&customer, &status); err != nil {
 		return contracts.CloseResult{Status: contracts.CloseStatusPending, PendingReason: "account lookup failed"}, err

@@ -1,0 +1,25 @@
+{
+  "task": "T23.47 account-scoped billing operation locks follow-up",
+  "status": "candidate",
+  "base": "b43b66938260b28cdd40e8e7185b3982723e8281",
+  "scope": [
+    "internal/hosted/billing/**"
+  ],
+  "design": "Ref-counted context-aware keyed locks serialize provider operations per account and duplicate webhook delivery per event. The map mutex is held only for entry/refcount bookkeeping. Webhook first provider read validates subscription/customer identity only and resolves the server-owned account mapping; after acquiring that account lock it rechecks the stored customer binding, refetches the subscription, validates identity again, then performs projection reads and writes. Event lock is always acquired before account lock. Durable event receipt remains unprocessed on every failure.",
+  "regressions_added": [
+    "A blocked provider call for account A does not prevent account B reconciliation.",
+    "Checkout and closure for one account do not overlap provider reads.",
+    "A webhook identity fetch paused before its account lock cannot apply its stale snapshot after reconciliation; it refetches under the account lock.",
+    "A canceled lock waiter returns promptly, preserves an entry still held by another caller, and idle entries are reclaimed."
+  ],
+  "validation": {
+    "status": "pending",
+    "tests": "Not yet run. The exact billing package checks and race checks will be recorded after the write claim is released."
+  },
+  "remaining": [
+    "No service/dashboard/gateway assembly changes are included.",
+    "Provider rate limiting and lock behavior across multiple service processes remain separate concerns.",
+    "No live provider calls or live acceptance qualification were performed."
+  ],
+  "merge_status": "banked candidate only; not merged or accepted"
+}
