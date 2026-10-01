@@ -23,7 +23,7 @@ func rewriteForgottenPath(root, relPath string) (retErr error) {
 // rewriteForgottenPathContext bounds every Git subprocess by ctx. The
 // legacy wrapper above preserves local callers' historical behavior.
 func rewriteForgottenPathContext(ctx context.Context, root, relPath string) (retErr error) {
-	return rewriteForgottenPathWithGit(ctx, root, relPath, gitrun.Brain(root), gitrun.Brain)
+	return rewriteForgottenPathWithGit(ctx, root, relPath, gitrun.Brain(root), func(dir string) historyGit { return gitrun.Brain(dir) })
 }
 
 type historyGit interface {
