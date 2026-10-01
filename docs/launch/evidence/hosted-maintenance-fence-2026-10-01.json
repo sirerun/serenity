@@ -1,0 +1,31 @@
+{
+  "scope": "one shared maintenance fence and account stripe across freeze/provider closure/purge; no journal assembly",
+  "full_source": "37fa18177dfe0979a495e99c65d315ce388c2265",
+  "final_source": "c505f1d7da5cf71f89e82080b0aa8350363dc5fb",
+  "author_source": "62550e9a1c3f5f89338bf7785ebd43352d848477",
+  "independent_review": "d92f0a9ed6f0f54eb4dfe392968fca1dba09d3de",
+  "style_review": "2e0d6e6b541882a542ab0369c00d531d0b92dc75",
+  "validation": {
+    "full_race_packages": 79,
+    "packages_without_tests": 5,
+    "gated_skips": 7,
+    "full_race_exit": 0,
+    "vet_exit": 0,
+    "initial_lint_exit": 1,
+    "initial_lint_finding": "QF1006 test-loop style, corrected only in c505f1d",
+    "final_focused_race_exit": 0,
+    "final_full_lint_exit": 0,
+    "linux_arm64_build_exit": 0,
+    "package_parallelism": 2,
+    "full_load": 3.64,
+    "full_build_lease": "e7796b3297c1202ce98de425e149257fa663410a",
+    "leases_released": true,
+    "regression": "queued-backup test RED at runtime on main333; candidate focused GREEN independently at load8.40, 2.167 seconds"
+  },
+  "nonqualifying_history": "Author interrupted final single-package run after sample16.21; no PASS claimed. Root final gate replaces it.",
+  "limits": [
+    "No journal intent/outcome, manifest-v2 assembly, credentials/generation authority, deployment or T23.48 acceptance.",
+    "Inventory unchanged; 64 account hash stripes allow expected collision contention.",
+    "Original draft273/source preserved; expired ownership resolved exact CAS only."
+  ]
+}

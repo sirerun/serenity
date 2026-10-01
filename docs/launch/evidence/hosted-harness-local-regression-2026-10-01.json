@@ -1,0 +1,12 @@
+{
+  "source": "6eaa43bbca06649f4a0a2e5a6c30e7de868a1a91",
+  "command": "python3 -m unittest discover -s evals/hosted -p test_*.py",
+  "exit": 0,
+  "tests_run": 300,
+  "tests_passed": 298,
+  "tests_skipped": 2,
+  "elapsed_seconds": 118.917,
+  "log_sha256": "6646f188f9a5309a2a674aed42f76fcd06ea9f929d24760030e19b5bb5d97158",
+  "evidence_level": "local harness mechanics and loopback fixture regression; not live semantic-quality acceptance",
+  "limits": "No paid/provider/cloud qualification or launch acceptance; opt-in local-service/live tests remain unexecuted."
+}
