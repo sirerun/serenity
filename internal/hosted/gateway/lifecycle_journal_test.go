@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/config"
-	"github.com/sirerun/serenity/internal/embed"
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/hosted/credential"
 	"github.com/sirerun/serenity/internal/hosted/pool"
