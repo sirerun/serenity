@@ -336,6 +336,7 @@ func TestCanonicalReadOnlyPinsObjectInterpretationAndRefusesWrites(t *testing.T)
 }
 
 func TestCanonicalReadOnlyIgnoresReplacementRefs(t *testing.T) {
+	isolateGlobalConfig(t)
 	dir := newRepo(t)
 	run := func(args ...string) string {
 		t.Helper()
@@ -374,6 +375,7 @@ func TestCanonicalReadOnlyIgnoresReplacementRefs(t *testing.T) {
 }
 
 func TestCanonicalReadOnlyDisablesPromisorFetch(t *testing.T) {
+	isolateGlobalConfig(t)
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
