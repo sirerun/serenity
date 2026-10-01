@@ -50,6 +50,7 @@ type Gateway struct {
 	Pool         *pool.Pool
 	Meter        *meter.Meter
 	Operations   *operation.Ledger
+	Journal      contracts.DeletionJournal
 	mu           sync.Mutex
 	handlers     map[string]*entry
 	sessions     map[string]sessionBinding
@@ -148,15 +149,12 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Connection capacity reached", http.StatusServiceUnavailable)
 			return
 		}
-		runtime, release, openErr := g.Pool.Acquire(r.Context(), binding.BrainID)
+		tools, openErr := g.bootstrapTools(r.Context(), raw, binding)
 		if openErr != nil {
 			g.mu.Unlock()
 			http.Error(w, "Memory temporarily unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		tools := make([]mcp.Tool, len(runtime.Tools))
-		copy(tools, runtime.Tools)
-		release()
 		for idx := range tools {
 			name := tools[idx].Name
 			tools[idx].Handler = func(ctx context.Context, args json.RawMessage) (mcp.Result, error) {
@@ -209,6 +207,44 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		delete(g.sessions, session)
 		g.mu.Unlock()
 	}
+}
+
+// bootstrapTools opens the runtime only while deletion and backup writers are
+// excluded, then releases both locks before the resulting handler can enter
+// callBound (which takes Maintenance itself).
+func (g *Gateway) bootstrapTools(ctx context.Context, raw string, expected credential.Binding) ([]mcp.Tool, error) {
+	if g.Pool == nil || g.Issuer == nil || g.Issuer.Store == nil {
+		return nil, errors.New("hosted: runtime bootstrap dependencies are unavailable")
+	}
+	g.Maintenance.RLock()
+	defer g.Maintenance.RUnlock()
+	hash := sha256.Sum256([]byte(expected.AccountID))
+	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
+	lock.Lock()
+	defer lock.Unlock()
+
+	current, err := g.Issuer.Verify(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+	if current.AccountID != expected.AccountID || current.BrainID != expected.BrainID || current.CredentialID != expected.CredentialID || current.Generation != expected.Generation {
+		return nil, credential.ErrInvalidCredential
+	}
+	brain, err := g.Issuer.Store.BrainByID(ctx, expected.AccountID, expected.BrainID)
+	if err != nil {
+		return nil, err
+	}
+	if brain.State != "ready" {
+		return nil, errors.New("hosted: brain is not ready")
+	}
+	runtime, release, err := g.Pool.Acquire(ctx, expected.BrainID)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
+	tools := make([]mcp.Tool, len(runtime.Tools))
+	copy(tools, runtime.Tools)
+	return tools, nil
 }
 
 type sessionWriter struct {

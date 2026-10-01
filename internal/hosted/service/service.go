@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -57,6 +58,56 @@ type Config struct {
 	PartnerAccountCap int                        `json:"partner_account_cap"`
 	RegistrationMode  contracts.RegistrationMode `json:"registration_mode"`
 	InviteAllowlist   []string                   `json:"invite_allowlist"`
+}
+
+// ErrStartupUnavailable means this binary was not given the trusted durable
+// lifecycle dependencies required to serve hosted traffic.
+var ErrStartupUnavailable = errors.New("hosted service startup unavailable without journal lifecycle dependencies")
+
+// RecoveryAdmission establishes the provenance of the restored snapshot
+// watermark and complete history boundary. Admit must require the trusted
+// coordinator to fence/seal the prior writer and adopt this process's active
+// successor before returning. A visible unsealed tail or ReadThrough success
+// alone is not admission; the service additionally requires ReadThrough to
+// terminate at a verified seal before replay.
+type RecoveryAdmission interface {
+	Admit(ctx context.Context, journal contracts.DeletionJournal) (contracts.DeletionWatermark, error)
+}
+
+// LifecycleDependencies are injected by the trusted startup coordinator. The
+// same Journal instance is shared with Gateway and backup; BuildSHA identifies
+// the actual release build, and Recovery proves the journal boundary before
+// service assembly admits handlers or workers.
+type LifecycleDependencies struct {
+	Journal  contracts.DeletionJournal
+	BuildSHA string
+	Recovery RecoveryAdmission
+}
+
+func (d LifecycleDependencies) validate() error {
+	if isNilDependency(d.Journal) {
+		return fmt.Errorf("%w: deletion journal is required", ErrStartupUnavailable)
+	}
+	if strings.TrimSpace(d.BuildSHA) == "" || strings.ContainsAny(d.BuildSHA, " \t\r\n") {
+		return fmt.Errorf("%w: an explicit build identity is required", ErrStartupUnavailable)
+	}
+	if isNilDependency(d.Recovery) {
+		return fmt.Errorf("%w: trusted recovery admission is required", ErrStartupUnavailable)
+	}
+	return nil
+}
+
+func isNilDependency(value any) bool {
+	if value == nil {
+		return true
+	}
+	v := reflect.ValueOf(value)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 func Load(path string) (Config, error) {
@@ -179,6 +230,8 @@ type Service struct {
 	Store               *store.Store
 	Pool                *pool.Pool
 	Gateway             *gateway.Gateway
+	journal             contracts.DeletionJournal
+	buildSHA            string
 	Partner             *partner.Service
 	Handler             http.Handler
 	cfg                 Config
@@ -206,6 +259,18 @@ func (l ledger) Record(ctx context.Context, e router.SpendEntry) error {
 	})
 }
 func New(cfg Config, dev bool, devOutput io.Writer) (*Service, error) {
+	return nil, fmt.Errorf("%w: use NewWithDependencies", ErrStartupUnavailable)
+}
+
+// NewWithDependencies constructs a hosted service only after validating the
+// required journal, build identity, and trusted startup recovery admission.
+func NewWithDependencies(ctx context.Context, cfg Config, dev bool, devOutput io.Writer, deps LifecycleDependencies) (*Service, error) {
+	if isNilDependency(ctx) {
+		return nil, fmt.Errorf("%w: startup context is required", ErrStartupUnavailable)
+	}
+	if err := deps.validate(); err != nil {
+		return nil, err
+	}
 	if err := cfg.Validate(dev); err != nil {
 		return nil, err
 	}
@@ -246,7 +311,7 @@ func New(cfg Config, dev bool, devOutput io.Writer) (*Service, error) {
 	}
 	provider := newEmbeddingProvider(cfg, embeddingKey)
 	embedder := &embed.RouterEmbedder{Router: router.New(map[router.Tier]router.Provider{router.TierLocalCheap: provider}, ledger{db}), Pin: provider.ModelVersion()}
-	s, err := Assemble(cfg, dev, db, sender, embedder)
+	s, err := AssembleWithDependencies(ctx, cfg, dev, db, sender, embedder, deps)
 	if err != nil {
 		return nil, errors.Join(err, db.Close())
 	}
@@ -255,31 +320,73 @@ func New(cfg Config, dev bool, devOutput io.Writer) (*Service, error) {
 
 // Assemble supplies the same production handlers to integration tests with explicit provider adapters.
 func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, embedding embed.Embedder) (*Service, error) {
+	return nil, fmt.Errorf("%w: use AssembleWithDependencies", ErrStartupUnavailable)
+}
+
+// AssembleWithDependencies admits startup only after a provenance-validated
+// watermark and a sealed, complete journal read have been replayed.
+func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *store.Store, sender identity.Sender, embedding embed.Embedder, deps LifecycleDependencies) (*Service, error) {
+	if isNilDependency(ctx) {
+		return nil, fmt.Errorf("%w: startup context is required", ErrStartupUnavailable)
+	}
+	if err := deps.validate(); err != nil {
+		return nil, err
+	}
+	if db == nil {
+		return nil, errors.New("hosted: control store is required")
+	}
+	from, err := deps.Recovery.Admit(ctx, deps.Journal)
+	if err != nil {
+		return nil, fmt.Errorf("hosted: admit deletion journal recovery: %w", err)
+	}
+	cutRead, err := deps.Journal.ReadThrough(ctx, from)
+	if err != nil {
+		return nil, fmt.Errorf("hosted: verify admitted deletion journal watermark: %w", err)
+	}
+	// The snapshot watermark is a replay optimization, not permission to ignore
+	// earlier intents: the restored control database may contain a frozen row
+	// whose request predates the snapshot cut and whose purge did not complete.
+	// Admission therefore precedes a full-history read from the explicit
+	// beginning-of-journal cursor, and both reads must agree on the same sealed
+	// complete boundary.
+	fullRead, err := deps.Journal.ReadThrough(ctx, contracts.DeletionWatermark{})
+	if err != nil {
+		return nil, fmt.Errorf("hosted: read complete deletion journal history: %w", err)
+	}
+	if !cutRead.Sealed || !fullRead.Sealed || cutRead.To != fullRead.To {
+		return nil, fmt.Errorf("%w: admitted and complete deletion journal reads do not share a sealed boundary", contracts.ErrDeletionJournalIncomplete)
+	}
+	if err = ctx.Err(); err != nil {
+		return nil, fmt.Errorf("hosted: startup canceled after deletion journal verification: %w", err)
+	}
+	if err = verifyPendingDeletionIntents(ctx, db, fullRead.Entries); err != nil {
+		return nil, err
+	}
 	p, err := pool.New(pool.Config{MaxOpen: cfg.MaxOpen, MaxInFlight: cfg.MaxInFlight, IdleTimeout: 10 * time.Minute, BrainsRoot: filepath.Join(cfg.DataDir, "brains"), Embedder: embedding})
 	if err != nil {
 		return nil, err
 	}
 	issuer := &credential.Issuer{Store: db}
 	metering := &meter.Meter{Store: db}
-	g := &gateway.Gateway{Issuer: issuer, Pool: p, Meter: metering, Operations: &operation.Ledger{Store: db}}
+	g := &gateway.Gateway{Issuer: issuer, Pool: p, Meter: metering, Operations: &operation.Ledger{Store: db}, Journal: deps.Journal}
 	allowlist := make(map[string]struct{}, len(cfg.InviteAllowlist))
 	for _, email := range cfg.InviteAllowlist {
 		allowlist[email] = struct{}{}
 	}
 	id := &identity.Service{Store: db, Sender: sender, Origin: cfg.PublicOrigin, AccountCap: cfg.AccountCap, RegistrationMode: cfg.RegistrationMode, InviteAllowlist: allowlist}
 	provisioner := &provision.Provisioner{Store: db, BrainsRoot: filepath.Join(cfg.DataDir, "brains")}
-	if err = provisioner.Recover(context.Background()); err != nil {
-		return nil, errors.Join(err, p.Close())
-	}
 	dash := &dashboard.Dashboard{Gateway: g, Identity: id, Provision: provisioner, Issuer: issuer, Meter: metering, Origin: cfg.PublicOrigin, Dev: dev, Billing: cfg.BillingEnabled}
-	s := &Service{Store: db, Pool: p, Gateway: g, cfg: cfg, embedder: embedding}
+	s := &Service{Store: db, Pool: p, Gateway: g, journal: deps.Journal, buildSHA: deps.BuildSHA, cfg: cfg, embedder: embedding}
 	if cfg.billingConfig != nil {
 		dash.BillingService = &billing.Service{Store: db, Identity: id, Config: *cfg.billingConfig}
 		s.billingCloser = dash.BillingService
 		s.billingReconciler = dash.BillingService
 	}
 	dash.DeleteAccount = s.DeleteAccount
-	if err = s.recoverDeletions(context.Background()); err != nil {
+	if err = s.recoverDeletions(ctx, fullRead.Entries); err != nil {
+		return nil, errors.Join(err, p.Close())
+	}
+	if err = provisioner.Recover(ctx); err != nil {
 		return nil, errors.Join(err, p.Close())
 	}
 	mux := http.NewServeMux()
@@ -306,6 +413,9 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) })
 	mux.HandleFunc("GET /readyz", s.readiness)
 	mux.Handle("/", dash.Handler())
+	if err = ctx.Err(); err != nil {
+		return nil, errors.Join(fmt.Errorf("hosted: startup canceled before handler admission: %w", err), p.Close())
+	}
 	s.Handler = mux
 	if s.billingReconciler != nil {
 		s.startBillingReconciler()
@@ -361,7 +471,7 @@ func (s *Service) Backup(ctx context.Context, destination string) error {
 	if err := s.Pool.FlushAll(); err != nil {
 		return err
 	}
-	return backup.Create(ctx, s.cfg.DataDir, destination)
+	return backup.Create(ctx, s.cfg.DataDir, destination, s.buildSHA, s.journal)
 }
 func (s *Service) AdminHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

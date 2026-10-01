@@ -52,7 +52,7 @@ func newPartnerEnv(t *testing.T, mutate func(*service.Config)) *partnerEnv {
 		mutate(&cfg)
 	}
 	mail := &sender{}
-	svc, err := service.Assemble(cfg, true, db, mail, embedding{})
+	svc, err := assembleForTest(t, cfg, true, db, mail, embedding{})
 	if err != nil {
 		_ = db.Close()
 		t.Fatal(err)

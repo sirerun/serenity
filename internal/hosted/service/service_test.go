@@ -50,7 +50,7 @@ func TestHostedJourneyAndIsolation(t *testing.T) {
 			t.Fatal(err)
 		}
 		cfg := service.Config{DataDir: dir, MaxOpen: 2, MaxInFlight: 8, PublicOrigin: "http://127.0.0.1", AccountCap: 100}
-		svc, err = service.Assemble(cfg, true, db, mail, embedding{})
+		svc, err = assembleForTest(t, cfg, true, db, mail, embedding{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -283,7 +283,7 @@ func TestInviteOnlyRegistrationConfigWiresThroughAssembly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc, err := service.Assemble(service.Config{
+	svc, err := assembleForTest(t, service.Config{
 		DataDir:          dir,
 		PublicOrigin:     "http://127.0.0.1",
 		MaxOpen:          2,
@@ -326,7 +326,7 @@ func TestOperationKeysAreBrainScopedAndQuotaIsAccountScoped(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	svc, err := service.Assemble(service.Config{DataDir: dir, PublicOrigin: "http://127.0.0.1", MaxOpen: 2, MaxInFlight: 4, AccountCap: 100}, true, db, &sender{}, embedding{})
+	svc, err := assembleForTest(t, service.Config{DataDir: dir, PublicOrigin: "http://127.0.0.1", MaxOpen: 2, MaxInFlight: 4, AccountCap: 100}, true, db, &sender{}, embedding{})
 	if err != nil {
 		t.Fatal(err)
 	}

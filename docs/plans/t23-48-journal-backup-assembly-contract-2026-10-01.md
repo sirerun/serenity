@@ -1,0 +1,39 @@
+# Journal and backup assembly development boundary
+
+This is the coordinator's as-built integration ruling for source based on main PR336. It supplements the earlier API proposal; it does not amend the pinned deletion, restore-fence or manifest contracts, prove production adoption, or authorize deployment.
+
+The service constructors require a context and explicit LifecycleDependencies: the same DeletionJournal instance, an explicit release build identity, and a trusted RecoveryAdmission capability. Legacy New and Assemble fail with ErrStartupUnavailable before opening stores or admitting traffic. Consequently the current hosted CLI cannot start this new source until a reviewed production dependency factory and admission mechanism are supplied. The existing deployed binary is unchanged.
+
+RecoveryAdmission returns the provenance-validated snapshot watermark. Missing provenance is an error. Zero requires explicit genesis authority; it is not inferred from an absent manifest, empty-looking listing or SQL state. The production capability must establish the old writer is stopped, its credentials revoked, the prior generation sealed, and this process assigned the adopted active successor. No production implementation, automatic seal/adopt, default filesystem journal or AWS default credential chain is introduced. Tests use explicit local filesystem gen1 seals and gen2 writers only to exercise mechanics.
+
+Startup verifies the admitted watermark by ReadThrough, then reads the complete history from zero and requires both reads to terminate at the same sealed watermark. The zero scan is full-history verification after provenance admission, never a replacement for admission. Reading only entries after the snapshot cut misses an intent already captured by a snapshot while its purge is unfinished. All relevant requested and terminal subjects are replayed against restored state before handlers or billing workers start. If a successor already contains entries, authoritative generation rotation is required before startup; highest visible unsealed sequence is not completeness.
+
+Normal account deletion keeps restore_pending frozen. Only the private callback reached after admitted sealed replay may move restore_pending to deleting. A deleted row is also rechecked under deleting status before provider closure, because terminal SQL does not prove provider state or unfinished cleanup. Provider uncertainty retains files; only confirmed closure permits idempotent cleanup and a durable journal outcome.
+
+Gateway lifecycle writes requested before destructive work and purged only after checked local whole-brain removal, runtime closure, credential/OAuth revocation, and account cleanup, inside the maintenance read fence and account stripe. Canonical sources, normal Git storage and the hosted derived SQLite FTS/vector index are beneath the owned brain root; external Git/index storage escapes must fail closed. This is local whole-brain erasure, not per-fact history rewriting or remote snapshot/provider retention acceptance. Missing account state cannot fabricate closure proof.
+
+Service Backup holds the maintenance write fence, flushes runtimes, and calls manifest-v2 Create with the exact shared journal and build identity. The backup package reads and records the real journal watermark before copying; an active unsealed snapshot watermark is not recovery completeness. Strict manifest parsing, inventory/schema/checksum/bundle validation, private atomic staging and restored frozen state remain mandatory.
+
+Current qualification holds: gateway deleted/absent subject cleanup proofs and backup parser duplicate/unknown JSON rejection. Root service regressions cover pre-cut intent, rejected unsealed/wrong-checkpoint histories, privileged restored state and nil contexts, but are not yet qualified against the pending gateway correction. No full integration PASS is claimed.
+
+T23.48/T23.49 remain partial. Scoped production credentials, retained journal IAM/lifecycle, live conditional-write qualification, authoritative T23.50 adoption/fence receipts, reserved-ledger lifecycle settlement, operator activation, actual remote backup/retention/restore qualification and launch/provider gates remain open.
+
+## Review corrections assembled on October 1
+
+The earlier gateway and manifest parser holds have source corrections. Manifest parsing rejects duplicate, unknown and differently cased field aliases, limits bytes and nesting, and publication uses atomic no-replace OS primitives. Unsupported platforms or filesystems fail closed rather than fall back to a replace-capable rename. Independent review of source 8a03db12 clears the bounded backup library, including a real no-replace mutation failure; Linux compile evidence is not live Linux syscall qualification.
+
+Startup propagates its context into provisioning recovery, checks cancellation before handlers are published, and refuses SQL deleting accounts that lack a requested intent in verified complete journal history. The provider-closure startup regression now uses an actual requested event, seal and active successor fixture. These corrections have focused author race evidence, with final integration qualification still pending.
+
+Both hosted backup and restore CLI commands now return ErrStartupUnavailable before filesystem or service I/O. Their former signatures and direct restore path cannot supply the required provenance admission and journal-aware operator coordinator. This restriction is part of the development boundary: no fabricated nil journal, empty build identity, implicit genesis or production credential default is used to make old commands appear operational. The hosted plans command remains available. Production serving already requires a reviewed dependency factory.
+
+The coordinator preserved a worker's accidental source-checkout branch switch without losing source or resetting files; branch refs were reconciled with exact compare-and-swap and the worker moved to its own full external clone. A mistakenly acquired source resource on the build-lease remote was released by its exact owner SHA and reacquired on the canonical source remote. Neither incident is validation evidence.
+
+## Local integration qualification
+
+Source 2f3a8205afddde74e79920581f5d0883c77c8f11 passes the complete local Go race suite (80 packages, 2778 passing tests/subtests), go vet, golangci-lint and the Linux ARM64 CLI build. Four packages have no tests; seven gated test skips are enumerated in docs/launch/evidence/hosted-journal-backup-assembly-2026-10-01.json. Actual runtime is Go 1.27.1 on Darwin ARM64; the module minimum is Go 1.26.5. Package parallelism was two, load guards passed and shared build lease 737975b was released.
+
+The first integration run and subsequent lint failure are preserved as nonqualifying history. Final source fixes the malformed Git fixture, scans actual NUL Git config records with newline key/value separators, rejects malformed metadata, propagates startup cancellation and validates real sealed deletion history. CLI serve now refuses before config, ownership or socket I/O, matching backup/restore refusal. Unsupported atomic publication platforms fail closed.
+
+This qualifies local mechanics only. No production factory, provider authority, retained credential policy, remote purge, Linux runtime restore, deployment or whole-task acceptance follows from these results. Historical manifest review filenames use the task52 prefix; their subject is the task49 backup library, not task52 retention acceptance.
+
+Independent final review 9bb42b2 clears the specific initial Service, Gateway and CLI blockers for exact production source 2f3a820. Initial held receipts remain intact. Coordinator correction holds are lifted for this bounded development assembly only, subject to fresh trusted merge holds and an ordinary expected-head merge. No production readiness or task acceptance is asserted.
