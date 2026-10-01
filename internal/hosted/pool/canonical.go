@@ -273,7 +273,7 @@ func validateCanonicalGitConfig(path string) error {
 				return errors.New("unsupported canonical git repository format")
 			}
 			coreFormat = true
-		case "core.filemode", "core.logallrefupdates":
+		case "core.filemode", "core.logallrefupdates", "core.ignorecase", "core.precomposeunicode":
 			if value != "true" && value != "false" {
 				return fmt.Errorf("invalid canonical git config value for %s", full)
 			}
