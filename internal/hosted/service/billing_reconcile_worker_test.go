@@ -206,6 +206,109 @@ func TestBillingReconcileWorkerRepairsStaleActiveReadAfterFreeze(t *testing.T) {
 	}
 }
 
+func runOldCheckoutExpiry(t *testing.T, expiryResponse string) (*store.Store, string, <-chan struct{}, func()) {
+	t.Helper()
+	listEntered := make(chan struct{})
+	releaseList := make(chan struct{})
+	expiryPosted := make(chan struct{})
+	var posts atomic.Int32
+	var enteredOnce, postOnce atomic.Bool
+	provider := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method + " " + r.URL.Path {
+		case "GET /subscriptions":
+			if enteredOnce.CompareAndSwap(false, true) {
+				close(listEntered)
+			}
+			select {
+			case <-releaseList:
+			case <-r.Context().Done():
+				return
+			}
+			_, _ = w.Write([]byte(`{"data":[],"has_more":false}`))
+		case "GET /checkout/sessions/cs_old":
+			_, _ = w.Write([]byte(`{"id":"cs_old","status":"open"}`))
+		case "POST /checkout/sessions/cs_old/expire":
+			posts.Add(1)
+			if got := r.Header.Get("Idempotency-Key"); got != "serenity-expire-cs_old" {
+				t.Errorf("expiry idempotency key=%q", got)
+			}
+			_, _ = w.Write([]byte(expiryResponse))
+			if postOnce.CompareAndSwap(false, true) {
+				close(expiryPosted)
+			}
+		default:
+			http.Error(w, "unexpected provider request", http.StatusNotFound)
+		}
+	})
+	svc, db, accountID, cleanup := newReconcileService(t, provider)
+	select {
+	case <-listEntered:
+	case <-time.After(5 * time.Second):
+		cleanup()
+		t.Fatal("worker did not enter subscription request")
+	}
+	_, err := db.DB().Exec(`INSERT INTO checkout_attempts(account_id,id,price_id,session_id,created_at) VALUES(?,?,?,?,?)`, accountID, store.ID(), "price_builder", "cs_old", store.Stamp(time.Now().Add(-24*time.Hour)))
+	if err != nil {
+		close(releaseList)
+		cleanup()
+		t.Fatal(err)
+	}
+	close(releaseList)
+	return db, accountID, expiryPosted, func() {
+		_ = svc.Close()
+		cleanup()
+		if got := posts.Load(); got > 1 {
+			t.Errorf("expiry POST count=%d, want at most one", got)
+		}
+	}
+}
+
+func TestBillingReconcileWorkerExpiresOnlyConfirmedOldOpenCheckout(t *testing.T) {
+	db, accountID, posted, cleanup := runOldCheckoutExpiry(t, `{"id":"cs_old","status":"expired"}`)
+	defer cleanup()
+	select {
+	case <-posted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker did not POST expiration for old open checkout")
+	}
+	waitFor(t, "confirmed old checkout reconciliation", func() bool {
+		var count int
+		_ = db.DB().QueryRow(`SELECT count(*) FROM audit_log WHERE account_id=? AND action='checkout_attempt_reconciled' AND detail='expired_open_session'`, accountID).Scan(&count)
+		return count == 1
+	})
+	var attempts int
+	if err := db.DB().QueryRow(`SELECT count(*) FROM checkout_attempts WHERE account_id=?`, accountID).Scan(&attempts); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 0 {
+		t.Fatalf("confirmed checkout attempt rows=%d, want 0", attempts)
+	}
+}
+
+func TestBillingReconcileWorkerRetainsAmbiguousOldCheckout(t *testing.T) {
+	db, accountID, posted, cleanup := runOldCheckoutExpiry(t, `{"id":"cs_other","status":"expired"}`)
+	defer cleanup()
+	select {
+	case <-posted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker did not attempt old checkout expiration")
+	}
+	// Let the provider response return through the worker before checking that
+	// an unconfirmed expiration leaves its durable attempt available for retry.
+	time.Sleep(100 * time.Millisecond)
+	var attempts, reconciled int
+	if err := db.DB().QueryRow(`SELECT count(*) FROM checkout_attempts WHERE account_id=?`, accountID).Scan(&attempts); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DB().QueryRow(`SELECT count(*) FROM audit_log WHERE account_id=? AND action='checkout_attempt_reconciled'`, accountID).Scan(&reconciled); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 1 || reconciled != 0 {
+		t.Fatalf("ambiguous expiration attempts=%d reconciled=%d, want retained and unaudited", attempts, reconciled)
+	}
+}
+
 func TestBillingReconcileWorkerCloseCancelsAndJoinsProviderCall(t *testing.T) {
 	entered := make(chan struct{})
 	providerCanceled := make(chan struct{})
