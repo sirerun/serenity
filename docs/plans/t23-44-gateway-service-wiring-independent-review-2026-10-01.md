@@ -40,3 +40,11 @@ Focused race tests were run on exact source pin `39bfe213d95090aa955fa22afb92364
 - `go test -race ./internal/hosted/gateway -run 'TestOperationReconciliation(HoldsMaintenanceWithoutAccountLock|RejectsUnsafeTreeBeforeRuntimeOpen)$' -count=1` — PASS (`1.683s`).
 
 These are focused single-package race checks only; no full race, multi-package gate, or production qualification was performed. The Gateway `EnterCommit` direct-delegation path was reviewed statically; the focused Gateway test selection does not exercise a queue commit through that adapter.
+
+## PR338 EnterCommit test addendum
+
+Final review pin: PR338 `65612db1a9a23e1c0e86cdcdc6b302f3f421c7a6`; the only code change after the previous reviewed source is test commit `61c8854edf42516aba2302fad09e159bbbf88f93` in `internal/hosted/gateway/operation_reconcile_test.go`. Production Gateway/Service/Pool files are unchanged from reviewed implementation `12db5d8b7da9be9c8d783c7b41627e6d33239d3f`.
+
+I inspected the added `TestOperationEnterCommitDoesNotReacquireCallerLocks` and its validation artifacts. The test holds the caller's maintenance read lock and the account shard lock while invoking `EnterCommit`; current code directly delegates to the pool queue adapter and releases it after the caller releases its locks. The recorded control status is `red: 1, green: 0`. The old-source log on `c5c4e29` fails with `ErrBrainNotQuiescent` at the lock-reacquisition assertion; the restored source log passes. Artifacts: `/Volumes/BuildOffload/serenity-hosted-recovery-validation-20261001/accounting-entercommit-control-status.json`, `accounting-entercommit-red.log`, and `accounting-entercommit-green.log`.
+
+This is a valid regression for the observed account-shard reacquisition bug. The current test does not independently detect a nested maintenance `TryRLock` while only a read lock is held, since `RWMutex` permits another reader absent a pending writer; static inspection of the production implementation confirms `EnterCommit` no longer calls the lifecycle-lock path at all. No further blocker found. I did not run Go commands because the full root gate held the shared build lease. This addendum records review of the test and root's RED/GREEN artifacts, not an independent test execution.
