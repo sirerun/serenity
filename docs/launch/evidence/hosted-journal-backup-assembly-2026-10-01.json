@@ -1,0 +1,105 @@
+{
+  "date": "2026-10-01",
+  "scope": "Development assembly of shared deletion journal, admitted full-history startup replay and manifest-v2 backups; not production activation or hosted-completion acceptance",
+  "qualified_source": "2f3a8205afddde74e79920581f5d0883c77c8f11",
+  "go_runtime": "go1.27.1 darwin/arm64",
+  "module_minimum": "go1.26.5",
+  "validation": {
+    "race": 0,
+    "vet": 0,
+    "lint": 0,
+    "linux-arm64-build": 0
+  },
+  "race_summary": {
+    "passing_packages": 80,
+    "passing_tests_and_subtests": 2778,
+    "skipped_tests": [
+      {
+        "package": "github.com/sirerun/serenity/evals/importbudget",
+        "test": "TestImportBudget10K"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/cli",
+        "test": "TestGbrainProtocolConformance"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/conformance",
+        "test": "TestBootDeliberatelyBrokenBuildFailsDisposeConformance"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/hosted/deletion",
+        "test": "TestS3Qualification"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/import/gbrain",
+        "test": "TestImportCrashHelper"
+      },
+      {
+        "package": "github.com/sirerun/serenity/pkg/serenity",
+        "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request"
+      },
+      {
+        "package": "github.com/sirerun/serenity/pkg/serenity",
+        "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+      }
+    ],
+    "packages_without_tests": [
+      "github.com/sirerun/serenity/cmd/serenity",
+      "github.com/sirerun/serenity/evals/gen/messages",
+      "github.com/sirerun/serenity/evals/hosted/fixtures/seedbrain",
+      "github.com/sirerun/serenity/internal/hosted/dashboard"
+    ],
+    "failures": []
+  },
+  "shared_build_lease": {
+    "sha": "737975b223d3b35e4a6808cff68ae6a129b88a26",
+    "released": true,
+    "initial_one_minute_load": 3.54,
+    "package_parallelism": 2
+  },
+  "artifacts": [
+    {
+      "name": "journal-assembly-full-check.py",
+      "sha256": "5c18517ca1d60925551acb8651ae8bcc54109801ff280a53185c00b0fd2d353e"
+    },
+    {
+      "name": "journal-assembly-full-race.jsonl",
+      "sha256": "f399c899ed9dc155584ba61c6061200cb036f9adfebfae50942829d278f0e882"
+    },
+    {
+      "name": "journal-assembly-full-vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "journal-assembly-full-lint.log",
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "name": "journal-assembly-full-linux-arm64-build.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "initial_nonqualifying_checks": [
+    "Initial focused run at ea47e6b failed unused Gateway test import and stale SQL-only startup billing fixtures.",
+    "Focused corrected source 9a8c708 passed four-package race and vet but lint found six issues. All were corrected before the qualified full gate.",
+    "Author overload or pre-final-test runs are not substitutes for exact-source qualification."
+  ],
+  "independent_review": [
+    "Manifest-v2 initial nil/journal/parser holds preserved in separate review receipts.",
+    "Exact alias parsing correction reviewed at 0027e229; publication race remained held.",
+    "Atomic no-replace review 7d59d0a of 8a03db12 clears bounded backup library; Linux compile only, no live Linux syscall qualification.",
+    "Service/Gateway initial held receipt d98b403 preserved; final follow-up receipt will record final corrections separately."
+  ],
+  "production_boundary": [
+    "Hosted serve, backup and restore CLI commands return ErrStartupUnavailable before I/O until a reviewed admitted coordinator exists.",
+    "No production RecoveryAdmission, automatic seal/adopt, scoped credential factory or default AWS credential chain was introduced.",
+    "No deployment, AWS/Stripe/S3 call, retained-object purge or task acceptance occurred."
+  ],
+  "remaining": [
+    "OS-enforced physical staging and allocated-byte accounting",
+    "Authoritative old-writer stop, credential revocation and successor adoption",
+    "Production journal IAM/lifecycle and live conditional-write qualification",
+    "Remote backup transport, retention, restore qualification and operator activation",
+    "Reserved operation settlement, provider and launch gates"
+  ]
+}
