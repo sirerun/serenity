@@ -145,6 +145,9 @@ func rewriteForgottenPathWithGit(ctx context.Context, root, relPath string, git 
 	if err != nil {
 		return fmt.Errorf("writer: prepare history rewrite: %w", err)
 	}
+	if err := configureHistoryProcessGroup(filterCmd); err != nil {
+		return fmt.Errorf("writer: configure isolated history rewrite process: %w", err)
+	}
 	// Git's ten-second filter-branch warning is for interactive use. This
 	// operation is explicit and covered by the CLI warning and operator docs.
 	filterCmd.Env = append(filterCmd.Env, "FILTER_BRANCH_SQUELCH_WARNING=1")
