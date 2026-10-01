@@ -4,6 +4,13 @@ Date: 2026-10-01
 Baseline: hosted remember routing `5e6413aef237138068c5f7c5f3397c055e13a` plus reviewed core queue seam.  
 Status: read-only design recommendation. No checker, forget routing, fence adapter, startup reconciliation, ticker, or acceptance change is implemented here.
 
+
+## Coordinator amendment — pinned absence contract and lock order
+
+The earlier recommendations below are preserved as design history. The current candidate supersedes two points: ordinary Flush acquires the context-aware run lock, attempts a nonblocking shared guard, and releases the run lock before waiting if an exclusive checker is active/queued. It never holds the shared guard while waiting for a provider job's run lock. Canonical submissions retain shared guard then run lock; the checker never takes run lock or Runtime.Mutations.
+
+The pinned CanonicalAbsent/EvidenceAbsent contract requires examining uncommitted source and touched-queue state as well as committed state. HEAD plus a zero CanonicalEnteredAt is insufficient for this contract. The unwired checker therefore returns Unknown for both entered-missing and no-entry-missing outcomes until a complete bounded absence proof is implemented and reviewed. Positive matching committed facts can still prove Landed. No contract wording is relaxed, no retained marker is added, and startup/ticker/operator activation remains off.
+
 ## Current hosted surface and gaps
 
 `internal/hosted/pool/pool.go:open` builds memory handlers and then allowlists only `remember`, `recall`, `forget`, and `read_memory_fact`. Thus current hosted canonical source mutations are remember and forget. `cancel_memory_operation` exists in `internal/server/memory/cancel.go` as an extension tool but the hosted pool filters it out; it is not a hosted route today. Do not treat it as one or expose it as part of checker activation without a separate ownership/key-mapping decision.
