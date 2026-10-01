@@ -23,12 +23,19 @@ jobs:
       - name: Seeded vulnerable build must fail the gate
         shell: bash
         run: |
+          seed_log=$(mktemp)
+          trap 'rm -f "$seed_log"' EXIT
           set +e
-          SERENITY_ADVERSARIAL_VULNERABLE=1 go test -count=1 ./internal/gate
+          SERENITY_ADVERSARIAL_VULNERABLE=1 go test -count=1 ./internal/gate >"$seed_log" 2>&1
           status=$?
           set -e
+          cat "$seed_log"
           if [ $status -eq 0 ]; then
             echo "seeded vulnerable build unexpectedly passed the adversarial gate"
+            exit 1
+          fi
+          if ! grep -Fq "unsafe subject escaped model boundary" "$seed_log"; then
+            echo "seeded vulnerable run failed without reproducing the subject traversal"
             exit 1
           fi
 
