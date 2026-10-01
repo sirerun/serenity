@@ -88,7 +88,7 @@
     "Manifest-v2 initial nil/journal/parser holds preserved in separate review receipts.",
     "Exact alias parsing correction reviewed at 0027e229; publication race remained held.",
     "Atomic no-replace review 7d59d0a of 8a03db12 clears bounded backup library; Linux compile only, no live Linux syscall qualification.",
-    "Service/Gateway initial held receipt d98b403 preserved; final follow-up receipt will record final corrections separately."
+    "Service/Gateway initial held receipt d98b403 preserved; final review 9bb42b2 clears the specific blockers for exact production source 2f3a820 with independently passing focused regressions."
   ],
   "production_boundary": [
     "Hosted serve, backup and restore CLI commands return ErrStartupUnavailable before I/O until a reviewed admitted coordinator exists.",
