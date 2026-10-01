@@ -10,6 +10,7 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-10-01 [PR333](https://github.com/sirerun/serenity/pull/333) merged at6eaa43b: hosted forget and ordinary flush use the canonical fence; canceled history commands terminate owned process groups. An unused conservative committed-HEAD checker rejects unsafe Git storage/configuration. Full race79/vet0, final focused race/full lint/LinuxARM64 build0 and independent review pass. Missing evidence stays Unknown; activation, absence proof and physical staging remain open.
 - 2026-10-01 [PR332](https://github.com/sirerun/serenity/pull/332) merged at230234c: unused manifest-bound backup completion verifier, with private staging and idempotent crash retry. All42 deployment Python tests pass, including20 helper cases; independent real process-crash review clears the original retry blocker. Upload/download/retention and real manifest-v2/journal assembly remain open; no T23.52 acceptance.
 - 2026-10-01 [PR331](https://github.com/sirerun/serenity/pull/331) merged at4f573b3: configured billing reconciliation is bounded, serial and cancellable; frozen-account bookkeeping remains restricted, page cursors survive database failures, and shutdown joins before closing storage. Full local race79/vet/lint0 and independent review pass. Retry-cache eviction beyond1024 errors loses per-account backoff history; page/sweep pacing remains. No provider activation or full T23.47 acceptance.
 

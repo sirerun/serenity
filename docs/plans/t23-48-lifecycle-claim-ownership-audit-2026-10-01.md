@@ -15,3 +15,7 @@ The Sept24 transfer is explicit for Integrator41/57, but neither that record nor
 ## Unblock
 
 Coordinator may proceed once the existing ref is resolved by exact-SHA CAS (release or prune according to claim policy) and a fresh claim is won. If the former holder cannot be reached, the recorded Integrator41/57 transfer plus the expired timestamp, unchanged PR, and rebooted local host support coordinator-led stale-claim resolution; preserve the old source and record the CAS result. This audit itself made no claim change, PR action, source edit, or provider/cloud call.
+
+## Coordinator resolution
+
+On October1 the recovery coordinator verified resource9aadd49a67bff535dcf9fe30b86def959b852dd1 and taskdd05d699e8eaf4c560943435105cfbc45974e771. Both record the same September24 holder and purpose. Under the trusted integration transfer, the canonical expected-SHA release returned RELEASED for each expired claim. No other claim was pruned; draft273 and source remain unchanged. New edits require fresh resource claims. This resolves ownership only, not credentials, generation authority or production acceptance.
