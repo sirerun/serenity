@@ -101,6 +101,44 @@ func markerExists(t *testing.T, marker string) bool {
 	return false
 }
 
+func TestQuarantineLocalBundleRestoreIgnoresHooksAndRemoteTransport(t *testing.T) {
+	isolateGlobalConfig(t)
+	dir := newRepo(t)
+	marker := filepath.Join(t.TempDir(), "hook-ran")
+	hooks := t.TempDir()
+	if err := os.WriteFile(filepath.Join(hooks, "post-checkout"), []byte(fmt.Sprintf("#!/bin/sh\n: > %q\n", marker)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	global := filepath.Join(os.Getenv("HOME"), ".gitconfig")
+	plainGit(t, dir, "config", "--file", global, "core.hooksPath", hooks)
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	bundle := filepath.Join(t.TempDir(), "brain.bundle")
+	if out, err := gitrun.Quarantine(dir).CombinedOutput(context.Background(), "bundle", "create", bundle, "--all"); err != nil {
+		t.Fatalf("create bundle: %v: %s", err, out)
+	}
+	parent := t.TempDir()
+	// Control: the installed global post-checkout hook really executes.
+	plainGit(t, parent, "clone", "--quiet", bundle, filepath.Join(parent, "control"))
+	if !markerExists(t, marker) {
+		t.Fatal("unhardened clone did not execute hostile global hook")
+	}
+	if err := os.Remove(marker); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := gitrun.Quarantine(parent).CombinedOutput(context.Background(), "clone", "--quiet", bundle, filepath.Join(parent, "restored")); err != nil {
+		t.Fatalf("restore bundle: %v: %s", err, out)
+	}
+	if markerExists(t, marker) {
+		t.Fatal("quarantine restore executed global hook")
+	}
+	if out, err := gitrun.Quarantine(parent).CombinedOutput(context.Background(), "ls-remote", "https://example.invalid/repo.git"); err == nil || !strings.Contains(string(out), "transport 'https' not allowed") {
+		t.Fatalf("remote transport not refused: %v: %s", err, out)
+	}
+	if _, err := gitrun.Foreign(dir).Command(context.Background(), "clone", bundle, "other"); !errors.Is(err, gitrun.ErrForeignWrite) {
+		t.Fatalf("foreign write restriction changed: %v", err)
+	}
+}
+
 // TestHostileFsmonitorNeverSpawns reproduces the deep review's GIT_TRACE
 // finding (SEC-H05): a repository whose configuration names a fsmonitor
 // program gets that program executed by plain git, and must not get it

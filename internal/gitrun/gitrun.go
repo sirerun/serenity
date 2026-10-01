@@ -4,7 +4,7 @@
 // subcommand (ls-files --others, status, diff), hooks on writes, ext::
 // transports on fetch -- so a repository whose state an attacker controls
 // is a code-execution vector for any process that runs git inside it.
-// Every call site therefore builds its command through one of two
+// Every call site therefore builds its command through one of three
 // constructors that differ only in how much of the repository they trust:
 //
 //   - Brain(dir) is for the brain repository this process owns. It
@@ -16,8 +16,11 @@
 //     additionally ignores repository hooks and the global and system
 //     configuration, takes no optional locks, and refuses every
 //     subcommand that is not on a read-only allowlist.
+//   - Quarantine(dir) is for private owned staging workspaces. It permits
+//     local bundle restoration writes with hooks and global/system config
+//     ignored, and refuses network transports.
 //
-// Both scrub the inherited environment: every GIT_* variable is dropped
+// All runners scrub the inherited environment: every GIT_* variable is dropped
 // except GIT_SSH_COMMAND (the daemon's key selection), GIT_TERMINAL_PROMPT
 // is pinned to 0 so no subcommand can block on a credential prompt, and
 // everything else (PATH, HOME, LANG, TMPDIR, SSH_AUTH_SOCK, ...) passes
@@ -99,8 +102,9 @@ var reservedPrefixes = []string{
 
 // Runner spawns git subcommands in one repository under one trust level.
 type Runner struct {
-	dir     string
-	foreign bool
+	dir        string
+	foreign    bool
+	quarantine bool
 }
 
 // Brain returns a runner for the brain repository this process owns: the
@@ -112,6 +116,13 @@ func Brain(dir string) *Runner { return &Runner{dir: dir} }
 // hooks, global and system configuration are ignored, optional index
 // writes are skipped, and only read-only subcommands run.
 func Foreign(dir string) *Runner { return &Runner{dir: dir, foreign: true} }
+
+// Quarantine runs Git in an owned private staging workspace. It permits
+// writes needed to restore a local bundle, but ignores hooks and global/system
+// configuration and permits only local file transport. Callers must supply
+// trusted command arguments and keep the workspace private until validated.
+// It must not replace Foreign for inspecting someone else's repository.
+func Quarantine(dir string) *Runner { return &Runner{dir: dir, quarantine: true} }
 
 // Dir reports the repository directory the runner spawns git in.
 func (r *Runner) Dir() string { return r.dir }
@@ -132,8 +143,11 @@ func (r *Runner) Command(ctx context.Context, args ...string) (*exec.Cmd, error)
 	}
 	full := make([]string, 0, len(hardening)+len(foreignHardening)+len(args))
 	full = append(full, hardening...)
-	if r.foreign {
+	if r.foreign || r.quarantine {
 		full = append(full, foreignHardening...)
+	}
+	if r.quarantine {
+		full = append(full, "-c", "protocol.allow=never", "-c", "protocol.file.allow=always")
 	}
 	full = append(full, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
@@ -206,7 +220,7 @@ func (r *Runner) env(inherited []string) []string {
 		out = append(out, kv)
 	}
 	out = append(out, "GIT_TERMINAL_PROMPT=0")
-	if r.foreign {
+	if r.foreign || r.quarantine {
 		out = append(out,
 			"GIT_CONFIG_GLOBAL="+os.DevNull,
 			"GIT_CONFIG_NOSYSTEM=1",
