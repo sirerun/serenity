@@ -1,0 +1,13 @@
+# T23.52 manifest-bound backup completion helper
+
+Status: unused local library candidate, not T23.52 acceptance. Source `b53dd2644f86ecd75c825654a23094fe2e75d00e` is based on main `4f573b31ff3ee148d0a6bf38b9c05c1a1586a03e`.
+
+The helper creates a completion record binding the exact manifest SHA256 and an operator-supplied stack snapshot prefix, and verifies the record plus every artifact length/checksum. It refuses legacy manifests, missing/extra artifacts, path traversal, symlinks, FIFO artifacts, duplicate JSON fields/inventory, unsafe staging permissions and prefix mismatch. It streams artifact hashes and bounds record sizes.
+
+Independent review of `b054456` reproduced two crash windows: a temporary file inside the snapshot poisoned its exact inventory before or after the completion link. Correction `ceccd42` moves temporary records to the caller-owned outer staging, uses a no-overwrite hard link, and makes an existing valid record idempotently verifiable. Followup `b53dd26` requires that outer staging to be private and owned by the calling user. The caller must clean only its owned staging after a crash; the helper never removes another attempt's orphan. File and snapshot-directory sync errors are propagated.
+
+Twenty local Python tests pass with temporary files on the external build volume. They cover incomplete snapshots, manifest/artifact tampering, prefix/JSON/path/inventory errors, symlink/FIFO/private-directory checks, link failure cleanup, directory-sync failure/retry, and orphan-file/idempotent completion recovery. Independent process-crash followup remains a review gate.
+
+This helper is intentionally unwired. Existing `backup.sh` still uploads a timestamp-only COMPLETE after recursive transfer; no uploader, downloader, purge schedule, production binary or cloud resource changed. This is checksum and inventory verification, not authenticity, SQLite/Git semantics, source-schema validation, deletion-journal authority, consistent capture, successful upload, all-version retention, or live restore proof. Manifest-v2 assembly and the real journal remain separate dependencies. The eventual upload must exclude outer temporary files, upload artifacts first, publish this exact completion record last, and independently confirm transfer before reporting success.
+
+Final independent supplement `b9271a1` verifies exact source `b53dd264`, clears the historical crash blocker, and reproduces successful retry after real process exit before/after linking. All42 deployment Python tests pass, including20 helper tests, zero skips. This clears the bounded unused library review; integration/acceptance limitations above remain binding.
