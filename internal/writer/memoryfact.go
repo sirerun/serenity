@@ -29,8 +29,8 @@ import (
 type MemoryFact struct {
 	Queue   *Queue
 	Sources *store.SourceStore
-	// Index, when set, loses a forgotten fact's FTS and vector rows inside
-	// the same queue job that removes its bytes (ADR 019).
+	// Index, when set, loses a forgotten fact's FTS and vector rows after the
+	// canonical source mutation releases the queue's commit guards (ADR 019).
 	Index IndexPurger
 }
 
@@ -80,7 +80,7 @@ type RememberResult struct {
 }
 
 // Remember writes fact as a new canonical memory_fact source (or resolves
-// it to an existing exact duplicate), fully inside one Queue.Submit call.
+// it to an existing exact duplicate), inside one serialized queue call.
 func (w *MemoryFact) Remember(input RememberInput, now time.Time) (RememberResult, error) {
 	return w.RememberContext(context.Background(), input, now)
 }
@@ -120,7 +120,7 @@ func (w *MemoryFact) RememberContext(ctx context.Context, input RememberInput, n
 		flushed := w.Queue.SubmitAndFlush(ctx, w.Sources.Root, job)
 		err = flushed.Result.Err
 	} else {
-		err = w.Queue.Submit(job).Err
+		err = w.Queue.SubmitCanonical(ctx, job).Err
 	}
 	if err != nil {
 		return RememberResult{}, err
@@ -215,9 +215,10 @@ type ForgetResult struct {
 
 // Forget erases the memory_fact source named by targetSHA256 (ADR 019): it
 // writes a memory_expiry source as the audit record (target SHA-256 and
-// reason only, never the fact text), deletes the fact's FTS and vector rows
-// through Index, and removes the fact's bytes and meta.yaml, all in one
-// queue job so the next Flush commits the deletion and the event together.
+// reason only, never the fact text), and removes the fact's bytes and
+// meta.yaml in one guarded queue job so the next Flush commits the deletion
+// and event together. Derived FTS/vector rows are purged after the queue
+// releases its commit guards.
 // A fact carrying an operation key also gets a cancellation fence, so a
 // retried remember under that key can never write the text back.
 // Idempotent: a target already expired (by a prior forget, or its own TTL
@@ -231,11 +232,12 @@ func (w *MemoryFact) Forget(targetSHA256, reason string, now time.Time) (ForgetR
 	}
 	var result ForgetResult
 	var innerErr error
-	res := w.Queue.Submit(Job{
+	res := w.Queue.SubmitCanonical(context.Background(), Job{
 		Render: func() ([]byte, error) {
 			result, innerErr = w.forgetLockedContext(context.Background(), targetSHA256, reason, now)
 			return nil, innerErr
 		},
+		AfterGuard: func() error { return w.purgeForgottenIndex(context.Background(), result.Record.SHA256) },
 	})
 	if res.Err != nil {
 		return ForgetResult{}, res.Err
@@ -262,11 +264,22 @@ func (w *MemoryFact) ForgetContext(ctx context.Context, targetSHA256, reason str
 			result, err = w.forgetLockedContext(ctx, targetSHA256, reason, now)
 			return nil, err
 		},
+		AfterGuard: func() error { return w.purgeForgottenIndex(ctx, result.Record.SHA256) },
 	})
 	if flushed.Result.Err != nil {
 		return ForgetResult{}, flushed.Result.Err
 	}
 	return result, nil
+}
+
+func (w *MemoryFact) purgeForgottenIndex(ctx context.Context, sha string) error {
+	if w.Index == nil || !store.ValidSourceSHA(sha) {
+		return nil
+	}
+	if err := w.Index.PurgeSource(ctx, sha); err != nil {
+		return fmt.Errorf("writer: purge forgotten fact index rows: %w", err)
+	}
+	return nil
 }
 
 func (w *MemoryFact) forgetLockedContext(ctx context.Context, targetSHA256, reason string, now time.Time) (ForgetResult, error) {
@@ -339,11 +352,6 @@ func (w *MemoryFact) eraseFactContext(ctx context.Context, sha, operationKey str
 			if err != nil {
 				return fmt.Errorf("writer: fence forgotten operation: %w", err)
 			}
-		}
-	}
-	if w.Index != nil {
-		if err := w.Index.PurgeSource(ctx, sha); err != nil {
-			return fmt.Errorf("writer: purge forgotten fact index rows: %w", err)
 		}
 	}
 	w.markSource(sha)
@@ -419,11 +427,21 @@ func (w *MemoryFact) markSource(sha string) {
 // cannot create a missing canceled operation. Existing facts still recover their
 // expired identity. The complete decision is serialized with Remember.
 func (w *MemoryFact) CancelRemoteOperation(key, reason string, now time.Time) (ForgetResult, error) {
+	return w.CancelRemoteOperationContext(context.Background(), key, reason, now)
+}
+
+// CancelRemoteOperationContext carries cancellation while waiting for the
+// queue and shared canonical-write section. Once Render starts, it waits for
+// the source mutation to settle before returning.
+func (w *MemoryFact) CancelRemoteOperationContext(ctx context.Context, key, reason string, now time.Time) (ForgetResult, error) {
+	if ctx == nil {
+		return ForgetResult{}, ErrNilCommitContext
+	}
 	if w.Queue == nil || w.Sources == nil || key == "" || !store.ValidMemoryOperationKey(key) {
 		return ForgetResult{}, fmt.Errorf("writer: invalid cancellation dependencies/key")
 	}
 	var result ForgetResult
-	res := w.Queue.Submit(Job{Render: func() ([]byte, error) {
+	res := w.Queue.SubmitCanonical(ctx, Job{Render: func() ([]byte, error) {
 		proj, err := store.LoadMemoryProjection(w.Sources)
 		if err != nil {
 			return nil, err
