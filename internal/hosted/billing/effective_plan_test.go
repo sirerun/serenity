@@ -92,8 +92,18 @@ func TestBillingAccountPlanTracksEffectiveSubscriptionAccess(t *testing.T) {
 			if !tt.wantFrozen && result.Eligible != tt.wantEligible {
 				t.Fatalf("reconcile Eligible=%v, want %v (result=%+v)", result.Eligible, tt.wantEligible, result)
 			}
-			if tt.status != "canceled" && result.PlanID != "builder" {
+			if !tt.wantFrozen && tt.status != "canceled" && result.PlanID != "builder" {
 				t.Fatalf("provider plan provenance lost: %+v", result)
+			}
+			if tt.status == "past_due" {
+				var grace string
+				if err = db.DB().QueryRowContext(ctx, `SELECT grace_until FROM subscriptions WHERE id='sub_effective'`).Scan(&grace); err != nil {
+					t.Fatal(err)
+				}
+				wantGrace := store.Stamp(tt.failureAt.Add(72 * time.Hour))
+				if grace != wantGrace {
+					t.Fatalf("persisted grace=%q, want exact anchored deadline %q", grace, wantGrace)
+				}
 			}
 		})
 	}
@@ -106,7 +116,7 @@ func assertAccountPlan(t *testing.T, db *store.Store, account, want string) {
 		t.Fatal(err)
 	}
 	if plan != want {
-		t.Fatalf("account plan=%q, want %q", plan, want)
+		t.Errorf("account plan=%q, want %q", plan, want)
 	}
 }
 
@@ -120,6 +130,9 @@ func TestReconcileMalformedPersistedGraceRollsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := db.DB().ExecContext(ctx, `INSERT INTO billing_failures(account_id,subscription_id,invoice_id,event_id,first_failed_at) VALUES(?,?,?,?,?)`, account, "sub_bad_grace", "in_new", "evt_new_failure", store.Stamp(time.Now().UTC())); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.DB().ExecContext(ctx, `UPDATE accounts SET plan_id='scale' WHERE id=?`, account); err != nil {
 		t.Fatal(err)
 	}
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -140,4 +153,5 @@ func TestReconcileMalformedPersistedGraceRollsBack(t *testing.T) {
 	if status != "past_due" || grace != "malformed" || invoice != "in_old" {
 		t.Fatalf("malformed grace transaction partially committed: status=%q grace=%q invoice=%q", status, grace, invoice)
 	}
+	assertAccountPlan(t, db, account, "scale")
 }
