@@ -298,3 +298,7 @@ These are real dependencies. This worktree does not mark task41 accepted.
 ## Oct1 recovery: migration9 retry identity
 
 Integrator41/57 reserves forward-only migration9 for T23.44 quota-period retry identity (deep-review FUN-02). Migration8 and all earlier applied SQL remain unchanged. Client keys are scoped to account, brain and original quota period; retries within a period retain their operation ID, and reusing a key in a later period creates a distinct operation charged to that period. Both the ledger lookup and partial unique index enforce this scope. This amendment does not authorize a physical storage bound or change canonical reconciliation/fencing requirements. Ordinary code review and upgrade regression evidence remain required before merge.
+
+### Normalized remember replay implementation clarification — 2026-10-01
+
+The shared remember preflight validates input before ledger replay and fingerprints brain, exact fact/provenance, defaulted visibility/kind, canonical entity type/slug and parsed absolute expiry. Explicit defaults equal omitted defaults. A client-provided canonical operation ID is ignored; the trusted context supplies identity at the queued source-write boundary. Changed or invalid payloads cannot replay a committed result. This clarification does not qualify the full commit fence, reconciliation, relative TTL for generated hosted keys or cross-period durable writer retry scope.
