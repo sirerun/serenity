@@ -697,6 +697,30 @@ func TestManifestParserRequiresCanonicalUnambiguousV2JSON(t *testing.T) {
 			raw:  replaceManifestText(t, string(canonical), duplicateHash, duplicateHash+`, "entry_hash": "different"`),
 		},
 		{
+			name: "root version alias alone",
+			raw:  replaceManifestText(t, string(canonical), `"version": 2,`, `"Version": 2,`),
+		},
+		{
+			name: "root version alias beside canonical",
+			raw:  replaceManifestText(t, string(canonical), `"version": 2,`, `"version": 2, "Version": 1,`),
+		},
+		{
+			name: "source build alias alone",
+			raw:  replaceManifestText(t, string(canonical), `"build_sha": "test-build-sha",`, `"Build_SHA": "test-build-sha",`),
+		},
+		{
+			name: "source build alias beside canonical",
+			raw:  replaceManifestText(t, string(canonical), `"build_sha": "test-build-sha",`, `"build_sha": "test-build-sha", "Build_SHA": "alternate-build",`),
+		},
+		{
+			name: "watermark hash alias alone",
+			raw:  replaceManifestText(t, string(canonical), duplicateHash, strings.Replace(duplicateHash, `"entry_hash"`, `"Entry_Hash"`, 1)),
+		},
+		{
+			name: "watermark hash alias beside canonical",
+			raw:  replaceManifestText(t, string(canonical), duplicateHash, duplicateHash+`, "Entry_Hash": "alternate-hash"`),
+		},
+		{
 			name: "unknown root field",
 			raw:  replaceManifestText(t, string(canonical), `"version": 2,`, `"version": 2, "security_override": true,`),
 		},

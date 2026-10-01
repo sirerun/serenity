@@ -800,6 +800,9 @@ func parseManifest(data []byte) (contracts.ManifestV2, error) {
 	if probe.Version == 1 {
 		return contracts.ManifestV2{}, fmt.Errorf("%w: %w", ErrLegacySnapshot, contracts.ErrManifestVersion)
 	}
+	if err := rejectNonCanonicalManifestKeys(data); err != nil {
+		return contracts.ManifestV2{}, err
+	}
 	var manifest contracts.ManifestV2
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -821,7 +824,7 @@ func parseManifest(data []byte) (contracts.ManifestV2, error) {
 
 func rejectDuplicateJSONKeys(data []byte) error {
 	decoder := json.NewDecoder(bytes.NewReader(data))
-	if err := scanJSONValue(decoder, 0); err != nil {
+	if err := scanJSONValue(decoder, 0, manifestJSONAny); err != nil {
 		return err
 	}
 	if _, err := decoder.Token(); err != io.EOF {
@@ -833,7 +836,35 @@ func rejectDuplicateJSONKeys(data []byte) error {
 	return nil
 }
 
-func scanJSONValue(decoder *json.Decoder, nesting int) error {
+func rejectNonCanonicalManifestKeys(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := scanJSONValue(decoder, 0, manifestJSONRoot); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		if err == nil {
+			return errors.New("manifest contains trailing JSON value")
+		}
+		return err
+	}
+	return nil
+}
+
+type manifestJSONKind uint8
+
+const (
+	manifestJSONAny manifestJSONKind = iota
+	manifestJSONRoot
+	manifestJSONSource
+	manifestJSONArtifact
+	manifestJSONBrain
+	manifestJSONHead
+	manifestJSONWatermark
+	manifestJSONBrains
+	manifestJSONHeads
+)
+
+func scanJSONValue(decoder *json.Decoder, nesting int, kind manifestJSONKind) error {
 	token, err := decoder.Token()
 	if err != nil {
 		return err
@@ -849,6 +880,10 @@ func scanJSONValue(decoder *json.Decoder, nesting int) error {
 		return fmt.Errorf("manifest JSON nesting exceeds %d containers", maxManifestNesting)
 	}
 	nextNesting := nesting + 1
+	wantArray := kind == manifestJSONBrains || kind == manifestJSONHeads
+	if kind != manifestJSONAny && wantArray != (delim == '[') {
+		return errors.New("manifest JSON container does not match its schema position")
+	}
 	switch delim {
 	case '{':
 		seen := make(map[string]struct{})
@@ -865,7 +900,11 @@ func scanJSONValue(decoder *json.Decoder, nesting int) error {
 				return fmt.Errorf("manifest contains duplicate JSON object key %q", key)
 			}
 			seen[key] = struct{}{}
-			if err := scanJSONValue(decoder, nextNesting); err != nil {
+			childKind, known := manifestJSONChild(kind, key)
+			if kind != manifestJSONAny && !known {
+				return fmt.Errorf("manifest contains unknown or noncanonical field %q", key)
+			}
+			if err := scanJSONValue(decoder, nextNesting, childKind); err != nil {
 				return err
 			}
 		}
@@ -878,7 +917,14 @@ func scanJSONValue(decoder *json.Decoder, nesting int) error {
 		}
 	case '[':
 		for decoder.More() {
-			if err := scanJSONValue(decoder, nextNesting); err != nil {
+			itemKind := manifestJSONAny
+			switch kind {
+			case manifestJSONBrains:
+				itemKind = manifestJSONBrain
+			case manifestJSONHeads:
+				itemKind = manifestJSONHead
+			}
+			if err := scanJSONValue(decoder, nextNesting, itemKind); err != nil {
 				return err
 			}
 		}
@@ -891,6 +937,52 @@ func scanJSONValue(decoder *json.Decoder, nesting int) error {
 		}
 	}
 	return nil
+}
+
+func manifestJSONChild(parent manifestJSONKind, key string) (manifestJSONKind, bool) {
+	switch parent {
+	case manifestJSONRoot:
+		switch key {
+		case "version", "created_at":
+			return manifestJSONAny, true
+		case "source":
+			return manifestJSONSource, true
+		case "control_db":
+			return manifestJSONArtifact, true
+		case "brains":
+			return manifestJSONBrains, true
+		case "journal_watermark":
+			return manifestJSONWatermark, true
+		}
+	case manifestJSONSource:
+		switch key {
+		case "build_sha", "schema_version":
+			return manifestJSONAny, true
+		}
+	case manifestJSONArtifact:
+		switch key {
+		case "relative_path", "length_bytes", "sha256":
+			return manifestJSONAny, true
+		}
+	case manifestJSONBrain:
+		switch key {
+		case "id", "relative_path", "length_bytes", "sha256", "empty":
+			return manifestJSONAny, true
+		case "heads":
+			return manifestJSONHeads, true
+		}
+	case manifestJSONHead:
+		switch key {
+		case "ref", "object_id":
+			return manifestJSONAny, true
+		}
+	case manifestJSONWatermark:
+		switch key {
+		case "generation", "sequence_id", "entry_hash":
+			return manifestJSONAny, true
+		}
+	}
+	return manifestJSONAny, false
 }
 
 // inspectRestoredControlDB opens the just-copied, not-yet-migrated artifact
