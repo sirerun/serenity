@@ -218,16 +218,15 @@ func (l *Ledger) ReconcilePending(ctx context.Context, checker contracts.Canonic
 	if e != nil {
 		return report, e
 	}
-	defer func() { _ = rows.Close() }()
 	var ids []struct{ id, brain string }
 	for rows.Next() {
 		r, e := scanRecord(rows)
 		if e != nil {
-			return report, e
+			return report, errors.Join(e, rows.Close())
 		}
 		ids = append(ids, struct{ id, brain string }{r.ID, r.BrainID})
 	}
-	if e = rows.Err(); e != nil {
+	if e = errors.Join(rows.Err(), rows.Close()); e != nil {
 		return report, e
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i].id < ids[j].id })
@@ -250,6 +249,14 @@ func (l *Ledger) ReconcilePending(ctx context.Context, checker contracts.Canonic
 			release()
 			return report, e
 		}
+		// The candidate query ran before acquiring the brain fence. A caller
+		// may have finalized a no-entry reservation while this reconciler waited
+		// for the fence, so only inspect and transition a still-expired reserved
+		// row after re-reading it under that fence.
+		if checked.Phase != contracts.OperationReserved || checked.LeaseExpiresAt.After(l.now()) {
+			release()
+			continue
+		}
 		verdict, e := checker.Check(ctx, checked)
 		if e != nil {
 			release()
@@ -269,13 +276,25 @@ func (l *Ledger) ReconcilePending(ctx context.Context, checker contracts.Canonic
 			outcome = contracts.OperationPendingReview
 			ev = contracts.Evidence{Kind: contracts.EvidenceUnknown, Ref: verdict.Ref}
 		}
+		var transitioned bool
 		e = l.Store.Transaction(ctx, func(tx *sql.Tx) error {
+			current, err := scanRecord(tx.QueryRowContext(ctx, recordSelect+` WHERE id=?`, item.id))
+			if err != nil {
+				return err
+			}
+			if current.Phase != contracts.OperationReserved || current.LeaseExpiresAt.After(l.now()) {
+				return nil
+			}
 			_, x := l.transition(ctx, tx, item.id, outcome, contracts.ActorReconciler, ev)
+			transitioned = x == nil
 			return x
 		})
 		release()
 		if e != nil {
 			return report, e
+		}
+		if !transitioned {
+			continue
 		}
 		switch outcome {
 		case contracts.OperationCommitted:
