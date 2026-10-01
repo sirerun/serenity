@@ -332,6 +332,44 @@ func TestCanonicalReadOnlyPinsObjectInterpretationAndRefusesWrites(t *testing.T)
 	}
 }
 
+func TestCanonicalReadOnlyIgnoresReplacementRefs(t *testing.T) {
+	dir := newRepo(t)
+	run := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	original := run("rev-parse", "HEAD")
+	if err := os.WriteFile(filepath.Join(dir, "tracked.md"), []byte("replacement commit\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "tracked.md")
+	run("commit", "-m", "replacement")
+	replacement := run("rev-parse", "HEAD")
+	run("reset", "--hard", original)
+	run("replace", original, replacement)
+
+	ctx := context.Background()
+	foreignBytes, err := gitrun.Foreign(dir).Output(ctx, "show", "HEAD:tracked.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(foreignBytes) != "replacement commit\n" {
+		t.Fatalf("Foreign control did not demonstrate replacement: %q", foreignBytes)
+	}
+	canonicalBytes, err := gitrun.CanonicalReadOnly(dir).Output(ctx, "show", "HEAD:tracked.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(canonicalBytes) != "v1\n" {
+		t.Fatalf("canonical reader followed replacement ref: %q", canonicalBytes)
+	}
+}
+
 func TestReservedOptionsRejected(t *testing.T) {
 	isolateGlobalConfig(t)
 	dir := newRepo(t)
