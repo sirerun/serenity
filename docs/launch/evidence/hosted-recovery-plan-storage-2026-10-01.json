@@ -1,0 +1,82 @@
+{
+  "date": "2026-10-01",
+  "source": "f2a36c4f6f27ccb8f493d12690966bf6e63ed66d",
+  "scope": "Immutable recovery plan artifact storage only",
+  "runtime": "go1.27.1 darwin/arm64; Linux ARM64 compilation only",
+  "results": {
+    "race": 0,
+    "vet": 0,
+    "lint": 0,
+    "linux-arm64-build": 0
+  },
+  "passing_packages": 82,
+  "passing_tests_and_subtests": 2861,
+  "no_test_packages": 4,
+  "gated_test_skips": [
+    {
+      "package": "github.com/sirerun/serenity/evals/importbudget",
+      "test": "TestImportBudget10K"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/cli",
+      "test": "TestGbrainProtocolConformance"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/conformance",
+      "test": "TestBootDeliberatelyBrokenBuildFailsDisposeConformance"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/hosted/deletion",
+      "test": "TestS3Qualification"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/import/gbrain",
+      "test": "TestImportCrashHelper"
+    },
+    {
+      "package": "github.com/sirerun/serenity/pkg/serenity",
+      "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request"
+    },
+    {
+      "package": "github.com/sirerun/serenity/pkg/serenity",
+      "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+    }
+  ],
+  "shared_build_lease": "f4b5b00d531146b91a3d26394229defac0465bf3",
+  "independent_review": "ba8579e9ace2e528a19107be1f8a6045bd5d7a52",
+  "production_snapshot_authentication": false,
+  "provider_truth": false,
+  "plan_apply": false,
+  "activation": false,
+  "whole_task_acceptance": false,
+  "artifacts": [
+    {
+      "name": "recovery-plan-full-check-status.json",
+      "sha256": "976b02743e15b789544971ee8352885d8a78c64cd50ce1a9471be35b209fa729"
+    },
+    {
+      "name": "recovery-plan-full-check.py",
+      "sha256": "f20086cd0dc1a976007ed31d50211fb96cc5db4cf67a4cc4ea8f07f48e3bc48b"
+    },
+    {
+      "name": "recovery-plan-full-lint.log",
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "name": "recovery-plan-full-linux-arm64-build.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "recovery-plan-full-race.jsonl",
+      "sha256": "79eb45a0e762307f94ed12c6e4b8a73567bcfd8f4dd32c87827ac628b1e30427"
+    },
+    {
+      "name": "recovery-plan-full-source.txt",
+      "sha256": "cdc5ea610fe4dddea778be83fae89139a6474f438e7c6b716ff78c8a3465867c"
+    },
+    {
+      "name": "recovery-plan-full-vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}
