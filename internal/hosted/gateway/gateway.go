@@ -50,6 +50,7 @@ type Gateway struct {
 	Pool         *pool.Pool
 	Meter        *meter.Meter
 	Operations   *operation.Ledger
+	Journal      contracts.DeletionJournal
 	mu           sync.Mutex
 	handlers     map[string]*entry
 	sessions     map[string]sessionBinding
