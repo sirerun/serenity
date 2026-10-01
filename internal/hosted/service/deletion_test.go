@@ -51,7 +51,7 @@ func deletionFixture(t *testing.T) (*store.Store, Config, string, string) {
 	if err = os.WriteFile(filepath.Join(brainPath, "retained.txt"), []byte("must remain until closure"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	return db, Config{DataDir: dir, MaxOpen: 2, MaxInFlight: 4, PublicOrigin: "http://localhost", AccountCap: 100}, account.ID, brainPath
+	return db, Config{DataDir: dir, MaxOpen: 2, MaxInFlight: 4, PublicOrigin: "http://127.0.0.1", AccountCap: 100}, account.ID, brainPath
 }
 
 func TestDeleteAccountFreezesBeforeClosureAndRetainsUntilClosed(t *testing.T) {
@@ -62,6 +62,7 @@ func TestDeleteAccountFreezesBeforeClosureAndRetainsUntilClosed(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = s.Pool.Close(); s.Gateway.Close() })
 	closed := false
+	providerErr := error(contracts.ErrBillingProviderUnavailable)
 	s.billingCloser = deletionCloser(func(ctx context.Context, id string) (contracts.CloseResult, error) {
 		var status string
 		if err := db.DB().QueryRowContext(ctx, `SELECT status FROM accounts WHERE id=?`, id).Scan(&status); err != nil {
@@ -73,7 +74,7 @@ func TestDeleteAccountFreezesBeforeClosureAndRetainsUntilClosed(t *testing.T) {
 		if closed {
 			return contracts.CloseResult{Status: contracts.CloseStatusClosed}, nil
 		}
-		return contracts.CloseResult{Status: contracts.CloseStatusPending}, contracts.ErrBillingProviderUnavailable
+		return contracts.CloseResult{Status: contracts.CloseStatusPending}, providerErr
 	})
 	if err = s.DeleteAccount(context.Background(), accountID); !errors.Is(err, contracts.ErrBillingProviderUnavailable) {
 		t.Fatalf("uncertain closure = %v", err)
@@ -81,12 +82,37 @@ func TestDeleteAccountFreezesBeforeClosureAndRetainsUntilClosed(t *testing.T) {
 	if _, err = os.Stat(path); err != nil {
 		t.Fatalf("brain erased before closure: %v", err)
 	}
+	providerErr = nil
+	if err = s.DeleteAccount(context.Background(), accountID); err == nil {
+		t.Fatal("pending closure without an error allowed purge")
+	}
+	if _, err = os.Stat(path); err != nil {
+		t.Fatalf("pending closure erased brain: %v", err)
+	}
 	closed = true
 	if err = s.DeleteAccount(context.Background(), accountID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("brain retained after certified closure: %v", err)
+	}
+}
+
+func TestDeletionWithoutConfiguredCloserRetainsExistingCustomer(t *testing.T) {
+	db, cfg, accountID, path := deletionFixture(t)
+	s, err := Assemble(cfg, true, db, nil, deletionEmbedding{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { s.Gateway.Close(); _ = s.Pool.Close() }()
+	if _, err = db.DB().Exec(`UPDATE accounts SET stripe_customer_id='cus_prior_configuration' WHERE id=?`, accountID); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.DeleteAccount(context.Background(), accountID); err == nil {
+		t.Fatal("billing-disabled config ignored persisted provider customer")
+	}
+	if _, err = os.Stat(path); err != nil {
+		t.Fatalf("unconfigured closer erased brain: %v", err)
 	}
 }
 
