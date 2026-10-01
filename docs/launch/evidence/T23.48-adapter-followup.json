@@ -11,9 +11,13 @@
   ],
   "verification": {
     "red_baseline": "Before the validator patch, the focused malformed-record tests ran against the original adapter and all five then-present cases failed at runtime: ReadThrough returned nil error for unknown kind, invalid entry payload, malformed seal payload, mismatched resume coordinates, and unknown kind at the resume position.",
-    "focused_green": "go test -mod=mod -modfile=/Volumes/BuildOffload/tmp/t23-48-journal-port-20261001/review.mod ./internal/hosted/deletion -run '^TestReadThroughRejectsMalformed' -count=1 passed after the patch; the suite now covers seven malformed zero/resume-watermark cases.",
-    "package_race": "go test -race -mod=mod -modfile=/Volumes/BuildOffload/tmp/t23-48-journal-port-20261001/review.mod -count=1 ./internal/hosted/deletion passed (1.446s).",
+    "focused_green": "go test -mod=mod -modfile=/Volumes/BuildOffload/tmp/t23-48-journal-port-20261001/module-proof/verify.mod ./internal/hosted/deletion -run '^TestReadThroughRejectsMalformed' -count=1 passed after the patch; the suite now covers seven malformed zero/resume-watermark cases.",
+    "package_race": "go test -race -mod=mod -modfile=/Volumes/BuildOffload/tmp/t23-48-journal-port-20261001/module-proof/verify.mod -count=1 ./internal/hosted/deletion passed (1.406s).",
     "aws_calls": "None. SERENITY_T2348_S3_QUALIFY was explicitly empty; TestS3Qualification was skipped."
+  },
+  "test_module_file": {
+    "path": "/Volumes/BuildOffload/tmp/t23-48-journal-port-20261001/module-proof/verify.mod",
+    "sha256_after_test": "e24229b735d4dfd1abe085357b25069cbe4a5d353b7e79218b3e9135852e94ce"
   },
   "module_requirements_not_applied": {
     "direct": [
