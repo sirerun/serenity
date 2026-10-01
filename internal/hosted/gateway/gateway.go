@@ -365,7 +365,7 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 	var operationRecord contracts.OperationRecord
 	operationEntered := false
 	operationReplay := false
-	canonicalCommitted := false
+	durableFactID := ""
 	if name == "remember" {
 		entitlement, accountEntitlement, e := g.Meter.Subject(ctx, binding.AccountID, binding.PartnerID)
 		if e != nil {
@@ -457,20 +457,7 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 				defer func() {
 					finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 					defer cancel()
-					var final contracts.OperationPhase
-					var evidence contracts.Evidence
-					if operationEntered {
-						if canonicalCommitted && !result.IsError {
-							final = contracts.OperationCommitted
-							evidence = contracts.Evidence{Kind: contracts.EvidenceCommitted, Ref: canonicalEvidenceRef(result, operationRecord.ID)}
-						} else {
-							final = contracts.OperationPendingReview
-							evidence = contracts.Evidence{Kind: contracts.EvidenceUnknown, Ref: "gateway_outcome_unknown"}
-						}
-					} else {
-						final = contracts.OperationReleased
-						evidence = contracts.Evidence{Kind: contracts.EvidenceNoCanonicalAttempt}
-					}
+					final, evidence := rememberFinalizeOutcome(operationEntered, durableFactID)
 					_, finishErr := g.Operations.Finalize(finishCtx, operationRecord.ID, final, evidence)
 					err = errors.Join(err, finishErr)
 				}()
@@ -514,16 +501,19 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 						operationEntered = true
 						return nil
 					},
+					AfterFlush: func(_ context.Context, operationID, factID string) {
+						if operationID == operationRecord.ID && factID != "" {
+							durableFactID = factID
+						}
+					},
 				})
 			}
 			result, err = tool.Handler(callCtx, args)
 			if (name == "remember" || name == "forget") && err == nil && !result.IsError {
-				// Acknowledged writes must already be in the canonical bundle,
-				// even if the process dies before its next backup or shutdown.
+				// Remember's source has already been committed inline, before its
+				// handler performs any optional index/provider work. This flush only
+				// publishes separately touched state such as the search cache.
 				err = runtime.Flush()
-				if err == nil && name == "remember" {
-					canonicalCommitted = true
-				}
 			}
 			if name == "remember" && err == nil && !result.IsError {
 				err = g.record(ctx, binding, "memory_saved")
@@ -532,6 +522,16 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		}
 	}
 	return failure("invalid_params", time.Time{}), nil
+}
+
+func rememberFinalizeOutcome(operationEntered bool, durableFactID string) (contracts.OperationPhase, contracts.Evidence) {
+	if durableFactID != "" {
+		return contracts.OperationCommitted, contracts.Evidence{Kind: contracts.EvidenceCommitted, Ref: "fact:" + durableFactID}
+	}
+	if operationEntered {
+		return contracts.OperationPendingReview, contracts.Evidence{Kind: contracts.EvidenceUnknown, Ref: "gateway_outcome_unknown"}
+	}
+	return contracts.OperationReleased, contracts.Evidence{Kind: contracts.EvidenceNoCanonicalAttempt}
 }
 
 func replayRememberResult(record contracts.OperationRecord) mcp.Result {
@@ -549,21 +549,6 @@ func replayRememberResult(record contracts.OperationRecord) mcp.Result {
 		"valid_until":      nil,
 	})
 	return mcp.Result{Content: []mcp.Content{{Type: "text", Text: string(body)}}}
-}
-
-func canonicalEvidenceRef(result mcp.Result, operationID string) string {
-	for _, content := range result.Content {
-		if content.Type != "text" {
-			continue
-		}
-		var body struct {
-			ID string `json:"id"`
-		}
-		if json.Unmarshal([]byte(content.Text), &body) == nil && body.ID != "" {
-			return "fact:" + body.ID
-		}
-	}
-	return "gateway:" + operationID
 }
 
 // Call uses the same authorization and quota path for dashboard memory actions.
