@@ -389,6 +389,10 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 			return result, e
 		}
 		if g.Operations != nil {
+			normalized, validation, invalid := memoryserver.NormalizeRememberRequest(args, time.Now())
+			if invalid {
+				return rememberValidationFailure(validation)
+			}
 			clientKey := input.OperationKey
 			if clientKey == "" {
 				clientKey = "hosted:" + hoststore.ID()
@@ -400,14 +404,16 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 				if e != nil {
 					return result, e
 				}
+				if normalized.ValidUntil != nil {
+					fields["ttl"], e = json.Marshal(normalized.ValidUntil.UTC().Format(time.RFC3339Nano))
+					if e != nil {
+						return result, e
+					}
+				}
 				args, e = json.Marshal(fields)
 				if e != nil {
 					return result, e
 				}
-			}
-			normalized, validation, invalid := memoryserver.NormalizeRememberRequest(args, time.Now())
-			if invalid {
-				return rememberValidationFailure(validation)
 			}
 			ttl := ""
 			if normalized.ValidUntil != nil {
