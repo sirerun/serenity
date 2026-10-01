@@ -6,4 +6,11 @@ The API preserves `Result` and ordinary `Queue.Submit` behavior. `Queue.SubmitAn
 
 `Queue.EnterCommit` and `Queue.WithCommitFence` provide a separate, context-aware writer-preferring shared/exclusive guard. The checker error and fence-acquisition error are returned separately. A plain `Submit` does not acquire the guard by design; production canonical mutations must be explicitly routed through `SubmitAndFlush` before activating a checker fence.
 
-Focused tests are included for inline publication/hook timing, preservation of unrelated staged and unstaged paths, failed-commit requeue and retry, context cancellation, exclusive-fence fairness/cancellation, checker error separation, and a provider-style plain queue job that holds `runMu` without blocking the exclusive commit fence. Tests have not yet been run at this receipt's creation because the `R-core-writer` ownership claim must be released before validation.
+Focused tests cover inline publication/hook timing, preservation of unrelated staged and unstaged paths, failed-commit requeue and retry, Git/context cancellation, exclusive-fence fairness/cancellation, checker error separation, and a provider-style plain queue job that holds `runMu` without blocking the exclusive commit fence. Validation passed after releasing `R-core-writer`:
+
+```text
+GOCACHE=/Volumes/BuildOffload/.cache/core-writer/gocache \
+GOTMPDIR=/Volumes/BuildOffload/.cache/core-writer/tmp \
+go test -race ./internal/writer -count=1
+ok   github.com/sirerun/serenity/internal/writer  63.188s
+```
