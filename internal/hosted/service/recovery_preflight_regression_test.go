@@ -3,9 +3,10 @@ package service
 import (
 	"context"
 	"errors"
-	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"os"
 	"testing"
+
+	"github.com/sirerun/serenity/internal/hosted/contracts"
 )
 
 type nilStartupContext struct{ context.Context }

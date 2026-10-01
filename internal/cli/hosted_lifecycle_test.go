@@ -31,3 +31,17 @@ func TestHostedSnapshotCommandsRequireAdmissionBeforeIO(t *testing.T) {
 		})
 	}
 }
+
+func TestHostedServeRequiresAdmissionBeforeConfigIO(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "missing-config.json")
+	cmd := newHostedCmd()
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"serve", "--config", config})
+	if err := cmd.Execute(); !errors.Is(err, service.ErrStartupUnavailable) {
+		t.Fatalf("expected admission unavailable before config read, got %v", err)
+	}
+	if _, err := os.Lstat(config); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unadmitted serve touched config: %v", err)
+	}
+}

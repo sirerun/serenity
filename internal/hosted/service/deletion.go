@@ -11,7 +11,7 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
-func verifyPendingDeletionIntents(ctx context.Context, db *store.Store, entries []contracts.DeletionEntry) error {
+func verifyPendingDeletionIntents(ctx context.Context, db *store.Store, entries []contracts.DeletionEntry) (retErr error) {
 	if db == nil {
 		return errors.New("hosted: control store is required to verify pending deletion intents")
 	}
@@ -25,7 +25,7 @@ func verifyPendingDeletionIntents(ctx context.Context, db *store.Store, entries 
 	if err != nil {
 		return fmt.Errorf("hosted: inspect pending account deletions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { retErr = errors.Join(retErr, rows.Close()) }()
 	for rows.Next() {
 		var accountID string
 		if err := rows.Scan(&accountID); err != nil {
@@ -59,7 +59,7 @@ func (s *Service) deletionPreflight(ctx context.Context, accountID string, admit
 		if err := tx.QueryRowContext(ctx, `SELECT status FROM accounts WHERE id=?`, accountID).Scan(&status); err != nil {
 			return err
 		}
-		if status != "deleted" && status != "active" && status != "deleting" && !(admittedReplay && status == "restore_pending") {
+		if status != "deleted" && status != "active" && status != "deleting" && (!admittedReplay || status != "restore_pending") {
 			return contracts.ErrBillingAccountFrozen
 		} else {
 			if _, err := tx.ExecContext(ctx, `UPDATE accounts SET status='deleting' WHERE id=? AND (status IN ('active','deleted') OR (? AND status='restore_pending'))`, accountID, admittedReplay); err != nil {

@@ -3,12 +3,13 @@ package service
 import (
 	"context"
 	"errors"
-	"github.com/sirerun/serenity/internal/hosted/contracts"
-	"github.com/sirerun/serenity/internal/hosted/deletion"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sirerun/serenity/internal/hosted/contracts"
+	"github.com/sirerun/serenity/internal/hosted/deletion"
 )
 
 func TestRecoveryReplaysIntentBeforeSnapshotWatermark(t *testing.T) {
