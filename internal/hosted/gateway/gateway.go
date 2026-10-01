@@ -453,21 +453,6 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 				// outcome. Return the stored canonical fact identity instead.
 				return replayRememberResult(operationRecord), nil
 			}
-			// The client key belongs to the ledger's account/brain/period scope.
-			// The canonical writer has a brain-wide key namespace, so use this
-			// operation's stable internal ID rather than forwarding the raw key.
-			var canonicalArgs map[string]json.RawMessage
-			if e = json.Unmarshal(args, &canonicalArgs); e != nil {
-				return result, e
-			}
-			canonicalArgs["operation_key"], e = json.Marshal(operationRecord.ID)
-			if e != nil {
-				return result, e
-			}
-			args, e = json.Marshal(canonicalArgs)
-			if e != nil {
-				return result, e
-			}
 			if operationRecord.Phase == contracts.OperationReserved {
 				defer func() {
 					finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -489,6 +474,21 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 					_, finishErr := g.Operations.Finalize(finishCtx, operationRecord.ID, final, evidence)
 					err = errors.Join(err, finishErr)
 				}()
+			}
+			// The client key belongs to the ledger's account/brain/period scope.
+			// The canonical writer has a brain-wide key namespace, so use this
+			// operation's stable internal ID rather than forwarding the raw key.
+			var canonicalArgs map[string]json.RawMessage
+			if e = json.Unmarshal(args, &canonicalArgs); e != nil {
+				return result, e
+			}
+			canonicalArgs["operation_key"], e = json.Marshal(operationRecord.ID)
+			if e != nil {
+				return result, e
+			}
+			args, e = json.Marshal(canonicalArgs)
+			if e != nil {
+				return result, e
 			}
 		}
 		if !reservation.Replay && (inventory.Memories >= memoryLimit || inventory.StorageBytes >= storageLimit) {
