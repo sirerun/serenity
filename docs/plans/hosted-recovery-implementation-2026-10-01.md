@@ -26,3 +26,7 @@ Independent review reproduced a repository-specific transport-policy override in
 ## Assembled canonical regression
 
 The coordinator added `TestInvalidRememberReleasesOperationBeforeCanonicalEntry` through real service assembly and SQLite: invalid TTL releases the reservation without entering canonical state, a corrected same-key retry commits one write, and its source carries the committed ledger ID. Restoring the old gateway implementation makes that test fail at runtime with `phase=pending_review`; restoring the fix passes the focused service race check. This regression is supplemental to the source-pinned full gate above; no new implementation changed after that gate.
+
+## Review followup assignment
+
+Independent review confirmed the initial two-field remember fingerprint permits a changed visibility/provenance/TTL/entity/kind to replay a committed key before the writer can reject it. The coordinator holds the canonical-write merge for this fix. The Luna backup/reviewer lane now owns gateway fingerprint normalization and a shared pure server-memory preflight helper, plus standalone request/replay regression tests. No schema or writer edits are assigned in this followup. The fix must preserve normalized default equivalence and reject changed or invalid payloads before replay; T23.44 reconciliation/storage conditions stay open.
