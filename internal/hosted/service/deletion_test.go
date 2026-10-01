@@ -5,8 +5,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -113,6 +115,60 @@ func TestDeletionWithoutConfiguredCloserRetainsExistingCustomer(t *testing.T) {
 	}
 	if _, err = os.Stat(path); err != nil {
 		t.Fatalf("unconfigured closer erased brain: %v", err)
+	}
+}
+
+func TestDashboardPendingDeletionFreezesAndRetriesRetainingMemory(t *testing.T) {
+	db, cfg, accountID, path := deletionFixture(t)
+	s, err := Assemble(cfg, true, db, nil, deletionEmbedding{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { s.Gateway.Close(); _ = s.Pool.Close() }()
+	token := strings.Repeat("s", 43)
+	now := time.Now()
+	if _, err = db.DB().Exec(`INSERT INTO sessions(id,account_id,token_hash,created_at,expires_at,csrf_secret) VALUES(?,?,?,?,?,?)`, "session_fixture", accountID, store.Hash(token), store.Stamp(now), store.Stamp(now.Add(time.Hour)), "csrf_fixture"); err != nil {
+		t.Fatal(err)
+	}
+	closed := false
+	s.billingCloser = deletionCloser(func(ctx context.Context, id string) (contracts.CloseResult, error) {
+		var status string
+		if err := db.DB().QueryRowContext(ctx, `SELECT status FROM accounts WHERE id=?`, id).Scan(&status); err != nil {
+			return contracts.CloseResult{}, err
+		}
+		if status != "deleting" {
+			return contracts.CloseResult{}, errors.New("provider called before freeze")
+		}
+		if closed {
+			return contracts.CloseResult{Status: contracts.CloseStatusClosed}, nil
+		}
+		return contracts.CloseResult{Status: contracts.CloseStatusPending}, nil
+	})
+	request := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/account/delete", strings.NewReader(url.Values{"confirm": {"DELETE"}, "csrf": {"csrf_fixture"}}.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Origin", cfg.PublicOrigin)
+		req.AddCookie(&http.Cookie{Name: "serenity_session", Value: token})
+		response := httptest.NewRecorder()
+		s.Handler.ServeHTTP(response, req)
+		return response
+	}
+	if response := request(); response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("pending deletion response=%d %s", response.Code, response.Body.String())
+	}
+	var status string
+	if err = db.DB().QueryRow(`SELECT status FROM accounts WHERE id=?`, accountID).Scan(&status); err != nil || status != "deleting" {
+		t.Fatalf("pending deletion status=%q err=%v", status, err)
+	}
+	if _, err = os.Stat(path); err != nil {
+		t.Fatalf("pending dashboard deletion erased memory: %v", err)
+	}
+	closed = true
+	if response := request(); response.Code != http.StatusOK {
+		t.Fatalf("deletion retry response=%d %s", response.Code, response.Body.String())
+	}
+	if _, err = os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("certified dashboard deletion retained memory: %v", err)
 	}
 }
 
