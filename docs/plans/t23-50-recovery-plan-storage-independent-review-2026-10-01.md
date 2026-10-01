@@ -16,3 +16,20 @@ The current tests reject a final directory symlink and verify a symlink target i
 - The frozen contracts remain unchanged. The receipt correctly states that the digest is not an authentication signature or proof of provider/snapshot truth, and no production adapter or activation is introduced.
 
 The author's receipt records the recovery package race test passing (`3.650s`) at reported load `8.50`. I did not independently run Go checks on this held candidate; review was source/test/receipt inspection only. No provider, live service, or cloud actions were performed.
+
+## Final re-review: `a085f431ebe9a8971bdffd78290f7f4ef4d9ee60`
+
+The source fixes the held ancestor issue and the subsequent FIFO, disabled-ownership-mount, invalid-account-encoding, and sync-retry findings. `privateDirectoryPath` validates root and every path component for trusted ownership, writable non-sticky mode, and filesystem ownership enforcement. Darwin checks `MNT_IGNORE_OWNERSHIP`; Linux uses its platform-specific implementation; unsupported platforms fail closed. Plan-file open uses `O_NOFOLLOW|O_NONBLOCK`, followed by regular-file, owner, and mode checks. Account scope now rejects invalid UTF-8, Unicode whitespace and controls in addition to reserved aliases and separators. An identical existing plan now retries directory sync, and file/directory close errors are propagated.
+
+I independently tested the controls on the exact source in an isolated clone. Each guard mutation was made only in this review clone and restored before final verification:
+
+- Disabling the writable-ancestor predicate made `TestCreatePlanRejectsWritableHigherAncestor` fail because `CreatePlan` accepted the writable ancestor.
+- Disabling the Darwin ownership flag check made `TestVerifyFilesystemOwnershipRejectsDisabledMount` fail. With `SERENITY_RECOVERY_UNOWNED_TEST_PATH=/Volumes/BuildOffload`, the unmutated test passed against the actual ownership-disabled volume.
+- Removing `O_NONBLOCK` made `TestLoadPlanRejectsFIFOWithoutBlocking` fail after the 500 ms context deadline because opening the FIFO blocked.
+- Comparing the computed digest only to the artifact's embedded hash allowed valid bytes copied under another approved hash; `TestLoadPlanRejectsUnchangedHashMismatch` failed under that mutation.
+- Disabling `utf8.ValidString` allowed the invalid account bytes through and `TestCreatePlanRejectsNonUTF8AccountBeforePublication` failed. Disabling Unicode space/control rejection made `TestCreatePlanRejectsMalformedInputs` fail on its NBSP case.
+- Skipping sync on the identical-existing-plan path made `TestCreatePlanRetriesDirectorySyncForExistingIdenticalPlan` fail because the injected sync failure was silently acknowledged.
+
+After restoring the exact source, `git diff --check` was clean and `go test -race ./internal/hosted/recovery -count=1` passed in `1.493s`, with both `SERENITY_RECOVERY_TEST_TMPDIR=/Volumes/SerenityPrivateFixture20261001/tmp` and the disabled-volume test path set. The independent check is Darwin-only; I did not run a full repository gate. Close-error propagation was inspected in source, but I did not inject an OS close failure.
+
+**Verdict: clear for this bounded local artifact-storage component.** This does not authenticate the plan hash as operator approval or prove snapshot/provider truth, journal completeness, generation adoption, or production activation. No frozen contract or production adapter changed, and no cloud/provider action was performed. The initial hold above remains as historical evidence and is resolved only for the exact corrected source pin stated here.
