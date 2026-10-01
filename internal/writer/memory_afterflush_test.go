@@ -108,6 +108,13 @@ func TestHostedRememberAfterFlushDoesNotPromoteDuplicatesOrRefusals(t *testing.T
 	if beforeCalls != 1 || afterCalls != 1 {
 		t.Fatalf("exact retry synthesized callbacks: before=%d after=%d", beforeCalls, afterCalls)
 	}
+	input.OperationKey = "different-trusted-key"
+	if _, err := w.RememberContext(newContext(false), input, time.Now().UTC()); err == nil {
+		t.Fatal("mismatched operation key unexpectedly entered canonical writer")
+	}
+	if beforeCalls != 1 || afterCalls != 1 {
+		t.Fatalf("mismatched key synthesized callbacks: before=%d after=%d", beforeCalls, afterCalls)
+	}
 	input.OperationKey = "1111111111111111"
 	if _, err := w.RememberContext(newContext(true), input, time.Now().UTC()); err == nil {
 		t.Fatal("refused canonical entry unexpectedly succeeded")

@@ -525,7 +525,7 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 }
 
 func rememberFinalizeOutcome(operationEntered bool, durableFactID string) (contracts.OperationPhase, contracts.Evidence) {
-	if durableFactID != "" {
+	if operationEntered && durableFactID != "" {
 		return contracts.OperationCommitted, contracts.Evidence{Kind: contracts.EvidenceCommitted, Ref: "fact:" + durableFactID}
 	}
 	if operationEntered {

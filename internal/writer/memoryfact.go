@@ -93,7 +93,7 @@ func (w *MemoryFact) RememberContext(ctx context.Context, input RememberInput, n
 	}
 	operation := canonicalOperationFromContext(ctx)
 	inlineFlush := operation.AfterFlush != nil
-	if inlineFlush && (operation.ID == "" || operation.BeforeCommit == nil || !store.ValidMemoryOperationKey(operation.ID)) {
+	if inlineFlush && (operation.ID == "" || input.OperationKey != operation.ID || operation.BeforeCommit == nil || !store.ValidMemoryOperationKey(operation.ID)) {
 		return RememberResult{}, fmt.Errorf("writer: invalid canonical operation metadata")
 	}
 	entered := false

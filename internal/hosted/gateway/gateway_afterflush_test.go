@@ -22,4 +22,8 @@ func TestRememberFinalizeKeepsAmbiguousAndNoEntryDistinct(t *testing.T) {
 	if phase != contracts.OperationReleased || evidence.Kind != contracts.EvidenceNoCanonicalAttempt {
 		t.Fatalf("no canonical entry = (%q,%+v), want released", phase, evidence)
 	}
+	phase, evidence = rememberFinalizeOutcome(false, "fact-sha")
+	if phase != contracts.OperationReleased || evidence.Kind != contracts.EvidenceNoCanonicalAttempt {
+		t.Fatalf("durable identity without trusted entry = (%q,%+v), want released", phase, evidence)
+	}
 }
