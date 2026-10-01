@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/sirerun/serenity/internal/writer"
 
-	"github.com/sirerun/serenity/internal/hosted/backup"
 	"github.com/sirerun/serenity/internal/hosted/plans"
 	"github.com/sirerun/serenity/internal/hosted/service"
 	"github.com/spf13/cobra"
@@ -112,10 +112,7 @@ func newHostedCmd() *cobra.Command {
 	for _, action := range []string{"backup", "restore"} {
 		var dataDir, snapshot string
 		child := &cobra.Command{Use: action, Short: action + " a hosted control snapshot and brain bundles", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-			if action == "backup" {
-				return backup.Request(cmd.Context(), dataDir, snapshot)
-			}
-			return backup.Restore(cmd.Context(), snapshot, dataDir)
+			return fmt.Errorf("%w: hosted %s requires an admitted journal operator coordinator", service.ErrStartupUnavailable, action)
 		}}
 		child.Flags().StringVar(&dataDir, "data-dir", "", "hosted data directory")
 		child.Flags().StringVar(&snapshot, "snapshot", "", "local snapshot directory")
