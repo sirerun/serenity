@@ -59,5 +59,9 @@ func testLifecycleDependencies(t *testing.T) service.LifecycleDependencies {
 
 func assembleForTest(t *testing.T, cfg service.Config, dev bool, db *store.Store, sender identity.Sender, embedding embed.Embedder) (*service.Service, error) {
 	t.Helper()
-	return service.AssembleWithDependencies(context.Background(), cfg, dev, db, sender, embedding, testLifecycleDependencies(t))
+	svc, err := service.AssembleWithDependencies(context.Background(), cfg, dev, db, sender, embedding, testLifecycleDependencies(t))
+	if svc != nil {
+		t.Cleanup(func() { _ = svc.Close() })
+	}
+	return svc, err
 }

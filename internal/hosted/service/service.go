@@ -227,24 +227,28 @@ func readSecret(dir, name string) (string, error) {
 }
 
 type Service struct {
-	Store               *store.Store
-	Pool                *pool.Pool
-	Gateway             *gateway.Gateway
-	journal             contracts.DeletionJournal
-	buildSHA            string
-	Partner             *partner.Service
-	Handler             http.Handler
-	cfg                 Config
-	embedder            embed.Embedder
-	readyMu             sync.Mutex
-	readyAt             time.Time
-	ready               bool
-	billingCloser       contracts.BillingCloser
-	billingReconciler   contracts.BillingReconciler
-	billingWorkerCancel context.CancelFunc
-	billingWorkerDone   chan struct{}
-	closeOnce           sync.Once
-	closeErr            error
+	operations            *operation.Ledger
+	operationReconciler   *gateway.OperationReconciler
+	operationWorkerCancel context.CancelFunc
+	operationWorkerDone   chan struct{}
+	Store                 *store.Store
+	Pool                  *pool.Pool
+	Gateway               *gateway.Gateway
+	journal               contracts.DeletionJournal
+	buildSHA              string
+	Partner               *partner.Service
+	Handler               http.Handler
+	cfg                   Config
+	embedder              embed.Embedder
+	readyMu               sync.Mutex
+	readyAt               time.Time
+	ready                 bool
+	billingCloser         contracts.BillingCloser
+	billingReconciler     contracts.BillingReconciler
+	billingWorkerCancel   context.CancelFunc
+	billingWorkerDone     chan struct{}
+	closeOnce             sync.Once
+	closeErr              error
 }
 type ledger struct{ db *store.Store }
 
@@ -368,7 +372,8 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	}
 	issuer := &credential.Issuer{Store: db}
 	metering := &meter.Meter{Store: db}
-	g := &gateway.Gateway{Issuer: issuer, Pool: p, Meter: metering, Operations: &operation.Ledger{Store: db}, Journal: deps.Journal}
+	operations := &operation.Ledger{Store: db}
+	g := &gateway.Gateway{Issuer: issuer, Pool: p, Meter: metering, Operations: operations, Journal: deps.Journal}
 	allowlist := make(map[string]struct{}, len(cfg.InviteAllowlist))
 	for _, email := range cfg.InviteAllowlist {
 		allowlist[email] = struct{}{}
@@ -376,7 +381,7 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	id := &identity.Service{Store: db, Sender: sender, Origin: cfg.PublicOrigin, AccountCap: cfg.AccountCap, RegistrationMode: cfg.RegistrationMode, InviteAllowlist: allowlist}
 	provisioner := &provision.Provisioner{Store: db, BrainsRoot: filepath.Join(cfg.DataDir, "brains")}
 	dash := &dashboard.Dashboard{Gateway: g, Identity: id, Provision: provisioner, Issuer: issuer, Meter: metering, Origin: cfg.PublicOrigin, Dev: dev, Billing: cfg.BillingEnabled}
-	s := &Service{Store: db, Pool: p, Gateway: g, journal: deps.Journal, buildSHA: deps.BuildSHA, cfg: cfg, embedder: embedding}
+	s := &Service{operations: operations, operationReconciler: gateway.NewOperationReconciler(g), Store: db, Pool: p, Gateway: g, journal: deps.Journal, buildSHA: deps.BuildSHA, cfg: cfg, embedder: embedding}
 	if cfg.billingConfig != nil {
 		dash.BillingService = &billing.Service{Store: db, Identity: id, Config: *cfg.billingConfig}
 		s.billingCloser = dash.BillingService
@@ -388,6 +393,9 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	}
 	if err = provisioner.Recover(ctx); err != nil {
 		return nil, errors.Join(err, p.Close())
+	}
+	if _, err = s.reconcileOperations(ctx); err != nil {
+		return nil, errors.Join(fmt.Errorf("hosted: reconcile interrupted operations before handler admission: %w", err), p.Close())
 	}
 	mux := http.NewServeMux()
 	auth, err := oauth.New(db, id, provisioner, cfg.PublicOrigin, dev)
@@ -417,6 +425,7 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 		return nil, errors.Join(fmt.Errorf("hosted: startup canceled before handler admission: %w", err), p.Close())
 	}
 	s.Handler = mux
+	s.startOperationReconciler()
 	if s.billingReconciler != nil {
 		s.startBillingReconciler()
 	}
@@ -455,6 +464,10 @@ func (s *Service) readiness(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Service) Close() error {
 	s.closeOnce.Do(func() {
+		if s.operationWorkerCancel != nil {
+			s.operationWorkerCancel()
+			<-s.operationWorkerDone
+		}
 		if s.billingWorkerCancel != nil {
 			s.billingWorkerCancel()
 			<-s.billingWorkerDone
