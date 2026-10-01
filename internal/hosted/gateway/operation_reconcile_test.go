@@ -126,3 +126,42 @@ func TestOperationReconciliationRejectsUnsafeTreeBeforeRuntimeOpen(t *testing.T)
 		t.Fatal("unsafe tree reached runtime open")
 	}
 }
+
+func TestOperationEnterCommitDoesNotReacquireCallerLocks(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.Open(filepath.Join(t.TempDir(), "control.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	account, err := db.CreateAccount(ctx, "commit-lock@example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	brain := store.ID()
+	if _, err = db.InsertBrain(ctx, account.ID, brain, brain, "ready", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err = os.Mkdir(filepath.Join(root, brain), 0700); err != nil {
+		t.Fatal(err)
+	}
+	g := &Gateway{Issuer: &credential.Issuer{Store: db}}
+	probe := &reconciliationFenceProbe{}
+	r := &OperationReconciler{gateway: g, brainsRoot: root, runtimeFence: probe}
+	hash := sha256.Sum256([]byte(account.ID))
+	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
+	// This is the writer's existing admission, before entering its queue guard.
+	g.Maintenance.RLock()
+	lock.Lock()
+	leave, err := r.EnterCommit(ctx, brain)
+	lock.Unlock()
+	g.Maintenance.RUnlock()
+	if err != nil {
+		t.Fatalf("commit re-acquired caller's lifecycle locks: %v", err)
+	}
+	leave()
+	if probe.calls != 1 || probe.released != 1 {
+		t.Fatalf("queue guard not delegated: %+v", probe)
+	}
+}
