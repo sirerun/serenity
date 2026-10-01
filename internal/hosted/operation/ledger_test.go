@@ -64,6 +64,44 @@ func TestLedgerReserveFinalizeAndReplay(t *testing.T) {
 	}
 }
 
+func TestRetryKeyIsScopedToQuotaPeriod(t *testing.T) {
+	ctx := context.Background()
+	s, account, brain := fixture(t)
+	t.Cleanup(func() {
+		if err := s.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	l := &operation.Ledger{Store: s}
+	req := contracts.ReserveRequest{AccountID: account, BrainID: brain, ClientKey: "reused-monthly", Fingerprint: "same-request", QuotaPeriod: "2026-09", Source: "gateway.remember", LeaseFor: time.Minute, Deltas: []contracts.ReserveDelta{{Metric: "writes", Units: 1, Limit: 2}}}
+	first, err := l.Reserve(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = l.EnterCanonical(ctx, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = l.Finalize(ctx, first.ID, contracts.OperationCommitted, contracts.Evidence{Kind: contracts.EvidenceCommitted, Ref: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	req.QuotaPeriod = "2026-10"
+	second, err := l.Reserve(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.ID == first.ID || second.QuotaPeriod != req.QuotaPeriod {
+		t.Fatalf("new period replayed old operation: first=%+v second=%+v", first, second)
+	}
+	if _, err = l.Reserve(ctx, req); !errors.Is(err, contracts.ErrOperationInProgress) {
+		t.Fatalf("same-period duplicate did not hold identity: %v", err)
+	}
+	req.QuotaPeriod = "2026-09"
+	replay, err := l.Reserve(ctx, req)
+	if err != nil || replay.ID != first.ID {
+		t.Fatalf("old-period replay lost identity: %+v %v", replay, err)
+	}
+}
+
 func TestLedgerHoldsCapacityAndRejectsKeyReuse(t *testing.T) {
 	ctx := context.Background()
 	s, account, brain := fixture(t)

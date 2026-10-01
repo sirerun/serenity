@@ -17,7 +17,7 @@ import (
 )
 
 func TestLegacySchemasUpgradeTwiceAndPreserveControlData(t *testing.T) {
-	for sourceVersion := 1; sourceVersion <= 4; sourceVersion++ {
+	for sourceVersion := 1; sourceVersion <= 8; sourceVersion++ {
 		t.Run(fmt.Sprintf("schema%d", sourceVersion), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "control.db")
 			prepareLegacyFixture(t, path, sourceVersion)
@@ -37,8 +37,8 @@ func TestLegacySchemasUpgradeTwiceAndPreserveControlData(t *testing.T) {
 				if err := s.db.QueryRow(`SELECT max(version),count(*) FROM schema_migrations`).Scan(&version, &count); err != nil {
 					t.Fatal(err)
 				}
-				if version != 8 || count != 8 {
-					t.Fatalf("migration versions max=%d count=%d, want 8/8", version, count)
+				if version != 9 || count != 9 {
+					t.Fatalf("migration versions max=%d count=%d, want 9/9", version, count)
 				}
 				if pass == 2 {
 					if err := assertOperationSchema(s.db); err != nil {
@@ -99,7 +99,7 @@ func TestFutureSchemaIsRejectedWithoutWriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.db.Exec(`INSERT INTO schema_migrations(version,applied_at) VALUES(9,'future')`); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO schema_migrations(version,applied_at) VALUES(10,'future')`); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.Close(); err != nil {
@@ -109,7 +109,7 @@ func TestFutureSchemaIsRejectedWithoutWriting(t *testing.T) {
 	if opened, err := Open(path); err == nil {
 		_ = opened.Close()
 		t.Fatal("future schema opened")
-	} else if got := err.Error(); got != "migrate hosted database: unsupported hosted schema version 9" {
+	} else if got := err.Error(); got != "migrate hosted database: unsupported hosted schema version 10" {
 		t.Fatalf("future schema error = %q", got)
 	}
 	if after := databaseFileHash(t, path); after != before {
@@ -191,6 +191,21 @@ func prepareLegacyFixture(t *testing.T, path string, version int) {
 			t.Fatal(err)
 		}
 	}
+	for i, migration := range []string{migration5, migration6, migration7, migration8} {
+		if version >= i+5 {
+			if _, err := db.Exec(migration); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if version >= 8 {
+		if _, err := db.Exec(`INSERT INTO partners(id,display_name,secret_hash,redirect_prefix,status,created_at,updated_at) VALUES('partner-fixture','Fixture','secret-hash','https://example.test','active','created','updated')`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO partner_links(partner_id,account_id,status,linked_via,created_at,updated_at) VALUES('partner-fixture','acct','active','consent','created','updated')`); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := db.Exec(`UPDATE schema_migrations SET applied_at='fixture'`); err != nil {
 		t.Fatal(err)
 	}
@@ -198,6 +213,12 @@ func prepareLegacyFixture(t *testing.T, path string, version int) {
 
 func assertRetainedControlData(t *testing.T, db *sql.DB, sourceVersion int) {
 	t.Helper()
+	if sourceVersion >= 8 {
+		var secret, linkedVia string
+		if err := db.QueryRow(`SELECT p.secret_hash,l.linked_via FROM partners p JOIN partner_links l ON l.partner_id=p.id WHERE p.id='partner-fixture' AND l.account_id='acct'`).Scan(&secret, &linkedVia); err != nil || secret != "secret-hash" || linkedVia != "consent" {
+			t.Fatalf("partner data changed: secret=%q link=%q err=%v", secret, linkedVia, err)
+		}
+	}
 	var accountID, priceID, status, planID, periodStart, periodEnd string
 	var cancelAtPeriodEnd int
 	var graceUntil sql.NullString

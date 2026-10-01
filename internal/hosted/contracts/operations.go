@@ -148,7 +148,7 @@ var (
 	// ErrOperationNotFound: no row has this internal ID.
 	ErrOperationNotFound = errors.New("hosted/contracts: operation not found")
 	// ErrOperationInProgress: a live reserved row already holds this
-	// (account, brain, client key). The caller must retry later, not charge.
+	// (account, brain, quota period, client key). The caller must retry later, not charge.
 	ErrOperationInProgress = errors.New("hosted/contracts: operation is in progress")
 	// ErrOperationPendingReview: the row holding this client key is in
 	// pending_review. A retry is refused until an operator resolves it, so a

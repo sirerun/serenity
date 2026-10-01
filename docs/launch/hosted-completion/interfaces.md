@@ -294,3 +294,7 @@ This receipt records the design rulings only; it does not mark task41 accepted, 
 - **Quality and load thresholds.** Not evaluated here. Task43 owns the Hit@5 corpus and task60 owns the workload targets.
 
 These are real dependencies. This worktree does not mark task41 accepted.
+
+## Oct1 recovery: migration9 retry identity
+
+Integrator41/57 reserves forward-only migration9 for T23.44 quota-period retry identity (deep-review FUN-02). Migration8 and all earlier applied SQL remain unchanged. Client keys are scoped to account, brain and original quota period; retries within a period retain their operation ID, and reusing a key in a later period creates a distinct operation charged to that period. Both the ledger lookup and partial unique index enforce this scope. This amendment does not authorize a physical storage bound or change canonical reconciliation/fencing requirements. Ordinary code review and upgrade regression evidence remain required before merge.

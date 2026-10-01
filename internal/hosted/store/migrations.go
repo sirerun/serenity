@@ -172,3 +172,13 @@ ALTER TABLE accounts ADD COLUMN created_by_partner TEXT;
 CREATE INDEX accounts_created_by_partner ON accounts(created_by_partner,status) WHERE created_by_partner IS NOT NULL;
 INSERT INTO schema_migrations(version,applied_at) VALUES(8,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 `
+
+// migration9 scopes client retry identity to the original quota period.
+// Earlier operation rows and all partner schema/data remain unchanged.
+const migration9 = `
+DROP INDEX operations_active_client_key;
+CREATE UNIQUE INDEX operations_active_client_key
+ ON operations(account_id,brain_id,quota_period,client_key)
+ WHERE client_key<>'' AND phase<>'released';
+INSERT INTO schema_migrations(version,applied_at) VALUES(9,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+`
