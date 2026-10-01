@@ -2,6 +2,7 @@
 package dashboard
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"html/template"
@@ -26,6 +27,7 @@ import (
 
 type Dashboard struct {
 	BillingService *billing.Service
+	DeleteAccount  func(context.Context, string) error
 	Gateway        *gateway.Gateway
 	Identity       *identity.Service
 	Provision      *provision.Provisioner
@@ -465,13 +467,11 @@ func (d *Dashboard) deleteAccount(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Confirm account deletion", http.StatusBadRequest)
 		return
 	}
-	if d.BillingService != nil {
-		if err := d.BillingService.CancelAccount(r.Context(), s.AccountID); err != nil {
-			http.Error(w, "Subscription cancellation is pending; please retry.", http.StatusServiceUnavailable)
-			return
-		}
+	if d.DeleteAccount == nil {
+		http.Error(w, "Deletion is temporarily unavailable; please retry.", http.StatusServiceUnavailable)
+		return
 	}
-	if err := d.Gateway.DeleteAccount(r.Context(), s.AccountID, d.Provision.BrainsRoot); err != nil {
+	if err := d.DeleteAccount(r.Context(), s.AccountID); err != nil {
 		http.Error(w, "Deletion could not finish; please retry.", http.StatusServiceUnavailable)
 		return
 	}

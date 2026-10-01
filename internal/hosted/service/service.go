@@ -176,16 +176,17 @@ func readSecret(dir, name string) (string, error) {
 }
 
 type Service struct {
-	Store    *store.Store
-	Pool     *pool.Pool
-	Gateway  *gateway.Gateway
-	Partner  *partner.Service
-	Handler  http.Handler
-	cfg      Config
-	embedder embed.Embedder
-	readyMu  sync.Mutex
-	readyAt  time.Time
-	ready    bool
+	Store         *store.Store
+	Pool          *pool.Pool
+	Gateway       *gateway.Gateway
+	Partner       *partner.Service
+	Handler       http.Handler
+	cfg           Config
+	embedder      embed.Embedder
+	readyMu       sync.Mutex
+	readyAt       time.Time
+	ready         bool
+	billingCloser contracts.BillingCloser
 }
 type ledger struct{ db *store.Store }
 
@@ -256,9 +257,6 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 	issuer := &credential.Issuer{Store: db}
 	metering := &meter.Meter{Store: db}
 	g := &gateway.Gateway{Issuer: issuer, Pool: p, Meter: metering, Operations: &operation.Ledger{Store: db}}
-	if err = g.RecoverDeletions(context.Background(), filepath.Join(cfg.DataDir, "brains")); err != nil {
-		return nil, errors.Join(err, p.Close())
-	}
 	allowlist := make(map[string]struct{}, len(cfg.InviteAllowlist))
 	for _, email := range cfg.InviteAllowlist {
 		allowlist[email] = struct{}{}
@@ -270,6 +268,14 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 	}
 	dash := &dashboard.Dashboard{Gateway: g, Identity: id, Provision: provisioner, Issuer: issuer, Meter: metering, Origin: cfg.PublicOrigin, Dev: dev, Billing: cfg.BillingEnabled}
 	s := &Service{Store: db, Pool: p, Gateway: g, cfg: cfg, embedder: embedding}
+	if cfg.billingConfig != nil {
+		dash.BillingService = &billing.Service{Store: db, Identity: id, Config: *cfg.billingConfig}
+		s.billingCloser = dash.BillingService
+	}
+	dash.DeleteAccount = s.DeleteAccount
+	if err = s.recoverDeletions(context.Background()); err != nil {
+		return nil, errors.Join(err, p.Close())
+	}
 	mux := http.NewServeMux()
 	auth, err := oauth.New(db, id, provisioner, cfg.PublicOrigin, dev)
 	if err != nil {
@@ -282,8 +288,7 @@ func Assemble(cfg Config, dev bool, db *store.Store, sender identity.Sender, emb
 	mux.Handle("/.well-known/oauth-authorization-server", auth.Server.MetadataHandler())
 	mux.Handle("/.well-known/oauth-protected-resource", auth.Server.ProtectedResourceHandler())
 	mux.Handle("/.well-known/oauth-protected-resource/mcp", auth.Server.ProtectedResourceHandler())
-	if cfg.billingConfig != nil {
-		dash.BillingService = &billing.Service{Store: db, Identity: id, Config: *cfg.billingConfig}
+	if dash.BillingService != nil {
 		mux.Handle("/billing/", dash.BillingService)
 	}
 	partnerCap := cfg.PartnerAccountCap
