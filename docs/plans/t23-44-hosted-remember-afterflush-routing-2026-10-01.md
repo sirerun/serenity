@@ -27,3 +27,7 @@ Passing focused checks:
 - `git diff --check`
 
 All Go caches and temporary files for these checks were kept under the external build volume. No multi-package build was run. The canonical checker is still absent, and other mutation/flush paths—including remember’s separate index job, forget/cancel, and generic queue writers—remain outside this change’s fence. T23.44 and hosted acceptance therefore remain open.
+
+## Optional projection ordering clarification
+
+Independent review identified ADR017's literal provider-before-section wording. ADR025 now records the bounded refinement: required canonical inputs precede mutation; optional search-index embedding is a derived postcanonical projection, runs only after the guard releases, and may fail without undoing source/accounting durability. This is a current recovery-coordinator decision, not retroactive architecture-review ratification. MEMORY_VERBS degradation behavior remains unchanged; physical and recovery gates remain open.

@@ -22,5 +22,6 @@
     "Physical stage limit, deletion journal/restore activation and live/launch qualification remain open."
   ],
   "local_gate": "Founder-authorized ADR024; no green Actions result or protection bypass",
-  "merge_status": "ready for ordinary expected-head merge after fresh coordination checks; no deployment"
+  "merge_status": "ready for ordinary expected-head merge after fresh coordination checks; no deployment",
+  "ordering_decision": "ADR025 refines ADR017 literal ordering only for optional derived search indexing; protocol-compatible, no provider I/O inside guard, no retroactive architecture-ratification claim."
 }
