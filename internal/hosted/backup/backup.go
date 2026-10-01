@@ -10,6 +10,7 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -37,6 +38,10 @@ import (
 const (
 	controlDBName = "control.db"
 	manifestFile  = "manifest.json" // must match contracts.ManifestV2's reserved name
+	// These are parser safety ceilings only, not measured deployment capacity
+	// or physical snapshot-storage quotas.
+	maxManifestBytes   = 32 << 20
+	maxManifestNesting = 128
 )
 
 // ErrLegacySnapshot means the on-disk manifest is the retired version-1 shape
@@ -752,25 +757,140 @@ func readManifest(root *os.Root) (contracts.ManifestV2, error) {
 	if !info.Mode().IsRegular() {
 		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: manifest %s is not a regular file", manifestFile)
 	}
-	data, err := root.ReadFile(manifestFile)
+	if info.Size() > maxManifestBytes {
+		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: manifest exceeds the %d-byte limit", maxManifestBytes)
+	}
+	f, err := root.Open(manifestFile)
 	if err != nil {
 		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: read manifest: %w", err)
 	}
-	var probe manifestProbe
-	if err = json.Unmarshal(data, &probe); err != nil {
+	defer func() { _ = f.Close() }()
+	openedInfo, err := f.Stat()
+	if err != nil {
+		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: stat opened manifest: %w", err)
+	}
+	if !openedInfo.Mode().IsRegular() {
+		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: manifest %s is not a regular file", manifestFile)
+	}
+	if openedInfo.Size() > maxManifestBytes {
+		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: manifest exceeds the %d-byte limit", maxManifestBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxManifestBytes+1))
+	if err != nil {
+		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: read manifest: %w", err)
+	}
+	if len(data) > maxManifestBytes {
+		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: manifest exceeds the %d-byte limit", maxManifestBytes)
+	}
+	manifest, err := parseManifest(data)
+	if err != nil {
 		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: parse manifest: %w", err)
+	}
+	return manifest, nil
+}
+
+func parseManifest(data []byte) (contracts.ManifestV2, error) {
+	if err := rejectDuplicateJSONKeys(data); err != nil {
+		return contracts.ManifestV2{}, err
+	}
+	var probe manifestProbe
+	if err := json.Unmarshal(data, &probe); err != nil {
+		return contracts.ManifestV2{}, err
 	}
 	if probe.Version == 1 {
 		return contracts.ManifestV2{}, fmt.Errorf("%w: %w", ErrLegacySnapshot, contracts.ErrManifestVersion)
 	}
 	var manifest contracts.ManifestV2
-	if err = json.Unmarshal(data, &manifest); err != nil {
-		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: parse manifest: %w", err)
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&manifest); err != nil {
+		return contracts.ManifestV2{}, err
 	}
-	if err = manifest.Validate(); err != nil {
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return contracts.ManifestV2{}, errors.New("manifest contains trailing JSON value")
+		}
+		return contracts.ManifestV2{}, err
+	}
+	if err := manifest.Validate(); err != nil {
 		return contracts.ManifestV2{}, err
 	}
 	return manifest, nil
+}
+
+func rejectDuplicateJSONKeys(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := scanJSONValue(decoder, 0); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		if err == nil {
+			return errors.New("manifest contains trailing JSON value")
+		}
+		return err
+	}
+	return nil
+}
+
+func scanJSONValue(decoder *json.Decoder, nesting int) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	if delim != '{' && delim != '[' {
+		return fmt.Errorf("unexpected JSON delimiter %q", delim)
+	}
+	if nesting >= maxManifestNesting {
+		return fmt.Errorf("manifest JSON nesting exceeds %d containers", maxManifestNesting)
+	}
+	nextNesting := nesting + 1
+	switch delim {
+	case '{':
+		seen := make(map[string]struct{})
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return errors.New("manifest object key is not a string")
+			}
+			if _, exists := seen[key]; exists {
+				return fmt.Errorf("manifest contains duplicate JSON object key %q", key)
+			}
+			seen[key] = struct{}{}
+			if err := scanJSONValue(decoder, nextNesting); err != nil {
+				return err
+			}
+		}
+		end, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if end != json.Delim('}') {
+			return errors.New("manifest object is not closed")
+		}
+	case '[':
+		for decoder.More() {
+			if err := scanJSONValue(decoder, nextNesting); err != nil {
+				return err
+			}
+		}
+		end, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		if end != json.Delim(']') {
+			return errors.New("manifest array is not closed")
+		}
+	}
+	return nil
 }
 
 // inspectRestoredControlDB opens the just-copied, not-yet-migrated artifact

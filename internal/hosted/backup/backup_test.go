@@ -664,6 +664,107 @@ func TestRestoreRejectsLegacyManifest(t *testing.T) {
 	}
 }
 
+func TestManifestParserRequiresCanonicalUnambiguousV2JSON(t *testing.T) {
+	_, snapshot, _ := freshSnapshot(t, 0)
+	path := filepath.Join(snapshot, manifestFile)
+	canonical, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := parseManifest(canonical)
+	if err != nil {
+		t.Fatalf("parse canonical manifest: %v", err)
+	}
+	if manifest.Version != 2 {
+		t.Fatalf("canonical manifest version = %d, want 2", manifest.Version)
+	}
+
+	duplicateHash := `"entry_hash": "` + manifest.JournalWatermark.EntryHash + `"`
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{
+			name: "duplicate root version",
+			raw:  replaceManifestText(t, string(canonical), `"version": 2,`, `"version": 2, "version": 2,`),
+		},
+		{
+			name: "duplicate nested build identity",
+			raw:  replaceManifestText(t, string(canonical), `"build_sha": "test-build-sha",`, `"build_sha": "test-build-sha", "build_sha": "other-build",`),
+		},
+		{
+			name: "duplicate journal hash",
+			raw:  replaceManifestText(t, string(canonical), duplicateHash, duplicateHash+`, "entry_hash": "different"`),
+		},
+		{
+			name: "unknown root field",
+			raw:  replaceManifestText(t, string(canonical), `"version": 2,`, `"version": 2, "security_override": true,`),
+		},
+		{
+			name: "unknown source field",
+			raw:  replaceManifestText(t, string(canonical), `"build_sha": "test-build-sha",`, `"build_sha": "test-build-sha", "security_override": true,`),
+		},
+		{
+			name: "trailing document",
+			raw:  string(canonical) + `{"version":2}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := parseManifest([]byte(tc.raw)); err == nil {
+				t.Fatal("parseManifest accepted ambiguous or noncanonical JSON")
+			}
+		})
+	}
+}
+
+func TestRestoreRejectsOversizedManifestBeforeStaging(t *testing.T) {
+	_, snapshot, _ := freshSnapshot(t, 0)
+	f, err := os.OpenFile(filepath.Join(snapshot, manifestFile), os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Truncate(maxManifestBytes + 1); err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(t.TempDir(), "restored")
+	err = Restore(context.Background(), snapshot, destination)
+	if err == nil || !strings.Contains(err.Error(), "manifest exceeds") {
+		t.Fatalf("Restore error = %v, want manifest size refusal", err)
+	}
+	if _, statErr := os.Stat(destination); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("destination must remain absent after size refusal, stat err = %v", statErr)
+	}
+}
+
+func TestRestoreRejectsExcessivelyNestedManifestBeforeStaging(t *testing.T) {
+	_, snapshot, _ := freshSnapshot(t, 0)
+	nested := strings.Repeat("[", maxManifestNesting+1) + "0" + strings.Repeat("]", maxManifestNesting+1)
+	if err := os.WriteFile(filepath.Join(snapshot, manifestFile), []byte(nested), 0600); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(t.TempDir(), "restored")
+	err := Restore(context.Background(), snapshot, destination)
+	if err == nil || !strings.Contains(err.Error(), "nesting exceeds") {
+		t.Fatalf("Restore error = %v, want nesting refusal", err)
+	}
+	if _, statErr := os.Stat(destination); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("destination must remain absent after nesting refusal, stat err = %v", statErr)
+	}
+}
+
+func replaceManifestText(t *testing.T, source, old, replacement string) string {
+	t.Helper()
+	if !strings.Contains(source, old) {
+		t.Fatalf("manifest fixture does not contain %q", old)
+	}
+	return strings.Replace(source, old, replacement, 1)
+}
+
 func TestRestoreRejectsTruncatedManifest(t *testing.T) {
 	_, snapshot, _ := freshSnapshot(t, 0)
 	if err := os.WriteFile(filepath.Join(snapshot, manifestFile), []byte(`{"version":2,`), 0600); err != nil {
