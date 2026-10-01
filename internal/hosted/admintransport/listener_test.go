@@ -24,6 +24,12 @@ func privatePath(t *testing.T) string {
 			t.Error(err)
 		}
 	})
+	// Darwin's default temporary directory may be reached through /var's
+	// symlink. Give the listener the real path to our own generated directory.
+	parent, err = filepath.EvalSymlinks(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Chmod(parent, 0700); err != nil {
 		t.Fatal(err)
 	}
