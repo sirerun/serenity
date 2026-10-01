@@ -15,6 +15,10 @@ import (
 )
 
 func newReconcileService(t *testing.T, provider http.Handler) (*Service, *store.Store, string, func()) {
+	return newReconcileServiceWithStatus(t, provider, "active")
+}
+
+func newReconcileServiceWithStatus(t *testing.T, provider http.Handler, status string) (*Service, *store.Store, string, func()) {
 	t.Helper()
 	db, err := store.Open(filepath.Join(t.TempDir(), "control.db"))
 	if err != nil {
@@ -25,7 +29,7 @@ func newReconcileService(t *testing.T, provider http.Handler) (*Service, *store.
 		_ = db.Close()
 		t.Fatal(err)
 	}
-	if _, err = db.DB().Exec(`UPDATE accounts SET stripe_customer_id='cus_worker' WHERE id=?`, account.ID); err != nil {
+	if _, err = db.DB().Exec(`UPDATE accounts SET stripe_customer_id='cus_worker',status=? WHERE id=?`, status, account.ID); err != nil {
 		_ = db.Close()
 		t.Fatal(err)
 	}
@@ -91,6 +95,28 @@ func TestBillingReconcileWorkerUsesConfiguredProviderAndPreservesFreeze(t *testi
 	}
 	if status != "active" || plan != "free" {
 		t.Fatalf("account status/plan = %q/%q", status, plan)
+	}
+}
+
+func TestBillingReconcileWorkerKeepsRestorePendingRestricted(t *testing.T) {
+	var requests atomic.Int32
+	_, db, accountID, cleanup := newReconcileServiceWithStatus(t,
+		emptySubscriptionProvider(t, func() { requests.Add(1) }), "restore_pending")
+	defer cleanup()
+	waitFor(t, "restore-pending reconciliation bookkeeping", func() bool {
+		var count int
+		_ = db.DB().QueryRow(`SELECT count(*) FROM audit_log WHERE account_id=? AND action='billing_reconciled'`, accountID).Scan(&count)
+		return count > 0
+	})
+	if requests.Load() == 0 {
+		t.Fatal("restore-pending account was not reconciled")
+	}
+	var status, plan string
+	if err := db.DB().QueryRow(`SELECT status,plan_id FROM accounts WHERE id=?`, accountID).Scan(&status, &plan); err != nil {
+		t.Fatal(err)
+	}
+	if status != "restore_pending" || plan != "free" {
+		t.Fatalf("restore-pending status/plan = %q/%q", status, plan)
 	}
 }
 
@@ -162,10 +188,14 @@ func TestBillingReconcileWorkerRepairsStaleActiveReadAfterFreeze(t *testing.T) {
 	close(release)
 	waitFor(t, "post-reconcile frozen plan repair", func() bool {
 		var status, plan string
-		if err := db.DB().QueryRow(`SELECT status,plan_id FROM accounts WHERE id=?`, accountID).Scan(&status, &plan); err != nil {
+		var subscriptions, reconciliations int
+		if err := db.DB().QueryRow(`SELECT a.status,a.plan_id,
+			(SELECT count(*) FROM subscriptions WHERE account_id=a.id),
+			(SELECT count(*) FROM audit_log WHERE account_id=a.id AND action='billing_reconciled')
+			FROM accounts a WHERE a.id=?`, accountID).Scan(&status, &plan, &subscriptions, &reconciliations); err != nil {
 			return false
 		}
-		return status == "restore_pending" && plan == "free"
+		return status == "restore_pending" && plan == "free" && subscriptions == 1 && reconciliations > 0
 	})
 	var plan string
 	if err := db.DB().QueryRow(`SELECT plan_id FROM accounts WHERE id=?`, accountID).Scan(&plan); err != nil {
