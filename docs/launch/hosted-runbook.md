@@ -89,6 +89,15 @@ Users rotate or revoke client credentials in the dashboard; every MCP request
 re-verifies credentials, including existing sessions. Replace provider secret
 files through Secrets Manager and restart the service after validating readiness.
 
+Before switching binaries, `deploy.sh` records the active executable at
+`/usr/local/bin/serenity.prev`. Its readiness probes bypass caches and have a
+15-second retry limit. If the new service does not become ready, the script
+points `/usr/local/bin/serenity` back at that saved executable, restarts
+`serenity-hosted`, prints `ROLLED BACK`, and exits non-zero. A first install
+without a previous executable cannot roll back automatically; the operator
+must deploy a verified archive. This automatic path restores the binary only;
+it does not undo data or schema changes.
+
 Before binary rollback, create and retain a coordinated snapshot and stop the
 service. Preserve the failed data directory. Point `/usr/local/bin/serenity` at
 the previous checksum-verified version under `/usr/local/lib/serenity`, then start

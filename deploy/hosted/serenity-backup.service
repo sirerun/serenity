@@ -2,6 +2,7 @@
 Description=Serenity hosted encrypted off-host backup
 After=serenity-hosted.service
 RequiresMountsFor=/var/lib/serenity
+OnFailure=serenity-backup-failed.service
 
 [Service]
 Type=oneshot
