@@ -49,3 +49,7 @@ Validation used the external SSD Go cache and temporary directory:
 - `go test ./internal/hosted/service -run 'TestBilling' -count=1` passed after the retry-policy correction.
 - `go test -race ./internal/hosted/service -count=1` passed on the full service package after the correction.
 - `git diff --check` passed. No multi-package build, live provider call, deployment, or multi-replica qualification was performed.
+
+## Coordinator integration qualification
+
+Integrated Go source `5d73741378e294c2928a0b7c3fd1b6693bfa6111` passed full local race in79 tested packages, full vet and full lint0 at load3.04 under the shared lease, released immediately. Five packages have no tests; seven gated tests remain unexecuted. Independent receipt `2414d43` clears local safety blockers and records eviction pressure. An isolated runtime mutation omitting worker registration failed waiting for reconciliation; restored focused test passed. Later changes are documentation only. Receipt: `docs/launch/evidence/hosted-billing-reconcile-worker-2026-10-01.json`.

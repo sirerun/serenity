@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-01",
+  "scope": "bounded process-local billing reconciliation worker; no provider activation or deployment",
+  "source": "5d73741378e294c2928a0b7c3fd1b6693bfa6111",
+  "independent_review": "2414d431581b653dda5bda11333689baf08f192d",
+  "local_validation": {
+    "one_minute_load": 3.04,
+    "shared_lease": "a1f565f1d5aa03b8a663cd9dd670fc268f98f36d",
+    "lease_released": true,
+    "race_tested_packages": 79,
+    "packages_without_tests": 5,
+    "gated_test_skips": 7,
+    "go_test_race": 0,
+    "go_vet": 0,
+    "golangci_lint": 0,
+    "registration_omission_mutation": "runtime failure: timed out waiting for billing reconciliation audit",
+    "restored_registration_test": 0
+  },
+  "limits": [
+    "Billing is disabled by default; no live provider or cross-process qualification.",
+    "Retry map is process-local and bounded to1024 accounts; oldest-entry eviction loses per-account backoff history under greater failure pressure.",
+    "Provider calls remain serial, full pages are spaced at least one minute, completed sweeps wait15minutes.",
+    "No frozen-account activation, journal/backup/recovery qualification or public launch acceptance."
+  ]
+}
