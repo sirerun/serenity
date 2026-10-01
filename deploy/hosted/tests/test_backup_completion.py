@@ -20,7 +20,9 @@ class CompletionTests(unittest.TestCase):
         # Test storage, including temporary files, stays on the build volume.
         self.temporary = tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR"))
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.outer = Path(self.temporary.name)
+        self.root = self.outer / "snapshot"
+        self.root.mkdir(mode=0o700)
         self.brain_id = "b" * 16
         (self.root / "control.db").write_bytes(b"synthetic database bytes")
         (self.root / "brain.bundle").write_bytes(b"synthetic canonical bundle bytes")
@@ -168,6 +170,11 @@ class CompletionTests(unittest.TestCase):
 
     def test_nonprivate_staging_is_refused(self):
         self.root.chmod(0o755)
+        with self.assertRaises(completion.VerificationError):
+            self.seal()
+
+    def test_nonprivate_outer_staging_is_refused(self):
+        self.outer.chmod(0o755)
         with self.assertRaises(completion.VerificationError):
             self.seal()
 

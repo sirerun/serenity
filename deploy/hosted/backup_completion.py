@@ -138,6 +138,9 @@ def create_completion(snapshot, prefix):
     """Seal already-validated private staging; never overwrite a completion."""
     _prefix(prefix)
     snapshot = Path(snapshot)
+    parent_info = snapshot.parent.lstat()
+    if not stat.S_ISDIR(parent_info.st_mode) or stat.S_IMODE(parent_info.st_mode) & 0o077 or parent_info.st_uid != os.geteuid():
+        raise VerificationError("completion requires caller-owned private outer staging")
     if (snapshot / "COMPLETE").exists() or (snapshot / "COMPLETE").is_symlink():
         record = verify_completed(snapshot, prefix)
         _sync_directory(snapshot)
