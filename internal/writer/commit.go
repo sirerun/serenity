@@ -28,6 +28,19 @@ import (
 func Flush(q *Queue, root string) (committed bool, err error) {
 	q.runMu.Lock()
 	defer q.runMu.Unlock()
+	return flushTouchedLocked(context.Background(), q, root)
+}
+
+// flushTouchedLocked publishes touched paths while the caller holds runMu.
+// It is shared by Flush and SubmitAndFlush so the latter never recursively
+// acquires runMu.
+func flushTouchedLocked(ctx context.Context, q *Queue, root string) (committed bool, err error) {
+	if ctx == nil {
+		return false, ErrNilCommitContext
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	paths := q.takeTouched()
 	if len(paths) == 0 {
 		return false, nil
@@ -39,12 +52,19 @@ func Flush(q *Queue, root string) (committed bool, err error) {
 			}
 		}
 	}()
-	return commitPaths(root, paths, fmt.Sprintf("serenity: sync %d file(s)", len(paths)))
+	return commitPathsContext(ctx, root, paths, fmt.Sprintf("serenity: sync %d file(s)", len(paths)))
 }
 
 // commitPaths commits only the queue's exact files, preserving unrelated staged
 // changes as well as unstaged edits. NUL pathspecs avoid argv limits and quoting.
 func commitPaths(root string, paths []string, message string) (bool, error) {
+	return commitPathsContext(context.Background(), root, paths, message)
+}
+
+func commitPathsContext(ctx context.Context, root string, paths []string, message string) (bool, error) {
+	if ctx == nil {
+		return false, ErrNilCommitContext
+	}
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
 		return false, err
@@ -92,7 +112,7 @@ func commitPaths(root string, paths []string, message string) (bool, error) {
 	for _, rel := range rels {
 		if missing[rel] {
 			if tracked == nil {
-				raw, err := runGit(root, "ls-files", "-z", "--cached")
+				raw, err := runGit(ctx, root, "ls-files", "-z", "--cached")
 				if err != nil {
 					return false, fmt.Errorf("git indexed paths: %w: %s", err, raw)
 				}
@@ -109,11 +129,11 @@ func commitPaths(root string, paths []string, message string) (bool, error) {
 	}
 	if len(addRels) > 0 {
 		pathspec := strings.Join(addRels, "\x00") + "\x00"
-		if out, err := runGitStdin(root, pathspec, "--literal-pathspecs", "add", "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
+		if out, err := runGitStdin(ctx, root, pathspec, "--literal-pathspecs", "add", "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
 			return false, fmt.Errorf("git add: %w: %s", err, out)
 		}
 	}
-	staged, err := runGit(root, "diff", "--cached", "--name-only", "-z", "--no-renames")
+	staged, err := runGit(ctx, root, "diff", "--cached", "--name-only", "-z", "--no-renames")
 	if err != nil {
 		return false, fmt.Errorf("git diff staged paths: %w: %s", err, staged)
 	}
@@ -127,7 +147,7 @@ func commitPaths(root string, paths []string, message string) (bool, error) {
 		return false, nil
 	}
 	pathspec := strings.Join(changedRels, "\x00") + "\x00"
-	if out, err := runGitStdin(root, pathspec, "--literal-pathspecs", "commit", "--only", "--quiet", "-m", message, "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
+	if out, err := runGitStdin(ctx, root, pathspec, "--literal-pathspecs", "commit", "--only", "--quiet", "-m", message, "--pathspec-from-file=-", "--pathspec-file-nul"); err != nil {
 		return false, fmt.Errorf("git commit: %w: %s", err, out)
 	}
 	return true, nil
@@ -148,15 +168,15 @@ func CommitPath(root, path, message string) (bool, error) {
 	return commitPaths(root, []string{path}, message)
 }
 
-func runGit(root string, args ...string) ([]byte, error) {
-	return gitrun.Brain(root).CombinedOutput(context.Background(), args...)
+func runGit(ctx context.Context, root string, args ...string) ([]byte, error) {
+	return gitrun.Brain(root).CombinedOutput(ctx, args...)
 }
 
 // runGitStdin is runGit plus a stdin pipe, for the one git invocation
 // (`add --pathspec-from-file=-`) that takes its argument list over stdin
 // instead of argv.
-func runGitStdin(root, stdin string, args ...string) ([]byte, error) {
-	cmd, err := gitrun.Brain(root).Command(context.Background(), args...)
+func runGitStdin(ctx context.Context, root, stdin string, args ...string) ([]byte, error) {
+	cmd, err := gitrun.Brain(root).Command(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
