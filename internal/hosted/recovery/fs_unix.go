@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"golang.org/x/sys/unix"
 )
@@ -55,7 +56,7 @@ func privateDirectoryPath(path string) (string, error) {
 	if info.Mode().Perm() != 0700 {
 		return "", fmt.Errorf("%w: directory mode %04o must be 0700", ErrPlanUntrustedDir, info.Mode().Perm())
 	}
-	stat, ok := info.Sys().(*unix.Stat_t)
+	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || int(stat.Uid) != os.Geteuid() {
 		return "", fmt.Errorf("%w: directory is not owned by the current user", ErrPlanUntrustedDir)
 	}
