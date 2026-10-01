@@ -110,22 +110,28 @@ func TestSubmitCanonicalAndFlushContextDoNotDeadlock(t *testing.T) {
 	var releaseOnce sync.Once
 	releaseExclusive := func() { releaseOnce.Do(releaseFence) }
 	t.Cleanup(releaseExclusive)
+	canonicalCtx := &canonicalPhaseContext{Context: context.Background(), entered: make(chan struct{})}
+	flushCtx := &flushPhaseContext{Context: context.Background(), sharedTry: make(chan struct{})}
 	canonicalDone := make(chan Result, 1)
 	go func() {
-		canonicalDone <- q.SubmitCanonical(context.Background(), Job{Path: filepath.Join(root, "source.md"), Render: func() ([]byte, error) {
+		canonicalDone <- q.SubmitCanonical(canonicalCtx, Job{Path: filepath.Join(root, "source.md"), Render: func() ([]byte, error) {
 			body := []byte("source\n")
 			return body, os.WriteFile(filepath.Join(root, "source.md"), body, 0o644)
 		}})
 	}()
 	flushDone := make(chan error, 1)
 	go func() {
-		_, err := FlushContext(context.Background(), q, root)
+		_, err := FlushContext(flushCtx, q, root)
 		flushDone <- err
 	}()
-	// Let both operations reach their competing shared-guard paths while the
-	// exclusive fence remains held. Releasing it must let the run-lock-first
-	// Flush protocol and the guard-first canonical job make progress.
-	time.Sleep(25 * time.Millisecond)
+	// Wait for both competing paths to reach the fence before releasing it.
+	for _, phase := range []<-chan struct{}{canonicalCtx.entered, flushCtx.sharedTry} {
+		select {
+		case <-phase:
+		case <-time.After(time.Second):
+			t.Fatal("competing path did not reach the commit fence")
+		}
+	}
 	releaseExclusive()
 	select {
 	case got := <-canonicalDone:
@@ -347,4 +353,16 @@ func TestTombstoneContextCancellationBeforeFencePreservesSource(t *testing.T) {
 	if _, _, err := sources.Read(src.SHA256); err != nil {
 		t.Fatalf("canceled tombstone removed source: %v", err)
 	}
+}
+
+// canonicalPhaseContext signals the drain goroutine's first guard attempt.
+type canonicalPhaseContext struct {
+	context.Context
+	entered chan struct{}
+	once    sync.Once
+}
+
+func (c *canonicalPhaseContext) Err() error {
+	c.once.Do(func() { close(c.entered) })
+	return c.Context.Err()
 }
