@@ -179,3 +179,59 @@ func TestCanonicalFenceValidatesBrainAndExcludesCommits(t *testing.T) {
 		t.Fatal("shared commit did not resume after fence release")
 	}
 }
+
+func TestCanonicalGitConfigAllowsOnlyPinnedLocalOptions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config")
+	for _, tc := range []struct {
+		name string
+		body string
+		ok   bool
+	}{
+		{
+			name: "platform booleans",
+			body: "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n\tlogallrefupdates = true\n\tignorecase = true\n\tprecomposeunicode = true\n[user]\n\tname = test\n\temail = test@example.test\n",
+			ok:   true,
+		},
+		{
+			name: "invalid platform boolean",
+			body: "[core]\n\trepositoryformatversion = 0\n\tignorecase = yes\n",
+		},
+		{
+			name: "fsmonitor command",
+			body: "[core]\n\trepositoryformatversion = 0\n\tfsmonitor = /tmp/untrusted\n",
+		},
+		{
+			name: "config include",
+			body: "[core]\n\trepositoryformatversion = 0\n[include]\n\tpath = /tmp/untrusted\n",
+		},
+		{
+			name: "remote rewrite",
+			body: "[core]\n\trepositoryformatversion = 0\n[remote \"origin\"]\n\turl = https://invalid.example\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(tc.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			err := validateCanonicalGitConfig(path)
+			if (err == nil) != tc.ok {
+				t.Fatalf("validateCanonicalGitConfig error = %v, want success %v", err, tc.ok)
+			}
+		})
+	}
+}
+
+func TestCanonicalCheckerRejectsObjectAlternates(t *testing.T) {
+	runtime := canonicalTestRuntime(t)
+	info := filepath.Join(runtime.Root, ".git", "objects", "info")
+	if err := os.MkdirAll(info, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(info, "alternates"), []byte("/outside/objects\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := runtime.Check(context.Background(), contracts.OperationRecord{ID: "operation-123", BrainID: runtime.brainID, Source: "gateway.remember"})
+	if err != nil || got.Outcome != contracts.CanonicalUnknown {
+		t.Fatalf("alternate object repository verdict = %+v, %v; want Unknown", got, err)
+	}
+}

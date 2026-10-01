@@ -276,7 +276,7 @@ func (r *Runtime) Flush() error { return r.FlushContext(context.Background()) }
 // they cannot bypass the per-brain checker fence.
 func (r *Runtime) FlushContext(ctx context.Context) error {
 	if r.queue == nil {
-		return r.flush()
+		return errors.New("hosted pool: runtime queue unavailable")
 	}
 	_, err := writer.FlushContext(ctx, r.queue, r.Root)
 	return err
