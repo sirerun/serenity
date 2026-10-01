@@ -75,7 +75,7 @@ func waitFor(t *testing.T, description string, check func() bool) {
 
 func TestBillingReconcileWorkerUsesConfiguredProviderAndPreservesFreeze(t *testing.T) {
 	var requests atomic.Int32
-	svc, db, accountID, cleanup := newReconcileService(t, emptySubscriptionProvider(t, func() { requests.Add(1) }))
+	_, db, accountID, cleanup := newReconcileService(t, emptySubscriptionProvider(t, func() { requests.Add(1) }))
 	defer cleanup()
 	waitFor(t, "billing reconciliation audit", func() bool {
 		var count int
@@ -148,7 +148,7 @@ func TestBillingReconcileWorkerRepairsStaleActiveReadAfterFreeze(t *testing.T) {
 			},
 		}, "has_more": false})
 	})
-	svc, db, accountID, cleanup := newReconcileService(t, provider)
+	_, db, accountID, cleanup := newReconcileService(t, provider)
 	defer cleanup()
 	select {
 	case <-entered:
