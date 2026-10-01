@@ -6,14 +6,16 @@ import re
 import sys
 
 
-USES = re.compile(r"^\s*-\s*uses:\s*([^\s#]+)\s*(?:#\s*(.*))?$")
+# A step may use `- uses:` directly or place `uses:` after `- name:`.
+USES = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)\s*(?:#\s*(.*))?$")
 PIN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@([0-9a-f]{40})$")
 VERSION = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$")
 
 
 def main() -> int:
     failures = []
-    for path in sorted(Path(".github/workflows").glob("*.yml")):
+    workflows = Path(".github/workflows")
+    for path in sorted([*workflows.glob("*.yml"), *workflows.glob("*.yaml")]):
         for number, line in enumerate(path.read_text().splitlines(), 1):
             match = USES.match(line)
             if not match:

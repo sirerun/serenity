@@ -10,6 +10,26 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class ReleaseSignatureTests(unittest.TestCase):
+    def test_action_pin_validator_checks_named_steps(self):
+        validator = ROOT / "scripts/check-action-pins.py"
+        with tempfile.TemporaryDirectory() as temp:
+            workflow_dir = Path(temp) / ".github/workflows"
+            workflow_dir.mkdir(parents=True)
+            workflow = workflow_dir / "release.yml"
+            workflow.write_text("jobs:\n  sign:\n    steps:\n      - name: Install Cosign\n        uses: sigstore/cosign-installer@v4.1.0\n")
+            result = subprocess.run(["python3", str(validator)], cwd=temp, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("release.yml:5", result.stderr)
+
+            workflow.write_text("jobs:\n  sign:\n    steps:\n      - name: Install Cosign\n        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0\n")
+            result = subprocess.run(["python3", str(validator)], cwd=temp, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+            workflow.rename(workflow_dir / "release.yaml")
+            (workflow_dir / "release.yaml").write_text("jobs:\n  sign:\n    steps:\n      - name: Install Cosign\n        uses: sigstore/cosign-installer@v4.1.0\n")
+            result = subprocess.run(["python3", str(validator)], cwd=temp, text=True, capture_output=True)
+            self.assertNotEqual(result.returncode, 0, ".yaml workflow escaped pin validation")
+
     def test_tampered_archive_is_refused_before_extract(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
