@@ -11,7 +11,7 @@ Baseline main: `42f6dfd8615b193fffb797175daf4b5f5d02dc94` (PR325). Local validat
 
 ## Review and gates
 
-The first integrated gate at `13ae1a4` passed full race (78 tested packages, five packages without tests, six explicit test skips), full vet and full lint (zero issues). New canonical and clone isolation changes require the final gate. The first launch attempt for that gate held before claiming the build lease because one-minute load was above10. No success is claimed for that held command.
+The first integrated gate at `13ae1a4` passed full race (78 tested packages, five packages without tests, six explicit test skips), full vet and full lint (zero issues). The final integrated gate at `8dbf9bf` passed full race in78 tested packages (five packages without tests and six explicit test skips), full vet and full lint (zero issues). An earlier attempt held before claiming the build lease because one-minute load was above10; the subsequent run executed below10 and released its exact lease.
 
 Independent review reproduced a repository-specific transport-policy override in the initial Git helper. The followup adds explicit built-in transport overrides, disables lazy fetching, refuses generic quarantine cloning, and provides a regular-file-only CloneBundle API from a fresh private workspace. Helper race/lint passed; independent followup review is pending. This helper alone does not migrate production backup callsites.
 
@@ -22,3 +22,7 @@ Independent review reproduced a repository-specific transport-policy override in
 - T23.47 remains partial: production reconciliation and resumable closure assembly, complete provider lifecycle/portal fixtures and live qualification are open. Production billing remains disabled.
 - T23.49 remains partial: real independent T23.48 journal, build identity and partner-aware service/CLI wiring are required. Never fabricate a zero watermark or reuse the expiring backup bucket as a journal substrate.
 - No new hosted binary, ingress lockdown, live charge or public launch is implied by these patches. Draft PR273 remains held for recovery review.
+
+## Assembled canonical regression
+
+The coordinator added `TestInvalidRememberReleasesOperationBeforeCanonicalEntry` through real service assembly and SQLite: invalid TTL releases the reservation without entering canonical state, a corrected same-key retry commits one write, and its source carries the committed ledger ID. Restoring the old gateway implementation makes that test fail at runtime with `phase=pending_review`; restoring the fix passes the focused service race check. This regression is supplemental to the source-pinned full gate above; no new implementation changed after that gate.

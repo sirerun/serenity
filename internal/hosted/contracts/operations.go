@@ -241,7 +241,7 @@ type OperationDelta struct {
 }
 
 // OperationRecord is one durable journal row. ClientKey is the optional
-// caller-supplied retry key, scoped to (AccountID, BrainID). A record that is
+// caller-supplied retry key, scoped to (AccountID, BrainID, QuotaPeriod). A record that is
 // already Committed under the same ClientKey is returned by Reserve as a
 // replay; it never charges twice.
 type OperationRecord struct {
