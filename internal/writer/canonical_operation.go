@@ -9,6 +9,10 @@ type canonicalOperationContextKey struct{}
 type CanonicalOperation struct {
 	ID           string
 	BeforeCommit func(context.Context, string) error
+	// AfterFlush reports the durable identity only after the trusted source
+	// write and its inline Git flush both succeeded. It runs after queue guards
+	// have been released and must not perform ledger or queue I/O.
+	AfterFlush func(context.Context, string, string)
 }
 
 // WithCanonicalOperation attaches metadata supplied by an internal caller.

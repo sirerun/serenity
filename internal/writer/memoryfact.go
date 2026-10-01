@@ -91,16 +91,42 @@ func (w *MemoryFact) RememberContext(ctx context.Context, input RememberInput, n
 	if w.Queue == nil || w.Sources == nil {
 		return RememberResult{}, fmt.Errorf("writer: memory writer dependencies unavailable")
 	}
+	operation := canonicalOperationFromContext(ctx)
+	inlineFlush := operation.AfterFlush != nil
+	if inlineFlush && (operation.ID == "" || input.OperationKey != operation.ID || operation.BeforeCommit == nil || !store.ValidMemoryOperationKey(operation.ID)) {
+		return RememberResult{}, fmt.Errorf("writer: invalid canonical operation metadata")
+	}
+	entered := false
+	if inlineFlush {
+		beforeCommit := operation.BeforeCommit
+		operation.BeforeCommit = func(commitCtx context.Context, operationID string) error {
+			if err := beforeCommit(commitCtx, operationID); err != nil {
+				return err
+			}
+			entered = true
+			return nil
+		}
+	}
 	var result RememberResult
 	var innerErr error
-	res := w.Queue.Submit(Job{
+	job := Job{
 		Render: func() ([]byte, error) {
-			result, innerErr = w.rememberLocked(ctx, input, now, canonicalOperationFromContext(ctx))
+			result, innerErr = w.rememberLocked(ctx, input, now, operation)
 			return nil, innerErr
 		},
-	})
-	if res.Err != nil {
-		return RememberResult{}, res.Err
+	}
+	var err error
+	if inlineFlush {
+		flushed := w.Queue.SubmitAndFlush(ctx, w.Sources.Root, job)
+		err = flushed.Result.Err
+	} else {
+		err = w.Queue.Submit(job).Err
+	}
+	if err != nil {
+		return RememberResult{}, err
+	}
+	if inlineFlush && entered && result.Record.Payload.CanonicalOperationID == operation.ID && result.Record.SHA256 != "" {
+		operation.AfterFlush(ctx, operation.ID, result.Record.SHA256)
 	}
 	return result, nil
 }
