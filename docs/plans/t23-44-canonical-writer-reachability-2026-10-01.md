@@ -1,0 +1,48 @@
+# T23.44 canonical-source writer reachability on candidate 78936a1
+
+Read-only audit target: `78936a19f364c0272470a6c22c82d513b74f9961` (`style: resolve canonical fence lint findings`). The coordinator worktree later advanced to `e1b77d6`, but the only changes between the target and that checkout are a hosted evidence JSON and review note; production Go source is identical. This receipt proposes a bounded next code slice. It changes no production code, starts no checker/reconciler, adds no retained marker, and does not claim T23.44 acceptance.
+
+## Reachable hosted call chains
+
+`internal/hosted/pool/pool.go` acquires `writer.AcquireBrain(root)` before publishing a runtime, then creates one private `writer.Queue` and `memory.Handlers` using that queue and the brain's `SourceStore`. The runtime exposes only `remember`, `recall`, `forget`, and `read_memory_fact` tools. The pool keeps the brain-owner lock until runtime close. That lock is the interprocess exclusion relied on by the hosted contract.
+
+For hosted `remember`, `internal/hosted/gateway/gateway.go` reserves the operation and, when `Gateway.Operations` is configured, passes a trusted `CanonicalOperation` into the handler. `internal/server/memory/remember.go` calls `MemoryFact.RememberContext`. In `internal/writer/memoryfact.go`, a trusted `AfterFlush` callback selects `Queue.SubmitAndFlush`, which acquires the shared commit guard before `runMu`, runs the source mutation, and flushes before the callback reports the durable fact. This is the protected hosted path.
+
+The handler then schedules `index.RefreshMemoryFactSearch` through ordinary `Queue.Submit` in `internal/server/memory/remember.go`. That job calls the embedder and writes derived index state after the source write returns. It must stay outside the shared commit guard. A checker must not wait for it, take `Runtime.Mutations`, or wrap the whole handler/provider span in a commit guard.
+
+There is also a real gateway compatibility path: when `Gateway.Operations == nil`, `gateway.go` meters `remember` without reserving an operation and does not install trusted canonical metadata. `RememberContext` then takes its ordinary `Queue.Submit` branch. There is no operation ledger to reconcile in that configuration, so reconciliation must remain unavailable there; do not infer that this path is protected because the gateway holds `Runtime.Mutations`.
+
+Hosted `forget` sets `WithHostedForgetPublication` in the gateway whether or not an operation ledger is configured. `server/memory/forget.go` then calls `MemoryFact.ForgetContext`, which already uses `SubmitAndFlush` and threads request context through index purge and history rewrite. Direct/legacy handler calls without that context flag still use `MemoryFact.Forget`, which submits without the shared guard.
+
+## Other source writers and exclusions
+
+Production typed source writes are concentrated in `internal/writer/memoryfact.go` and `internal/writer/tombstone.go`: `WriteMemoryFactBy`, `WriteMemoryExpiry`, and `TombstoneAt` are reached through these writer methods. The unguarded queue submissions that need routing are:
+
+- `MemoryFact.RememberContext` without trusted `AfterFlush` (and `Remember`, which delegates to it).
+- `MemoryFact.Forget`.
+- `MemoryFact.CancelRemoteOperation`; no non-test caller was found and the hosted pool does not expose a cancel tool, but the writer API is a future bypass unless it is fenced.
+- `SourceTombstone.Tombstone`, currently invoked by `supersede.Writer.TombstoneCascade`; this method is not exposed as a hosted tool, but it should use the same source-mutation API if it is ever given the hosted queue.
+
+`internal/cli/sync.go` is the other production direct source-store writer found: `runSync` calls `SourceStore.Write`, then submits a no-op queue job to mark the already-written source paths, and finally calls `writer.Flush`. This is a separate CLI process path, not the hosted runtime queue. The production Cobra entry point is wrapped by `internal/cli/ownership.go`; `commandOwnsBrain` defaults to ownership, and `serenity sync` is not an exemption. The wrapper holds `writer.AcquireBrain` across the command, while `pool.open` holds the same owner lock for the hosted runtime lifetime. That is the current interprocess exclusion path; do not remove it or treat CLI's independent `Flush` guard as shared with the pool queue. Direct `runSync` calls in package tests bypass the Cobra ownership wrapper but are not production command entry points.
+
+The generic source storage methods remain technically callable from other internal packages. The current non-test call-site audit found `SourceStore.Write` in CLI sync, typed memory writes in the writer package, and source tombstoning in the writer/supersede path. Add an AST-based allowlist regression to the eventual writer slice so a new direct source-store caller cannot bypass both the queue and brain-owner boundaries unnoticed. `writer.PublishFiles` rejects paths outside `brain/entities/**` and `brain/claims/**`; `ImportEntity` targets `brain/entities/**`. Their current callers do not publish memory sources. The ingest, supersede, direction, and compaction publication paths are therefore not memory-source writers under the current path contract.
+
+The hosted gateway holds `Runtime.Mutations` around remember/forget, but that mutex also spans handler work and derived indexing. It is not the commit fence and must never be acquired by the checker. `pool.open` completes configuration, Git-baseline, and index recovery work before it creates/publishes the runtime queue, so those initialization writes are outside a concurrently callable checker.
+
+## Smallest safe next source slice
+
+Add a context-aware `Queue.SubmitCanonical(ctx, job)` path for a source mutation that must serialize with reconciliation but must preserve local “later flush” behavior. In `Queue.drain`, acquire `EnterCommit(ctx)` **before** acquiring `runMu`, execute only the source-writing `Render` and touched-path updates while both are held, then release `runMu` and the shared guard before hooks or later provider/index work. It must not implicitly flush. Keep ordinary `Submit` unguarded for provider/index jobs, and keep existing `SubmitAndFlush` for hosted remember/forget publication.
+
+Route the non-inline `RememberContext` branch, `Forget`, `CancelRemoteOperation`, and `SourceTombstone.Tombstone` through that API. Preserve existing signatures with context-aware variants plus legacy `context.Background()` wrappers where necessary. For a tombstone cascade, keep `SourceTombstone` as the source erasure boundary; do not call `SourceStore.Tombstone` directly from a new hosted service path. A no-ledger gateway instance can still perform local source writes, but it has no operation reconciler; any future construction that wires reconciliation must require the configured operation ledger and trusted hosted entry path.
+
+`SubmitCanonical` must take its context without acquiring the guard in the submitting goroutine. A queued mutation may be behind an active provider/index job; the drain loop must finish that ordinary job before it attempts `EnterCommit`, so the shared guard is never held while provider work runs. Once the mutation reaches the head of the queue, its lock order is guard then `runMu`, matching `SubmitAndFlush`. `FlushContext` already uses the complementary safe order: take `runMu`, attempt a nonblocking shared-guard acquisition, and release `runMu` before waiting if an exclusive fence is pending. Do not introduce an exclusive-guard-to-`runMu` wait or call a queue method from the exclusive callback.
+
+## Focused test controls
+
+- Hold the exclusive fence, submit a canonical writer job, and prove its `Render`, `EnterCanonical`, file writes, and touched-path update do not start. After the test finalizes the ledger row as released and drops the fence, the queued job must fail `EnterCanonical` before creating any source bytes. The old unguarded route should fail this test at runtime.
+- Start a canonical writer, pause it after `EnterCanonical` and before publication, then request the exclusive fence. The fence must wait until source write/touch/inline flush settle. If cancellation occurs after entry, preserve pending/unknown ledger evidence; never turn the row into released.
+- Block an ordinary provider/index `Queue.Submit` job. Prove an exclusive fence can be acquired while it is blocked, and prove no provider call is made under the shared guard. Release it, then prove a queued canonical writer enters the shared guard before its first source byte.
+- Exercise `FlushContext` racing the exclusive fence and `SubmitCanonical` with deterministic phase barriers; preserve the run-lock-before-nonblocking-shared-try rule and verify cancellation never retains `runMu` while waiting for the exclusive fence.
+- Add route coverage for legacy `Remember`, `Forget`, cancellation, and tombstone wrappers, plus an AST allowlist for direct calls to `SourceStore.Write`, `WriteMemoryFact[By]`, `WriteMemoryExpiry`, `Tombstone`, and `TombstoneAt`. Keep a separate ownership test that the CLI sync command remains under `AcquireBrain`; do not try to merge its independently-owned queue with the hosted queue.
+
+The remaining conservative checker still returns `Unknown` for missing facts. Even after this queue slice, `CanonicalAbsent` requires the separate bounded HEAD/index/worktree/touched snapshot design: complete, non-truncated reads; no matching fact or expiry/cancellation marker; no source path in the non-destructive touched snapshot; and a no-entry ledger row. An entered but missing/erased operation remains `Unknown`. No checker activation is safe until those checks and all mutation routes have independent review.
