@@ -79,9 +79,10 @@ type RecoveryAdmission interface {
 // the actual release build, and Recovery proves the journal boundary before
 // service assembly admits handlers or workers.
 type LifecycleDependencies struct {
-	Journal  contracts.DeletionJournal
-	BuildSHA string
-	Recovery RecoveryAdmission
+	Journal                 contracts.DeletionJournal
+	BuildSHA                string
+	Recovery                RecoveryAdmission
+	OperatorReviewAdmission OperatorReviewAdmission
 }
 
 func (d LifecycleDependencies) validate() error {
@@ -227,28 +228,31 @@ func readSecret(dir, name string) (string, error) {
 }
 
 type Service struct {
-	operations            *operation.Ledger
-	operationReconciler   *gateway.OperationReconciler
-	operationWorkerCancel context.CancelFunc
-	operationWorkerDone   chan struct{}
-	Store                 *store.Store
-	Pool                  *pool.Pool
-	Gateway               *gateway.Gateway
-	journal               contracts.DeletionJournal
-	buildSHA              string
-	Partner               *partner.Service
-	Handler               http.Handler
-	cfg                   Config
-	embedder              embed.Embedder
-	readyMu               sync.Mutex
-	readyAt               time.Time
-	ready                 bool
-	billingCloser         contracts.BillingCloser
-	billingReconciler     contracts.BillingReconciler
-	billingWorkerCancel   context.CancelFunc
-	billingWorkerDone     chan struct{}
-	closeOnce             sync.Once
-	closeErr              error
+	operations              *operation.Ledger
+	operationReconciler     *gateway.OperationReconciler
+	operatorReviewAdmission OperatorReviewAdmission
+	operatorReviewLedger    operatorReviewLedger
+	operatorReviewFence     operatorReviewFence
+	operationWorkerCancel   context.CancelFunc
+	operationWorkerDone     chan struct{}
+	Store                   *store.Store
+	Pool                    *pool.Pool
+	Gateway                 *gateway.Gateway
+	journal                 contracts.DeletionJournal
+	buildSHA                string
+	Partner                 *partner.Service
+	Handler                 http.Handler
+	cfg                     Config
+	embedder                embed.Embedder
+	readyMu                 sync.Mutex
+	readyAt                 time.Time
+	ready                   bool
+	billingCloser           contracts.BillingCloser
+	billingReconciler       contracts.BillingReconciler
+	billingWorkerCancel     context.CancelFunc
+	billingWorkerDone       chan struct{}
+	closeOnce               sync.Once
+	closeErr                error
 }
 type ledger struct{ db *store.Store }
 
@@ -381,7 +385,8 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	id := &identity.Service{Store: db, Sender: sender, Origin: cfg.PublicOrigin, AccountCap: cfg.AccountCap, RegistrationMode: cfg.RegistrationMode, InviteAllowlist: allowlist}
 	provisioner := &provision.Provisioner{Store: db, BrainsRoot: filepath.Join(cfg.DataDir, "brains")}
 	dash := &dashboard.Dashboard{Gateway: g, Identity: id, Provision: provisioner, Issuer: issuer, Meter: metering, Origin: cfg.PublicOrigin, Dev: dev, Billing: cfg.BillingEnabled}
-	s := &Service{operations: operations, operationReconciler: gateway.NewOperationReconciler(g), Store: db, Pool: p, Gateway: g, journal: deps.Journal, buildSHA: deps.BuildSHA, cfg: cfg, embedder: embedding}
+	operationReconciler := gateway.NewOperationReconciler(g)
+	s := &Service{operations: operations, operationReconciler: operationReconciler, operatorReviewAdmission: deps.OperatorReviewAdmission, operatorReviewLedger: operations, operatorReviewFence: operationReconciler, Store: db, Pool: p, Gateway: g, journal: deps.Journal, buildSHA: deps.BuildSHA, cfg: cfg, embedder: embedding}
 	if cfg.billingConfig != nil {
 		dash.BillingService = &billing.Service{Store: db, Identity: id, Config: *cfg.billingConfig}
 		s.billingCloser = dash.BillingService
@@ -488,6 +493,10 @@ func (s *Service) Backup(ctx context.Context, destination string) error {
 }
 func (s *Service) AdminHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost && r.URL.Path == "/operations/resolve" {
+			s.resolveOperatorReview(w, r)
+			return
+		}
 		if r.Method == "POST" && r.URL.Path == "/partners" {
 			s.seedPartner(w, r)
 			return
