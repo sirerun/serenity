@@ -31,3 +31,9 @@ The smallest independently testable implementation is the injected journal plus 
 ## Ownership and release boundary
 
 The previously held lifecycle claim is now absent after exact-SHA resolution. Before implementation, reacquire the canonical file-resource claim and claim the T23.48 task scope. Keep PR #273 and its historical source untouched; integrate reviewed owned code from current main. Gateway/service lifecycle code is the T23.48 slice; backup manifest writing/caller belongs with T23.49/T23.57 integration. Submit the narrow backup caller and production credential/config questions to those owners rather than editing their scopes concurrently.
+
+## Coordinator narrowing for the first source slice
+
+The current coordinator selected a maintenance-only correction: one Maintenance.RLock and the account mutex span trusted service freeze/provider closure and private purge helpers; the backup writer remains exclusive. Private helpers never recursively acquire either lock. Export joins the read fence; inventory is intentionally unchanged. This supersedes this report's exclusive-account-deletion proposal for the initial implementation. Journal injection, intent/outcome, manifest-v2 assembly, replay authority and credential gates remain unimplemented and are not accepted by this correction.
+
+Author source62550e9 includes a queued-writer regression that fails at runtime on main333. The author's final race attempt was interrupted at sampled load16.21 and is explicitly nonqualifying; it is not a final PASS. Integration requires fresh independent review and guarded local qualification before merge.
