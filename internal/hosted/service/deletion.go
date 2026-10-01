@@ -23,17 +23,14 @@ func (s *Service) accountDeletionPreflight(ctx context.Context, accountID string
 func (s *Service) deletionPreflight(ctx context.Context, accountID string, admittedReplay bool) (bool, error) {
 	var status, customer string
 	var subscriptions bool
-	var alreadyDeleted bool
 	err := s.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		if err := tx.QueryRowContext(ctx, `SELECT status FROM accounts WHERE id=?`, accountID).Scan(&status); err != nil {
 			return err
 		}
-		if status == "deleted" {
-			alreadyDeleted = true
-		} else if status != "active" && status != "deleting" && !(admittedReplay && status == "restore_pending") {
+		if status != "deleted" && status != "active" && status != "deleting" && !(admittedReplay && status == "restore_pending") {
 			return contracts.ErrBillingAccountFrozen
 		} else {
-			if _, err := tx.ExecContext(ctx, `UPDATE accounts SET status='deleting' WHERE id=? AND (status='active' OR (? AND status='restore_pending'))`, accountID, admittedReplay); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE accounts SET status='deleting' WHERE id=? AND (status IN ('active','deleted') OR (? AND status='restore_pending'))`, accountID, admittedReplay); err != nil {
 				return err
 			}
 		}
@@ -55,9 +52,6 @@ func (s *Service) deletionPreflight(ctx context.Context, accountID string, admit
 		}
 	} else if s.cfg.BillingEnabled || customer != "" || subscriptions {
 		return false, errors.New("hosted: billing closure is unavailable")
-	}
-	if alreadyDeleted {
-		return false, nil
 	}
 	return true, nil
 }

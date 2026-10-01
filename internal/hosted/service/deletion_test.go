@@ -226,8 +226,8 @@ func TestReplayPreflightStillClosesBillingForDeletedAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("preflight for deleted account: %v", err)
 	}
-	if proceed {
-		t.Fatal("already-deleted account should not be destructively reprocessed after billing reconciliation")
+	if !proceed {
+		t.Fatal("confirmed closure must permit idempotent terminal cleanup")
 	}
 	if calls != 1 {
 		t.Fatalf("deleted account billing closure calls=%d, want 1", calls)
@@ -236,8 +236,8 @@ func TestReplayPreflightStillClosesBillingForDeletedAccount(t *testing.T) {
 	if err := db.DB().QueryRow(`SELECT status FROM accounts WHERE id=?`, accountID).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
-	if status != "deleted" {
-		t.Fatalf("billing preflight changed terminal account status to %q", status)
+	if status != "deleting" {
+		t.Fatalf("retry must remain frozen until cleanup completes: %q", status)
 	}
 }
 
