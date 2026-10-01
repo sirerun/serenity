@@ -117,7 +117,12 @@ func TestPrivateDirectoryExistingPathsAndCanceledCreation(t *testing.T) {
 	if _, err := Listen(context.Background(), unsafe); err == nil {
 		t.Fatal("public directory accepted")
 	}
-	symlink := filepath.Join(t.TempDir(), "alias")
+	aliasDir, err := os.MkdirTemp(os.Getenv("TMPDIR"), "admin-alias-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(aliasDir) })
+	symlink := filepath.Join(aliasDir, "alias")
 	if err := os.Symlink(filepath.Dir(path), symlink); err != nil {
 		t.Fatal(err)
 	}
