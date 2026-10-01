@@ -23,7 +23,9 @@ func rewriteForgottenPath(root, relPath string) (retErr error) {
 // rewriteForgottenPathContext bounds every Git subprocess by ctx. The
 // legacy wrapper above preserves local callers' historical behavior.
 func rewriteForgottenPathContext(ctx context.Context, root, relPath string) (retErr error) {
-	return rewriteForgottenPathWithGit(ctx, root, relPath, gitrun.Brain(root), func(dir string) historyGit { return gitrun.Brain(dir) })
+	return rewriteForgottenPathWithGit(ctx, root, relPath, groupedHistoryGit{gitrun.Brain(root)}, func(dir string) historyGit {
+		return groupedHistoryGit{gitrun.Brain(dir)}
+	})
 }
 
 type historyGit interface {
@@ -31,6 +33,46 @@ type historyGit interface {
 	CombinedOutput(context.Context, ...string) ([]byte, error)
 	Run(context.Context, ...string) error
 	Command(context.Context, ...string) (*exec.Cmd, error)
+}
+
+// groupedHistoryGit ensures cancellation stops Git's descendants as well as
+// its immediate process. History rewriting commands can spawn pack writers,
+// shell filters, and maintenance helpers that must not outlive the queue job.
+type groupedHistoryGit struct{ inner historyGit }
+
+func (g groupedHistoryGit) Command(ctx context.Context, args ...string) (*exec.Cmd, error) {
+	cmd, err := g.inner.Command(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	if err := configureHistoryProcessGroup(cmd); err != nil {
+		return nil, err
+	}
+	return cmd, nil
+}
+
+func (g groupedHistoryGit) Output(ctx context.Context, args ...string) ([]byte, error) {
+	cmd, err := g.Command(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return cmd.Output()
+}
+
+func (g groupedHistoryGit) CombinedOutput(ctx context.Context, args ...string) ([]byte, error) {
+	cmd, err := g.Command(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return cmd.CombinedOutput()
+}
+
+func (g groupedHistoryGit) Run(ctx context.Context, args ...string) error {
+	cmd, err := g.Command(ctx, args...)
+	if err != nil {
+		return err
+	}
+	return cmd.Run()
 }
 
 func rewriteForgottenPathWithGit(ctx context.Context, root, relPath string, git historyGit, gitAt func(string) historyGit) (retErr error) {
@@ -144,9 +186,6 @@ func rewriteForgottenPathWithGit(ctx context.Context, root, relPath string, git 
 	filterCmd, err := gitAt(worktree).Command(ctx, "filter-branch", "--force", "--index-filter", filter, "--", "--all")
 	if err != nil {
 		return fmt.Errorf("writer: prepare history rewrite: %w", err)
-	}
-	if err := configureHistoryProcessGroup(filterCmd); err != nil {
-		return fmt.Errorf("writer: configure isolated history rewrite process: %w", err)
 	}
 	// Git's ten-second filter-branch warning is for interactive use. This
 	// operation is explicit and covered by the CLI warning and operator docs.
