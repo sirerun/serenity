@@ -36,6 +36,39 @@ type Service struct {
 	Identity *identity.Service
 	Config   Config
 	mu       sync.Mutex
+	// priorSubscriptionReader is nil in production. It lets package tests inject
+	// a statement-level read failure while exercising the real SQLite
+	// transaction and its rollback behavior.
+	priorSubscriptionReader func(context.Context, *sql.Tx, string, string) (priorSubscription, error)
+}
+
+type priorSubscription struct {
+	status, grace, graceInvoice, periodStart, periodEnd string
+}
+
+type persistedBillingReadError struct {
+	operation string
+	err       error
+}
+
+func (e *persistedBillingReadError) Error() string { return e.operation + ": " + e.err.Error() }
+func (e *persistedBillingReadError) Unwrap() error { return e.err }
+
+func (s *Service) readPriorSubscription(ctx context.Context, tx *sql.Tx, subscriptionID, accountID string) (priorSubscription, error) {
+	var prior priorSubscription
+	var err error
+	if s.priorSubscriptionReader != nil {
+		prior, err = s.priorSubscriptionReader(ctx, tx, subscriptionID, accountID)
+	} else {
+		err = tx.QueryRowContext(ctx, `SELECT status,COALESCE(grace_until,''),COALESCE(grace_invoice_id,''),COALESCE(current_period_start,''),COALESCE(current_period_end,'') FROM subscriptions WHERE id=? AND account_id=?`, subscriptionID, accountID).Scan(&prior.status, &prior.grace, &prior.graceInvoice, &prior.periodStart, &prior.periodEnd)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return priorSubscription{}, nil
+	}
+	if err != nil {
+		return priorSubscription{}, &persistedBillingReadError{operation: "read prior subscription state", err: err}
+	}
+	return prior, nil
 }
 
 var _ contracts.BillingReconciler = (*Service)(nil)
@@ -304,6 +337,7 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 	}
 
 	now := time.Now().UTC()
+	var chosenGrace string
 	err = s.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		rows, e := tx.QueryContext(ctx, `SELECT id FROM subscriptions WHERE account_id=?`, accountID)
 		if e != nil {
@@ -326,8 +360,10 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 			item := sub.Items.Data[0]
 			plan := s.planForPrice(item.Price.ID)
 			seen[sub.ID] = true
-			var oldStatus, oldGrace, oldGraceInvoice, oldPeriodStart, oldPeriodEnd string
-			_ = tx.QueryRowContext(ctx, `SELECT status,COALESCE(grace_until,''),COALESCE(grace_invoice_id,''),COALESCE(current_period_start,''),COALESCE(current_period_end,'') FROM subscriptions WHERE id=? AND account_id=?`, sub.ID, accountID).Scan(&oldStatus, &oldGrace, &oldGraceInvoice, &oldPeriodStart, &oldPeriodEnd)
+			old, readErr := s.readPriorSubscription(ctx, tx, sub.ID, accountID)
+			if readErr != nil {
+				return readErr
+			}
 			periodStart := time.Unix(item.CurrentPeriodStart, 0).UTC()
 			anchor := periodStart
 			invoice := ""
@@ -337,13 +373,16 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 			}
 			newPeriodStart := store.Stamp(periodStart)
 			newPeriodEnd := store.Stamp(time.Unix(item.CurrentPeriodEnd, 0))
-			periodChanged := oldPeriodStart != "" && oldPeriodStart != newPeriodStart
+			periodChanged := old.periodStart != "" && old.periodStart != newPeriodStart
 			if periodChanged {
-				if e = recordWindowClosed(ctx, tx, accountID, sub.ID, oldStatus, oldPeriodStart, oldPeriodEnd, oldGrace); e != nil {
+				if e = recordWindowClosed(ctx, tx, accountID, sub.ID, old.status, old.periodStart, old.periodEnd, old.grace); e != nil {
 					return e
 				}
 			}
-			grace, graceInvoice := graceDeadline(oldStatus, oldGrace, oldGraceInvoice, periodChanged, sub.Status, invoice, anchor)
+			grace, graceInvoice := graceDeadline(old.status, old.grace, old.graceInvoice, periodChanged, sub.Status, invoice, anchor)
+			if chosen != nil && sub.ID == chosen.ID {
+				chosenGrace = grace
+			}
 			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_until,grace_invoice_id) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end,grace_until=excluded.grace_until,grace_invoice_id=excluded.grace_invoice_id`, sub.ID, accountID, item.Price.ID, plan, sub.Status, newPeriodStart, newPeriodEnd, sub.CancelAtPeriodEnd, nullableString(grace), nullableString(graceInvoice))
 			if e != nil {
 				return e
@@ -384,10 +423,11 @@ func (s *Service) ReconcileCustomer(ctx context.Context, accountID string) (cont
 	result.CurrentWindowEnd = time.Unix(item.CurrentPeriodEnd, 0).UTC()
 	result.Source = "stripe_subscription"
 	if chosen.Status == "past_due" {
-		var grace string
-		_ = s.Store.DB().QueryRowContext(ctx, `SELECT COALESCE(grace_until,'') FROM subscriptions WHERE id=?`, chosen.ID).Scan(&grace)
-		if grace != "" {
-			result.GraceUntil, _ = time.Parse(time.RFC3339Nano, grace)
+		if chosenGrace != "" {
+			result.GraceUntil, err = time.Parse(time.RFC3339Nano, chosenGrace)
+			if err != nil {
+				return contracts.ReconcileResult{}, fmt.Errorf("parse reconciled grace deadline: %w", err)
+			}
 		}
 	}
 	return result, nil
@@ -1043,17 +1083,19 @@ func (s *Service) Webhook(ctx context.Context, body []byte, signature string) er
 			}
 		}
 		err = s.Store.Transaction(ctx, func(tx *sql.Tx) error {
-			var oldStatus, oldGrace, oldGraceInvoice, oldPeriodStart, oldPeriodEnd string
-			_ = tx.QueryRowContext(ctx, `SELECT status,COALESCE(grace_until,''),COALESCE(grace_invoice_id,''),COALESCE(current_period_start,''),COALESCE(current_period_end,'') FROM subscriptions WHERE id=?`, sub.ID).Scan(&oldStatus, &oldGrace, &oldGraceInvoice, &oldPeriodStart, &oldPeriodEnd)
+			old, readErr := s.readPriorSubscription(ctx, tx, sub.ID, account)
+			if readErr != nil {
+				return readErr
+			}
 			newPeriodStart := store.Stamp(time.Unix(item.CurrentPeriodStart, 0))
 			newPeriodEnd := store.Stamp(time.Unix(item.CurrentPeriodEnd, 0))
-			periodChanged := oldPeriodStart != "" && oldPeriodStart != newPeriodStart
+			periodChanged := old.periodStart != "" && old.periodStart != newPeriodStart
 			if periodChanged {
-				if e = recordWindowClosed(ctx, tx, account, sub.ID, oldStatus, oldPeriodStart, oldPeriodEnd, oldGrace); e != nil {
+				if e = recordWindowClosed(ctx, tx, account, sub.ID, old.status, old.periodStart, old.periodEnd, old.grace); e != nil {
 					return e
 				}
 			}
-			grace, graceInvoice := graceDeadline(oldStatus, oldGrace, oldGraceInvoice, periodChanged, sub.Status, invoice, anchor)
+			grace, graceInvoice := graceDeadline(old.status, old.grace, old.graceInvoice, periodChanged, sub.Status, invoice, anchor)
 			_, e = tx.ExecContext(ctx, `INSERT INTO subscriptions(id,account_id,price_id,plan_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_until,grace_invoice_id) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET price_id=excluded.price_id,plan_id=excluded.plan_id,status=excluded.status,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancel_at_period_end=excluded.cancel_at_period_end,grace_until=excluded.grace_until,grace_invoice_id=excluded.grace_invoice_id`, sub.ID, account, item.Price.ID, plan, sub.Status, newPeriodStart, newPeriodEnd, sub.CancelAtPeriodEnd, nullableString(grace), nullableString(graceInvoice))
 			if e != nil {
 				return e
