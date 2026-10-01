@@ -31,3 +31,12 @@ Follow-up source reviewed: `54c68582aa80b96485f155ce34dfc440b9c97e64` (productio
 The earlier findings about exact Runtime retention, Landed-only positive proof, Unknown staying capacity-holding in `pending_review`, and reserved-only automatic reconciliation still apply. The separate positive Landed startup-counter test was not part of this source pin, so that case remains unverified here.
 
 No Go checks were run: coordinator reported load 16.22, above the repository threshold of 10. This follow-up is a static review only and does not qualify full integration, production activation, or live behavior.
+
+## Focused runtime verification
+
+Focused race tests were run on exact source pin `39bfe213d95090aa955fa22afb92364ce8aebf90`, after a fresh one-minute load guard (`<= 10`) before each command. External `GOCACHE`, `GOTMPDIR`, and `TMPDIR` were used.
+
+- `go test -race ./internal/hosted/service -run 'Test(StartupReconcilesLandedFactIntoOriginalQuotaPeriodOnce|StartupReconcilesUnknownWithoutReleasingCapacity|TickerReconciliationDefersColdRuntimeWithoutInitializingIt|OperationReconcileTickAndCancellation|ServiceCloseJoinsOperationWorker)$' -count=1` — PASS (`2.505s`). This includes the positive Landed startup case and original-period, exactly-once usage assertions.
+- `go test -race ./internal/hosted/gateway -run 'TestOperationReconciliation(HoldsMaintenanceWithoutAccountLock|RejectsUnsafeTreeBeforeRuntimeOpen)$' -count=1` — PASS (`1.683s`).
+
+These are focused single-package race checks only; no full race, multi-package gate, or production qualification was performed. The Gateway `EnterCommit` direct-delegation path was reviewed statically; the focused Gateway test selection does not exercise a queue commit through that adapter.
