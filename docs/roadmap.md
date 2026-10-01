@@ -10,6 +10,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-10-01 [PR338](https://github.com/sirerun/serenity/pull/338) merged at818485e: expired reserved operations reconcile using exact leased runtimes; verified canonical facts charge original quota deltas and Unknown remains capacity-holding. Full local race80 packages/2793 tests, vet/lint/LinuxARM64 build and independent review pass. Periodic sweeps remain warm-only; pending_review resolution and physical quotas remain open.
+
 - 2026-10-01 [PR337](https://github.com/sirerun/serenity/pull/337) merged at06e22d0: explicitly admitted deletion-journal replay and strict manifest-v2 backup/restore callers. Full local race80 packages/2778 passing tests, vet/lint/LinuxARM64 build pass; independent review cleared corrected blockers. Hosted serve/backup/restore CLI remains unavailable until production admission/factory exists; no deployment or provider acceptance.
 
 - 2026-10-01 Canonical source routing candidate: full race79/vet/lint/LinuxARM64 build0 and independent context-failure review pass; a final test-only barrier correction passes writer race/lint. Legacy batching remains; activation, absence proof and physical quotas remain open. Evidence: docs/launch/evidence/hosted-canonical-source-routing-2026-10-01.json.
@@ -370,9 +372,9 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## In progress
 
-- 2026-10-01 T23.44 conservative reserved-operation reconciliation (Codex coordinator): exact-runtime fences, startup original-period accounting and a warm-only ticker are integrated and independently reviewed. PR338 full local race80 packages/2793 tests, vet/lint/LinuxARM64 build pass; normal merge awaits fresh discussion checks. Pending-review resolution remains operator-only, missing evidence remains Unknown, and physical storage qualification remains open.
+- 2026-10-01 T23.44 conservative reserved-operation reconciliation (Codex coordinator): exact-runtime fences, startup original-period accounting and a warm-only ticker are integrated and independently reviewed. PR338 merged normally after full local race80 packages/2793 tests, vet/lint/LinuxARM64 build and fresh discussion checks. Read-only lookup and private operator-resolution prerequisites are the next source lane. Pending-review resolution remains operator-only, missing evidence remains Unknown, and physical storage qualification remains open.
 
-- 2026-10-01 Hosted freeze recovery (Codex coordinator, Luna workers): PR325–337 merged with founder-authorized local validation and independent review. Canonical routing and context propagation are merged; the conservative HEAD checker returns Unknown for missing or erased evidence. The current source integrates explicit deletion-journal admission and manifest-v2 backup callers, with startup/backup/restore CLI entry points unavailable until a reviewed production coordinator exists. Whole hosted-completion tasks remain partial: physical storage enforcement, authoritative adoption, scoped journal credentials, live provider/retention qualification and launch gates are open. See docs/plans/t23-48-journal-backup-assembly-contract-2026-10-01.md.
+- 2026-10-01 Hosted freeze recovery (Codex coordinator, Luna workers): PR325–338 merged with founder-authorized local validation and independent review. Canonical routing and context propagation are merged; the conservative HEAD checker returns Unknown for missing or erased evidence. The current source integrates explicit deletion-journal admission and manifest-v2 backup callers, with startup/backup/restore CLI entry points unavailable until a reviewed production coordinator exists. Whole hosted-completion tasks remain partial: physical storage enforcement, authoritative adoption, scoped journal credentials, live provider/retention qualification and launch gates are open. See docs/plans/t23-48-journal-backup-assembly-contract-2026-10-01.md.
 
 
 - 2026 08 27 E0 wave 0a complete (9/9) -- see Shipped entries for T0.1-T0.12.
