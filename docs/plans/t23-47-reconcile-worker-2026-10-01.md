@@ -5,9 +5,19 @@ when the concrete billing service is configured. The loop pages server-owned
 account IDs in keyset order, selecting only `active` and `restore_pending`
 accounts with a provider customer reference. It closes each SQL page before
 calling the provider, reconciles one customer at a time with a 20-second
-context, waits at least one minute between full pages, and starts no more than
-one full sweep every 15 minutes. Per-account failures receive bounded
-exponential backoff held in a 1,024-entry in-memory map, capped at 15 minutes.
+context, and waits at least one minute between full pages. A completed sweep
+waits 15 minutes before the next sweep starts. A page-query error retries from
+the last completed page cursor using a separate transient backoff, so it cannot
+restart at the first IDs and starve later accounts.
+
+Ambiguous provider outcomes back off exponentially from 15 minutes to a
+6-hour cap. Provider unavailability, timeouts, and other per-customer errors
+back off from 1 minute to a 1-hour cap. A change in failure class resets that
+account's exponent. Page/database read failures use the transient 1-minute to
+1-hour backoff. The per-account retry map is bounded at 1,024 entries; under
+pressure, its least recently touched entry can be evicted and lose its saved
+backoff. Structured warning/error logs include only a failure category and
+retry delay, never an account/customer identifier or raw provider error.
 
 The worker never changes account lifecycle status or uses reconciliation
 eligibility to activate an account. A restore-pending result remains frozen;
@@ -30,11 +40,11 @@ explicitly configured.
 The implementation and tests are on
 `hosted/t23-47-reconcile-worker-20261001`, based on `e387fe4` in the external
 continuation clone. The source commits are `d87aee8`, `29ebb4e`, `763015b`,
-`35bc921`, `4b37176`, and `002d13b`.
+`35bc921`, `4b37176`, `002d13b`, and retry-policy correction `7c3dcae`.
 
 Validation used the external SSD Go cache and temporary directory:
 
 - `go test ./internal/hosted/service -count=1` passed.
-- `go test ./internal/hosted/service -run 'TestBilling(ReconcileWorker|Retries)' -count=1` passed after the final worker tests.
-- `go test -race ./internal/hosted/service -run 'TestBilling(ReconcileWorker|Retries)' -count=1` passed.
+- `go test ./internal/hosted/service -run 'TestBilling' -count=1` passed after the retry-policy correction.
+- `go test -race ./internal/hosted/service -count=1` passed on the full service package after the correction.
 - `git diff --check` passed. No multi-package build, live provider call, deployment, or multi-replica qualification was performed.
