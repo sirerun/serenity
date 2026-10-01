@@ -1,16 +1,22 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/billing"
+	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
@@ -348,20 +354,108 @@ func TestBillingReconcileWorkerCloseCancelsAndJoinsProviderCall(t *testing.T) {
 func TestBillingRetriesAreBoundedAndExponentiallyDelayed(t *testing.T) {
 	var retries billingRetries
 	now := time.Now()
-	retries.failed("a", now)
-	if entry := retries.byAccount["a"]; !entry.next.Equal(now.Add(time.Minute)) {
-		t.Fatalf("first retry=%s, want one minute", entry.next.Sub(now))
+	retries.failed("a", now, billingFailureAmbiguous)
+	if entry := retries.byAccount["a"]; !entry.next.Equal(now.Add(billingAmbiguousRetryBase)) {
+		t.Fatalf("first ambiguous retry=%s, want %s", entry.next.Sub(now), billingAmbiguousRetryBase)
 	}
 	for n := 0; n < 12; n++ {
-		retries.failed("a", now)
+		retries.failed("a", now, billingFailureAmbiguous)
 	}
-	if got := retries.byAccount["a"].next.Sub(now); got != billingRetryMax {
-		t.Fatalf("retry cap=%s, want %s", got, billingRetryMax)
+	if got := retries.byAccount["a"].next.Sub(now); got != billingAmbiguousRetryMax {
+		t.Fatalf("ambiguous retry cap=%s, want %s", got, billingAmbiguousRetryMax)
 	}
 	for n := 0; n < billingRetryCapacity+1; n++ {
-		retries.failed(string(rune(n+1000)), now.Add(time.Duration(n)*time.Nanosecond))
+		retries.failed(string(rune(n+1000)), now.Add(time.Duration(n)*time.Nanosecond), billingFailureUnavailable)
 	}
 	if len(retries.byAccount) > billingRetryCapacity {
 		t.Fatalf("retry map size=%d exceeds bound %d", len(retries.byAccount), billingRetryCapacity)
+	}
+}
+
+func TestBillingRetryClassChangeResetsAttemptExponent(t *testing.T) {
+	var retries billingRetries
+	now := time.Now()
+	for n := 0; n < 5; n++ {
+		retries.failed("a", now, billingFailureAmbiguous)
+	}
+	retries.failed("a", now, billingFailureUnavailable)
+	entry := retries.byAccount["a"]
+	if entry.class != billingFailureUnavailable || entry.attempt != 1 || !entry.next.Equal(now.Add(billingTransientRetryBase)) {
+		t.Fatalf("class transition retained old exponent: class=%s attempt=%d delay=%s", entry.class, entry.attempt, entry.next.Sub(now))
+	}
+	if got := billingRetryDelay(billingFailureUnavailable, 2); got != 2*time.Minute {
+		t.Fatalf("transient second retry=%s, want 2m", got)
+	}
+	if got := billingRetryDelay(billingFailureUnavailable, 20); got != billingTransientRetryMax {
+		t.Fatalf("transient retry cap=%s, want %s", got, billingTransientRetryMax)
+	}
+	if got := billingRetryDelay(billingFailureAmbiguous, 2); got != 30*time.Minute {
+		t.Fatalf("ambiguous second retry=%s, want 30m", got)
+	}
+}
+
+func TestBillingPageErrorRetainsLastSuccessfulCursor(t *testing.T) {
+	var retries billingRetries
+	after := ""
+	pageReads := 0
+	readPage := func(_ context.Context, gotAfter string) ([]string, error) {
+		pageReads++
+		switch pageReads {
+		case 1:
+			if gotAfter != "" {
+				t.Fatalf("initial cursor=%q", gotAfter)
+			}
+			ids := make([]string, billingReconcilePageSize)
+			for i := range ids {
+				ids[i] = fmt.Sprintf("account-%02d", i)
+			}
+			return ids, nil
+		case 2:
+			if gotAfter != "account-19" {
+				t.Fatalf("page retry cursor=%q, want account-19", gotAfter)
+			}
+			return nil, errors.New("database unavailable")
+		case 3:
+			if gotAfter != "account-19" {
+				t.Fatalf("cursor after page error=%q, want account-19", gotAfter)
+			}
+			return []string{"account-20"}, nil
+		default:
+			t.Fatalf("unexpected page read %d", pageReads)
+			return nil, nil
+		}
+	}
+	reconcile := func(context.Context, string) error { return nil }
+	complete, err := runBillingPage(context.Background(), &retries, &after, readPage, reconcile)
+	if err != nil || complete || after != "account-19" {
+		t.Fatalf("first page complete=%t cursor=%q err=%v", complete, after, err)
+	}
+	complete, err = runBillingPage(context.Background(), &retries, &after, readPage, reconcile)
+	if err == nil || complete || after != "account-19" {
+		t.Fatalf("failed page complete=%t cursor=%q err=%v", complete, after, err)
+	}
+	complete, err = runBillingPage(context.Background(), &retries, &after, readPage, reconcile)
+	if err != nil || !complete || after != "account-20" {
+		t.Fatalf("resumed page complete=%t cursor=%q err=%v", complete, after, err)
+	}
+}
+
+func TestBillingWorkerFailureLogOmitsAccountAndRawError(t *testing.T) {
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&output, nil)))
+	defer slog.SetDefault(previous)
+	var retries billingRetries
+	after := ""
+	readPage := func(context.Context, string) ([]string, error) { return []string{"private-account-id"}, nil }
+	reconcile := func(context.Context, string) error {
+		return fmt.Errorf("provider response for cus_private: %w", contracts.ErrBillingProviderUnavailable)
+	}
+	if _, err := runBillingPage(context.Background(), &retries, &after, readPage, reconcile); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if !strings.Contains(text, string(billingFailureUnavailable)) || strings.Contains(text, "private-account-id") || strings.Contains(text, "cus_private") {
+		t.Fatalf("unexpected reconciliation log content: %q", text)
 	}
 }
