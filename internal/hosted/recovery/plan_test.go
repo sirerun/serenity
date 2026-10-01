@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -119,6 +120,31 @@ func TestLoadPlanRejectsUnchangedHashMismatch(t *testing.T) {
 	}
 	if _, err = LoadPlan(context.Background(), dir, plan.PlanHash); err == nil {
 		t.Fatal("LoadPlan accepted content changed under the approved hash")
+	}
+}
+
+func TestLoadPlanRejectsFIFOWithoutBlocking(t *testing.T) {
+	dir := privatePlanDir(t)
+	fifoPath := filepath.Join(dir, "fifo.plan")
+	if err := syscall.Mkfifo(fifoPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := LoadPlan(ctx, dir, strings.Repeat("a", 64))
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("LoadPlan accepted a FIFO plan file")
+		}
+	case <-ctx.Done():
+		t.Fatal("LoadPlan blocked opening a FIFO past its context deadline")
 	}
 }
 

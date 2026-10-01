@@ -63,9 +63,6 @@ func privateDirectoryPath(path string) (string, error) {
 	if !ok || int(stat.Uid) != os.Geteuid() {
 		return "", fmt.Errorf("%w: directory is not owned by the current user", ErrPlanUntrustedDir)
 	}
-	if err = verifyFilesystemOwnership(clean); err != nil {
-		return "", err
-	}
 	return clean, nil
 }
 
@@ -77,11 +74,14 @@ func validateTrustedAncestor(path string, info os.FileInfo) error {
 	if info.Mode().Perm()&0022 != 0 && info.Mode()&os.ModeSticky == 0 {
 		return fmt.Errorf("%w: path ancestor %q is group/world writable without sticky protection", ErrPlanUntrustedDir, path)
 	}
+	if err := verifyFilesystemOwnership(path); err != nil {
+		return err
+	}
 	return nil
 }
 
 func openPlanNoFollow(path string) (*os.File, error) {
-	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
 	}
