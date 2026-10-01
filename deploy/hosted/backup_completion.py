@@ -137,9 +137,17 @@ def _verify_artifacts(snapshot, allow_completion):
 def create_completion(snapshot, prefix):
     """Seal already-validated private staging; never overwrite a completion."""
     _prefix(prefix)
+    snapshot = Path(snapshot)
+    if (snapshot / "COMPLETE").exists() or (snapshot / "COMPLETE").is_symlink():
+        record = verify_completed(snapshot, prefix)
+        _sync_directory(snapshot)
+        return record
     snapshot, digest = _verify_artifacts(snapshot, False)
     record = {"version": 1, "snapshot_prefix": prefix, "manifest_sha256": digest}
-    with tempfile.NamedTemporaryFile(dir=snapshot, prefix=".completion-", delete=False) as stream:
+    # Keep an interrupted temporary record outside the manifest inventory.
+    # The caller must own this outer staging directory for crash cleanup.
+    # Its sibling location also keeps the eventual hard link on one volume.
+    with tempfile.NamedTemporaryFile(dir=snapshot.parent, prefix=f".{snapshot.name}-completion-", delete=False) as stream:
         temporary = Path(stream.name)
         try:
             stream.write((json.dumps(record, sort_keys=True) + "\n").encode())
@@ -148,12 +156,16 @@ def create_completion(snapshot, prefix):
             os.link(temporary, snapshot / "COMPLETE")
         finally:
             temporary.unlink()
+    _sync_directory(snapshot)
+    return record
+
+
+def _sync_directory(snapshot):
     descriptor = os.open(snapshot, os.O_RDONLY | os.O_DIRECTORY)
     try:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
-    return record
 
 
 def verify_completed(snapshot, prefix):

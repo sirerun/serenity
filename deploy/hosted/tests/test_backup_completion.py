@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 spec = importlib.util.spec_from_file_location("backup_completion", Path(__file__).parents[1] / "backup_completion.py")
@@ -129,9 +130,41 @@ class CompletionTests(unittest.TestCase):
     def test_completion_is_never_overwritten(self):
         self.seal()
         body = (self.root / "COMPLETE").read_bytes()
+        self.assertEqual(self.seal(), self.verify())
+        self.assertEqual((self.root / "COMPLETE").read_bytes(), body)
+
+    def test_existing_invalid_completion_is_not_overwritten(self):
+        path = self.root / "COMPLETE"
+        path.write_bytes(b"invalid existing record")
         with self.assertRaises(completion.VerificationError):
             self.seal()
-        self.assertEqual((self.root / "COMPLETE").read_bytes(), body)
+        self.assertEqual(path.read_bytes(), b"invalid existing record")
+
+    def test_crash_orphan_before_or_after_link_does_not_break_retry(self):
+        # A killed process leaves its sibling temporary file. It belongs to
+        # the caller's outer staging, not to snapshot artifact inventory.
+        orphan = self.root.parent / ("." + self.root.name + "-completion-orphan")
+        orphan.write_bytes(b"interrupted temporary record")
+        self.addCleanup(orphan.unlink)
+        record = self.seal()
+        self.assertEqual(self.verify(), record)
+        self.assertEqual(self.seal(), record)
+        self.assertTrue(orphan.exists())  # Never delete another attempt's file.
+
+    def test_link_failure_cleans_only_current_temporary_record(self):
+        before = set(self.root.parent.glob("." + self.root.name + "-completion-*"))
+        with mock.patch.object(completion.os, "link", side_effect=OSError("link denied")):
+            with self.assertRaises(OSError):
+                self.seal()
+        self.assertFalse((self.root / "COMPLETE").exists())
+        self.assertEqual(set(self.root.parent.glob("." + self.root.name + "-completion-*")), before)
+        self.assertEqual(self.seal(), self.verify())
+
+    def test_directory_sync_failure_keeps_valid_completion_for_retry(self):
+        with mock.patch.object(completion, "_sync_directory", side_effect=OSError("sync failed")):
+            with self.assertRaises(OSError):
+                self.seal()
+        self.assertEqual(self.seal(), self.verify())
 
     def test_nonprivate_staging_is_refused(self):
         self.root.chmod(0o755)
