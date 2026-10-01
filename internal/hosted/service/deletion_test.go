@@ -144,10 +144,8 @@ func TestAccountDeletionMaintenanceFenceBlocksBackupUntilPurgeCompletes(t *testi
 	<-backupStarted
 	queueDeadline := time.NewTimer(5 * time.Second)
 	defer queueDeadline.Stop()
-	for {
-		if !s.Gateway.Maintenance.TryRLock() {
-			break // the backup's exclusive lock is queued behind deletion's read lock
-		}
+	// A failed read probe shows the exclusive backup writer is queued.
+	for s.Gateway.Maintenance.TryRLock() {
 		s.Gateway.Maintenance.RUnlock()
 		runtime.Gosched()
 		select {
