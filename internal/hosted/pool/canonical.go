@@ -21,30 +21,38 @@ import (
 // It deliberately does not inspect source bytes in the working tree or infer
 // that an entered operation is absent after cancellation/forget/history purge.
 func (r *Runtime) Check(ctx context.Context, rec contracts.OperationRecord) (contracts.CanonicalVerdict, error) {
-	unknown := contracts.CanonicalVerdict{Outcome: contracts.CanonicalUnknown}
+	unknown := contracts.CanonicalVerdict{Outcome: contracts.CanonicalUnknown, Ref: "canonical_evidence_incomplete"}
 	if ctx == nil {
 		return unknown, errors.New("hosted pool: nil canonical-check context")
 	}
 	if rec.BrainID != r.brainID || r.brainID == "" || rec.Source != "gateway.remember" || !store.ValidMemoryOperationKey(rec.ID) || rec.ID == "" {
 		return unknown, nil
 	}
-	head, factID, found, safe := findCommittedOperation(ctx, r.Root, rec.ID)
+	_, factID, found, safe := findCommittedOperation(ctx, r.Root, rec.ID)
 	if ctx.Err() != nil {
 		return unknown, ctx.Err()
 	}
 	if !safe {
+		unknown.Ref = "canonical_head_unavailable"
 		return unknown, nil
 	}
 	if found {
 		if rec.CanonicalEnteredAt.IsZero() {
+			unknown.Ref = "canonical_fact_without_ledger_entry"
 			return unknown, nil
 		}
 		return contracts.CanonicalVerdict{Outcome: contracts.CanonicalLanded, Ref: "fact:" + factID}, nil
 	}
 	if !rec.CanonicalEnteredAt.IsZero() {
+		unknown.Ref = "canonical_fact_missing_after_entry"
 		return unknown, nil
 	}
-	return contracts.CanonicalVerdict{Outcome: contracts.CanonicalAbsent, Ref: head}, nil
+	// HEAD-only absence cannot satisfy the pinned CanonicalAbsent contract,
+	// which also requires proof that no source bytes or touched paths remain in
+	// the working tree. Keep no-entry reservations Unknown until that bounded
+	// proof exists rather than releasing capacity on incomplete evidence.
+	unknown.Ref = "working_tree_absence_unverified"
+	return unknown, nil
 }
 
 type treeBlob struct {

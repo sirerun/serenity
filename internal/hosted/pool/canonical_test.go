@@ -51,8 +51,8 @@ func TestCanonicalCheckerRequiresEnteredFactInHEAD(t *testing.T) {
 	runtime := canonicalTestRuntime(t)
 	base := contracts.OperationRecord{ID: "operation-123", BrainID: runtime.brainID, Source: "gateway.remember"}
 	verdict, err := runtime.Check(context.Background(), base)
-	if err != nil || verdict.Outcome != contracts.CanonicalAbsent || verdict.Ref == "" {
-		t.Fatalf("no-entry verdict = %+v, %v; want HEAD absence", verdict, err)
+	if err != nil || verdict.Outcome != contracts.CanonicalUnknown || verdict.Ref != "working_tree_absence_unverified" {
+		t.Fatalf("no-entry verdict = %+v, %v; want conservative Unknown", verdict, err)
 	}
 
 	writerFact := writer.MemoryFact{Queue: runtime.queue, Sources: store.NewSourceStore(runtime.Root)}
