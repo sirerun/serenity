@@ -1,0 +1,116 @@
+{
+  "date": "2026-10-01",
+  "scope": "Conservative reserved-operation reconciliation; not whole T23.44 acceptance or production activation",
+  "qualified_source": "65612db1a9a23e1c0e86cdcdc6b302f3f421c7a6",
+  "production_source": "12db5d8b7da9be9c8d783c7b41627e6d33239d3f",
+  "go_runtime": "go1.27.1 darwin/arm64",
+  "validation": {
+    "race": 0,
+    "vet": 0,
+    "lint": 0,
+    "linux-arm64-build": 0
+  },
+  "race_summary": {
+    "passing_packages": 80,
+    "passing_tests_and_subtests": 2793,
+    "skipped_tests": [
+      {
+        "package": "github.com/sirerun/serenity/evals/importbudget",
+        "test": "TestImportBudget10K"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/cli",
+        "test": "TestGbrainProtocolConformance"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/conformance",
+        "test": "TestBootDeliberatelyBrokenBuildFailsDisposeConformance"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/hosted/deletion",
+        "test": "TestS3Qualification"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/import/gbrain",
+        "test": "TestImportCrashHelper"
+      },
+      {
+        "package": "github.com/sirerun/serenity/pkg/serenity",
+        "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request"
+      },
+      {
+        "package": "github.com/sirerun/serenity/pkg/serenity",
+        "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+      }
+    ],
+    "packages_without_tests": [
+      "github.com/sirerun/serenity/cmd/serenity",
+      "github.com/sirerun/serenity/evals/gen/messages",
+      "github.com/sirerun/serenity/evals/hosted/fixtures/seedbrain",
+      "github.com/sirerun/serenity/internal/hosted/dashboard"
+    ],
+    "failures": []
+  },
+  "shared_build_lease": {
+    "sha": "50a75677d780b7028fe456d55bd16b75cefff871",
+    "released": true,
+    "initial_one_minute_load": 5.94,
+    "package_parallelism": 2
+  },
+  "independent_review": [
+    "Initial Gateway account-lock/nested EnterCommit hold84f987 preserved; corrected12db5d8 clears blockers.",
+    "Gateway/Service d132fdb race review and final static regression addendum cfbcb09 clear bounded integration.",
+    "Pool/Ledger95ddb21 exact-runtime lease, cold admission and both stale-row mutation controls clear bounded source; T23.47 filename is a tracking label, not full billing acceptance."
+  ],
+  "regression_controls": [
+    "Original and intermediate stale-row ledger guards each RED; restored source GREEN.",
+    "Caller-held account-lock EnterCommit test RED on c5c4e29 and GREEN on restored source. This test alone does not prove non-nested maintenance read locking; direct delegation is independently reviewed statically.",
+    "Actual startup canonical fact settles original 1970-01 writes/input units exactly once."
+  ],
+  "remaining": [
+    "Operator-authenticated pending_review resolution and immutable review-case binding",
+    "Authoritative Absent proof; erased/missing evidence remains Unknown",
+    "OS-enforced storage allocation and allocated-byte admission",
+    "Production journal/adoption factory and private operator CLI/socket",
+    "Live provider/retention/restore qualification and launch gates"
+  ],
+  "production_boundary": [
+    "Automatic sweeps select only expired reserved rows; pending_review remains operator-only.",
+    "Private startup may cold-open before publication; periodic sweeps are warm-only and never reopen after Drop.",
+    "No deployment, cloud/Stripe/S3 call, IAM change or provider acceptance."
+  ],
+  "artifacts": [
+    {
+      "name": "accounting-reconcile-full-check.py",
+      "sha256": "462915919838a6d4f7d54d568535cacee5ddd13ef130006f59a86ca189cbcd60"
+    },
+    {
+      "name": "accounting-reconcile-full-race.jsonl",
+      "sha256": "c954ef5f049b0bfd692a5b8428b5ab3790d2512b6973ed02fab1e64d30e280f4"
+    },
+    {
+      "name": "accounting-reconcile-full-vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "accounting-reconcile-full-lint.log",
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "name": "accounting-reconcile-full-linux-arm64-build.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "accounting-entercommit-red.log",
+      "sha256": "4064f0cbfe593b83de2d7a37f1f7f09d2ced026056f5631d66919883536a1f7f"
+    },
+    {
+      "name": "accounting-entercommit-green.log",
+      "sha256": "e3c8d8a0052a1099c632635894ce9e13245fb2b6feb14a99744c81570a7c873b"
+    },
+    {
+      "name": "accounting-entercommit-control-status.json",
+      "sha256": "63c379591c8e496172494da5f13d4ba228d99e4d0cb7b84dd3c839992d68e884"
+    }
+  ]
+}

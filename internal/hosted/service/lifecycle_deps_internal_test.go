@@ -67,7 +67,11 @@ func testLifecycleDependenciesWithEntries(t *testing.T, entries ...contracts.Del
 
 func assembleForTest(t *testing.T, cfg Config, dev bool, db *store.Store, sender identity.Sender, embedding embed.Embedder) (*Service, error) {
 	t.Helper()
-	return AssembleWithDependencies(context.Background(), cfg, dev, db, sender, embedding, testLifecycleDependencies(t))
+	svc, err := AssembleWithDependencies(context.Background(), cfg, dev, db, sender, embedding, testLifecycleDependencies(t))
+	if svc != nil {
+		t.Cleanup(func() { _ = svc.Close() })
+	}
+	return svc, err
 }
 
 func TestLegacyConstructorsFailClosedBeforeSideEffects(t *testing.T) {
