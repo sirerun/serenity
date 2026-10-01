@@ -90,7 +90,6 @@ func TestFlushContextReleasesRunLockWhileExclusiveFenceWaits(t *testing.T) {
 	default:
 	}
 	releaseFence()
-	releaseFence = func() {}
 	select {
 	case err := <-flushDone:
 		if err != nil {
