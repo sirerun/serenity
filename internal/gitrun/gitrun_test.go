@@ -310,6 +310,28 @@ func TestForeignAllowsOnlyReadOnlySubcommands(t *testing.T) {
 	}
 }
 
+func TestCanonicalReadOnlyPinsObjectInterpretationAndRefusesWrites(t *testing.T) {
+	dir := newRepo(t)
+	runner := gitrun.CanonicalReadOnly(dir)
+	cmd, err := runner.Command(context.Background(), "show", "HEAD:tracked.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{}
+	for _, item := range cmd.Env {
+		key, value, ok := strings.Cut(item, "=")
+		if ok {
+			env[key] = value
+		}
+	}
+	if env["GIT_NO_REPLACE_OBJECTS"] != "1" || env["GIT_NO_LAZY_FETCH"] != "1" {
+		t.Fatalf("canonical object safety env = GIT_NO_REPLACE_OBJECTS:%q GIT_NO_LAZY_FETCH:%q", env["GIT_NO_REPLACE_OBJECTS"], env["GIT_NO_LAZY_FETCH"])
+	}
+	if _, err := runner.Command(context.Background(), "add", "tracked.md"); !errors.Is(err, gitrun.ErrForeignWrite) {
+		t.Fatalf("canonical write command error = %v, want ForeignWrite", err)
+	}
+}
+
 func TestReservedOptionsRejected(t *testing.T) {
 	isolateGlobalConfig(t)
 	dir := newRepo(t)
