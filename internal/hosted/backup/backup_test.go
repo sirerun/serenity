@@ -591,7 +591,8 @@ func TestCreateRequiresJournal(t *testing.T) {
 func TestCreateRejectsNilContextAndTypedNilJournal(t *testing.T) {
 	dataDir, _ := newTestDataDir(t, 0)
 	destination := filepath.Join(t.TempDir(), "snapshot")
-	if err := Create(nil, dataDir, destination, "test-build-sha", fakeJournal{}); !errors.Is(err, ErrNilContext) {
+	var nilContext context.Context
+	if err := Create(nilContext, dataDir, destination, "test-build-sha", fakeJournal{}); !errors.Is(err, ErrNilContext) {
 		t.Fatalf("Create with nil context err = %v, want ErrNilContext", err)
 	}
 	if _, err := os.Stat(destination); !errors.Is(err, os.ErrNotExist) {
@@ -605,10 +606,10 @@ func TestCreateRejectsNilContextAndTypedNilJournal(t *testing.T) {
 	if _, err := os.Stat(destination); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Create with typed-nil journal touched destination: stat err = %v", err)
 	}
-	if err := Restore(nil, filepath.Join(t.TempDir(), "missing-snapshot"), filepath.Join(t.TempDir(), "restored")); !errors.Is(err, ErrNilContext) {
+	if err := Restore(nilContext, filepath.Join(t.TempDir(), "missing-snapshot"), filepath.Join(t.TempDir(), "restored")); !errors.Is(err, ErrNilContext) {
 		t.Fatalf("Restore with nil context err = %v, want ErrNilContext", err)
 	}
-	if err := Request(nil, filepath.Join(t.TempDir(), "missing-data"), destination, "test-build-sha", nil); !errors.Is(err, ErrNilContext) {
+	if err := Request(nilContext, filepath.Join(t.TempDir(), "missing-data"), destination, "test-build-sha", nil); !errors.Is(err, ErrNilContext) {
 		t.Fatalf("Request with nil context err = %v, want ErrNilContext", err)
 	}
 }
