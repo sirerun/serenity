@@ -47,6 +47,21 @@ func (w *SourceTombstone) Tombstone(sha string, now time.Time) ([]domain.Claim, 
 				return nil, fmt.Errorf("writer: purge tombstoned source index rows: %w", err)
 			}
 		}
+		root, err := filepath.Abs(w.Sources.Root)
+		if err != nil {
+			return nil, fmt.Errorf("writer: resolve brain root for source history rewrite: %w", err)
+		}
+		sourceDir, err := filepath.Abs(w.Sources.DirFor(sha))
+		if err != nil {
+			return nil, fmt.Errorf("writer: resolve tombstoned source path: %w", err)
+		}
+		relPath, err := filepath.Rel(root, sourceDir)
+		if err != nil {
+			return nil, fmt.Errorf("writer: resolve tombstoned source path: %w", err)
+		}
+		if err := rewriteForgottenPath(root, filepath.ToSlash(relPath)); err != nil {
+			return nil, fmt.Errorf("writer: rewrite tombstoned source history: %w", err)
+		}
 		citing = out.Citing
 		return nil, nil
 	}})

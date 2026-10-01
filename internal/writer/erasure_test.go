@@ -2,6 +2,8 @@ package writer
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -151,10 +153,10 @@ func TestForgetAfterErasureIsIdempotentAndNeverResurrects(t *testing.T) {
 	}
 }
 
-// TestSourceTombstoneErasesTreeAndIndexInSameFlush: the writer entry point
-// removes a source's bytes and meta, its raw-source index rows, and commits
-// the removal with the tombstone event in one flush.
-func TestSourceTombstoneErasesTreeAndIndexInSameFlush(t *testing.T) {
+// TestSourceTombstoneErasesTreeAndIndexAndPersistsEvent: the writer entry
+// point removes a source's bytes and index rows, purges its history, and
+// commits the tombstone event on the next flush.
+func TestSourceTombstoneErasesTreeAndIndexAndPersistsEvent(t *testing.T) {
 	root, run := gitRepoFixture(t)
 	eng := erasureIndex(t, root)
 	q := NewQueue(nil)
@@ -200,7 +202,21 @@ func TestSourceTombstoneErasesTreeAndIndexInSameFlush(t *testing.T) {
 	if out := run("status", "--porcelain"); strings.TrimSpace(out) != "" && !strings.Contains(out, ".serenity") {
 		t.Fatalf("tombstone left uncommitted changes: %q", out)
 	}
-	if out := run("show", "--name-only", "--format=", "HEAD"); !strings.Contains(out, "bytes") || !strings.Contains(out, filepath.ToSlash(rel)) {
-		t.Fatalf("flush did not commit the removal with the event: %q", out)
+	event, err := store.EncodeSourceTombstone(src.SHA256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventHash := sha256.Sum256(event)
+	eventDir := sources.DirFor(hex.EncodeToString(eventHash[:]))
+	eventRel, err := filepath.Rel(root, eventDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventPath := filepath.ToSlash(filepath.Join(eventRel, "bytes"))
+	if got := run("show", "HEAD:"+eventPath); got != string(event) {
+		t.Fatalf("flush did not commit the tombstone event at %s: %q", eventPath, got)
+	}
+	if history := strings.TrimSpace(run("rev-list", "--all", "--", filepath.ToSlash(rel))); history != "" {
+		t.Fatalf("tombstoned source path remains in Git history: %s", history)
 	}
 }

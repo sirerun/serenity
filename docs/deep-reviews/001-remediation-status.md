@@ -127,3 +127,29 @@ branch `t24-29-swallowed-errors`).
 | 77 | `testdata/conformance/direction/gen_transcripts.go:104` | `_ = s.Serve(ctx)` | harmless | benign-documented | Conformance transcript generator (dev tool, `go run`); the harness waits on `done` and fatals on a hang. |
 | 78 | `testdata/conformance/direction/gen_transcripts.go:122` | `_ = os.RemoveAll(e.root)` | harmless | benign-documented | Removing a temp file/dir on an error or teardown path; the original error (or a completed run) is what matters. |
 | 79 | `testdata/conformance/disposition/gen_transcripts.go:96` | `_ = s.Serve(ctx)` | harmless | benign-documented | Conformance transcript generator (dev tool, `go run`); the harness waits on `done` and fatals on a hang. |
+
+## 2026-10-01 current-tree error-discard reconciliation
+
+At main `7b0baad`, the original table remains historical evidence pinned to
+`2bf0d98`. The current scoped count is 70 (`internal cmd pkg`), versus 66 at
+that baseline: six added assignments and two removed. Repository-wide count
+is 83 versus 79. New sites and dispositions are below; this is not a claim
+that hosted tasks or every material site are fixed.
+
+| Added site | Disposition | Reason / follow-up |
+|---|---|---|
+| `internal/cli/gitx.go:132` | benign cleanup | Temporary close after the primary error is already selected. |
+| `internal/cli/gitx.go:136` | benign cleanup | Same cleanup after a failed hook write. |
+| `internal/hosted/partner/consent.go:72` | minor response-write diagnostics | Response may already be committed; preserve response policy and improve diagnostics separately. |
+| `internal/hosted/partner/partner.go:161` | fixed follow-up in continuation | The transaction error now produces a fixed, sanitized diagnostic while preserving mutation response semantics. Regression verifies the response and absence of sensitive details. |
+| `internal/hosted/partner/partner.go:208` | minor response-write diagnostics | Encoder error after response commit; keep response semantics. |
+| `internal/writer/history.go:106` | minor cleanup; open | Deferred worktree removal is ignored; main success path checks removal. Failure can leave a temporary worktree requiring operator cleanup. |
+
+Removed sites: the ignored encoder result in `internal/cli/check.go` and
+best-effort watch assignment in `internal/connector/file/file.go`.
+The three material hosted billing Scan discards remain assigned to T23.47;
+this coordinator has not overwritten that held lane.
+
+Current task/readiness audits are recorded in
+`docs/plans/e24-local-audit-2026-10-01.md` and
+`docs/plans/e24-router-hosted-audit-2026-10-01.md`.

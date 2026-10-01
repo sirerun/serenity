@@ -43,15 +43,18 @@ not the paths, which is intended.
 
 ## Existing brains
 
-Nothing rewrites history. Sources written before this change keep their
+The source-URI migration does not rewrite history. Sources written before
+this change keep their
 original `meta.yaml`, including an absolute `file://` URI and no `path_hash`,
 and they still read, index, and cite exactly as before. Source records are
 immutable and content-addressed, so re-syncing an unchanged file does not
 replace the old record. Only new content gets the new shape.
 
 If you need old absolute paths out of a pushed brain's history, you have to
-rewrite that repository's git history yourself. Serenity doesn't do this for
-you. To find the affected records:
+migrate retained records and their history separately. Explicit erasure through
+the serialized source-tombstone writer removes the whole target source path
+from history; it does not replace a retained record's URI in place. To find
+the affected records:
 
 ```sh
 grep -rl '^uri: file:///' brain/sources
