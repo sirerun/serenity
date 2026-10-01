@@ -28,8 +28,17 @@ func validPlanInput() PlanInput {
 	}
 }
 
-func TestCreateAndLoadPlanIsCanonicalAndIdempotent(t *testing.T) {
+func privatePlanDir(t *testing.T) string {
+	t.Helper()
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestCreateAndLoadPlanIsCanonicalAndIdempotent(t *testing.T) {
+	dir := privatePlanDir(t)
 	input := validPlanInput()
 	created, err := CreatePlan(context.Background(), dir, input)
 	if err != nil {
@@ -67,7 +76,7 @@ func TestCreateAndLoadPlanIsCanonicalAndIdempotent(t *testing.T) {
 }
 
 func TestLoadPlanRejectsUnchangedHashMismatch(t *testing.T) {
-	dir := t.TempDir()
+	dir := privatePlanDir(t)
 	plan, err := CreatePlan(context.Background(), dir, validPlanInput())
 	if err != nil {
 		t.Fatal(err)
@@ -113,7 +122,7 @@ func TestLoadPlanRejectsDuplicateUnknownAliasAndTrailingJSON(t *testing.T) {
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := privatePlanDir(t)
 			plan, err := CreatePlan(context.Background(), dir, validPlanInput())
 			if err != nil {
 				t.Fatal(err)
@@ -139,7 +148,7 @@ func TestLoadPlanRejectsDuplicateUnknownAliasAndTrailingJSON(t *testing.T) {
 
 func TestCreatePlanNeverOverwritesExistingArtifactOrFollowsSymlink(t *testing.T) {
 	t.Run("corrupt existing file", func(t *testing.T) {
-		dir := t.TempDir()
+		dir := privatePlanDir(t)
 		plan, err := newPlan(validPlanInput())
 		if err != nil {
 			t.Fatal(err)
@@ -159,7 +168,7 @@ func TestCreatePlanNeverOverwritesExistingArtifactOrFollowsSymlink(t *testing.T)
 	})
 
 	t.Run("symlink target", func(t *testing.T) {
-		dir := t.TempDir()
+		dir := privatePlanDir(t)
 		plan, err := newPlan(validPlanInput())
 		if err != nil {
 			t.Fatal(err)

@@ -53,7 +53,7 @@ func privateDirectoryPath(path string) (string, error) {
 		}
 	}
 	if info.Mode().Perm() != 0700 {
-		return "", fmt.Errorf("%w: directory mode must be 0700", ErrPlanUntrustedDir)
+		return "", fmt.Errorf("%w: directory mode %04o must be 0700", ErrPlanUntrustedDir, info.Mode().Perm())
 	}
 	stat, ok := info.Sys().(*unix.Stat_t)
 	if !ok || int(stat.Uid) != os.Geteuid() {
