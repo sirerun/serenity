@@ -13,3 +13,17 @@ status, and final validation. Local merge gates follow ADR 024.
 Workers do not edit shared status or hosted-owned implementation. Multi-package
 builds are serialized with the shared lease. Current registry entries marked
 planned/ready and partial receipts are not accepted hosted completion.
+
+## Follow-up assignment and live result
+
+The local audit found source tombstones retain history contrary to ADR019.
+Worker audit_local additionally owns `internal/writer/tombstone.go`, a new
+`tombstone_history_test.go`, and the narrow existing erasure assertion that
+must change after history purge. It must prove red/green, retry safety and
+unrelated-history preservation. Task claim: T24.21-followup. Coordinator
+independently reviews and integrates; hosted files remain untouched.
+
+Reviewed app/backup unit hardening is now installed on the existing host;
+readiness and a cgroup IMDS refusal probe passed. The binary was not replaced.
+See `docs/launch/evidence/E24/unit-hardening-2026-10-01.md`. T24.42 remains
+partial until renewal behind origin lock-down is established.
