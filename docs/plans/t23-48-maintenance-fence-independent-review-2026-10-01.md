@@ -21,3 +21,7 @@ go test -race -count=1 -run 'Test(DeleteAccountFreezesBeforeClosureAndRetainsUnt
 ```
 
 The test exercised durable freeze-before-closure, pending/error retention, absent-closer fail-closed behavior, dashboard retry, and the queued-backup/nested-brain-helper path. I ran no multi-package suite or full repository gate. The candidate's implementation remains maintenance-only: it does not add a journal append/read, journal durability, or journal-backed recovery claim. Production provider behavior and cross-process locking were not exercised.
+
+## Supplemental review: queued-writer probe cleanup
+
+Reviewed follow-up `c505f1d7da5cf71f89e82080b0aa8350363dc5fb` against `internal/hosted/service/deletion_test.go`. It replaces the unconditional loop with `for Maintenance.TryRLock()`, releases each successful read probe, and retains the completion and deadline checks inside the loop. This is behaviorally equivalent: it loops while a read lock is obtainable and exits on the first failed acquisition, which is the queued-writer signal under test. The timeout and unexpected-backup-completion assertions still execute after every successful probe. The comment now states the exit condition outside the loop. No assertion or runtime behavior was lost; no build was needed for this test-only simplification.
