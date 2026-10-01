@@ -27,3 +27,7 @@ The receipt correctly narrows the webhook race assertion to subscription status.
 Ran `GOCACHE=/Volumes/BuildOffload/tmp/t23-47-billing-lock-review-gocache GOTMPDIR=/Volumes/BuildOffload/tmp/t23-47-billing-lock-review-tmp go test -race -count=1 ./internal/hosted/billing` from the isolated review checkout: PASS (`5.949s`). No provider calls were made.
 
 This review covers only the candidate source and local package tests. It does not establish external Stripe behavior, multi-process lock coordination, billing plan projection correctness, complete T23.47 acceptance, or production qualification.
+
+## Follow-up review of test cleanup
+
+I also reviewed test-only commit `657991cadb95afee559436d15874e546c8d3ccf8` (`Release held billing fake calls during test cleanup`). In the three channel-gated concurrency fixtures, cleanup now calls a `sync.Once`-guarded unblock function before `httptest.Server.Close`; normal test flow uses the same guarded function. This prevents a failing assertion from leaving the handler blocked while server shutdown waits, and avoids double-close panics on the normal path. The change does not alter production code or the concurrency assertions. This source inspection is not a separate race-suite run for that later test-only revision.
