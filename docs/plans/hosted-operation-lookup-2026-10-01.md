@@ -6,4 +6,4 @@ Base: PR338 candidate `65612db1a9a23e1c0e86cdcdc6b302f3f421c7a6`. This isolated 
 
 This lookup is an internal prerequisite for a later operator-resolution adapter. Possession of an operation ID grants no transition authority; lookup does not alter state and the frozen ledger interface remains unchanged. The source/test commit is not acceptance of an HTTP endpoint, operator authorization, pending-review policy, or T23.44.
 
-Validation status at source banking: `gofmt` and `git diff --check` passed. The focused package race test is pending host-load confirmation; no build or Go test has been run for this change yet.
+Validation: `gofmt` and `git diff --check` passed. With one-minute host load below 10 and no competing Go process, `go test -race ./internal/hosted/operation` passed (2.151s). Go temporary files and caches are preserved as an untracked `.validation/` artifact on the external SSD.
