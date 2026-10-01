@@ -7,8 +7,8 @@ import (
 	"os"
 )
 
-func verifyPrivateDirectory(string) error {
-	return errors.New("hosted/recovery: safe plan filesystem unsupported")
+func privateDirectoryPath(string) (string, error) {
+	return "", errors.New("hosted/recovery: safe plan filesystem unsupported")
 }
 func openPlanNoFollow(string) (*os.File, error) {
 	return nil, errors.New("hosted/recovery: safe plan filesystem unsupported")

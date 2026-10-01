@@ -79,7 +79,9 @@ func CreatePlan(ctx context.Context, dir string, input PlanInput) (Plan, error) 
 	if err := requireContext(ctx); err != nil {
 		return Plan{}, err
 	}
-	if err := verifyPrivateDirectory(dir); err != nil {
+	var err error
+	dir, err = privateDirectoryPath(dir)
+	if err != nil {
 		return Plan{}, err
 	}
 	plan, err := newPlan(input)
@@ -143,7 +145,9 @@ func LoadPlan(ctx context.Context, dir, expectedHash string) (Plan, error) {
 	if !validSHA256(expectedHash) {
 		return Plan{}, fmt.Errorf("%w: expected plan hash is malformed", ErrPlanInvalid)
 	}
-	if err := verifyPrivateDirectory(dir); err != nil {
+	var err error
+	dir, err = privateDirectoryPath(dir)
+	if err != nil {
 		return Plan{}, err
 	}
 	path := filepath.Join(dir, expectedHash+".json")

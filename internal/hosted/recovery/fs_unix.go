@@ -12,11 +12,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func verifyPrivateDirectory(path string) error {
+func privateDirectoryPath(path string) (string, error) {
 	if !filepath.IsAbs(path) {
-		return fmt.Errorf("%w: directory path must be absolute", ErrPlanUntrustedDir)
+		return "", fmt.Errorf("%w: directory path must be absolute", ErrPlanUntrustedDir)
 	}
-	clean := filepath.Clean(path)
+	clean, err := filepath.EvalSymlinks(filepath.Clean(path))
+	if err != nil {
+		return "", fmt.Errorf("%w: directory path cannot be resolved", ErrPlanUntrustedDir)
+	}
+	clean = filepath.Clean(clean)
 	volume := filepath.VolumeName(clean)
 	root := volume + string(filepath.Separator)
 	if volume == "" {
@@ -24,30 +28,33 @@ func verifyPrivateDirectory(path string) error {
 	}
 	info, err := os.Lstat(root)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("%w: unsafe filesystem root", ErrPlanUntrustedDir)
+		return "", fmt.Errorf("%w: unsafe filesystem root", ErrPlanUntrustedDir)
 	}
 	rest := strings.TrimPrefix(strings.TrimPrefix(clean, volume), string(filepath.Separator))
 	current := root
 	if rest != "" {
 		for _, component := range strings.Split(rest, string(filepath.Separator)) {
 			if component == "" || component == "." || component == ".." {
-				return fmt.Errorf("%w: invalid directory component", ErrPlanUntrustedDir)
+				return "", fmt.Errorf("%w: invalid directory component", ErrPlanUntrustedDir)
 			}
 			current = filepath.Join(current, component)
 			info, err = os.Lstat(current)
 			if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-				return fmt.Errorf("%w: unsafe directory component", ErrPlanUntrustedDir)
+				return "", fmt.Errorf("%w: unsafe directory component", ErrPlanUntrustedDir)
+			}
+			if current != clean && info.Mode().Perm()&0022 != 0 && info.Mode()&os.ModeSticky == 0 {
+				return "", fmt.Errorf("%w: writable non-sticky parent directory", ErrPlanUntrustedDir)
 			}
 		}
 	}
 	if info.Mode().Perm() != 0700 {
-		return fmt.Errorf("%w: directory mode must be 0700", ErrPlanUntrustedDir)
+		return "", fmt.Errorf("%w: directory mode must be 0700", ErrPlanUntrustedDir)
 	}
 	stat, ok := info.Sys().(*unix.Stat_t)
 	if !ok || int(stat.Uid) != os.Geteuid() {
-		return fmt.Errorf("%w: directory is not owned by the current user", ErrPlanUntrustedDir)
+		return "", fmt.Errorf("%w: directory is not owned by the current user", ErrPlanUntrustedDir)
 	}
-	return nil
+	return clean, nil
 }
 
 func openPlanNoFollow(path string) (*os.File, error) {
