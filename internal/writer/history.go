@@ -2,10 +2,13 @@ package writer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/sirerun/serenity/internal/gitrun"
 )
@@ -14,6 +17,76 @@ import (
 // brain refs, then prunes reflogs and unreachable objects. The caller must hold
 // the writer queue lock so no concurrent source write can race the rewrite.
 func rewriteForgottenPath(root, relPath string) (retErr error) {
+	return rewriteForgottenPathContext(context.Background(), root, relPath)
+}
+
+// rewriteForgottenPathContext bounds every Git subprocess by ctx. The
+// legacy wrapper above preserves local callers' historical behavior.
+func rewriteForgottenPathContext(ctx context.Context, root, relPath string) (retErr error) {
+	return rewriteForgottenPathWithGit(ctx, root, relPath, groupedHistoryGit{gitrun.Brain(root)}, func(dir string) historyGit {
+		return groupedHistoryGit{gitrun.Brain(dir)}
+	})
+}
+
+type historyGit interface {
+	Output(context.Context, ...string) ([]byte, error)
+	CombinedOutput(context.Context, ...string) ([]byte, error)
+	Run(context.Context, ...string) error
+	Command(context.Context, ...string) (*exec.Cmd, error)
+}
+
+// groupedHistoryGit ensures cancellation stops Git's descendants as well as
+// its immediate process. History rewriting commands can spawn pack writers,
+// shell filters, and maintenance helpers that must not outlive the queue job.
+type groupedHistoryGit struct{ inner historyGit }
+
+func (g groupedHistoryGit) Command(ctx context.Context, args ...string) (*exec.Cmd, error) {
+	cmd, err := g.inner.Command(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	if err := configureHistoryProcessGroup(cmd); err != nil {
+		return nil, err
+	}
+	return cmd, nil
+}
+
+func (g groupedHistoryGit) Output(ctx context.Context, args ...string) ([]byte, error) {
+	cmd, err := g.Command(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return cmd.Output()
+}
+
+func (g groupedHistoryGit) CombinedOutput(ctx context.Context, args ...string) ([]byte, error) {
+	cmd, err := g.Command(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return cmd.CombinedOutput()
+}
+
+func (g groupedHistoryGit) Run(ctx context.Context, args ...string) error {
+	cmd, err := g.Command(ctx, args...)
+	if err != nil {
+		return err
+	}
+	return cmd.Run()
+}
+
+func rewriteForgottenPathWithGit(ctx context.Context, root, relPath string, git historyGit, gitAt func(string) historyGit) (retErr error) {
+	if ctx == nil {
+		return fmt.Errorf("writer: nil history rewrite context")
+	}
+	if gitAt == nil {
+		return fmt.Errorf("writer: nil history rewrite Git factory")
+	}
+	defer func() {
+		if ctx.Err() != nil {
+			retErr = errors.Join(retErr, ctx.Err())
+		}
+	}()
 	relPath = filepath.ToSlash(filepath.Clean(relPath))
 	if relPath == "." || filepath.IsAbs(relPath) || relPath == ".." || strings.HasPrefix(relPath, "../") {
 		return fmt.Errorf("writer: invalid history rewrite path %q", relPath)
@@ -27,8 +100,6 @@ func rewriteForgottenPath(root, relPath string) (retErr error) {
 			return fmt.Errorf("writer: invalid history rewrite path %q", relPath)
 		}
 	}
-	git := gitrun.Brain(root)
-	ctx := context.Background()
 	if _, err := git.Output(ctx, "rev-parse", "--is-inside-work-tree"); err != nil {
 		if _, statErr := os.Stat(filepath.Join(root, ".git")); os.IsNotExist(statErr) {
 			// A brain without a Git repository has no history to rewrite.
@@ -94,19 +165,25 @@ func rewriteForgottenPath(root, relPath string) (retErr error) {
 		return fmt.Errorf("writer: create isolated history rewrite worktree: %w", err)
 	}
 	worktree := filepath.Join(tempRoot, "worktree")
+	worktreeAdded := false
 	defer func() {
-		if err := os.RemoveAll(tempRoot); err != nil && retErr == nil {
-			retErr = fmt.Errorf("writer: remove temporary history rewrite directory: %w", err)
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if worktreeAdded {
+			if err := git.Run(cleanupCtx, "worktree", "remove", "--force", worktree); err != nil {
+				retErr = errors.Join(retErr, errors.New("writer: cleanup private history rewrite worktree failed"))
+			}
+		}
+		if err := os.RemoveAll(tempRoot); err != nil {
+			retErr = errors.Join(retErr, errors.New("writer: cleanup private history rewrite directory failed"))
 		}
 	}()
 	if err := git.Run(ctx, "worktree", "add", "--detach", worktree, "HEAD"); err != nil {
 		return fmt.Errorf("writer: create clean history rewrite worktree: %w", err)
 	}
-	defer func() {
-		_ = git.Run(ctx, "worktree", "remove", "--force", worktree)
-	}()
+	worktreeAdded = true
 	filter := "git rm --cached --ignore-unmatch -r -- '" + relPath + "'"
-	filterCmd, err := gitrun.Brain(worktree).Command(ctx, "filter-branch", "--force", "--index-filter", filter, "--", "--all")
+	filterCmd, err := gitAt(worktree).Command(ctx, "filter-branch", "--force", "--index-filter", filter, "--", "--all")
 	if err != nil {
 		return fmt.Errorf("writer: prepare history rewrite: %w", err)
 	}
@@ -125,6 +202,7 @@ func rewriteForgottenPath(root, relPath string) (retErr error) {
 	if err := git.Run(ctx, "worktree", "remove", "--force", worktree); err != nil {
 		return fmt.Errorf("writer: remove history rewrite worktree: %w", err)
 	}
+	worktreeAdded = false
 	refs, err := git.Output(ctx, "for-each-ref", "--format=%(refname)", "refs/original/")
 	if err != nil {
 		return fmt.Errorf("writer: list history rewrite backup refs: %w", err)

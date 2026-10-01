@@ -105,6 +105,7 @@ var reservedPrefixes = []string{
 type Runner struct {
 	dir         string
 	foreign     bool
+	canonical   bool
 	quarantine  bool
 	bundleClone bool
 }
@@ -118,6 +119,13 @@ func Brain(dir string) *Runner { return &Runner{dir: dir} }
 // hooks, global and system configuration are ignored, optional index
 // writes are skipped, and only read-only subcommands run.
 func Foreign(dir string) *Runner { return &Runner{dir: dir, foreign: true} }
+
+// CanonicalReadOnly is for proofs derived from a repository's committed
+// objects. It has Foreign's read-only command allowlist and config/hook
+// isolation, and disables replacement objects and lazy network fetches.
+func CanonicalReadOnly(dir string) *Runner {
+	return &Runner{dir: dir, foreign: true, canonical: true}
+}
 
 // Quarantine runs Git in an owned private staging workspace. It permits
 // writes needed to restore a local bundle, but ignores hooks and global/system
@@ -282,6 +290,9 @@ func (r *Runner) env(inherited []string) []string {
 	}
 	if r.quarantine {
 		out = append(out, "GIT_NO_LAZY_FETCH=1")
+	}
+	if r.canonical {
+		out = append(out, "GIT_NO_LAZY_FETCH=1", "GIT_NO_REPLACE_OBJECTS=1")
 	}
 	return out
 }

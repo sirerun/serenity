@@ -100,7 +100,7 @@ type SubmitAndFlushResult struct {
 // run strictly one at a time, in the order they were submitted.
 type Queue struct {
 	mu     sync.Mutex
-	runMu  sync.Mutex    // serializes complete writes with git publication
+	runMu  runLock       // serializes complete writes with git publication; supports context cancellation
 	commit commitGate    // excludes hosted canonical checkers from source+flush sections
 	submit chan struct{} // serializes ordered sends without holding mu while they block
 	closed bool
@@ -162,6 +162,7 @@ func (s *submissionState) cancelBeforeStart() bool {
 // same queue (it would deadlock the single drain goroutine).
 func NewQueue(hook func(Result)) *Queue {
 	q := &Queue{
+		runMu:   newRunLock(),
 		seq:     map[string]uint64{},
 		touched: map[string]bool{},
 		jobs:    make(chan submitted),
@@ -202,7 +203,22 @@ func (q *Queue) drain() {
 			s.reply <- submitResponse{result: res}
 			continue
 		}
-		q.runMu.Lock()
+		if s.flush {
+			err = q.runMu.lockContext(s.flushCtx)
+		} else {
+			err = q.runMu.lockContext(context.Background())
+		}
+		if err != nil {
+			if leaveCommit != nil {
+				leaveCommit()
+			}
+			res := Result{Job: s.job, Seq: s.seq, Err: err}
+			if q.hook != nil {
+				q.hook(res)
+			}
+			s.reply <- submitResponse{result: res}
+			continue
+		}
 		var b []byte
 		if err == nil {
 			b, err = run(s.job)
@@ -216,7 +232,7 @@ func (q *Queue) drain() {
 			committed, err = flushTouchedLocked(s.flushCtx, q, s.flushRoot)
 		}
 		res := Result{Job: s.job, Seq: s.seq, Bytes: b, Err: err}
-		q.runMu.Unlock()
+		q.runMu.unlock()
 		if leaveCommit != nil {
 			leaveCommit()
 		}

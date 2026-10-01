@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-01",
+  "scope": "hosted forget/flush fencing and unused conservative committed-HEAD checker; no activation",
+  "full_source": "d719347aab079d63473567c1f5f6bab7266116c8",
+  "final_source": "c09956d00c90db5613a8633f21c7df94e597ff40",
+  "independent_review": "e5074cb783d7cc4c9682ef93da5e0276661cb169",
+  "style_review": "d56b0be81e7fc1894b1a24fb79cad01fbf8f080f",
+  "local_validation": {
+    "full_race_tested_packages": 79,
+    "packages_without_tests": 5,
+    "gated_skips": 7,
+    "full_race_exit": 0,
+    "vet_exit": 0,
+    "initial_lint_exit": 1,
+    "initial_lint_findings": "two behavior-preserving style findings corrected in78936a1",
+    "final_focused_race_exit": 0,
+    "final_full_lint_exit": 0,
+    "linux_arm64_build_exit": 0,
+    "final_load": 2.93,
+    "final_build_lease": "42097b860e69cd019d76e36db8e7ace69617161d",
+    "lease_released": true,
+    "independent_mutations": "object-symlink acceptance and erased-fact absence inference fail at runtime; restored tests pass"
+  },
+  "limits": [
+    "Missing committed evidence returns Unknown, including no-entry records; no authoritative absence proof.",
+    "Checker startup/ticker/operator routing remains unwired; caller must pin runtime lease.",
+    "No retained operation marker, physical staging qualification, journal/backup assembly, deployment, provider activation or public acceptance.",
+    "Canonical scans assume cooperating writers use the runtime gate; unrelated filesystem mutations are not fenced."
+  ]
+}

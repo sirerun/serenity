@@ -70,6 +70,36 @@ func (g *commitGate) enterShared(ctx context.Context) (func(), error) {
 	}
 }
 
+// tryEnterShared never waits. On denial it returns the gate-change channel
+// observed under the gate lock; callers can release unrelated locks before
+// waiting on that channel without missing a transition.
+func (g *commitGate) tryEnterShared(ctx context.Context) (leave func(), changed <-chan struct{}, err error) {
+	if ctx == nil {
+		return nil, nil, ErrNilCommitContext
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.writer && g.waitingWriter == 0 {
+		g.readers++
+		var once sync.Once
+		return func() {
+			once.Do(func() {
+				g.mu.Lock()
+				g.readers--
+				g.changedLocked()
+				g.mu.Unlock()
+			})
+		}, nil, nil
+	}
+	if g.changed == nil {
+		g.changed = make(chan struct{})
+	}
+	return nil, g.changed, nil
+}
+
 func (g *commitGate) enterExclusive(ctx context.Context) (func(), error) {
 	if ctx == nil {
 		return nil, ErrNilCommitContext
@@ -126,6 +156,13 @@ func (g *commitGate) enterExclusive(ctx context.Context) (func(), error) {
 // durability boundary are complete.
 func (q *Queue) EnterCommit(ctx context.Context) (leave func(), err error) {
 	return q.commit.enterShared(ctx)
+}
+
+// AcquireCommitFence enters the exclusive canonical-check section. Release
+// the returned function exactly once after the checker and ledger transition
+// are complete. The checker must not call queue methods or wait for runLock.
+func (q *Queue) AcquireCommitFence(ctx context.Context) (release func(), err error) {
+	return q.commit.enterExclusive(ctx)
 }
 
 // WithCommitFence runs check while no shared canonical-write section is
