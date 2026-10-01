@@ -242,7 +242,7 @@ func validateBrainTree(ctx context.Context, root, key string) (string, bool, err
 			return "", false, fmt.Errorf("hosted: inspect Git worktree ownership: %w", e)
 		}
 		for _, item := range strings.Split(string(out), "\x00") {
-			name, worktree, ok := strings.Cut(item, "=")
+			name, worktree, ok := strings.Cut(item, "\n")
 			if !ok || !strings.EqualFold(name, "core.worktree") || strings.TrimSpace(worktree) == "" {
 				continue
 			}

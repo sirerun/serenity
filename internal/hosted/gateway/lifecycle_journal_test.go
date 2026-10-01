@@ -344,10 +344,17 @@ func TestValidateBrainTreeRejectsAnyExternalCoreWorktreeValue(t *testing.T) {
 	if out, err := exec.Command("git", "-C", brainDir, "init", "-q").CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, out)
 	}
-	for _, worktree := range []string{"/external/brain", brainDir} {
-		if out, err := exec.Command("git", "-C", brainDir, "config", "--local", "--add", "core.worktree", worktree).CombinedOutput(); err != nil {
-			t.Fatalf("git config core.worktree: %v: %s", err, out)
-		}
+	config := "\n[core]\n\tworktree = /external/brain\n\tworktree = " + brainDir + "\n"
+	configFile, err := os.OpenFile(filepath.Join(brainDir, ".git", "config"), os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = configFile.WriteString(config); err != nil {
+		_ = configFile.Close()
+		t.Fatal(err)
+	}
+	if err = configFile.Close(); err != nil {
+		t.Fatal(err)
 	}
 	if _, _, err := validateBrainTree(context.Background(), root, brain); !errors.Is(err, ErrDeletionSubjectStateUnknown) {
 		t.Fatalf("validateBrainTree with hidden external worktree = %v", err)
