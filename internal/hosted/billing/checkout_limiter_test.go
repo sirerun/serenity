@@ -168,7 +168,7 @@ func TestCheckoutProviderFailureConsumesAttemptAndHTTPReturnsRetryAfter(t *testi
 		t.Fatalf("direct checkout error=%v; want typed rate-limit error with retry duration", checkoutErr)
 	}
 
-	const sessionToken = "valid-session-token"
+	const sessionToken = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 	now := time.Now().UTC()
 	if _, err = db.DB().ExecContext(ctx, `INSERT INTO sessions(id,account_id,token_hash,created_at,expires_at,csrf_secret) VALUES(?,?,?,?,?,?)`, store.ID(), account.ID, store.Hash(sessionToken), store.Stamp(now), store.Stamp(now.Add(time.Hour)), "csrf-token"); err != nil {
 		t.Fatal(err)
