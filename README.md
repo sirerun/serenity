@@ -130,6 +130,21 @@ redact:
 The [threat model](docs/threat-model.md#redaction-contract) describes the
 full contract.
 
+## Forgetting and retained copies
+
+On a local brain, `forget` removes a memory fact from the working tree and
+search indexes, then rewrites Git history to remove that fact path. If the
+brain has a remote, Serenity pushes the rewritten history; other clones must
+be re-cloned. Copies already outside Serenity's control cannot be recalled.
+Source tombstones do not currently rewrite older Git history.
+
+Hosted backup and export behavior has separate limits: the current hosted
+export includes all Git refs, and the configured object-store lifecycle can
+retain backup versions for nearly two 30-day intervals. It is not a
+history-free export or a 31-day maximum-retention guarantee. See the
+[erasure and export operator notes](docs/operator/forget.md#hosted-backups-and-exports)
+for the current details.
+
 Embedding configuration is separate and uses an OpenAI-compatible endpoint.
 See [model providers](docs/providers.md) for credentials, model pins, and local
 endpoint configuration.

@@ -174,7 +174,8 @@ of the absolute path. The absolute path itself is kept only in the local
 derived index (`source_paths` in `.serenity/index.db`), which never leaves the
 machine. The hash is unsalted: it doesn't reveal the directory layout, but it
 can confirm a guessed full path. Records written before this change keep their
-absolute `file://` URIs. Nothing rewrites history. See
+absolute `file://` URIs; adopting the relative-URI format does not rewrite
+history. See
 [Source URIs and local paths](operator/source-uris.md).
 
 ## Redaction contract
@@ -362,26 +363,35 @@ Deletion semantics are contractual, and the chain runs in one direction only:
    and derived pages (summaries, timelines) regenerate from the rewritten
    fences.
 
-**Forgetting a memory fact** (`forget`) follows the same rule (ADR 019): in
-one writer-queue job it writes a `memory_expiry` event (target SHA-256 and the
-optional reason, never the fact text), deletes the fact's FTS and vector rows,
-and removes the fact's `bytes` and `meta.yaml` from the working tree; the next
-flush commits the removal and the event together. A fact that carried an
-operation key also gets a cancellation fence, so a retried `remember` under
-that key is refused with `operation_canceled` rather than writing the text
-back. Re-forgetting an erased fact by its opaque id succeeds with
-`expired: false`; its legacy numeric id no longer resolves. Index rebuild and
-hosted recovery keep no rows for expired or erased facts.
+**Forgetting a memory fact** (`forget`) follows ADR 019: in one writer-queue
+job it writes a `memory_expiry` event (target SHA-256 and the optional reason,
+never the fact text), deletes the fact's FTS and vector rows, and removes the
+fact's `bytes` and `meta.yaml` from the working tree. The history rewrite
+removes that fact path from every commit, expires reflogs, and prunes
+unreachable Git objects. A fact that carried an operation key also gets a
+cancellation fence, so a retried `remember` under that key is refused with
+`operation_canceled` rather than writing the text back. Re-forgetting an
+erased fact by its opaque id succeeds with `expired: false`; its legacy
+numeric id no longer resolves. Index rebuild keeps no rows for expired or
+erased facts.
 
-This chain is honest about its limit: git history is the operator's to
-rewrite or accept. A git-canonical brain remembers unless the operator
-rewrites history — deleting a source removes it from the *current* state of
-the brain and from every future rebuild, but a prior commit that still
-contains the original bytes is recoverable from `git log` until the operator
-prunes it. Serenity documents this rather than pretending deletion is
-retroactive. Rewriting brain history on forget is tracked separately
-(T24.22); until it lands, the history limit above applies to forgotten facts
-and tombstoned sources alike.
+The rewrite applies to memory facts forgotten with `forget`; source tombstones
+currently remove source bytes and index rows from the working tree but do not
+rewrite older Git commits. A prior commit can therefore still contain
+tombstoned source bytes. For a local brain with a configured remote, the
+post-commit hook pushes the rewritten history with `--force-with-lease` and
+warns that existing clones must be re-cloned. Copies already made outside
+Serenity's control, including user-held clones and exports, cannot be revoked.
+
+Hosted deletion, export, and backup behavior has separate limits. Hosted
+brain export currently bundles all Git refs, so it can include history;
+history-free export is not yet the behavior of this checkout. The hosted
+bucket configuration expires current object versions after 30 days and
+noncurrent versions 30 days after they become noncurrent. Because a version
+can first remain current and then become noncurrent, this configuration can
+retain it for nearly two 30-day intervals; it does not establish a 31-day
+maximum. Treat this as the configured object-store lifecycle, not a guarantee
+that every backup copy has been purged by a fixed deadline.
 
 ## Git subprocesses: one hardened runner
 
@@ -417,8 +427,11 @@ runner under their own file claims (ADR 018, consequences).
 
 ## Durability
 
-Backups are `git push` — configured and monitored per RFC §7.7 (`serenity
-init` configures a post-commit or timer push and warns loudly on a missing or
-failing remote; `serenity doctor` checks last-push age) — plus an optional
-sources snapshot. There is no database backup: the index is a derived cache,
-disposable and rebuildable, and is never itself the thing being backed up.
+Local backups are `git push` — configured and monitored per RFC §7.7
+(`serenity init` configures a post-commit or timer push and warns loudly on a
+missing or failing remote; `serenity doctor` checks last-push age) — plus an
+optional sources snapshot. There is no local database backup: the index is a
+derived cache, disposable and rebuildable, and is never itself the thing being
+backed up. Hosted snapshot retention follows the separate versioned-bucket
+lifecycle described above; it currently permits almost two 30-day retention
+periods and is not a 31-day purge guarantee.
