@@ -188,11 +188,17 @@ func TestAdversarialCorpusRealExtractAndCompose(t *testing.T) {
 		t.Run(doc.file, func(t *testing.T) {
 			tempRoot := t.TempDir()
 			unsafeMarker := "UNTRUSTED-" + strings.TrimSuffix(doc.file, ".yaml")
-			wire, err := json.Marshal(map[string]any{"observations": []map[string]any{
-				{"subject": "../../" + strings.TrimSuffix(doc.file, ".yaml"), "predicate": "said", "object": unsafeMarker + " https://attacker.invalid/ frontmatter:precept", "confidence": 0.99},
-				{"subject": "corpus-record", "predicate": doc.FabricatedPredicates[0], "object": "fabricated predicate", "confidence": 0.99},
-				{"subject": "corpus-record", "predicate": "said", "object": "Reviewed source material safely", "confidence": 0.99},
-			}})
+			// The scripted model emits this document's actual attempted
+			// instruction, URI, and every fabricated predicate. Flattening
+			// whitespace keeps the rejection focused on slug/vocabulary
+			// enforcement rather than the separate newline filter.
+			hostilePayload := unsafeMarker + " " + doc.AttackVector + " " + doc.URI + " " + strings.Join(strings.Fields(doc.Body), " ")
+			candidates := []map[string]any{{"subject": "../../" + strings.TrimSuffix(doc.file, ".yaml"), "predicate": "said", "object": hostilePayload, "confidence": 0.99}}
+			for _, predicate := range doc.FabricatedPredicates {
+				candidates = append(candidates, map[string]any{"subject": "corpus-record", "predicate": predicate, "object": hostilePayload, "confidence": 0.99})
+			}
+			candidates = append(candidates, map[string]any{"subject": "corpus-record", "predicate": "said", "object": "Reviewed source material safely", "confidence": 0.99})
+			wire, err := json.Marshal(map[string]any{"observations": candidates})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -209,7 +215,7 @@ func TestAdversarialCorpusRealExtractAndCompose(t *testing.T) {
 			if extractProvider.calls != 1 || len(extractProvider.prompts) != 1 || !strings.Contains(extractProvider.prompts[0], doc.Body) {
 				t.Fatalf("scripted extractor did not receive the real corpus document (calls=%d)", extractProvider.calls)
 			}
-			if result.Rejected < 2 || len(result.Ready) != 1 || result.Ready[0].SubjectSlug != "corpus-record" {
+			if result.Rejected < len(doc.FabricatedPredicates)+1 || len(result.Ready) != 1 || result.Ready[0].SubjectSlug != "corpus-record" {
 				t.Fatalf("hostile candidates escaped extraction: rejected=%d ready=%+v", result.Rejected, result.Ready)
 			}
 
@@ -239,7 +245,7 @@ func TestAdversarialCorpusRealExtractAndCompose(t *testing.T) {
 			if len(answer.Citations) != 1 || answer.Citations[0].ClaimID != "corpus-safe" {
 				t.Fatalf("composition did not cite the safe extracted claim: %+v", answer.Citations)
 			}
-			if strings.Contains(composeProvider.prompts[0], unsafeMarker) || strings.Contains(composeProvider.prompts[0], doc.URI) {
+			if strings.Contains(composeProvider.prompts[0], unsafeMarker) || strings.Contains(composeProvider.prompts[0], doc.URI) || strings.Contains(composeProvider.prompts[0], hostilePayload) {
 				t.Fatalf("rejected filename, URL, or metadata escaped into composition prompt for %s", doc.file)
 			}
 			if _, err := os.Stat(filepath.Join(tempRoot, ".dira")); !os.IsNotExist(err) {
@@ -259,7 +265,7 @@ func TestAdversarialCorpusRealExtractAndCompose(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				if strings.Contains(string(b), unsafeMarker) || strings.Contains(string(b), doc.URI) {
+				if strings.Contains(string(b), unsafeMarker) || strings.Contains(string(b), doc.URI) || strings.Contains(string(b), hostilePayload) {
 					return fmt.Errorf("rejected URL or frontmatter payload escaped into %s", path)
 				}
 				return nil
