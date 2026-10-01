@@ -1,0 +1,26 @@
+{
+  "scope": "Hosted remember source Git durability before optional embedding/index work; trusted durable outcome survives later failure",
+  "status": "LOCAL_CANDIDATE_GATE_PASS; T23.44 remains PARTIAL",
+  "source_sha": "7ab139359a16f3e60d4d6d1ebfaef4cf7af51f8c",
+  "checks": {
+    "full_race": "PASS:79 tested packages;5 no-test packages;7 gated test skips",
+    "full_vet": "PASS",
+    "full_lint": "PASS:0 issues",
+    "load_sample": "2.18 before full gate; shared lease released immediately after checks",
+    "independent_review": [
+      "a2e95f8f16893cfaf8c0bad92703ce10ef6ed995",
+      "1cedff3fbdced538df68f7cf6c2016a7f4e6d871"
+    ],
+    "negative_control": "Disabling inline publication produced runtime failure; restored focused writer race passes.",
+    "service_failure_fixture": "Provider sees matching fact bytes and internal operation marker in Git HEAD before injected embedding failure; ledger committed; retry replays same fact with one source and one charged write."
+  },
+  "trust": "Callback only when BeforeCommit succeeded and payload operation ID matches trusted ID; exact input operation key binding required. Client JSON cannot inject callback. Duplicate/refusal never invent canonical entry.",
+  "remaining": [
+    "Forget/cancel/other ordinary Submit and Flush routes remain unfenced; production checker/startup/ticker/operator wiring remains open.",
+    "Missing canonical evidence after fact erasure must be Unknown; no absence inference is accepted.",
+    "New retained applied-operation marker is a design proposal only; no extra retained identifier or retention policy is implemented.",
+    "Physical stage limit, deletion journal/restore activation and live/launch qualification remain open."
+  ],
+  "local_gate": "Founder-authorized ADR024; no green Actions result or protection bypass",
+  "merge_status": "ready for ordinary expected-head merge after fresh coordination checks; no deployment"
+}
