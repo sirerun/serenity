@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -158,10 +159,15 @@ func (s *Service) audit(ctx context.Context, c *call, action string) {
 	}
 	// Audit is best effort after the response: the mutation already committed
 	// and a failed audit write must not report a false failure to the partner.
-	_ = s.Store.Transaction(ctx, func(tx *sql.Tx) error {
+	if err := s.Store.Transaction(ctx, func(tx *sql.Tx) error {
 		_, e := tx.ExecContext(ctx, `INSERT INTO audit_log(account_id,actor,action,created_at,detail) VALUES(?,?,?,?,?)`, account, "partner:"+c.partner.ID, "partner."+action, store.Stamp(s.now()), string(detail))
 		return e
-	})
+	}); err != nil {
+		// Keep the partner response independent of audit storage, but make
+		// the lost audit record observable without logging request data or
+		// database details that may contain sensitive identifiers.
+		slog.Error("partner audit persistence failed")
+	}
 }
 
 // dummySecretHash equalizes timing when the partner ID is unknown.
