@@ -1,0 +1,44 @@
+diff --git a/internal/hosted/contracts/recovery_billing.go b/internal/hosted/contracts/recovery_billing.go
+new file mode 100644
+--- /dev/null
++++ b/internal/hosted/contracts/recovery_billing.go
+@@ -0,0 +1,39 @@
++package contracts
++
++import (
++	"context"
++	"time"
++)
++
++// RecoveryBillingObserver reads current provider entitlement for an account
++// whose status remains exactly restore_pending. It does not reconcile, persist or activate.
++// accountID is the only caller identity; provider customer binding is read
++// from server-owned storage and never returned. Missing configuration,
++// binding, incomplete provider truth or unresolved checkout is an error.
++// Success requires unchanged status, customer binding and clean checkout
++// state after bounded provider GETs. The account lock is process-local:
++// callers must separately enforce freshness, fencing and adoption.
++type RecoveryBillingObserver interface {
++	ObserveRestorePending(ctx context.Context, accountID string) (RecoveryBillingObservation, error)
++}
++
++// RecoveryBillingObservation is a point observation, not permission to
++// restore or proof of old-writer fencing. Errors return the zero value.
++// PlanID is a known plan; successful non-entitlement requires authoritative
++// provider evidence, never missing or ambiguous data. Grace is derived from
++// current provider evidence without trusting or changing restored SQL grace.
++// Eligible follows existing effective access: active/trialing require a
++// verified future provider period end; past_due requires provider-derived
++// first failure plus 72 hours strictly after the observation time. Known
++// canceled/unpaid/paused/expired states are ineligible; ambiguity is an error.
++// ObservedAt is UTC and Source is a fixed non-sensitive provenance tag.
++type RecoveryBillingObservation struct {
++	AccountID          string
++	Eligible           bool
++	PlanID             string
++	CurrentWindowStart time.Time
++	CurrentWindowEnd   time.Time
++	GraceUntil         time.Time
++	ObservedAt         time.Time
++	Source             string
++}

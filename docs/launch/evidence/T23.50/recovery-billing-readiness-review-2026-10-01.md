@@ -1,0 +1,45 @@
+# Recovery billing observer implementation readiness review
+
+Reviewed source candidate `92540d738bc59fb3dba0cfda68a8a229826f12c8` and packet `5335401dba661e05d16348c9a1caf44cb3252de6` in an isolated SSD clone. This is a read-only implementation readiness review. No billing production code, contract, schema, provider, or T23.41 task claim was changed. No Stripe/AWS calls or Go tests were run.
+
+## Finding
+
+The additive `contracts.RecoveryBillingObserver` shape is implementable in `internal/hosted/billing.Service` without changing the existing `BillingReconciler` contract or schema. The current service already has the necessary local primitives: account-scoped `keyedLocks`, server-stored customer binding in `accounts.stripe_customer_id`, pending checkout state in `checkout_attempts`, configured Stripe HTTP transport, known configured-price mapping, and a pure active/trialing access predicate.
+
+The current transport and reconciliation helpers do not establish the observation guarantee. `Service.request` decodes through `io.LimitReader(..., 1<<20)` once; it does not prove the body ended within the limit, reject a second JSON value or duplicate keys, or distinguish omitted required fields from their Go zero values. `listSubscriptions` rejects `HasMore`, validates customer and item count, but an omitted `has_more` defaults to false and an omitted `data` becomes nil. An observer needs a separate strict, bounded GET-only decode path; changing shared reconciliation semantics is outside this slice.
+
+`failureEvidence` is not reusable for recovery observation: it reads restored `billing_failures`, fetches only the latest invoice's event history, then inserts/upserts `billing_failures`. `reconcileOldCheckoutAttempt` also cannot be called: it may discover or expire a provider checkout, delete its local row, and write audit history. `checkout_attempts` is one row per account, so the safe observer behavior is to refuse any row before provider I/O and to repeat that check after provider I/O.
+
+## Existing seams and locking
+
+- `billing.go`: `request`/`providerRequest` hold the API version, Basic Auth, configured `http.Client`/`BaseURL`, response status handling, and provider error wrappers. Reuse the transport configuration, but implement a private observer-only GET path with a hard response-byte cap, one complete JSON document, duplicate-key rejection, and endpoint-specific required-field validation.
+- `billing.go`: `listSubscriptions` is a useful validation reference, not a sufficient strict reader. Bound results to one page and require explicit `data` array and `has_more` boolean, `has_more == false`, valid subscription/customer IDs, exactly one item, known price, supported status, and valid positive `current_period_start < current_period_end` timestamps.
+- `reconcile.go`: reuse `planForPrice`, `subscriptionTerminal`, and `effectiveSubscriptionAccess` where their semantics fit. For observer results, calculate the access decision using one captured UTC `ObservedAt`; active/trialing require a valid future provider period end. Known canceled or incomplete-expired (and a verified complete result with no current subscription) can be a successful Free/ineligible observation. Unsupported states, including unresolved `incomplete`, are errors.
+- `locks.go`: acquire `s.locks.acquire(ctx, "account:"+accountID)` for the complete local read/provider-read/final-reread sequence. The lock is process-local; do not describe it as cross-process/provider serialization.
+- `billing.go`, `checkout.go`: require a nonnil Store, configured secret/client transport and known plans before external I/O. A missing customer binding while restore-pending is refusal, not a Free result. Check context before lock and before first request.
+- `store/migrations.go`: no schema addition is needed for a read-only observer. Its allowed SQL should be SELECT-only: initial exact account status/binding and checkout-attempt existence; final reread of the same values. No subscription, audit, failure, checkout, event, or account updates.
+
+## Bounded past-due evidence algorithm
+
+A latest-invoice-only calculation does not preserve existing same-period behavior. `graceDeadline` in `reconcile.go` retains the prior deadline when status remains past_due, the subscription period has not changed, and `latest_invoice` changes. The existing same-period regression in `billing_test.go` confirms this boundary. Therefore, do not use the latest invoice's first event as a fresh `ObservedAt + 72h` basis.
+
+The implementation should derive the earliest applicable verified failure in the exact provider subscription's current billing window:
+
+1. From the strict subscription response, validate the known configured price, supported `past_due` status, customer binding, subscription ID, and valid current-period bounds.
+2. Query only provider GET endpoints for all relevant `invoice.payment_failed` events in the current window, from `max(period_start, provider_retention_lower_bound)` through a captured provider-observation time. Paginate with a fixed page/request ceiling; require explicit list fields, no duplicate event IDs, strictly advancing cursors, and completion (`has_more == false`). Exceeding any cap or encountering retention truncation is an error.
+3. For each distinct candidate invoice, fetch and strictly decode that invoice. Require invoice ID to match the event object, customer to match the server-bound customer, subscription identity to match the selected subscription (including supported parent subscription-details representation), invoice period to fall in the selected current window, and valid event/invoice timestamps. Reject mismatches or ambiguous expandable shapes. Compute the minimum applicable provider failure timestamp across all verified invoices/events, not the latest invoice's timestamp.
+4. Derive `GraceUntil = earliestFailure + 72h`; `Eligible` is true only when that deadline is strictly after the captured observation time. Do not substitute local delivery/current time, period start, latest invoice creation time, or restored SQL grace for a missing provider event.
+5. Stripe's retained event history can be shorter than a current subscription period. If completeness from the period start cannot be proven, refuse the observation. Restored grace may conservatively cap the provider-derived deadline or force refusal after consistency checking; it cannot create entitlement or extend provider-derived grace.
+6. Reread exact account status, customer binding, and checkout-attempt absence under the same account lock. Return zero observation on any error/change. Keep `Source` fixed and non-sensitive; never return the customer ID.
+
+The packet says provider work must be bounded but does not freeze numeric limits for total requests, event pages, distinct invoices, response bytes, or whole-operation duration. A page ceiling alone can still mean many sequential invoice fetches at up to the transport's 15-second per-request timeout. Freeze a small maximum total request count and an overall observer deadline in the implementation contract; exceedance must fail closed. The endpoint-specific invoice-period field and definition of “applicable” failure should also be pinned in fixtures before code is accepted.
+
+## Required verification for the implementation slice
+
+Use fake HTTP providers and real local SQL stores only. Cover active/trialing future and expired periods; terminal/no-current-subscription verified Free; past-due same-period changed latest invoice where the earlier failure wins; provider retention boundary; duplicate/repeated/out-of-window failures; wrong invoice/customer/subscription/window identity; incomplete/truncated/malformed/duplicate-key/trailing JSON; pagination nonprogress and request/page ceilings; unsupported price/status; pending checkout no-request refusal; missing/mismatched customer; status/binding/checkout changes while a GET is blocked; canceled context; and before/after equality of every SQL table on both success and failure. Assert all requests are GET, output contains no customer reference, and no provider response error body is exposed.
+
+## Scope and handoff
+
+The candidate type is additive only; it supplies no implementation, factory wiring, provider truth, freshness barrier, cross-process fence, activation, or task-41 handoff. Implement `ObserveRestorePending` as a new method in `internal/hosted/billing` after an explicit source-ownership handshake. Keep it separate from `ReconcileCustomer` and `failureEvidence` so their current mutation behavior is unchanged. T23.41's canonical claim `fc2b716` remains preserved; this readiness review neither claims nor modifies it.
+
+Review-process note: while creating this clone, two Git remote commands initially ran in the preceding assembly checkout. The temporary `proposal` remote was removed immediately; the preexisting SSH `origin` was retained, and no refs, files, commits, or worktree content there changed. The review itself is isolated in the clone named in this receipt.
