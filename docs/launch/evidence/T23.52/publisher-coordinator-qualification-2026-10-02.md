@@ -1,0 +1,7 @@
+# Publisher source coordinator qualification
+
+Reviewed source b2b1a7982508d89f23f68f4e77191b247e015f46, independent review HEAD2ebc9c29e23bd7835d75c7d3a137e6d40d629b96, assembled source HEAD0e19d86016609b004d8fecc39add3e684276b5a7. Independent review clears this slice after 38 tests and three genuine mutation REDs; its adjacent report preserves exact evidence.
+
+Coordinator ran the complete deploy/hosted/tests discovery with ResourceWarning errors and the existing ownership-enabled private APFS fixture: 86 tests passed in8.567s. Ruff and git diff --check passed. Exact source claim f9d9180ec4a8328fafaaa70f1c6fb6377c72f6a7 was rechecked before every command, and assembled HEAD was unchanged throughout. Go source/go.mod/go.sum exactly match mainc3d491b03980310d7d59688d092b8119640e5250; this Python-only integration introduces no Go change. No broader new Go qualification is claimed.
+
+Logs and SHA records are in the external validation directory; these results qualify source behavior only. T23.52 is still partial: real provider transport/version semantics, production journal admission/factory, runner and installation, purge authority/service/timer, dependencies and live qualifications are outstanding. No provider request, deployment, purge or activation occurred. GitHub Actions remains unavailable under the billing lock; founder-authorized local checks and normal expected-head merge are used. Ajent service tooling is unavailable; local project/fleet records are checked at integration boundaries.
