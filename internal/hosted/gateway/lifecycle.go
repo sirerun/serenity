@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -92,7 +91,7 @@ func (g *Gateway) Export(ctx context.Context, account, brain string, out io.Writ
 		return err
 	}
 	bundle := filepath.Join(temp, "brain.bundle")
-	if output, e := exec.CommandContext(ctx, "git", "-C", runtime.Root, "bundle", "create", bundle, "--all").CombinedOutput(); e != nil {
+	if output, e := gitrun.Brain(runtime.Root).CombinedOutput(ctx, "bundle", "create", bundle, "--all"); e != nil {
 		return fmt.Errorf("bundle brain: %w: %s", e, output)
 	}
 	projection, err := brainstore.LoadMemoryProjection(brainstore.NewSourceStore(runtime.Root))
