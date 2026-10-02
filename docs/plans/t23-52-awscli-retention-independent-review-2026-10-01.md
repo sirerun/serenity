@@ -15,3 +15,7 @@ Three runtime blockers need correction before integration:
 One additional contract mismatch: `_text` rejects C0 and DEL controls but accepts Unicode C1 controls U+0085 and U+009F. The frozen contract says strings contain no control characters. Direct `_identifier` calls returned those values unchanged. Validate all Unicode `Cc` characters (without normalizing otherwise opaque identifiers) and add coverage. This observation was reproduced directly in Python; it did not call a provider.
 
 The review did not assess actual AWS CLI compatibility against a live service, credential identity or IAM permissions, deployment, retention scheduling, or purge authority. The adapter remains an unwired library candidate; passing local fake tests cannot establish the separate live 31-day qualification or completion/manifest authority gates.
+
+## Coordination receipt correction
+
+The first status message incorrectly said the source claim was absent: the review clone's `origin` pointed at the author worktree, so the default `claim.sh` holder/release commands checked the wrong claim store. The canonical origin is `git@github.com:sirerun/serenity.git`. Using `CLAIM_REMOTE` with that canonical remote, the exact source claim `R-hosted-backup-retention-cli` at `4987a4913fa23e73eb2f3058a56af519d4551350` was successfully released (`RELEASED`). The mistaken local-remote attempt returned `NO_CLAIM` and did not alter the canonical claim. The canonical `R-plan-md` report claim was reacquired before this correction and is released after commit.
