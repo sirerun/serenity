@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -647,7 +648,7 @@ func Restore(ctx context.Context, snapshot, destination string) (err error) {
 	}
 	defer func() { _ = root.Close() }()
 
-	manifest, err := readManifest(root)
+	manifest, err := readManifest(ctx, root)
 	if err != nil {
 		return err
 	}
@@ -676,14 +677,14 @@ func Restore(ctx context.Context, snapshot, destination string) (err error) {
 	defer func() { _ = os.RemoveAll(scratch) }()
 
 	controlPath := filepath.Join(staging, controlDBName)
-	if err = verifyAndCopy(root, manifest.ControlDB, controlPath); err != nil {
+	if _, err = verifyAndCopyContext(ctx, root, manifest.ControlDB, controlPath); err != nil {
 		return fmt.Errorf("hosted/backup: control database: %w", err)
 	}
 	// Inspect the exact bytes just verified and copied, through a read-only
 	// connection that cannot migrate them, before store.Open (below) is ever
 	// allowed to. This binds the manifest's claimed schema to the actual
 	// artifact prior to any mutation of it.
-	if err = inspectRestoredControlDB(controlPath, manifest.Source.SchemaVersion); err != nil {
+	if err = inspectRestoredControlDB(ctx, controlPath, manifest.Source.SchemaVersion); err != nil {
 		return err
 	}
 
@@ -706,7 +707,7 @@ func Restore(ctx context.Context, snapshot, destination string) (err error) {
 		}
 	}()
 
-	if err = verifyBrainInventory(ctx, db, manifest.Brains); err != nil {
+	if err = verifyBrainInventory(ctx, db.DB(), manifest.Brains, len(manifest.Brains)); err != nil {
 		return err
 	}
 	if err = os.MkdirAll(filepath.Join(staging, "brains"), 0700); err != nil {
@@ -749,38 +750,10 @@ func Restore(ctx context.Context, snapshot, destination string) (err error) {
 // manifest file itself must be a plain regular file: os.Root follows an
 // in-root symlink by default, so this rejects one explicitly rather than
 // silently reading whatever it points to.
-func readManifest(root *os.Root) (contracts.ManifestV2, error) {
-	info, err := root.Lstat(manifestFile)
+func readManifest(ctx context.Context, root *os.Root) (contracts.ManifestV2, error) {
+	data, err := readManifestBytes(ctx, root)
 	if err != nil {
-		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: stat manifest: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: manifest %s is not a regular file", manifestFile)
-	}
-	if info.Size() > maxManifestBytes {
-		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: manifest exceeds the %d-byte limit", maxManifestBytes)
-	}
-	f, err := root.Open(manifestFile)
-	if err != nil {
-		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: read manifest: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-	openedInfo, err := f.Stat()
-	if err != nil {
-		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: stat opened manifest: %w", err)
-	}
-	if !openedInfo.Mode().IsRegular() {
-		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: manifest %s is not a regular file", manifestFile)
-	}
-	if openedInfo.Size() > maxManifestBytes {
-		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: manifest exceeds the %d-byte limit", maxManifestBytes)
-	}
-	data, err := io.ReadAll(io.LimitReader(f, maxManifestBytes+1))
-	if err != nil {
-		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: read manifest: %w", err)
-	}
-	if len(data) > maxManifestBytes {
-		return contracts.ManifestV2{}, fmt.Errorf("hosted/backup: manifest exceeds the %d-byte limit", maxManifestBytes)
+		return contracts.ManifestV2{}, err
 	}
 	manifest, err := parseManifest(data)
 	if err != nil {
@@ -991,77 +964,12 @@ func manifestJSONChild(parent manifestJSONKind, key string) (manifestJSONKind, b
 // verified, and binds the manifest's claimed schema version to the actual
 // on-disk value before store.Open (the caller's next step) is allowed to
 // upgrade it.
-func inspectRestoredControlDB(path string, expectedSchema int) error {
-	if expectedSchema < 1 || expectedSchema > store.SchemaVersion {
-		return fmt.Errorf("%w: manifest claims schema %d; supported versions are 1 through %d", ErrUnsupportedSchemaVersion, expectedSchema, store.SchemaVersion)
-	}
-	db, err := sql.Open("sqlite", "file:"+path+"?mode=ro&immutable=1&_pragma=query_only(1)")
-	if err != nil {
-		return fmt.Errorf("hosted/backup: open control database for inspection: %w", err)
-	}
-	defer func() { _ = db.Close() }()
-	db.SetMaxOpenConns(1)
-	var integrity string
-	if err = db.QueryRow(`PRAGMA integrity_check`).Scan(&integrity); err != nil {
-		return fmt.Errorf("hosted/backup: check control database integrity: %w", err)
-	}
-	if integrity != "ok" {
-		return fmt.Errorf("hosted/backup: control database failed integrity check: %s", integrity)
-	}
-	var version int
-	if err = db.QueryRow(`SELECT max(version) FROM schema_migrations`).Scan(&version); err != nil {
-		return fmt.Errorf("hosted/backup: read control database schema version: %w", err)
-	}
-	if version != expectedSchema {
-		return fmt.Errorf("%w: manifest claims schema %d, artifact is schema %d", ErrSchemaMismatch, expectedSchema, version)
-	}
-	return nil
-}
-
-// verifyAndCopy copies ref's named file from root into destPath in a single
-// pass, hashing the exact bytes written, and only then compares the result
-// against ref: verifying from root and separately re-reading root to copy
-// would leave a window in which the source could change between the two
-// reads. It never follows a symlink: the manifest names a single safe path
-// element, so an entry of that name that is not a regular file is refused
-// outright rather than opened.
-func verifyAndCopy(root *os.Root, ref contracts.ArtifactRef, destPath string) error {
-	info, err := root.Lstat(ref.RelativePath)
-	if err != nil {
-		return fmt.Errorf("missing artifact %s: %w", ref.RelativePath, err)
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("artifact %s is not a regular file", ref.RelativePath)
-	}
-	src, err := root.Open(ref.RelativePath)
+func inspectRestoredControlDB(ctx context.Context, path string, expectedSchema int) (resultErr error) {
+	db, err := openSnapshotControlDB(ctx, path, expectedSchema)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = src.Close() }()
-	dst, err := os.OpenFile(destPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	h := sha256.New()
-	n, err := io.Copy(io.MultiWriter(dst, h), src)
-	if err != nil {
-		_ = dst.Close()
-		return err
-	}
-	if err = dst.Sync(); err != nil {
-		_ = dst.Close()
-		return err
-	}
-	if err = dst.Close(); err != nil {
-		return err
-	}
-	if n != ref.LengthBytes {
-		return fmt.Errorf("artifact %s length mismatch: manifest %d, copied %d", ref.RelativePath, ref.LengthBytes, n)
-	}
-	if sum := hex.EncodeToString(h.Sum(nil)); sum != ref.SHA256 {
-		return fmt.Errorf("artifact %s checksum mismatch", ref.RelativePath)
-	}
-	return nil
+	return db.Close()
 }
 
 // verifyBrainInventory cross-checks the manifest's brain list against the
@@ -1078,8 +986,15 @@ func verifyAndCopy(root *os.Root, ref contracts.ArtifactRef, destPath string) er
 // legitimate state restoreBrain may act on. Rejecting it here, before
 // restoreBrain runs for any brain, is what stops that tampering from
 // silently producing an empty directory instead of the brain's real content.
-func verifyBrainInventory(ctx context.Context, db *store.Store, brains []contracts.BrainArtifact) error {
-	rows, err := db.DB().QueryContext(ctx, `SELECT id FROM brains WHERE state='ready' AND deleted_at IS NULL ORDER BY id`)
+type snapshotQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+func verifyBrainInventory(ctx context.Context, db snapshotQueryer, brains []contracts.BrainArtifact, maxBrains int) error {
+	if maxBrains < 0 || maxBrains == math.MaxInt {
+		return errors.New("hosted/backup: invalid brain inventory query bound")
+	}
+	rows, err := db.QueryContext(ctx, `SELECT id FROM brains WHERE state='ready' AND deleted_at IS NULL ORDER BY id LIMIT ?`, maxBrains+1)
 	if err != nil {
 		return err
 	}
@@ -1089,6 +1004,10 @@ func verifyBrainInventory(ctx context.Context, db *store.Store, brains []contrac
 		if err = rows.Scan(&id); err != nil {
 			_ = rows.Close()
 			return err
+		}
+		if len(expected) == maxBrains {
+			_ = rows.Close()
+			return fmt.Errorf("%w: ready brain inventory exceeds its validation bound", ErrManifestInventoryMismatch)
 		}
 		expected = append(expected, id)
 	}
@@ -1135,7 +1054,7 @@ func restoreBrain(ctx context.Context, root *os.Root, scratch, staging string, b
 		return fmt.Errorf("hosted/backup: brain %s: internal invariant violated: restoreBrain called for an empty brain", b.ID)
 	}
 	bundlePath := filepath.Join(scratch, b.ID+".bundle")
-	if err := verifyAndCopy(root, b.ArtifactRef, bundlePath); err != nil {
+	if _, err := verifyAndCopyContext(ctx, root, b.ArtifactRef, bundlePath); err != nil {
 		return fmt.Errorf("hosted/backup: brain %s bundle: %w", b.ID, err)
 	}
 	heads, err := bundleHeads(ctx, bundlePath)
