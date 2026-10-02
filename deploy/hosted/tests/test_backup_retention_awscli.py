@@ -10,6 +10,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 _ADAPTER_PATH = Path(__file__).parents[1] / "backup_retention_awscli.py"
 _LIBRARY_PATH = Path(__file__).parents[1] / "backup_retention.py"
@@ -65,7 +67,7 @@ import json, os, signal, sys, time
 from pathlib import Path
 trace = Path({str(trace)!r})
 body = sys.stdin.buffer.read()
-trace.write_text(json.dumps({{"argv":sys.argv[1:], "environment":dict(os.environ), "stdin":body.decode("utf-8", "strict")}}, sort_keys=True))
+trace.write_text(json.dumps({{"argv":sys.argv[1:], "environment":dict(os.environ), "stdin":body.decode("utf-8", "strict"), "pid":os.getpid()}}, sort_keys=True))
 if {behavior!r} == "descendant_pipes":
     fifo = {str(marker_fifo)!r}
     pidfile = Path({str(descendant_pid)!r})
@@ -77,6 +79,19 @@ if {behavior!r} == "descendant_pipes":
         Path(fifo + ".late").write_text("late")
         os._exit(0)
     os._exit(0)
+if {behavior!r} == "detached_descendant":
+    pidfile = Path({str(descendant_pid)!r})
+    pid = os.fork()
+    if pid == 0:
+        pidfile.write_text(str(os.getpid()))
+        for descriptor in (0, 1, 2):
+            os.close(descriptor)
+        signal.pause()
+        Path({str(marker_fifo)!r} + ".late").write_text("late")
+        os._exit(0)
+    sys.stdout.buffer.write(bytes.fromhex({stdout.hex()!r}))
+    sys.stdout.flush()
+    os._exit({int(code)})
 if {behavior!r} == "pause":
     signal.pause()
 if {behavior!r} == "self_terminate_after_timeout":
@@ -115,6 +130,14 @@ os._exit({int(code)})
         credentials = self.credential_values()
         with self.assertRaises(adapter.AdapterError):
             self.make_storage(executable, credentials={"AWS_ACCESS_KEY_ID": "x"})
+        executable.chmod(0o4700)
+        self.assertTrue(executable.stat().st_mode & stat.S_ISUID,
+                        "owned private fixture must preserve setuid mode")
+        with self.assertRaisesRegex(adapter.AdapterError, "not trusted"):
+            adapter.AWSCLIStorage(executable=str(executable), region="us-west-2", bucket=BUCKET,
+                expected_owner=OWNER, credential_env=self.credential_values(),
+                command_timeout_seconds=2, stdout_limit_bytes=1024, stderr_limit_bytes=1024)
+        executable.chmod(0o700)
         with self.assertRaises(adapter.AdapterError):
             adapter.AWSCLIStorage(executable=str(executable), region="us-east-1", bucket=BUCKET,
                                   expected_owner=OWNER, credential_env=credentials,
@@ -126,6 +149,126 @@ os._exit({int(code)})
             with self.assertRaises(adapter.AdapterError):
                 self.make_storage(executable).list_object_versions(**request)
         self.assertFalse(trace.exists())
+
+    def test_all_unicode_control_characters_are_rejected_without_spawning(self):
+        executable, trace, *_ = self.write_fake(stdout=b'{"IsTruncated":false}')
+        storage = self.make_storage(executable)
+        for control in ("\u0085", "\u009f"):
+            with self.subTest(control=hex(ord(control))), self.assertRaises(adapter.AdapterError):
+                storage.list_parts(bucket=BUCKET, expected_owner=OWNER,
+                    key=KEY.replace("brain", "br" + control + "ain"),
+                    upload_id="opaque-upload", part_number_marker=None)
+        self.assertFalse(trace.exists())
+
+    def test_invalid_leap_seconds_are_rejected_like_existing_retention_parser(self):
+        _, trace, *_ = self.write_fake(stdout=b'{"IsTruncated":false}')
+        for second in ("60", "61"):
+            bad_key = f"snapshots/20261001T0000{second}Z/brain.bundle"
+            with self.subTest(second=second):
+                with self.assertRaises(adapter.AdapterError):
+                    adapter._snapshot_key(bad_key)
+                with self.assertRaises(retention.RetentionError):
+                    retention._snapshot_prefix(bad_key)
+        self.assertFalse(trace.exists())
+
+    def test_selector_setup_oserror_is_sanitized_and_owned_child_is_reaped(self):
+        executable, _trace, *_ = self.write_fake(behavior="pause")
+        storage = self.make_storage(executable, timeout=5)
+        real_popen = adapter.subprocess.Popen
+        spawned = []
+
+        def capture_popen(*args, **kwargs):
+            process = real_popen(*args, **kwargs)
+            spawned.append(process)
+
+            def reap_owned_child():
+                if process.returncode is None:
+                    try:
+                        os.killpg(process.pid, adapter.signal.SIGKILL)
+                    except OSError:
+                        pass
+                    process.wait(timeout=1)
+
+            self.addCleanup(reap_owned_child)
+            return process
+
+        with patch.object(adapter.subprocess, "Popen", side_effect=capture_popen), \
+                patch.object(adapter.selectors, "DefaultSelector", side_effect=OSError("synthetic")), \
+                self.assertRaisesRegex(adapter.AdapterError, "process failed"):
+            storage.list_object_versions(bucket=BUCKET, expected_owner=OWNER,
+                prefix="snapshots/", key_marker=None, version_id_marker=None)
+        self.assertEqual(len(spawned), 1)
+        self.assertIsNotNone(spawned[0].returncode)
+        child_pid = spawned[0].pid
+        state = subprocess.run(["/bin/ps", "-o", "stat=", "-p", str(child_pid)],
+                               check=False, capture_output=True, text=True).stdout.strip()
+        self.assertTrue(not state or state.startswith("Z"), f"child still running: {state}")
+
+    def test_sigchld_handler_is_rejected_before_child_start(self):
+        executable, trace, *_ = self.write_fake(stdout=b'{"IsTruncated":false}')
+        with patch.object(adapter.signal, "getsignal", return_value=adapter.signal.SIG_IGN), \
+                self.assertRaisesRegex(adapter.AdapterError, "exclusive child-process ownership"):
+            self.make_storage(executable).list_object_versions(bucket=BUCKET,
+                expected_owner=OWNER, prefix="snapshots/", key_marker=None,
+                version_id_marker=None)
+        self.assertFalse(trace.exists())
+
+    def test_missing_waitid_capability_is_rejected_before_child_start(self):
+        executable, trace, *_ = self.write_fake(stdout=b'{"IsTruncated":false}')
+        with patch.object(adapter.os, "waitid", None), \
+                self.assertRaisesRegex(adapter.AdapterError, "observation is unsupported"):
+            self.make_storage(executable).list_object_versions(bucket=BUCKET,
+                expected_owner=OWNER, prefix="snapshots/", key_marker=None,
+                version_id_marker=None)
+        self.assertFalse(trace.exists())
+
+    def test_child_ownership_loss_never_signals_the_process_group(self):
+        executable, trace, *_ = self.write_fake(stdout=b'{"IsTruncated":false}')
+        real_popen = adapter.subprocess.Popen
+        real_waitid = adapter.os.waitid
+        spawned = []
+        signals = []
+
+        def capture_popen(*args, **kwargs):
+            process = real_popen(*args, **kwargs)
+            spawned.append(process)
+            return process
+
+        def stolen_waitid(idtype, pid, flags):
+            info = real_waitid(idtype, pid, flags)
+            if info is not None and info.si_pid == pid:
+                os.waitpid(pid, 0)
+                raise ChildProcessError
+            return info
+
+        with patch.object(adapter.subprocess, "Popen", side_effect=capture_popen), \
+                patch.object(adapter.os, "waitid", side_effect=stolen_waitid), \
+                patch.object(adapter.os, "killpg", side_effect=lambda *args: signals.append(args)), \
+                self.assertRaisesRegex(adapter.AdapterError, "child ownership changed"):
+            self.make_storage(executable).list_object_versions(bucket=BUCKET,
+                expected_owner=OWNER, prefix="snapshots/", key_marker=None,
+                version_id_marker=None)
+        self.assertTrue(trace.exists())
+        self.assertTrue(spawned)
+        spawned[0].returncode = 0  # The controlled test reaped this exact child above.
+        self.assertEqual(signals, [])
+
+    def test_darwin_empty_group_permission_error_is_scoped_to_observed_exit(self):
+        process = SimpleNamespace(pid=1)
+        exited = SimpleNamespace(si_pid=1)
+        if sys.platform == "darwin":
+            with patch.object(adapter.os, "killpg", side_effect=PermissionError), \
+                    patch.object(adapter.os, "waitid", return_value=exited):
+                adapter.AWSCLIStorage._signal_anchored_group(process, leader_exited=True)
+        else:
+            with patch.object(adapter.os, "killpg", side_effect=PermissionError), \
+                    patch.object(adapter.os, "waitid", return_value=exited), \
+                    self.assertRaises(adapter._ChildOwnershipUnavailable):
+                adapter.AWSCLIStorage._signal_anchored_group(process, leader_exited=True)
+        with patch.object(adapter.os, "killpg", side_effect=PermissionError), \
+                patch.object(adapter.os, "waitid", return_value=None), \
+                self.assertRaises(adapter._ChildOwnershipUnavailable):
+            adapter.AWSCLIStorage._signal_anchored_group(process, leader_exited=False)
 
     def test_constructor_copies_credentials_and_child_environment_is_allowlisted(self):
         executable, trace, *_ = self.write_fake(stdout=b'{"IsTruncated":false}')
@@ -459,6 +602,43 @@ os._exit({int(code)})
                                check=False, capture_output=True, text=True).stdout.strip()
         self.assertTrue(not state or state.startswith("Z"), f"descendant still running: {state}")
         self.assertFalse(Path(str(fifo) + ".late").exists())
+
+    def test_exited_leader_keeps_group_anchored_until_descendant_cleanup(self):
+        if not hasattr(os, "fork") or not hasattr(os, "killpg"):
+            self.skipTest("POSIX fork and process groups are required")
+        executable, trace, pidfile, marker = self.write_fake(
+            stdout=b'{"IsTruncated":false}', behavior="detached_descendant")
+
+        def kill_test_group():
+            if trace.exists():
+                try:
+                    os.killpg(json.loads(trace.read_text())["pid"], adapter.signal.SIGKILL)
+                except OSError:
+                    pass
+
+        self.addCleanup(kill_test_group)
+        real_killpg = os.killpg
+        signal_observations = []
+
+        def anchored_killpg(pgid, signum):
+            info = os.waitid(os.P_PID, pgid, os.WEXITED | os.WNOWAIT | os.WNOHANG)
+            self.assertIsNotNone(info)
+            self.assertEqual(info.si_pid, pgid, "leader was reaped before process-group signal")
+            signal_observations.append(signum)
+            return real_killpg(pgid, signum)
+
+        with patch.object(adapter.os, "killpg", side_effect=anchored_killpg):
+            self.make_storage(executable, timeout=5).list_object_versions(
+                bucket=BUCKET, expected_owner=OWNER, prefix="snapshots/",
+                key_marker=None, version_id_marker=None)
+        self.assertTrue(trace.exists())
+        self.assertTrue(pidfile.exists())
+        self.assertEqual(signal_observations, [adapter.signal.SIGTERM, adapter.signal.SIGKILL])
+        child_pid = int(pidfile.read_text())
+        state = subprocess.run(["/bin/ps", "-o", "stat=", "-p", str(child_pid)],
+                               check=False, capture_output=True, text=True).stdout.strip()
+        self.assertTrue(not state or state.startswith("Z"), f"descendant still running: {state}")
+        self.assertFalse(Path(str(marker) + ".late").exists())
 
 
 if __name__ == "__main__":

@@ -14,8 +14,11 @@ import selectors
 import signal
 import stat
 import subprocess
+import sys
 import time
+import unicodedata
 from collections.abc import Mapping, Sequence
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +50,7 @@ def _text(value: Any, label: str, limit: int = _MAX_FIELD_BYTES) -> str:
         encoded = value.encode("utf-8", errors="strict")
     except UnicodeError:
         raise AdapterError(f"invalid {label}") from None
-    if len(encoded) > limit or any(ord(char) < 32 or ord(char) == 127 for char in value):
+    if len(encoded) > limit or any(unicodedata.category(char) == "Cc" for char in value):
         raise AdapterError(f"invalid {label}")
     return value
 
@@ -59,7 +62,7 @@ def _snapshot_key(value: Any) -> str:
             or not _SNAPSHOT_STAMP.fullmatch(pieces[1])):
         raise AdapterError("key is outside snapshot scope")
     try:
-        time.strptime(pieces[1], "%Y%m%dT%H%M%SZ")
+        datetime.strptime(pieces[1], "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
     except ValueError:
         raise AdapterError("invalid snapshot timestamp") from None
     return key
@@ -126,7 +129,8 @@ def _trusted_executable(value: Any) -> str:
         raise AdapterError("CLI executable is unavailable") from None
     if not stat.S_ISREG(info.st_mode) or not (info.st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)):
         raise AdapterError("CLI executable is not a regular executable")
-    if info.st_uid not in {0, os.geteuid()} or info.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+    if (info.st_uid not in {0, os.geteuid()}
+            or info.st_mode & (stat.S_IWGRP | stat.S_IWOTH | stat.S_ISUID | stat.S_ISGID)):
         raise AdapterError("CLI executable is not trusted")
     current = path.parent
     while True:
@@ -235,6 +239,10 @@ def _validate_parts(page: dict[str, Any]) -> dict[str, Any]:
     return page
 
 
+class _ChildOwnershipUnavailable(Exception):
+    """The process group can no longer be safely identified as ours."""
+
+
 class AWSCLIStorage:
     """Fixed-scope, bounded adapter; all constructor policy values are required."""
 
@@ -287,27 +295,113 @@ class AWSCLIStorage:
                 "--cli-error-format", "json", "--no-cli-auto-prompt"]
 
     @staticmethod
-    def _signal_group(process: subprocess.Popen[bytes]) -> None:
+    def _waitid_flags(*, nohang: bool) -> int:
+        names = ("P_PID", "WEXITED", "WNOWAIT") + (("WNOHANG",) if nohang else ())
+        if (not callable(getattr(os, "waitid", None))
+                or any(not hasattr(os, name) for name in names)):
+            raise AdapterError("safe child-process observation is unsupported")
+        return os.WEXITED | os.WNOWAIT | (os.WNOHANG if nohang else 0)
+
+    @classmethod
+    def _observe_exit(cls, process: subprocess.Popen[bytes], deadline: float) -> bool:
+        flags = cls._waitid_flags(nohang=True)
+        while True:
+            try:
+                info = os.waitid(os.P_PID, process.pid, flags)
+            except (ChildProcessError, OSError):
+                raise _ChildOwnershipUnavailable from None
+            if info is not None and info.si_pid == process.pid:
+                return True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.01, remaining))
+
+    @staticmethod
+    def _darwin_exit_observed(process: subprocess.Popen[bytes]) -> bool:
+        try:
+            info = os.waitid(os.P_PID, process.pid,
+                             os.WEXITED | os.WNOWAIT | os.WNOHANG)
+        except (ChildProcessError, OSError):
+            raise _ChildOwnershipUnavailable from None
+        if info is not None and info.si_pid != process.pid:
+            raise _ChildOwnershipUnavailable
+        return info is not None and info.si_pid == process.pid
+
+    @staticmethod
+    def _signal_anchored_group(process: subprocess.Popen[bytes], *, leader_exited: bool) -> None:
+        # Keep the waitable leader unreaped through the last signal so its PID
+        # continues to anchor the process-group ID against reuse.
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
-            pass
+            # ESRCH proves that no process group with this still-reserved ID
+            # has an eligible member; no post-reap signal is attempted.
+            return
+        except PermissionError:
+            # Darwin reports EPERM for a zombie-only, WNOWAIT-pinned group.
+            # A race may move the leader from live to zombie after our earlier
+            # check. Accept EPERM only after exact WNOWAIT exit observation.
+            if sys.platform == "darwin":
+                if not leader_exited:
+                    leader_exited = AWSCLIStorage._observe_exit(
+                        process, time.monotonic() + 0.05)
+                if leader_exited or AWSCLIStorage._darwin_exit_observed(process):
+                    return
+            raise _ChildOwnershipUnavailable from None
         except OSError:
-            pass
+            raise _ChildOwnershipUnavailable from None
+        try:
+            info = os.waitid(os.P_PID, process.pid,
+                             os.WEXITED | os.WNOWAIT | os.WNOHANG)
+        except (ChildProcessError, OSError):
+            raise _ChildOwnershipUnavailable from None
+        if info is not None and info.si_pid != process.pid:
+            raise _ChildOwnershipUnavailable
+        leader_exited = info is not None and info.si_pid == process.pid
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
-            pass
+            return
+        except PermissionError:
+            if (sys.platform == "darwin"
+                    and (leader_exited or AWSCLIStorage._darwin_exit_observed(process))):
+                return
+            raise _ChildOwnershipUnavailable from None
         except OSError:
-            pass
+            raise _ChildOwnershipUnavailable from None
+
+    @classmethod
+    def _reap_after_group_signal(cls, process: subprocess.Popen[bytes]) -> bool:
+        try:
+            # WNOWAIT confirms the leader is still ours or is a waitable zombie.
+            # On ECHILD, never risk signaling a possibly reused PGID.
+            cls._waitid_flags(nohang=True)
+            try:
+                info = os.waitid(os.P_PID, process.pid,
+                                 os.WEXITED | os.WNOWAIT | os.WNOHANG)
+            except (ChildProcessError, OSError):
+                return False
+            if info is not None and info.si_pid != process.pid:
+                return False
+            cls._signal_anchored_group(process,
+                                       leader_exited=info is not None and info.si_pid == process.pid)
+        except _ChildOwnershipUnavailable:
+            return False
         try:
             process.wait(timeout=1)
-        except (subprocess.TimeoutExpired, OSError):
-            pass
+        except (subprocess.TimeoutExpired, ChildProcessError, OSError):
+            return False
+        return True
 
     def _run(self, operation: str, args: Sequence[str], input_bytes: bytes | None = None) -> bytes:
         if os.name != "posix" or not hasattr(os, "killpg"):
             raise AdapterError("process-group isolation is unsupported")
+        # This rejects known handlers only. The caller must independently own
+        # all child reaping for the complete subprocess lifecycle.
+        if signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL:
+            raise AdapterError("exclusive child-process ownership is required")
+        self._waitid_flags(nohang=True)
         argv = self._base(operation) + list(args)
         try:
             process = subprocess.Popen(
@@ -322,8 +416,11 @@ class AWSCLIStorage:
         stderr = bytearray()
         written = 0
         deadline = time.monotonic() + self.timeout
-        selector = selectors.DefaultSelector()
+        selector: selectors.BaseSelector | None = None
+        reaped = False
+        ownership_lost = False
         try:
+            selector = selectors.DefaultSelector()
             assert process.stdout is not None and process.stderr is not None
             for stream in (process.stdout, process.stderr, process.stdin):
                 if stream is not None:
@@ -339,7 +436,12 @@ class AWSCLIStorage:
                     raise AdapterError("AWS CLI command timed out")
                 events = selector.select(remaining)
                 if not events:
-                    if process.poll() is not None:
+                    try:
+                        exited = self._observe_exit(process, deadline)
+                    except _ChildOwnershipUnavailable:
+                        ownership_lost = True
+                        raise AdapterError("AWS CLI child ownership changed") from None
+                    if exited:
                         raise AdapterError("AWS CLI left inherited output pipes open")
                     continue
                 for key, _ in events:
@@ -383,9 +485,23 @@ class AWSCLIStorage:
             if remaining <= 0:
                 raise AdapterError("AWS CLI command timed out")
             try:
-                code = process.wait(timeout=remaining)
-            except subprocess.TimeoutExpired:
+                exited = self._observe_exit(process, deadline)
+            except _ChildOwnershipUnavailable:
+                ownership_lost = True
+                raise AdapterError("AWS CLI child ownership changed") from None
+            if not exited:
                 raise AdapterError("AWS CLI command timed out") from None
+            try:
+                self._signal_anchored_group(process, leader_exited=True)
+            except _ChildOwnershipUnavailable:
+                ownership_lost = True
+                raise AdapterError("AWS CLI process group could not be safely stopped") from None
+            try:
+                code = process.wait(timeout=max(0.001, min(1, remaining)))
+            except (subprocess.TimeoutExpired, ChildProcessError, OSError):
+                ownership_lost = True
+                raise AdapterError("AWS CLI child could not be reaped") from None
+            reaped = True
             if code != 0:
                 if operation == "list-parts" and code == 254:
                     try:
@@ -400,26 +516,26 @@ class AWSCLIStorage:
             if input_bytes is not None and written != len(input_bytes):
                 raise AdapterError("AWS CLI request input was incomplete")
             return bytes(stdout)
-        except _UploadNotFoundSignal:
-            self._signal_group(process)
-            raise
         except AdapterError:
-            self._signal_group(process)
             raise
-        except (OSError, ValueError, selectors.SelectorError):
-            self._signal_group(process)
+        except (OSError, ValueError):
             raise AdapterError("AWS CLI process failed") from None
         finally:
-            selector.close()
+            if selector is not None:
+                try:
+                    selector.close()
+                except (OSError, ValueError):
+                    pass
             for stream in (process.stdin, process.stdout, process.stderr):
                 if stream is not None and not stream.closed:
                     try:
                         stream.close()
                     except OSError:
                         pass
-            # A CLI helper is never allowed to leave background work behind,
-            # even if it closed its inherited output descriptors before exit.
-            self._signal_group(process)
+            # Cleanup only signals while waitid(WNOWAIT) still anchors the
+            # group leader. Never signal a PGID after it can have been reused.
+            if not reaped and not ownership_lost:
+                self._reap_after_group_signal(process)
 
     def _request(self, operation: str, args: Sequence[str], *, body: bytes | None = None) -> dict[str, Any]:
         result = self._run(operation, args, body)
