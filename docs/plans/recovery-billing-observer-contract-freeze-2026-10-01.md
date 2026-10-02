@@ -1,0 +1,11 @@
+# Recovery billing observer contract freeze and source assignment
+
+Coordinator decision, 2026-10-01: freeze the implementation contract reviewed at `66e431b24481456e4a3d86dcbc0ee2c3c4609d7d`, against source baseline `c3d491b03980310d7d59688d092b8119640e5250`. The adjacent independent rereview finds no remaining contract-level blocker. The proposal heading is preserved as authored history; this decision supersedes its not-frozen status.
+
+Implement the separate billing RecoveryObserver wrapper and constructor exactly as specified, including server-derived restore_pending state, account locking, a deadline beginning before lock wait, final local reread, GET-only provider reads, SELECT-only SQL and zero observations on errors. Preserve existing reconciliation, webhook, checkout, schema and frozen interface behavior. Runtime source, fixtures and qualification are not supplied by this decision.
+
+Compare immutable event invoice evidence and current provider reads using a finite documented projection of decision fields and line identities, associations, pricing, proration and service intervals. Do not compare entire mutable invoice objects byte-for-byte; do not let current reads fill missing event-time proof. All other status, reset, version, retention and resource-limit decisions remain exactly those independently reviewed.
+
+Source assignment: T23.47 billing continuation owns only new files under internal/hosted/billing and its own new T23.47 observer receipt, after acquiring R-hosted-billing. The coordinator retains the existing T23.47 task claim; no ownership transfer, pruning or task-acceptance change is inferred. Use a new isolated SSD clone. Constructor/factory wiring is a later separately owned integration. Independent source review and the specified runtime controls precede merge; fake-provider evidence cannot prove live Stripe completeness or recovery activation.
+
+The full E24 and hosted completion objective remains open, including executable recovery plan/apply, durable provider and journal admission, production assembly, physical quota enforcement, backup upload/download/purge scheduling, and required live qualification. No provider credentials, requests, deployments, destructive actions or launch approval are authorized by this freeze record.
