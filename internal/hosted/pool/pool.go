@@ -81,6 +81,9 @@ func (p *Pool) acquire(ctx context.Context, id string, existingOnly bool) (*Runt
 		return nil, nil, ErrCapacity
 	}
 	defer p.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
 	if p.closed || p.inFlight >= p.cfg.MaxInFlight {
 		return nil, nil, ErrCapacity
 	}

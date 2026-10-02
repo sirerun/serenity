@@ -502,3 +502,73 @@ func initializePoolTestGit(t *testing.T, root string) {
 		}
 	}
 }
+
+func TestPreCanceledWarmAcquireKeepsRuntimeAndOwnership(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		idleTTL  time.Duration
+		existing bool
+		other    bool
+	}{
+		{name: "cached acquire", idleTTL: time.Hour},
+		{name: "cached existing acquire", idleTTL: time.Hour, existing: true},
+		{name: "idle eviction", idleTTL: time.Nanosecond, other: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			ids := []string{hoststore.ID(), hoststore.ID()}
+			for _, id := range ids {
+				path := filepath.Join(root, id)
+				if err := os.Mkdir(path, 0700); err != nil {
+					t.Fatal(err)
+				}
+				initializePoolTestGit(t, path)
+			}
+			p, err := pool.New(pool.Config{BrainsRoot: root, MaxOpen: 1, MaxInFlight: 2, IdleTimeout: tc.idleTTL, Embedder: embedding{}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if err := p.Close(); err != nil {
+					t.Error(err)
+				}
+			}()
+			runtime, release, err := p.Acquire(context.Background(), ids[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			release()
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			requested := ids[0]
+			if tc.other {
+				requested = ids[1]
+			}
+			var got *pool.Runtime
+			var releaseCanceled func()
+			if tc.existing {
+				got, releaseCanceled, err = p.AcquireExisting(ctx, requested)
+			} else {
+				got, releaseCanceled, err = p.Acquire(ctx, requested)
+			}
+			if releaseCanceled != nil {
+				releaseCanceled()
+			}
+			if !errors.Is(err, context.Canceled) || got != nil {
+				t.Fatalf("pre-canceled warm acquire returned runtime=%v err=%v", got != nil, err)
+			}
+			kept, releaseKept, err := p.AcquireExisting(context.Background(), ids[0])
+			if err != nil {
+				t.Fatalf("pre-canceled request evicted warm runtime: %v", err)
+			}
+			defer releaseKept()
+			if kept != runtime {
+				t.Fatal("pre-canceled request replaced warm runtime")
+			}
+			if owner, err := writer.AcquireBrain(runtime.Root); err == nil {
+				_ = owner.Close()
+				t.Fatal("pre-canceled request released runtime ownership")
+			}
+		})
+	}
+}
