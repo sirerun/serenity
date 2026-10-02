@@ -758,7 +758,14 @@ func (w *recoveryObservationWork) resolveEpisode(events []recoveryEvent, current
 	resets := make([]time.Time, 0)
 	transitionsBySecond := make(map[int64]map[string]struct{})
 	transitionSeconds := make(map[int64]struct{})
+	currentStatusesBySecond := make(map[int64]string)
 	for _, event := range events {
+		if event.selectedSubscription {
+			if status, seen := currentStatusesBySecond[event.created]; seen && status != event.selectedCurrentStatus {
+				return time.Time{}, ambiguous()
+			}
+			currentStatusesBySecond[event.created] = event.selectedCurrentStatus
+		}
 		if !event.selectedSubscription || event.kind != "customer.subscription.updated" || event.previousStatus == "" || event.previousStatus == event.selectedCurrentStatus {
 			continue
 		}

@@ -852,3 +852,47 @@ func TestRecoveryObserverContextCancellationInterruptsInFlightGET(t *testing.T) 
 		t.Fatal("HTTP handler remained blocked")
 	}
 }
+
+func TestRecoveryPastDueRefusesCreatedResetTiedToConflictingUpdate(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	start, end := now.Add(-4*24*time.Hour).Unix(), now.Add(18*24*time.Hour).Unix()
+	firstFailure, conflict, secondFailure := now.Add(-2*time.Hour).Unix(), now.Add(-time.Hour).Unix(), now.Add(-30*time.Minute).Unix()
+	const sub, item = "sub_created_update_tie", "si_created_update_tie"
+	ids := []string{"in_before_created_update", "in_after_created_update"}
+	events := []map[string]any{
+		recoveryInvoiceEvent("evt_before_created_update", ids[0], recoveryTestCustomer, sub, item, "price_builder", firstFailure, start, end),
+		recoverySubscriptionEvent("evt_created_active", "customer.subscription.created", recoveryTestCustomer, sub, item, "price_builder", "active", "", conflict, start, end),
+		recoverySubscriptionEvent("evt_updated_past_due", "customer.subscription.updated", recoveryTestCustomer, sub, item, "price_builder", "past_due", "active", conflict, start, end),
+		recoveryInvoiceEvent("evt_after_created_update", ids[1], recoveryTestCustomer, sub, item, "price_builder", secondFailure, start, end),
+	}
+	got, err := observeRecoveryPastDueEvents(t, sub, item, start, end, events, recoveryTestInvoiceLines(ids, sub, item, start, end))
+	assertZeroObservation(t, got)
+	if !errors.Is(err, contracts.ErrBillingProviderAmbiguous) {
+		t.Fatalf("creation reset tied to conflicting update should refuse, got observation=%#v err=%v", got, err)
+	}
+}
+
+func TestRecoveryPastDueAcceptsCreatedAndUpdatedSameResetOutcome(t *testing.T) {
+	for _, status := range []string{"active", "trialing"} {
+		t.Run(status, func(t *testing.T) {
+			now := time.Now().UTC().Truncate(time.Second)
+			start, end := now.Add(-4*24*time.Hour).Unix(), now.Add(18*24*time.Hour).Unix()
+			before, reset, after := now.Add(-2*time.Hour).Unix(), now.Add(-time.Hour).Unix(), now.Add(-30*time.Minute).Unix()
+			const sub, item = "sub_same_reset_outcome", "si_same_reset_outcome"
+			ids := []string{"in_before_same_reset", "in_after_same_reset"}
+			events := []map[string]any{
+				recoveryInvoiceEvent("evt_before_same_reset", ids[0], recoveryTestCustomer, sub, item, "price_builder", before, start, end),
+				recoverySubscriptionEvent("evt_created_same_reset", "customer.subscription.created", recoveryTestCustomer, sub, item, "price_builder", status, "", reset, start, end),
+				recoverySubscriptionEvent("evt_updated_same_reset", "customer.subscription.updated", recoveryTestCustomer, sub, item, "price_builder", status, "past_due", reset, start, end),
+				recoveryInvoiceEvent("evt_after_same_reset", ids[1], recoveryTestCustomer, sub, item, "price_builder", after, start, end),
+			}
+			got, err := observeRecoveryPastDueEvents(t, sub, item, start, end, events, recoveryTestInvoiceLines(ids, sub, item, start, end))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !got.Eligible || got.GraceUntil.Unix() != after+72*60*60 {
+				t.Fatalf("same reset outcome should preserve post-reset failure anchor: %#v", got)
+			}
+		})
+	}
+}
