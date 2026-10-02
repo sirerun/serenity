@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/sirerun/serenity/internal/config"
 	"github.com/sirerun/serenity/internal/embed"
+	"github.com/sirerun/serenity/internal/gitrun"
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/providers"
@@ -171,6 +171,19 @@ func open(ctx context.Context, cfg Config, id string) (*Runtime, error) {
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, errors.New("unsafe brain root")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	gitInfo, err := os.Lstat(filepath.Join(root, ".git"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("brain Git directory is required: %w", err)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("inspect brain Git directory: %w", err)
+	}
+	if !gitInfo.IsDir() || gitInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("unsafe brain Git directory")
+	}
 	owner, err := writer.AcquireBrain(root)
 	if err != nil {
 		return nil, err
@@ -198,24 +211,12 @@ func open(ctx context.Context, cfg Config, id string) (*Runtime, error) {
 	if c.Models.Embedding != cfg.Embedder.ModelVersion() {
 		return fail(embed.ErrPinMismatch)
 	}
-	if _, err = os.Stat(filepath.Join(root, ".git")); errors.Is(err, os.ErrNotExist) {
-		for _, args := range [][]string{{"init", "--initial-branch=main"}, {"config", "user.name", "Serenity Hosted"}, {"config", "user.email", "hosted@serenity.sire.run"}} {
-			if output, e := exec.CommandContext(ctx, "git", append([]string{"-C", root}, args...)...).CombinedOutput(); e != nil {
-				return fail(fmt.Errorf("initialize brain git: %w: %s", e, output))
-			}
-		}
-		if err = os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".serenity/\n"), 0600); err != nil {
-			return fail(err)
-		}
-	} else if err != nil {
-		return fail(err)
-	}
 	// Provisioning may already have committed a baseline before runtime config
 	// exists. Check committed content, not merely HEAD or whether Save ran in
 	// this process, so a retry after writing config also completes its commit.
 	paths := []string{config.FileName, ".gitignore"}
-	if _, headErr := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--verify", "HEAD").Output(); headErr == nil {
-		tracked, listErr := exec.CommandContext(ctx, "git", "-C", root, "ls-tree", "--name-only", "HEAD", "--", config.FileName).Output()
+	if _, headErr := gitrun.CanonicalReadOnly(root).Output(ctx, "rev-parse", "--verify", "HEAD"); headErr == nil {
+		tracked, listErr := gitrun.CanonicalReadOnly(root).Output(ctx, "ls-tree", "--name-only", "HEAD", "--", config.FileName)
 		if listErr != nil {
 			return fail(fmt.Errorf("inspect committed brain config: %w", listErr))
 		}
@@ -224,14 +225,26 @@ func open(ctx context.Context, cfg Config, id string) (*Runtime, error) {
 		} else {
 			paths = []string{config.FileName}
 		}
+	} else if err := ctx.Err(); err != nil {
+		return fail(err)
 	}
 	if len(paths) != 0 {
-		args := append([]string{"-C", root, "add", "--"}, paths...)
-		if output, e := exec.CommandContext(ctx, "git", args...).CombinedOutput(); e != nil {
+		args := append([]string{"add", "--"}, paths...)
+		if output, e := gitrun.Brain(root).CombinedOutput(ctx, args...); e != nil {
 			return fail(fmt.Errorf("stage brain baseline: %w: %s", e, output))
 		}
-		args = append([]string{"-C", root, "-c", "user.name=Serenity Hosted", "-c", "user.email=hosted@serenity.sire.run", "commit", "--only", "-m", "Initialize hosted brain configuration", "--"}, paths...)
-		if output, e := exec.CommandContext(ctx, "git", args...).CombinedOutput(); e != nil {
+		args = append([]string{"commit", "--only", "-m", "Initialize hosted brain configuration", "--"}, paths...)
+		cmd, e := gitrun.Brain(root).Command(ctx, args...)
+		if e != nil {
+			return fail(fmt.Errorf("prepare brain baseline commit: %w", e))
+		}
+		cmd.Env = append(cmd.Env,
+			"GIT_AUTHOR_NAME=Serenity Hosted",
+			"GIT_AUTHOR_EMAIL=hosted@serenity.sire.run",
+			"GIT_COMMITTER_NAME=Serenity Hosted",
+			"GIT_COMMITTER_EMAIL=hosted@serenity.sire.run",
+		)
+		if output, e := cmd.CombinedOutput(); e != nil {
 			return fail(fmt.Errorf("commit brain baseline: %w: %s", e, output))
 		}
 	}
