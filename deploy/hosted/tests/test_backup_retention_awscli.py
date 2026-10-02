@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 _ADAPTER_PATH = Path(__file__).parents[1] / "backup_retention_awscli.py"
 _LIBRARY_PATH = Path(__file__).parents[1] / "backup_retention.py"
@@ -269,6 +269,49 @@ os._exit({int(code)})
                 patch.object(adapter.os, "waitid", return_value=None), \
                 self.assertRaises(adapter._ChildOwnershipUnavailable):
             adapter.AWSCLIStorage._signal_anchored_group(process, leader_exited=False)
+
+    def test_darwin_pre_signal_permission_error_never_waits_then_reclassifies(self):
+        process = SimpleNamespace(pid=1)
+        with patch.object(adapter.sys, "platform", "darwin"), \
+                patch.object(adapter.os, "killpg", side_effect=PermissionError), \
+                patch.object(adapter.AWSCLIStorage, "_observe_exit", return_value=True) as observe, \
+                self.assertRaises(adapter._ChildOwnershipUnavailable):
+            adapter.AWSCLIStorage._signal_anchored_group(process, leader_exited=False)
+        observe.assert_not_called()
+
+    def test_darwin_sigkill_permission_error_needs_exit_observed_before_signal(self):
+        process = SimpleNamespace(pid=1)
+        calls = []
+
+        def signal_group(pid, sig):
+            calls.append(sig)
+            if sig == adapter.signal.SIGKILL:
+                raise PermissionError
+
+        with patch.object(adapter.sys, "platform", "darwin"), \
+                patch.object(adapter.os, "killpg", side_effect=signal_group), \
+                patch.object(adapter.os, "waitid", return_value=None) as observe, \
+                self.assertRaises(adapter._ChildOwnershipUnavailable):
+            adapter.AWSCLIStorage._signal_anchored_group(process, leader_exited=False)
+        self.assertEqual(calls, [adapter.signal.SIGTERM, adapter.signal.SIGKILL])
+        observe.assert_called_once()
+
+    def test_cleanup_reaps_owned_child_after_signal_error_without_claiming_success(self):
+        process = SimpleNamespace(pid=42, wait=Mock(return_value=0))
+        exited = SimpleNamespace(si_pid=42)
+        with patch.object(adapter.os, "waitid", side_effect=[None, exited]), \
+                patch.object(adapter.AWSCLIStorage, "_signal_anchored_group",
+                             side_effect=adapter._ChildOwnershipUnavailable):
+            self.assertFalse(adapter.AWSCLIStorage._reap_after_group_signal(process))
+        process.wait.assert_called_once_with(timeout=1)
+
+    def test_cleanup_does_not_reap_after_waitid_loses_child_ownership(self):
+        process = SimpleNamespace(pid=42, wait=Mock(return_value=0))
+        with patch.object(adapter.os, "waitid", side_effect=[None, ChildProcessError]), \
+                patch.object(adapter.AWSCLIStorage, "_signal_anchored_group",
+                             side_effect=adapter._ChildOwnershipUnavailable):
+            self.assertFalse(adapter.AWSCLIStorage._reap_after_group_signal(process))
+        process.wait.assert_not_called()
 
     def test_constructor_copies_credentials_and_child_environment_is_allowlisted(self):
         executable, trace, *_ = self.write_fake(stdout=b'{"IsTruncated":false}')

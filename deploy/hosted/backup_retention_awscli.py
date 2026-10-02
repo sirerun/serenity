@@ -318,17 +318,6 @@ class AWSCLIStorage:
             time.sleep(min(0.01, remaining))
 
     @staticmethod
-    def _darwin_exit_observed(process: subprocess.Popen[bytes]) -> bool:
-        try:
-            info = os.waitid(os.P_PID, process.pid,
-                             os.WEXITED | os.WNOWAIT | os.WNOHANG)
-        except (ChildProcessError, OSError):
-            raise _ChildOwnershipUnavailable from None
-        if info is not None and info.si_pid != process.pid:
-            raise _ChildOwnershipUnavailable
-        return info is not None and info.si_pid == process.pid
-
-    @staticmethod
     def _signal_anchored_group(process: subprocess.Popen[bytes], *, leader_exited: bool) -> None:
         # Keep the waitable leader unreaped through the last signal so its PID
         # continues to anchor the process-group ID against reuse.
@@ -340,14 +329,10 @@ class AWSCLIStorage:
             return
         except PermissionError:
             # Darwin reports EPERM for a zombie-only, WNOWAIT-pinned group.
-            # A race may move the leader from live to zombie after our earlier
-            # check. Accept EPERM only after exact WNOWAIT exit observation.
-            if sys.platform == "darwin":
-                if not leader_exited:
-                    leader_exited = AWSCLIStorage._observe_exit(
-                        process, time.monotonic() + 0.05)
-                if leader_exited or AWSCLIStorage._darwin_exit_observed(process):
-                    return
+            # Only an exit observation made before this signal attempt can
+            # distinguish that case. Never wait and reclassify EPERM after it.
+            if sys.platform == "darwin" and leader_exited:
+                return
             raise _ChildOwnershipUnavailable from None
         except OSError:
             raise _ChildOwnershipUnavailable from None
@@ -364,12 +349,29 @@ class AWSCLIStorage:
         except ProcessLookupError:
             return
         except PermissionError:
-            if (sys.platform == "darwin"
-                    and (leader_exited or AWSCLIStorage._darwin_exit_observed(process))):
+            if sys.platform == "darwin" and leader_exited:
                 return
             raise _ChildOwnershipUnavailable from None
         except OSError:
             raise _ChildOwnershipUnavailable from None
+
+    @classmethod
+    def _reap_owned_child(cls, process: subprocess.Popen[bytes]) -> bool:
+        # Reap only after a fresh WNOWAIT check confirms that this process
+        # still owns the exact child. This says nothing about descendants.
+        try:
+            cls._waitid_flags(nohang=True)
+            info = os.waitid(os.P_PID, process.pid,
+                             os.WEXITED | os.WNOWAIT | os.WNOHANG)
+        except (ChildProcessError, OSError):
+            return False
+        if info is not None and info.si_pid != process.pid:
+            return False
+        try:
+            process.wait(timeout=1)
+        except (subprocess.TimeoutExpired, ChildProcessError, OSError):
+            return False
+        return True
 
     @classmethod
     def _reap_after_group_signal(cls, process: subprocess.Popen[bytes]) -> bool:
@@ -387,12 +389,11 @@ class AWSCLIStorage:
             cls._signal_anchored_group(process,
                                        leader_exited=info is not None and info.si_pid == process.pid)
         except _ChildOwnershipUnavailable:
+            # A group-signal failure remains a failure even if the owned
+            # leader can be reaped. Never infer descendant cleanup from wait.
+            cls._reap_owned_child(process)
             return False
-        try:
-            process.wait(timeout=1)
-        except (subprocess.TimeoutExpired, ChildProcessError, OSError):
-            return False
-        return True
+        return cls._reap_owned_child(process)
 
     def _run(self, operation: str, args: Sequence[str], input_bytes: bytes | None = None) -> bytes:
         if os.name != "posix" or not hasattr(os, "killpg"):
@@ -495,6 +496,7 @@ class AWSCLIStorage:
                 self._signal_anchored_group(process, leader_exited=True)
             except _ChildOwnershipUnavailable:
                 ownership_lost = True
+                self._reap_owned_child(process)
                 raise AdapterError("AWS CLI process group could not be safely stopped") from None
             try:
                 code = process.wait(timeout=max(0.001, min(1, remaining)))
