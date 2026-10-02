@@ -2,7 +2,7 @@ diff --git a/internal/hosted/contracts/recovery_billing.go b/internal/hosted/con
 new file mode 100644
 --- /dev/null
 +++ b/internal/hosted/contracts/recovery_billing.go
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,39 @@
 +package contracts
 +
 +import (
@@ -11,7 +11,7 @@ new file mode 100644
 +)
 +
 +// RecoveryBillingObserver reads current provider entitlement for an account
-+// that remains restore_pending. It does not reconcile, persist or activate.
++// whose status remains exactly restore_pending. It does not reconcile, persist or activate.
 +// accountID is the only caller identity; provider customer binding is read
 +// from server-owned storage and never returned. Missing configuration,
 +// binding, incomplete provider truth or unresolved checkout is an error.
@@ -27,6 +27,10 @@ new file mode 100644
 +// PlanID is a known plan; successful non-entitlement requires authoritative
 +// provider evidence, never missing or ambiguous data. Grace is derived from
 +// current provider evidence without trusting or changing restored SQL grace.
++// Eligible follows existing effective access: active/trialing require a
++// verified future provider period end; past_due requires provider-derived
++// first failure plus 72 hours strictly after the observation time. Known
++// canceled/unpaid/paused/expired states are ineligible; ambiguity is an error.
 +// ObservedAt is UTC and Source is a fixed non-sensitive provenance tag.
 +type RecoveryBillingObservation struct {
 +	AccountID          string
