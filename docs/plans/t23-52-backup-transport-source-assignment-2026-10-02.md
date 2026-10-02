@@ -13,3 +13,11 @@ Tests must demonstrate config/import/constructor refusal before side effects, bo
 Coordinator retains integration, independent source/mutation review, full hosted tests/Ruff/diff validation and normal expected-head PR merge. Do not merge, arm auto-merge, wire callers or qualify live behavior. Any contract/API amendment needs a coordinator record before implementation.
 
 Record formatting note: two Markdown hard-break trailing spaces were normalized in the repository review copy. The cited report SHA identifies the immutable original external artifact; the adopted R5 proposal copy remains byte-exact.
+
+## Proposed v1.1 upload-part scratch amendment — pending independent review
+
+The real CLI's file-backed upload-part body needs a separate bounded part file while the complete verified upload spool exists. Do not use an unverified FIFO or descriptor trick to evade that requirement. Add at most one private upload-part spool of 268,435,456 bytes, copied incrementally from the verified full-object spool, exclusive/no-follow 0600 under the same owned private root, with size/hash/source-identity checks and cleanup before the next part. No extra multipart network call, transfer byte, deadline allowance, write retry or buffer growth is authorized.
+
+Combined upload transport scratch ceiling becomes 500,268,435,456 bytes; maximum local input plus upload scratch becomes 1,000,268,435,456 bytes, excluding filesystem metadata and preexisting caller files. The general free-space preflight uses max(upload peak, existing verification peak), which is 1,000,268,435,456 bytes. GET range scratch remains exactly one 134,217,728-byte capped file, and all other R5 ceilings and provider/exclusive-writer/lifecycle/activation gates remain. Part copy must enforce its cap while writing, detect disk-full/timeout/identity changes, and treat owned part/full spool cleanup failure as operation failure. No 500 GB physical capacity or performance claim follows from synthetic tests.
+
+This arithmetic amendment is proposed for independent review before multipart implementation. Other already authorized source work may continue. Coordinator must append the final ruling and frozen version before the worker uses the extra scratch allowance.
