@@ -313,6 +313,7 @@ func TestAdminOperatorReviewRejectsCaseAndProofMismatch(t *testing.T) {
 
 func TestAdminOperatorReviewCommitsOnlyMatchingLandedProofOnce(t *testing.T) {
 	db, cfg, account, brainPath := deletionFixture(t)
+	initializeWarmCanonicalGitFixture(t, brainPath)
 	brainID := filepath.Base(brainPath)
 	ledger := &operation.Ledger{Store: db, Clock: func() time.Time { return time.Unix(100, 0).UTC() }}
 	rec, err := ledger.Reserve(context.Background(), contracts.ReserveRequest{
@@ -491,6 +492,7 @@ func TestAdminOperatorReviewColdInactiveAndCanceledKeepPendingReview(t *testing.
 			t.Cleanup(func() { _ = svc.Close() })
 			tc.prepare(t, db, brainID)
 			if tc.warm {
+				initializeWarmCanonicalGitFixture(t, brainPath)
 				_, release, acquireErr := svc.Pool.Acquire(context.Background(), brainID)
 				if acquireErr != nil {
 					t.Fatal(acquireErr)

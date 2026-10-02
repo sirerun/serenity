@@ -45,3 +45,9 @@ Logs: `/Volumes/BuildOffload/validation/serenity-t23-45-pool-20261002/focused.lo
 This source slice does not qualify T23.45 acceptance, module-wide scanner coverage, other hosted caller migrations, live/provider behavior, or a merged/integrated revision. The initial focused package run also documented dependent fixture migration; the assigned pool/reconciler tests are now green. Coordinator review and any broader integration remain required.
 
 Task/resource claims held for final qualification: T23.45 `722246d4b56c64419175de009eb7289b33a9132f`; R-hosted-runtime `e70c00949f26ee1976b5a3e9251baf2056d4103a`.
+
+## Coordinator evidence clarification
+
+The first focused package run after the production change failed on six previously auto-initialized fixtures. That failure was observed in tool output, but its file was overwritten by the passing rerun; `focused.log` is the final GREEN log, not an immutable integration RED. The original pre-fix `red-focused-r2.log` remains preserved. This gap does not erase the recorded observation, but no extant author integration-RED file is claimed.
+
+Initial claims were T23.45 `43a23afb63bb7d515971893107ba7c16e50e3716` and R-hosted-runtime `b9ca16ec686d97ecb61a29ef0ad38d75dbd3d178`. Later supported holder checks found no holder, and the worker reacquired T23.45 `722246d4b56c64419175de009eb7289b33a9132f` and R-hosted-runtime `e70c00949f26ee1976b5a3e9251baf2056d4103a`; both second claims were exactly released. The available evidence does not establish why the first pair was absent, so continuous ownership or renewal is not claimed. Unsupported status/show-ref attempts were not valid shared-remote evidence. Coordinator review applies to exact banked source b454ee59, not a claim of uninterrupted lease history.

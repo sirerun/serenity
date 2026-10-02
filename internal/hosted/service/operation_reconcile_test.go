@@ -28,6 +28,7 @@ func reserveInterruptedForTest(t *testing.T, db *store.Store, account, brain str
 
 func TestStartupReconcilesUnknownWithoutReleasingCapacity(t *testing.T) {
 	db, cfg, account, path := deletionFixture(t)
+	initializeWarmCanonicalGitFixture(t, path)
 	rec := reserveInterruptedForTest(t, db, account, filepath.Base(path))
 	svc, err := assembleForTest(t, cfg, true, db, nil, deletionEmbedding{})
 	if err != nil {
@@ -144,6 +145,7 @@ func TestTickerReconciliationDefersColdRuntimeWithoutInitializingIt(t *testing.T
 
 func TestStartupReconcilesLandedFactIntoOriginalQuotaPeriodOnce(t *testing.T) {
 	db, cfg, account, path := deletionFixture(t)
+	initializeWarmCanonicalGitFixture(t, path)
 	brain := filepath.Base(path)
 	ledger := &operation.Ledger{Store: db, Clock: func() time.Time { return time.Unix(100, 0).UTC() }}
 	rec, err := ledger.Reserve(context.Background(), contracts.ReserveRequest{AccountID: account, BrainID: brain, ClientKey: "committed-unfinalized", Fingerprint: "real-fact", QuotaPeriod: "1970-01", Source: "gateway.remember", LeaseFor: time.Second, Deltas: []contracts.ReserveDelta{{Metric: "writes", Units: 1, Limit: 2}, {Metric: "input_tokens", Units: 7, Limit: 20}}})

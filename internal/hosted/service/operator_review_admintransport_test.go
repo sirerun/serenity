@@ -26,6 +26,7 @@ import (
 // immutable in-memory case binding. It is not a human authenticator.
 func TestAdminOperatorReviewOverAuthenticatedUnixSocket(t *testing.T) {
 	db, cfg, account, brainPath := deletionFixture(t)
+	initializeWarmCanonicalGitFixture(t, brainPath)
 	brainID := filepath.Base(brainPath)
 	ledger := &operation.Ledger{Store: db, Clock: func() time.Time { return time.Unix(100, 0).UTC() }}
 	rec, err := ledger.Reserve(context.Background(), contracts.ReserveRequest{
