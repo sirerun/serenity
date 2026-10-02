@@ -236,6 +236,31 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(receipt.snapshot_prefix, PREFIX)
         self.assertEqual(self.store.put_order[-1], PREFIX + "COMPLETE")
 
+    def test_definite_completion_collision_is_not_reconciled(self):
+        class CompletionCollisionStore(FakeStore):
+            def put_if_absent(self, key, source, *, length_bytes, sha256, chunk_bytes):
+                if key != PREFIX + "COMPLETE":
+                    return super().put_if_absent(
+                        key, source, length_bytes=length_bytes,
+                        sha256=sha256, chunk_bytes=chunk_bytes,
+                    )
+                # A competing writer installs the exact marker before our
+                # conditional put. This attempt receives a definite collision.
+                body = bytearray()
+                while chunk := source.read(chunk_bytes):
+                    body.extend(chunk)
+                self.objects[key] = bytes(body)
+                raise publish.ObjectExists(key)
+
+        store = CompletionCollisionStore()
+        with self.assertRaises(publish.ObjectExists):
+            publish.publish_snapshot(
+                self.snapshot, PREFIX, staging_root=self.root,
+                storage=store, limits=self.limits,
+            )
+        self.assertIn(PREFIX + "COMPLETE", store.objects)
+        self.assertNotIn(PREFIX + "COMPLETE", store.put_order)
+
     def test_ambiguous_final_failure_without_readback_has_no_receipt(self):
         self.store.fail_put_after_commit_at = 4
         self.store.fail_reads.add(PREFIX + "COMPLETE")
