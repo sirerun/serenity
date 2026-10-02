@@ -31,6 +31,7 @@ Chief-architect reviewed the four design decisions at PR236 revision `218d7234d9
 | Seam | Status | Artifact | Executable specification |
 |---|---|---|---|
 | Billing truth and closure | FROZEN | `contracts/billing.go` | compile-time conformance in `contracts_test.go` |
+| Read-only recovery billing observation | ADDITIVE TYPE CANDIDATE92540d7; exact-source review/full local gate pending; concrete observer not implemented | `contracts/recovery_billing.go`; T23.50 integration request | Guarded contracts race/vet/lint compile existing callers; no observer behavior or provider qualification claimed |
 | Backup manifest v2 | FROZEN shape, revised this pass (control DB artifact, per-brain bundle heads, `Validate`); journal-watermark use depends on task48's live qualification | `contracts/backup.go` | `TestManifestV2Validate*`, `TestManifestV2VersionErrorIsDistinct`, `TestManifestV2JSONRoundTrip` |
 | Recovery plan/apply shape | FROZEN, including architect-approved `JournalWatermark`, `Generation`, and `Fence` fields | `contracts/backup.go` | `TestRecoveryResultConsistency`, compile-time `RecoveryPlanner`/`RecoveryApplier` fixtures |
 | Telemetry, provider pin, accounting units, registration mode | FROZEN | `contracts/{telemetry,provider}.go` | compile-time conformance |
