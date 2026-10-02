@@ -1,0 +1,190 @@
+{
+  "date": "2026-10-01",
+  "source": "2fc9dc8cf9c4b20c837fd5da9b97c8ea172ee711",
+  "scope": "Development signed operator-case admission and shared private-file containment; no production factory",
+  "runtime": "go1.27.1 darwin/arm64; Linux ARM64 compilation only",
+  "results": {
+    "race": 0,
+    "vet": 0,
+    "lint": 0,
+    "linux-arm64-build": 0
+  },
+  "passing_packages": 84,
+  "passing_tests_and_subtests": 2893,
+  "no_test_packages": 4,
+  "gated_test_skips": [
+    {
+      "package": "github.com/sirerun/serenity/evals/importbudget",
+      "test": "TestImportBudget10K"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/cli",
+      "test": "TestGbrainProtocolConformance"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/conformance",
+      "test": "TestBootDeliberatelyBrokenBuildFailsDisposeConformance"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/hosted/deletion",
+      "test": "TestS3Qualification"
+    },
+    {
+      "package": "github.com/sirerun/serenity/internal/import/gbrain",
+      "test": "TestImportCrashHelper"
+    },
+    {
+      "package": "github.com/sirerun/serenity/pkg/serenity",
+      "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request"
+    },
+    {
+      "package": "github.com/sirerun/serenity/pkg/serenity",
+      "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+    }
+  ],
+  "shared_build_lease": "327edea82e5541ebaa3072780e284ba16a57d7d5",
+  "lease_verified_before_each_stage": true,
+  "lease_released": true,
+  "independent_review": "89658f6420f3ec1e31151ff1bc4b2a251dc442ba",
+  "permanent_time_regressions": "fb3a0b9ead420fe0723fa941db1f265008150b19",
+  "regression_receipt": "52f2fc1041c16b48312d3f974a67955604902db9",
+  "production_trusted_key_source": false,
+  "human_review_qualified": false,
+  "service_factory": false,
+  "activation": false,
+  "earlier_qualification": {
+    "date": "2026-10-01",
+    "source": "1adcd15b5cb8d2e61fe35878bc7d4ada3d1d98c6",
+    "scope": "Development signed operator-case admission and shared private-file containment; no production factory",
+    "runtime": "go1.27.1 darwin/arm64; Linux ARM64 compilation only",
+    "results": {
+      "race": 0,
+      "vet": 0,
+      "lint": 0,
+      "linux-arm64-build": 0
+    },
+    "passing_packages": 84,
+    "passing_tests_and_subtests": 2890,
+    "no_test_packages": 4,
+    "gated_test_skips": [
+      {
+        "package": "github.com/sirerun/serenity/evals/importbudget",
+        "test": "TestImportBudget10K"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/cli",
+        "test": "TestGbrainProtocolConformance"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/conformance",
+        "test": "TestBootDeliberatelyBrokenBuildFailsDisposeConformance"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/hosted/deletion",
+        "test": "TestS3Qualification"
+      },
+      {
+        "package": "github.com/sirerun/serenity/internal/import/gbrain",
+        "test": "TestImportCrashHelper"
+      },
+      {
+        "package": "github.com/sirerun/serenity/pkg/serenity",
+        "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_with_neither_plan_text_nor_actions_returns_invalid_request"
+      },
+      {
+        "package": "github.com/sirerun/serenity/pkg/serenity",
+        "test": "TestCheckPlanDriftAgainstDirectionTranscripts/check_plan_free_text_with_no_classifier_router_configured_returns_status_unverified,_never_a_silent_pass"
+      }
+    ],
+    "build_leases": {
+      "race_initial": "515015b1ea2ec650de77ed51090d5624ebf410c2",
+      "remaining_stages": "73202a7489714ae5e36a9e326bfaa856d235d883",
+      "continuous_race_lease_ownership": false,
+      "remaining_lease_released": true
+    },
+    "lease_incident": {
+      "original_claim": "515015b1ea2ec650de77ed51090d5624ebf410c2",
+      "replacement_claim": "7060c7775bd63079bc3c9083d1374cf9f49fa3ad",
+      "replacement_purpose": "ferro-mcp candidate build",
+      "replacement_at": "2026-10-01T23:23:53Z",
+      "race_exit": 0,
+      "race_complete_at": "2026-10-01T23:24:24Z",
+      "next_stage_stopped": true,
+      "foreign_release_refused": true,
+      "qualification_limit": "Race executed after a verified initial claim, but continuous shared-lease ownership through completion cannot be claimed. No foreign lease pruned. Remaining stages must obtain a fresh lease."
+    },
+    "production_trusted_key_source": false,
+    "human_review_qualified": false,
+    "service_factory": false,
+    "activation": false,
+    "independent_review": "Pending corrected behavioral receipt; merge remains held",
+    "artifacts": [
+      {
+        "name": "signed-case-full-check-status.json",
+        "sha256": "6ca7a42289bdf6beae7cd7adbe67b3cc05be287f4da92ef654cf3105a8fbf5ef"
+      },
+      {
+        "name": "signed-case-full-check.py",
+        "sha256": "4b716db9047fbfc7798f5e7f3d2f29d77e50c96479084e098742871942e9dfc3"
+      },
+      {
+        "name": "signed-case-full-lint.log",
+        "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+      },
+      {
+        "name": "signed-case-full-linux-arm64-build.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "signed-case-full-race.jsonl",
+        "sha256": "fbb314664017e90ebce88638ef2678d12c3a92239f7d2f6214602823d69f991e"
+      },
+      {
+        "name": "signed-case-full-resume-check.py",
+        "sha256": "b74812c699af04de3c34b5d426fb629d342d64f528479d94da588e03f5d6b3bd"
+      },
+      {
+        "name": "signed-case-full-source.txt",
+        "sha256": "e21ce102b8af8bc7afda2f8d88f4a96bd77ce59cb4436358c79503b683628806"
+      },
+      {
+        "name": "signed-case-full-vet.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "name": "signed-case-final-full-check-status.json",
+      "sha256": "ecb2e529830d5ee3dbd9b454d61b43de9d0ccb9c32f2ed0ce5b0d07209fec561"
+    },
+    {
+      "name": "signed-case-final-full-check.py",
+      "sha256": "5538f998c79b83dd44946da5581ba91399dd22191d8e9bbec61a994305afb2e1"
+    },
+    {
+      "name": "signed-case-final-full-lint.log",
+      "sha256": "e92606b0bf483111dff0a120c315ea165821348f31365020e2468a0059095c47"
+    },
+    {
+      "name": "signed-case-final-full-linux-arm64-build.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "signed-case-final-full-race.jsonl",
+      "sha256": "cd191e08e51d43a7eb45ee72963bd972976c9619de7a7672d4d51e5b2db8a07d"
+    },
+    {
+      "name": "signed-case-final-full-serenity-linux-arm64",
+      "sha256": "bd58da21548d87c804d55c8f4da2c1815a7fbdc5efdef76df53eefa22141ecd0"
+    },
+    {
+      "name": "signed-case-final-full-source.txt",
+      "sha256": "27ac8b341a6aaf08902faade29516d7e1fe8e7a6bc0fac61f50041bf3cbf1236"
+    },
+    {
+      "name": "signed-case-final-full-vet.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}
