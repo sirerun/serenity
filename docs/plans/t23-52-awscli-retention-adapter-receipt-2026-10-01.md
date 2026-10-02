@@ -83,3 +83,34 @@ warnings treated as errors, 20 completion tests, 22 retention tests, Ruff,
 and `git diff --check`. The offline AWS CLI skeleton check is limited to the
 installed AWS CLI 2.35.14; no service request or real AWS qualification was
 performed.
+
+## Pre-exit EPERM correction
+
+Independent review found that the Darwin `EPERM` handler could wait for a
+leader that was still running to exit, then reinterpret the original failed
+signal as the permitted zombie-only case. The correction now treats `EPERM`
+as the zombie-only condition only when the caller already observed that exact
+leader's exit with `WNOWAIT` before attempting the signal. This applies to
+both `SIGTERM` and `SIGKILL`; no post-failure observation changes the result.
+New mocked no-host-signal controls cover both signal attempts and failed on the
+prior source at
+`/Volumes/BuildOffload/serenity-retention-cli-validation-20261001/red-eperm-preexit.log`
+(SHA-256 `83ff5955aa367940b2da4fd1859e5e263241e3d23448f870abf4dc2c8440f3d5`).
+
+Cleanup now makes a separate bounded attempt to reap the exact child after a
+signal error only after another `WNOWAIT` check confirms the process still
+owns it. `ECHILD` or changed child identity skips `Popen.wait`. Reaping the
+leader does not change the signal failure into success and is not evidence
+that descendants were stopped. The cleanup tests assert both behaviors.
+
+The corrected focused adapter suite passes 26 tests with
+`-W error::ResourceWarning` and emitted no resource warnings. Completion and
+retention suites pass (20 and 22 tests); Ruff and `git diff --check` pass.
+This correction remains a fake-process local qualification only.
+
+Final pre-exit `EPERM` correction is committed at
+`76014ba215b63b47667cbd702a80501281eb78d4` (superseding the earlier source
+pin above). Its adapter SHA-256 is
+`619908157d2d42d2b0f7b4a17f6b8a07ee2708d99d2bd126cab77c03bd185323`; its test
+SHA-256 is
+`fda420d808335ef21959fc47eb2d38435611a9a4dc565bf4392830103f9e76d4`.
