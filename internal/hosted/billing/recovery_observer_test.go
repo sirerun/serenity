@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -608,6 +609,114 @@ func TestRecoveryPastDueEpisodeResetUsesNextFailure(t *testing.T) {
 	}
 }
 
+func TestRecoveryPastDueRefusesConflictingSameSecondTransitions(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	start, end := now.Add(-5*24*time.Hour).Unix(), now.Add(18*24*time.Hour).Unix()
+	fail1, transition, fail2 := now.Add(-60*time.Hour).Unix(), now.Add(-30*time.Hour).Unix(), now.Add(-10*time.Hour).Unix()
+	const sub, item = "sub_tie", "si_tie"
+	lines := map[string][]map[string]any{}
+	events := []map[string]any{
+		recoveryInvoiceEvent("evt_tie_fail1", "in_tie_fail1", recoveryTestCustomer, sub, item, "price_builder", fail1, start, end),
+		recoverySubscriptionEvent("evt_tie_active", "customer.subscription.updated", recoveryTestCustomer, sub, item, "price_builder", "active", "past_due", transition, start, end),
+		recoverySubscriptionEvent("evt_tie_past_due", "customer.subscription.updated", recoveryTestCustomer, sub, item, "price_builder", "past_due", "active", transition, start, end),
+		recoveryInvoiceEvent("evt_tie_fail2", "in_tie_fail2", recoveryTestCustomer, sub, item, "price_builder", fail2, start, end),
+	}
+	for _, id := range []string{"in_tie_fail1", "in_tie_fail2"} {
+		lines[id] = []map[string]any{recoveryLine(id, "il_"+id, sub, item, "price_builder", start, end, false)}
+	}
+	sort.Slice(events, func(i, j int) bool { return events[i]["created"].(int64) > events[j]["created"].(int64) })
+	env := newRecoveryTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/subscriptions":
+			recoveryWriteJSON(w, recoverySubscriptionList(recoveryTestCustomer, "past_due", start, end, sub, item, "price_builder"))
+		case "/v1/events":
+			recoveryEventPage(w, r, events)
+		case "/v1/invoices/in_tie_fail1", "/v1/invoices/in_tie_fail1/lines":
+			recoveryInvoiceHandler(w, r, "in_tie_fail1", recoveryTestCustomer, lines["in_tie_fail1"])
+		case "/v1/invoices/in_tie_fail2", "/v1/invoices/in_tie_fail2/lines":
+			recoveryInvoiceHandler(w, r, "in_tie_fail2", recoveryTestCustomer, lines["in_tie_fail2"])
+		default:
+			http.NotFound(w, r)
+		}
+	}, testRecoveryLimits())
+	got, err := env.observer.ObserveRestorePending(context.Background(), env.accountID)
+	assertZeroObservation(t, got)
+	if !errors.Is(err, contracts.ErrBillingProviderAmbiguous) {
+		t.Fatalf("conflicting same-second transitions should refuse, got %v", err)
+	}
+}
+
+func TestRecoveryPastDueRefusesFailureTiedToNonresetStatusTransition(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	start, end := now.Add(-4*24*time.Hour).Unix(), now.Add(18*24*time.Hour).Unix()
+	firstFailure, tie := now.Add(-2*time.Hour).Unix(), now.Add(-time.Hour).Unix()
+	const sub, item = "sub_transition_failure_tie", "si_transition_failure_tie"
+	ids := []string{"in_before_tie", "in_tied_failure"}
+	events := []map[string]any{
+		recoveryInvoiceEvent("evt_before_tie", ids[0], recoveryTestCustomer, sub, item, "price_builder", firstFailure, start, end),
+		recoveryInvoiceEvent("evt_tied_failure", ids[1], recoveryTestCustomer, sub, item, "price_builder", tie, start, end),
+		recoverySubscriptionEvent("evt_nonreset_transition", "customer.subscription.updated", recoveryTestCustomer, sub, item, "price_builder", "past_due", "active", tie, start, end),
+	}
+	lines := recoveryTestInvoiceLines(ids, sub, item, start, end)
+	got, err := observeRecoveryPastDueEvents(t, sub, item, start, end, events, lines)
+	assertZeroObservation(t, got)
+	if !errors.Is(err, contracts.ErrBillingProviderAmbiguous) {
+		t.Fatalf("failure tied to a status transition should refuse, got %v", err)
+	}
+}
+
+func TestRecoveryPastDueAcceptsDuplicateIdenticalSameSecondTransition(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	start, end := now.Add(-4*24*time.Hour).Unix(), now.Add(18*24*time.Hour).Unix()
+	firstFailure, reset, secondFailure := now.Add(-60*time.Hour).Unix(), now.Add(-30*time.Hour).Unix(), now.Add(-10*time.Hour).Unix()
+	const sub, item = "sub_duplicate_transition", "si_duplicate_transition"
+	ids := []string{"in_duplicate_before", "in_duplicate_after"}
+	events := []map[string]any{
+		recoveryInvoiceEvent("evt_duplicate_before", ids[0], recoveryTestCustomer, sub, item, "price_builder", firstFailure, start, end),
+		recoverySubscriptionEvent("evt_duplicate_reset_a", "customer.subscription.updated", recoveryTestCustomer, sub, item, "price_builder", "active", "past_due", reset, start, end),
+		recoverySubscriptionEvent("evt_duplicate_reset_b", "customer.subscription.updated", recoveryTestCustomer, sub, item, "price_builder", "active", "past_due", reset, start, end),
+		recoveryInvoiceEvent("evt_duplicate_after", ids[1], recoveryTestCustomer, sub, item, "price_builder", secondFailure, start, end),
+	}
+	lines := recoveryTestInvoiceLines(ids, sub, item, start, end)
+	got, err := observeRecoveryPastDueEvents(t, sub, item, start, end, events, lines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Eligible || got.GraceUntil.Unix() != secondFailure+72*60*60 {
+		t.Fatalf("identical duplicate transition should preserve episode reset: %#v", got)
+	}
+}
+
+func recoveryTestInvoiceLines(ids []string, sub, item string, start, end int64) map[string][]map[string]any {
+	lines := make(map[string][]map[string]any, len(ids))
+	for _, id := range ids {
+		lines[id] = []map[string]any{recoveryLine(id, "il_"+id, sub, item, "price_builder", start, end, false)}
+	}
+	return lines
+}
+
+func observeRecoveryPastDueEvents(t *testing.T, sub, item string, start, end int64, events []map[string]any, lines map[string][]map[string]any) (contracts.RecoveryBillingObservation, error) {
+	t.Helper()
+	sort.Slice(events, func(i, j int) bool { return events[i]["created"].(int64) > events[j]["created"].(int64) })
+	env := newRecoveryTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/subscriptions":
+			recoveryWriteJSON(w, recoverySubscriptionList(recoveryTestCustomer, "past_due", start, end, sub, item, "price_builder"))
+		case "/v1/events":
+			recoveryEventPage(w, r, events)
+		default:
+			for id, invoiceLines := range lines {
+				if r.URL.Path == "/v1/invoices/"+id || r.URL.Path == "/v1/invoices/"+id+"/lines" {
+					recoveryInvoiceHandler(w, r, id, recoveryTestCustomer, invoiceLines)
+					return
+				}
+			}
+			http.NotFound(w, r)
+		}
+	}, testRecoveryLimits())
+	return env.observer.ObserveRestorePending(context.Background(), env.accountID)
+}
+
 func TestRecoveryPastDueRefusesTruncatedHistoryAndRequestBudget(t *testing.T) {
 	now := time.Now().UTC()
 	start, end := now.Add(-3*24*time.Hour).Unix(), now.Add(20*24*time.Hour).Unix()
@@ -660,6 +769,26 @@ func TestRecoveryObserverNeverFollowsRedirect(t *testing.T) {
 	if target.Load() != 0 {
 		t.Fatal("redirect target received a request")
 	}
+	var roundTrips atomic.Int32
+	redirectingClient := *env.observer.client
+	redirectingClient.Transport = roundTripperFunc(func(request *http.Request) (*http.Response, error) {
+		roundTrips.Add(1)
+		if request.URL.Host != "api.stripe.com" {
+			return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"object":"x"}`)), Request: request}, nil
+		}
+		return &http.Response{StatusCode: http.StatusFound, Header: http.Header{"Location": []string{redirectTarget.URL}}, Body: http.NoBody, Request: request}, nil
+	})
+	env.observer.client = &redirectingClient
+	work := &recoveryObservationWork{observer: env.observer, ctx: context.Background()}
+	if _, err := work.get("/redirect"); !errors.Is(err, contracts.ErrBillingProviderUnavailable) {
+		t.Fatalf("redirect response was followed or misclassified: %v", err)
+	}
+	if target.Load() != 0 {
+		t.Fatalf("redirect target received %d requests", target.Load())
+	}
+	if got := roundTrips.Load(); got != 1 {
+		t.Fatalf("redirect caused %d provider round trips, want one", got)
+	}
 }
 
 func TestRecoveryObserverEnforcesResponseAndAggregateByteCeilings(t *testing.T) {
@@ -680,10 +809,18 @@ func TestRecoveryObserverEnforcesResponseAndAggregateByteCeilings(t *testing.T) 
 		})
 	}
 	limits := testRecoveryLimits()
+	limits.ResponseBytes = 16
+	body := append([]byte(`{"object":"x"}`), bytes.Repeat([]byte{' '}, 20)...)
+	env := newRecoveryTestEnv(t, func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }, limits)
+	work := &recoveryObservationWork{observer: env.observer, ctx: context.Background()}
+	if _, err := work.get("/valid-json-plus-whitespace"); !errors.Is(err, contracts.ErrBillingProviderAmbiguous) {
+		t.Fatalf("oversized valid JSON prefix was accepted: %v", err)
+	}
+	limits = testRecoveryLimits()
 	limits.ResponseBytes = 32
 	limits.TotalResponseBytes = 20
-	env := newRecoveryTestEnv(t, func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, `{"object":"x"}`) }, limits)
-	work := &recoveryObservationWork{observer: env.observer, ctx: context.Background()}
+	env = newRecoveryTestEnv(t, func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, `{"object":"x"}`) }, limits)
+	work = &recoveryObservationWork{observer: env.observer, ctx: context.Background()}
 	if _, err := work.get("/one"); err != nil {
 		t.Fatalf("first bounded response: %v", err)
 	}

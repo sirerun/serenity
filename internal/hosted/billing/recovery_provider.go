@@ -527,11 +527,13 @@ func safeGrace(at time.Time) (time.Time, error) {
 }
 
 type recoveryEvent struct {
-	id, kind       string
-	created        int64
-	subscription   *recoverySubscription
-	previousStatus string
-	invoice        recoveryObject
+	id, kind              string
+	created               int64
+	subscription          *recoverySubscription
+	selectedSubscription  bool
+	selectedCurrentStatus string
+	previousStatus        string
+	invoice               recoveryObject
 }
 
 func (w *recoveryObservationWork) deriveFailure(current recoverySubscription) (time.Time, error) {
@@ -659,6 +661,8 @@ func (w *recoveryObservationWork) parseEvent(object recoveryObject, current reco
 		return event, err
 	}
 	if sub.id == current.id && sub.customer == w.customer {
+		event.selectedSubscription = true
+		event.selectedCurrentStatus = sub.status
 		if sub.plan == "" && (sub.status == "active" || sub.status == "trialing" || sub.status == "past_due") {
 			return event, errors.New("unconfigured selected plan")
 		}
@@ -752,6 +756,21 @@ func parsePreviousRecoveryItem(value any) (previousRecoveryItem, error) {
 func (w *recoveryObservationWork) resolveEpisode(events []recoveryEvent, current recoverySubscription) (time.Time, error) {
 	failures := make([]time.Time, 0)
 	resets := make([]time.Time, 0)
+	transitionsBySecond := make(map[int64]map[string]struct{})
+	transitionSeconds := make(map[int64]struct{})
+	for _, event := range events {
+		if !event.selectedSubscription || event.kind != "customer.subscription.updated" || event.previousStatus == "" || event.previousStatus == event.selectedCurrentStatus {
+			continue
+		}
+		transitionSeconds[event.created] = struct{}{}
+		if transitionsBySecond[event.created] == nil {
+			transitionsBySecond[event.created] = make(map[string]struct{})
+		}
+		transitionsBySecond[event.created][event.previousStatus+"\x00"+event.selectedCurrentStatus] = struct{}{}
+		if len(transitionsBySecond[event.created]) > 1 {
+			return time.Time{}, ambiguous()
+		}
+	}
 	for _, event := range events {
 		if event.kind == "invoice.payment_failed" {
 			applies, err := w.invoiceFailureApplies(event, current)
@@ -788,6 +807,14 @@ func (w *recoveryObservationWork) resolveEpisode(events []recoveryEvent, current
 	for _, resetAt := range resets {
 		for _, failure := range failures {
 			if resetAt.Equal(failure) {
+				return time.Time{}, ambiguous()
+			}
+		}
+	}
+	for second := range transitionSeconds {
+		transitionAt := time.Unix(second, 0)
+		for _, failure := range failures {
+			if transitionAt.Equal(failure) {
 				return time.Time{}, ambiguous()
 			}
 		}
