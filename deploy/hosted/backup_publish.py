@@ -560,6 +560,9 @@ def publish_snapshot(snapshot: str | os.PathLike[str], snapshot_prefix: str, *,
             raise PublishError("local snapshot changed during publication")
         try:
             _put_bytes(storage, prefix + "COMPLETE", complete_bytes, limits)
+        except ObjectExists:
+            # A definite occupied-key response is not an ambiguous write.
+            raise
         except Exception as put_error:  # noqa: BLE001 - transfer errors are adapter-defined
             # The final put can succeed remotely while its response is lost.
             # Accept only an exact, fully verified readback of that commit.
