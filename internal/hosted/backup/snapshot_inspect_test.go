@@ -8,7 +8,9 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -17,10 +19,14 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
+	"github.com/sirerun/serenity/internal/hosted/privatefs"
 	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
-const privateFixtureRoot = "/Volumes/SerenityPrivateFixture20261001/tmp"
+const (
+	privateFixtureEnv  = "SERENITY_RECOVERY_TEST_TMPDIR"
+	privateFixtureRoot = "/Volumes/SerenityPrivateFixture20261001/tmp"
+)
 
 func manifestDigest(t *testing.T, snapshot string) (string, []byte) {
 	t.Helper()
@@ -47,12 +53,64 @@ func inspectionOptions(t *testing.T, snapshot string) (InspectionOptions, string
 
 func privateTempDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp(privateFixtureRoot, "t23-50-inspect-")
+	explicitRoot, explicit := os.LookupEnv(privateFixtureEnv)
+	if !explicit && runtime.GOOS != "darwin" {
+		dir := t.TempDir()
+		if err := privatefs.ValidateDirectory(context.Background(), dir); err != nil {
+			t.Fatalf("default test temp directory is not private: %v", err)
+		}
+		return dir
+	}
+	root := explicitRoot
+	if !explicit {
+		root = privateFixtureRoot
+	}
+	if explicit && (root == "" || !filepath.IsAbs(root) || filepath.Clean(root) != root) {
+		t.Fatalf("%s must be a nonempty absolute clean directory", privateFixtureEnv)
+	}
+	if err := privatefs.ValidateDirectory(context.Background(), root); err != nil {
+		if explicit {
+			t.Fatalf("explicit %s is not private: %v", privateFixtureEnv, err)
+		}
+		t.Skipf("Darwin ownership-enabled fixture unavailable: %v", err)
+	}
+	dir, err := os.MkdirTemp(root, "t23-50-inspect-")
 	if err != nil {
-		t.Skipf("ownership-enabled private fixture unavailable: %v", err)
+		if explicit {
+			t.Fatalf("create explicit %s fixture: %v", privateFixtureEnv, err)
+		}
+		t.Skipf("Darwin ownership-enabled fixture unavailable: %v", err)
+	}
+	if err := privatefs.ValidateDirectory(context.Background(), dir); err != nil {
+		_ = os.RemoveAll(dir)
+		if explicit {
+			t.Fatalf("created fixture under explicit %s is not private: %v", privateFixtureEnv, err)
+		}
+		t.Skipf("Darwin ownership-enabled fixture unavailable: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	return dir
+}
+
+func TestSnapshotExplicitFixtureFailsClosed(t *testing.T) {
+	if os.Getenv("SERENITY_TEMP_DIR_PROBE") == "1" {
+		_ = privateTempDir(t)
+		return
+	}
+	invalid := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(invalid, []byte("file"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestSnapshotExplicitFixtureFailsClosed$")
+	cmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"),
+		privateFixtureEnv + "=" + invalid,
+		"SERENITY_TEMP_DIR_PROBE=1",
+	}
+	output, err := cmd.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "explicit "+privateFixtureEnv+" is not private") || strings.Contains(string(output), "SKIP") {
+		t.Fatalf("invalid explicit fixture result err=%v output=%q; want fatal non-skip", err, output)
+	}
 }
 
 func freshPrivateSnapshot(t *testing.T, brainCount int) (dataDir, snapshot string, brainIDs []string) {
@@ -387,7 +445,11 @@ func TestInspectionCleanupRefusesReplacedScratchPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	defer func() {
+		if err := root.Close(); err != nil {
+			t.Errorf("close scratch parent: %v", err)
+		}
+	}()
 	created, err := root.Stat(name)
 	if err != nil {
 		t.Fatal(err)

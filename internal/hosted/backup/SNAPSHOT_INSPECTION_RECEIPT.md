@@ -41,3 +41,11 @@ Mutation logs and saved source copies are in
 This is a local component implementation only. It does not establish hosted
 startup admission, snapshot authenticity, journal generation adoption,
 provider closure, lifecycle eligibility, or deployment readiness.
+
+The inspection tests use `SERENITY_RECOVERY_TEST_TMPDIR` when supplied and
+fail (rather than skip) if that explicit path is invalid or not private. On
+Linux, an unset variable uses `t.TempDir`; on Darwin, only an unset variable
+may skip when the ownership-enabled fixture is unavailable. A subprocess
+regression proves an invalid explicit fixture is a test failure, not a skip.
+The final package race run used the explicit ownership-enabled fixture and
+passed with this portability change.

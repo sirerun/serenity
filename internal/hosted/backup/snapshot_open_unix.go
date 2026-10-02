@@ -9,8 +9,6 @@ import (
 	"syscall"
 )
 
-var errSecureSnapshotOpenUnsupported = errors.New("hosted/backup: secure snapshot file opens are unsupported on this platform")
-
 func openSnapshotRegular(root *os.Root, name string) (*os.File, error) {
 	if name == "" || name == "." || name == ".." || name != filepathBase(name) {
 		return nil, errors.New("hosted/backup: snapshot artifact must be one path element")
