@@ -1,0 +1,11 @@
+# Recovery billing provider period clarification
+
+Coordinator primary-source follow-up to readiness review df94fbe and the additive observer interface merged in PR342. This is a contract-design correction, not production implementation or provider qualification. No authenticated Stripe call was made.
+
+Stripe's pinned-version [invoice object reference](https://docs.stripe.com/api/invoices/object?api-version=2025-06-30.basil) describes aggregate period_start/end as the usage interval in which invoice items were added; subscription invoices look back one period. Those fields cannot establish the subscription service window. The [invoice line reference](https://docs.stripe.com/api/invoice-line-item/object?api-version=2025-06-30.basil) gives line.period as the subscription service interval, including partial intervals for prorations. Pricing and parent identity must bind the line to the selected subscription and known price. These current docs were read on 2026-10-01; examples are not live tenant evidence.
+
+A concrete observer contract must pin complete bounded invoice-line decoding and applicable service-period semantics before implementation. It must not require aggregate invoice periods to equal the current subscription window, discard an earlier relevant failure solely because latest_invoice changed, or treat omitted/truncated/unsupported line identity as absence. Supported normal renewal fixtures must include aggregate periods that look backward while the subscription line covers the current window. Unknown historical price/item changes or proration applicability require explicit consistent semantics or refusal; they cannot justify a later grace anchor.
+
+Stripe's [event retrieval reference](https://docs.stripe.com/api/events/retrieve) also states event data is rendered using its creation api_version, not the current request header, and event retrieval is limited to the last30 days. Complete current-period failure history cannot be claimed by clipping the lower bound to retained history; unsupported payload versions and insufficient history must be refused. An observation remains point evidence, not a provider fence or recovery activation barrier.
+
+The author of the new observer development contract received these findings before source implementation. Existing billing reconciliation and frozen interfaces remain unchanged.
