@@ -33,3 +33,53 @@ activation was performed. These results do not qualify an installed production
 stack or authorize retention execution.
 
 Source paths are limited to the new adapter and its new fake-process tests.
+
+## Independent-review correction
+
+The post-review correction adds strict Unicode `Cc` rejection (including C1
+controls), matches the existing retention parser's strict timestamp behavior
+for leap seconds, sanitizes selector-construction failures while cleaning up
+the owned child, and rejects setuid/setgid CLI executables. A controlled
+success case proves that a live same-PGID descendant is terminated while the
+leader remains unreaped. The adapter observes exact leader exit with
+`waitid(WNOWAIT)`, signals before `Popen.wait()` reaps it, and never signals
+after reaping. `ECHILD` and unsupported observation fail closed without group
+signals. Darwin's zombie-only group can return `EPERM`; the development path
+accepts it only after exact WNOWAIT leader-exit observation and under the
+trusted nonprivileged executable model. This means there are no eligible
+signalable members; it does not prove that no process exists. Credential-
+transitioning or MAC-restricted descendants are outside the supported model.
+
+The SIGCHLD default-disposition check only rejects a known handler. It does not
+prove the absence of a competing `waitpid`/`waitid` reaper or ensure the signal
+disposition stays unchanged. Any eventual caller must independently prove
+exclusive child-reaper ownership across spawn, observation, signaling, and
+reap. This adapter remains unwired and is not authorized for production use.
+
+The prior source failed focused RED controls for each review finding:
+
+- C1 controls were accepted.
+- Leap-second snapshot keys were accepted by the adapter.
+- Selector setup `OSError` escaped as a non-sanitized error and could leave
+  the child running.
+- The group-signal test showed signaling after leader reap.
+
+The corrected fake-process suite has 22 tests and passes with
+`-W error::ResourceWarning`; the adjacent completion and retention suites
+remain green (20 and 22 tests). Ruff passes. A Darwin-owned-process probe by the
+independent reviewer is recorded at
+`/Volumes/BuildOffload/tmp/darwin-wnowait-pgrp-probe.log` (SHA-256
+`d2e1cbb8055219b5e61e008a6ab0e412ae9434a2207bdfe55a0f79cfb45beee6`). This is
+local process behavior evidence, not qualification of AWS CLI or deployment
+process ownership.
+
+The corrected source and tests are pinned at commit
+`c4fefdbd8d2d9722f11c400624840d60343df825`. Final SHA-256 values are
+`1122505db2aaca19b30a736cea4efcc623321ba215954b536031ba49cfee1dd4` for the
+adapter and
+`0a13a7d9df520f1720ac86af7704feb2cd8dfcead5dcfab0668a5c27b85793da` for its
+tests. The exact-pin focused checks passed: 22 adapter tests with resource
+warnings treated as errors, 20 completion tests, 22 retention tests, Ruff,
+and `git diff --check`. The offline AWS CLI skeleton check is limited to the
+installed AWS CLI 2.35.14; no service request or real AWS qualification was
+performed.
