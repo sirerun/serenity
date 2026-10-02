@@ -12,6 +12,8 @@ import (
 	"reflect"
 	"sync"
 	"time"
+
+	"github.com/sirerun/serenity/internal/hosted/privatefs"
 )
 
 type peerKey struct{}
@@ -61,45 +63,17 @@ func listen(ctx context.Context, path string, credentials func(*net.UnixConn) (u
 		return nil, errors.New("admin transport: absolute clean socket path required")
 	}
 	parent := filepath.Dir(path)
-	info, err := os.Lstat(parent)
-	if err != nil {
+	if err := privatefs.ValidateDirectory(ctx, parent); err != nil {
 		return nil, err
 	}
-	resolved, err := filepath.EvalSymlinks(parent)
-	if err != nil || resolved != parent || !info.IsDir() || info.Mode().Perm()&0077 != 0 {
-		return nil, errors.New("admin transport: private directory required")
-	}
 	owner := uint32(os.Geteuid())
-	if uid, ok := fileUID(info); !ok || uid != owner {
-		return nil, errors.New("admin transport: directory owner mismatch")
-	}
-	// A private final directory is insufficient if another user can rename
-	// an ancestor. Trust only root/the creating UID and sticky-protected
-	// shared ancestors; check every component through the filesystem root.
-	for ancestor := parent; ; ancestor = filepath.Dir(ancestor) {
-		if err := ownershipEnforced(ancestor); err != nil {
-			return nil, err
-		}
-		entry, statErr := os.Lstat(ancestor)
-		if statErr != nil {
-			return nil, statErr
-		}
-		uid, ok := fileUID(entry)
-		if !entry.IsDir() || !ok || (uid != owner && uid != 0) ||
-			(entry.Mode().Perm()&0022 != 0 && entry.Mode()&os.ModeSticky == 0) {
-			return nil, errors.New("admin transport: unsafe ancestor directory")
-		}
-		if ancestor == filepath.Dir(ancestor) {
-			break
-		}
-	}
-	if _, err = os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 		if err == nil {
 			return nil, errors.New("admin transport: socket path exists")
 		}
 		return nil, err
 	}
-	if err = ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	u, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
