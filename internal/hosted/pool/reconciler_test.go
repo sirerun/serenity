@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -28,9 +29,11 @@ func newReconcilerTestPool(t *testing.T, maxOpen, maxInFlight int) (*Pool, strin
 	brainID := "b123456789abcdef"
 	otherBrainID := "b234567890abcdef"
 	for _, id := range []string{brainID, otherBrainID} {
-		if err := os.Mkdir(filepath.Join(brainsRoot, id), 0o700); err != nil {
+		brainRoot := filepath.Join(brainsRoot, id)
+		if err := os.Mkdir(brainRoot, 0o700); err != nil {
 			t.Fatal(err)
 		}
+		initializeCanonicalTestGit(t, brainRoot)
 	}
 	p, err := New(Config{
 		MaxOpen:     maxOpen,
@@ -48,6 +51,24 @@ func newReconcilerTestPool(t *testing.T, maxOpen, maxInFlight int) (*Pool, strin
 		}
 	})
 	return p, brainID, otherBrainID
+}
+
+func initializeCanonicalTestGit(t *testing.T, root string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".serenity/\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	commands := [][]string{
+		{"init", "--initial-branch=main"},
+		{"add", "--", ".gitignore"},
+		{"-c", "user.name=Serenity Hosted", "-c", "user.email=hosted@serenity.sire.run", "commit", "--only", "-m", "Initialize hosted brain", "--", ".gitignore"},
+	}
+	for _, args := range commands {
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("prepare canonical Git fixture with %v: %v: %s", args, err, output)
+		}
+	}
 }
 
 func TestPoolBrainsRootReturnsConfiguredImmutableRoot(t *testing.T) {
@@ -285,12 +306,16 @@ func TestExistingReconcilerNeverOpensOrReopensColdRuntime(t *testing.T) {
 	p, brainID, _ := newReconcilerTestPool(t, 1, 4)
 	r := NewExistingReconciler(p)
 	ctx := context.Background()
+	if err := os.RemoveAll(filepath.Join(p.BrainsRoot(), brainID, ".git")); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := r.Fence(ctx, brainID); !errors.Is(err, contracts.ErrBrainNotQuiescent) {
 		t.Fatalf("cold runtime admitted: %v", err)
 	}
 	if _, err := os.Lstat(filepath.Join(p.BrainsRoot(), brainID, ".git")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("cold brain initialized: %v", err)
 	}
+	initializeCanonicalTestGit(t, filepath.Join(p.BrainsRoot(), brainID))
 	runtime, leave, err := p.Acquire(ctx, brainID)
 	if err != nil {
 		t.Fatal(err)

@@ -1,0 +1,11 @@
+# Continuation: verified observer merge and next contract status
+
+PR345 merged f4738933649bf399f098949430ce6def3699ee8b with tree 978d4e7c74a488190fb231567a669a40108c5b00, exactly equal reviewed630ebd36bd44d84ef683e699945279893551997c. Independent third review clears cc44ad06f2160f30044a6c8b3be9a409214e563c source; root full race84 packages/2948 tests-subtests, vet/lint/Linux ARM64 compilation passed, with four no-test packages/seven existing helper-gated skips and no observer skips. Production observer remains unwired. Logical task47 claim stays coordinator-held; source resources and full build lease are released.
+
+The adjacent backup transport contract is an AUTHOR PROPOSAL, not coordinator-frozen or implementation-authorized, regardless of its original wording. Independent assessment finds version-selection metadata, signature mismatch, broad COMPLETE reconciliation, executor-seam and suspended-versioning gaps. A new revision is required and must receive independent review before coordinator freeze. No real transport is installed or invoked.
+
+The publisher's existing broad final-write exception handling can reconcile a definite ObjectExists if exact desired completion is present. The next minimal source correction must preserve ambiguous write-success readback while refusing definite collision; it requires a genuine-red test and independent review before merge. The current helper remains unwired.
+
+Native keychain designr2 supersedes the original proposal's separate namespace recommendation by retaining the original service/account tuple and pinned go-keyring storage envelope. It is not production-authorized: independent review identifies unproven legacy metadata classification, marker behavior, native-call latency bounds, prompt visibility, old-release decode/rotation and upgrade continuity. Preserve old credentials, Linux/API behavior, and never turn denied or unknown policy into absence. Earlier unproven-provenance probes remain excluded; only corrected owned-fixture evidence supports new-item feasibility.
+
+No provider, deployment, purge, credential read or spend action follows from these contracts. Full hosted and E24 acceptance remains open; the goal remains active.
