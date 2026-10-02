@@ -20,10 +20,10 @@ import (
 	"context"
 	"log"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/sirerun/serenity/internal/eval/brainbench"
+	"github.com/sirerun/serenity/internal/gitrun"
 )
 
 const (
@@ -55,7 +55,7 @@ func main() {
 	}
 	pin := strings.TrimSpace(string(pinBytes))
 
-	row := brainbench.NewRow(report, resolveCommit(), pin)
+	row := brainbench.NewRow(report, resolveCommit(context.Background()), pin)
 	if err := brainbench.WriteRow(outPath, row); err != nil {
 		log.Fatalf("gen_trend: %v", err)
 	}
@@ -69,11 +69,11 @@ func main() {
 // this never shells out in CI, and falls back to `git rev-parse HEAD` for
 // a local run; "unknown" rather than failing the whole artifact if
 // neither is available.
-func resolveCommit() string {
+func resolveCommit(ctx context.Context) string {
 	if sha := os.Getenv("GITHUB_SHA"); sha != "" {
 		return sha
 	}
-	out, err := exec.Command("git", "rev-parse", "HEAD").Output()
+	out, err := gitrun.Foreign(".").Output(ctx, "rev-parse", "HEAD")
 	if err != nil {
 		return "unknown"
 	}

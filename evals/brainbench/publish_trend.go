@@ -47,11 +47,11 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 
 	"github.com/sirerun/serenity/internal/eval/brainbench"
+	"github.com/sirerun/serenity/internal/gitrun"
 )
 
 func main() {
@@ -94,7 +94,7 @@ func main() {
 	}
 	pin := strings.TrimSpace(string(pinBytes))
 
-	row := brainbench.NewRow(report, resolveCommit(), pin)
+	row := brainbench.NewRow(report, resolveCommit(context.Background()), pin)
 	row.BudgetUSD = *budgetUSD
 	row.SpentUSD = spentUSD
 
@@ -128,11 +128,11 @@ func defaultBudgetUSD() float64 {
 // resolveCommit mirrors gen_trend.go's own helper: prefer $GITHUB_SHA so
 // this never shells out in CI, fall back to `git rev-parse HEAD` locally,
 // and never fail the whole run over a missing commit id.
-func resolveCommit() string {
+func resolveCommit(ctx context.Context) string {
 	if sha := os.Getenv("GITHUB_SHA"); sha != "" {
 		return sha
 	}
-	out, err := exec.Command("git", "rev-parse", "HEAD").Output()
+	out, err := gitrun.Foreign(".").Output(ctx, "rev-parse", "HEAD")
 	if err != nil {
 		return "unknown"
 	}
