@@ -1,6 +1,6 @@
 # Snapshot cancellation absence proof — proposed source amendment
 
-Status: proposed narrow amendment to historical producer contract `6a013b49b94e7f9286b782ad2827441d2e5bd737`; not frozen until independent CLEAR. The complete durable recovery plan store remains separately proposed and unimplemented. No provider, deployment or capacity acceptance is inferred. Both producer and coordinator accept this proposed owner-local shape; it touches no shared contracts. Existing producer claim remains with the coordinator.
+Status: coordinator-frozen `backup-pin-absence-v1` narrow amendment to historical producer contract `6a013b49b94e7f9286b782ad2827441d2e5bd737`; independently CLEAR at exact reviewed proposal `089f883142cafd88d724e033e1d06e08d53ddd1f` and adopted by backup owner. The complete durable recovery plan store remains separately proposed and unimplemented. No provider, deployment or capacity acceptance is inferred. Both producer and coordinator accept this proposed owner-local shape; it touches no shared contracts. Existing producer claim remains with the coordinator.
 
 ## Exact additive producer surface
 
