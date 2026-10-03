@@ -1,6 +1,6 @@
 # Verified snapshot lease delivery
 
-Status: producer API frozen for implementation; recovery coordinator hash-domain review remains open. This is the next implementation wave toward production recovery, not hosted startup acceptance. The producer API and consumer pin handoff agree. The separate recovery coordinator cannot be implemented or merged under its outstanding hash-domain HOLD. Existing public snapshot inspection and restore behavior must remain compatible.
+Status: producer API frozen and complete source implementation in progress; recovery coordinator proposal independently CLEAR at `a50c876f06682d42530d32e46a2ffc60aa0485f4`. This is the next implementation wave toward production recovery, not hosted startup acceptance. The producer API and consumer pin handoff agree. The prior coordinator hash-domain HOLD is resolved by that exact amended proposal; its separate source-owner freezes, implementation and qualification remain required. Existing public snapshot inspection and restore behavior must remain compatible.
 
 ## Ownership and scope
 
@@ -18,3 +18,7 @@ Coordinator retains the backup lease claim. One isolated backup worker owns shar
 ## Follow-on gates
 
 Recovery consumes the implemented lease only after an independently reviewed owner handshake. Production admission still needs trusted writer fencing, lineage and credential authority. First startup and ordinary restart need authenticated factories. Physical quota and 500 GB qualification remain T23.44 work; cooperative lease accounting does not meet that requirement. Deployment, provider actions, purge, spend and launch remain separately gated.
+
+## Current review correction
+
+The VSL-PRE row records the producer handoff at its original freeze. Subsequent full consumer review clears `a50c876f06682d42530d32e46a2ffc60aa0485f4`, without changing producer v1. The proposal's historical line saying producer review is in progress is superseded by the banked producer `6a013b4` CLEAR and this current status. Source implementation is actively assigned at `e8a5c38fd68ac93873e2973a18f6ec6aea1ddb82`; no source checks or completion are yet claimed.
