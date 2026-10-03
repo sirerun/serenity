@@ -30,3 +30,5 @@ T24.39 still requires final shared-ledger dispositions, PR links for every close
 ## Coordinator transcription correction
 
 The PR #350 landing SHA in the report above contains a transcription error. The verified landing is `a89adca37e82ca1a1fa7eba6e5ade6efabe09781`; its stated tree is correct. The source proposal itself remains byte-identical to the reviewed blob.
+
+The same typo was present in proposal line 87 and is corrected in this integration. The original reviewed proposal remains preserved at commit `06752800`; the only proposal byte change is the corrected PR #350 SHA above. No finding row or source classification changes.

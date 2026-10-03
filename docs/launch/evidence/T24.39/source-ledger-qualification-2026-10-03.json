@@ -4,11 +4,17 @@
   "rows": 58,
   "missing": [],
   "extra": [],
-  "proposal_sha256": "771e7dd08412c3b54cf176f112100b89bbd1d5d4f9abfe51ee2b605d85fbcdab",
   "changed_files": [
+    "docs/launch/evidence/T24.30/pr350-landed-verification-2026-10-03.md",
+    "docs/launch/evidence/T24.39/finding-ledger-independent-review-2026-10-03.md",
+    "docs/launch/evidence/T24.39/source-ledger-qualification-2026-10-03.json",
     "docs/plans/finding-ledger-source-proposal-2026-10-03.md",
     "docs/plans/high-retrace-delta-and-ledger-review-2026-10-03.md",
-    "docs/plans/high-retrace-delta-source-assignment-2026-10-03.md"
+    "docs/plans/high-retrace-delta-source-assignment-2026-10-03.md",
+    "docs/roadmap.md"
   ],
-  "production_source_unchanged": true
+  "production_source_unchanged": true,
+  "initial_reviewed_proposal_sha256": "771e7dd08412c3b54cf176f112100b89bbd1d5d4f9abfe51ee2b605d85fbcdab",
+  "proposal_sha256": "d9816bdae6bd72e94310a28081ab02053dc850cfe851b5dcd606d81fce40ca2c",
+  "proposal_correction": "Only PR350 landing SHA transcription corrected after integrated review; finding rows unchanged"
 }
