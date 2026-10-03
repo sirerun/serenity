@@ -84,3 +84,5 @@ Full-module qualification and independent exact-head review are coordinator
 owned and still required. The T23.44 destination-output/physical-quota gap
 remains open. This receipt is not source acceptance or production lifecycle
 authority.
+
+Current root qualification and independent review supersede the historical draft status above: exact integrated source `f4de27e029d88fa1e7bdd61b5e140524ce7a6154` passes full local race/vet/lint/Linux checks and has independent producer CLEAR after confined verification-directory cleanup. The banked local-validation and review receipts record genuine compiled controls and invalid compile-only attempts separately. Production owner lifecycle, factory and physical quota remain open; no READY or hosted acceptance is claimed.
