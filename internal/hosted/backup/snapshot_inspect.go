@@ -355,7 +355,7 @@ func validSnapshotAccountStatus(status string) bool {
 	}
 }
 
-func verifyStagedBrain(ctx context.Context, scratch string, brain contracts.BrainArtifact) error {
+func verifyStagedBrain(ctx context.Context, scratch string, brain contracts.BrainArtifact) (err error) {
 	bundlePath := filepath.Join(scratch, brain.ID+".bundle")
 	heads, err := bundleHeads(ctx, bundlePath)
 	if err != nil {
@@ -364,7 +364,28 @@ func verifyStagedBrain(ctx context.Context, scratch string, brain contracts.Brai
 	if !equalHeads(heads, brain.Heads) {
 		return errors.New("bundle heads do not match manifest")
 	}
-	repoPath := filepath.Join(scratch, brain.ID+".repo")
+	// Clone and checkout verification expands the bundle into a full Git
+	// repository. Keep that derived data in a separately captured temporary
+	// directory and remove it before the raw snapshot scratch can be retained
+	// as a lease. The lease budget accounts the verified raw artifacts, not
+	// expanded Git objects.
+	verificationRoot, err := os.OpenRoot(scratch)
+	if err != nil {
+		return fmt.Errorf("open brain verification scratch: %w", err)
+	}
+	verificationName, verificationIdentity, err := createBrainVerificationScratch(verificationRoot)
+	if err != nil {
+		return errors.Join(fmt.Errorf("create brain verification scratch: %w", err), verificationRoot.Close())
+	}
+	defer func() {
+		if cleanupErr := removeInspectionScratch(verificationRoot, verificationName, verificationIdentity); cleanupErr != nil {
+			err = errors.Join(err, fmt.Errorf("remove brain verification scratch: %w", cleanupErr))
+		}
+		if closeErr := verificationRoot.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("close brain verification scratch root: %w", closeErr))
+		}
+	}()
+	repoPath := filepath.Join(scratch, verificationName, brain.ID+".repo")
 	if output, err := gitrun.CloneBundle(ctx, bundlePath, repoPath); err != nil {
 		return fmt.Errorf("clone bundle: %w: %s", err, output)
 	}
@@ -400,4 +421,29 @@ func validateScratchDBPath(path string) error {
 		return errors.New("hosted/backup: absolute SQLite path required")
 	}
 	return nil
+}
+
+func createBrainVerificationScratch(parent *os.Root) (string, os.FileInfo, error) {
+	for attempt := 0; attempt < 8; attempt++ {
+		var suffix [16]byte
+		if _, err := rand.Read(suffix[:]); err != nil {
+			return "", nil, err
+		}
+		name := ".serenity-brain-verify-" + hex.EncodeToString(suffix[:])
+		if err := parent.Mkdir(name, 0700); err != nil {
+			if errors.Is(err, os.ErrExist) {
+				continue
+			}
+			return "", nil, err
+		}
+		info, err := parent.Stat(name)
+		if err != nil {
+			return name, nil, err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return name, info, errors.New("brain verification scratch is not a directory")
+		}
+		return name, info, nil
+	}
+	return "", nil, errors.New("could not allocate a unique brain verification scratch directory")
 }

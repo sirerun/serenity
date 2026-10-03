@@ -204,6 +204,36 @@ func TestSnapshotLeaseStagesExactBytesAndRestoresAfterSourceRemoval(t *testing.T
 	}
 }
 
+func TestSnapshotLeaseStageDoesNotRetainExpandedBrainRepository(t *testing.T) {
+	_, snapshot, _ := freshPrivateSnapshot(t, 1)
+	opts, _ := inspectionOptions(t, snapshot)
+	root := filepath.Join(privateTempDir(t), "snapshot-lease-no-expanded-repo")
+	s := testLeaseStore(t, root, newLeaseTestAuthority())
+	lease, err := s.Stage(context.Background(), snapshot, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = lease.Close(context.Background()) }()
+
+	entries, err := os.ReadDir(lease.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allowed := map[string]bool{leaseRecordName: true, manifestFile: true, controlDBName: true}
+	for _, name := range bundleNames(lease.record.Manifest) {
+		allowed[name] = true
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() || !allowed[entry.Name()] {
+			t.Errorf("staged lease retained expanded or unexpected entry %q (mode %s)", entry.Name(), entry.Type())
+		}
+		delete(allowed, entry.Name())
+	}
+	for name := range allowed {
+		t.Errorf("staged lease is missing expected raw/metadata entry %q", name)
+	}
+}
+
 func TestSnapshotLeasePinSurvivesReopenAndExactCancelAttempt(t *testing.T) {
 	_, snapshot, _ := freshPrivateSnapshot(t, 0)
 	opts, _ := inspectionOptions(t, snapshot)
