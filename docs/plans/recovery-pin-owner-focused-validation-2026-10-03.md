@@ -1,6 +1,6 @@
 # Current owner focused validation receipt
 
-Status: focused evidence only; combined source acceptance and merge remain HOLD.
+Status: historical606 focused evidence only, superseded by the later superblock decoder amendment; combined source acceptance and merge remain HOLD.
 
 The author checkout was clean at `60600440fb703947317ab4cea2b343a2428c4ffc`, with whole-Go fingerprint `686c504fe80855f8cdfcb30b92e56baa1dd7704423fb35c0b7ebd7348bd086c5`. Root integration `69c4a22ee831a4e061b27f23320f0c6987c8857e` has identical six owned owner Go files. Each executed stage recorded unchanged source and an exact lease release. The fixture supports local protocol testing; it is not physical quota acceptance.
 
