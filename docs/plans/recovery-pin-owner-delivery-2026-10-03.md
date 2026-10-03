@@ -29,7 +29,7 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: RESERVED and PIN_PENDING reconciliation checks exact digest/pin tuple without authorizing deletion.
 - [x] T-PNOFIX.3 — Exercise durable cancel publication crash prefix. kind: agent stage: implement deps: [T-PNOAUD.1]
   acc: Actual child after-event:PIN_CANCEL crash reopens permanent tombstone, rejects old proof retry and permits only correctly fresh N+1.
-- [ ] T-PNOFIX.4 — Verify all three corrections at current bytes. kind: agent stage: verify deps: [T-PNOFIX.1, T-PNOFIX.2, T-PNOFIX.3, T-PNOFIX.5]
+- [ ] T-PNOFIX.4 — Verify all three corrections at current bytes. kind: agent stage: verify deps: [T-PNOFIX.1, T-PNOFIX.2, T-PNOFIX.3, T-PNOFIX.5, T-PNOFIX.6]
   acc: Meaningful regressions and compiled mutation controls, restored passing focused race/vet/lint with exact build lease releases. T-PNO.4 is the independent renewed review of these findings.
 - [x] T-SPS.1 — Adopt reviewed producer crash and restart rule. kind: agent stage: preflight deps: [T-PNO.1]
   acc: Proposal096 design CLEAR and coordinator source freeze e762c9c banked; exact source claim c20ad and disjoint backup/testhooks ownership; source acceptance remains HOLD.
@@ -48,3 +48,6 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: Before creating/rebinding lock, reservations or superblock, bounded no-follow scans reject retained history without its superblock, a superblock without its bound lock and unknown entries; bytes/inodes/inventory remain unchanged. Fresh empty and exact known empty bootstrap prefixes remain supported. Current focused checks/compiled control are required under T-PNOFIX.4.
 
 2026-10-03 current source update: the four accepted owner implementation findings are corrected in author60600440, integrated69c4a22 with identical six owned Go files. Package, race and vet stages passed on author current bytes. Lint, compiled behavioral controls, combined producer matrix and final independent source acceptance remain pending; verification and merge tasks stay open. Earlier full-module baseline is historical after these source changes.
+
+- [ ] T-PNOFIX.6 — Classify unsupported future superblock wire before v1 decode. kind: agent stage: implement deps: [T-PNOAUD.1]
+  acc: Bounded syntactic version parsing precedes strict v1 superblock decoding; positive unsupported uint64 versions with future extension fields return Unavailable without mutation, while missing, zero, duplicate, malformed and overflowing versions remain corrupt. Active operations and reopening preserve superblock, lock and history bytes/inodes on refusal.
