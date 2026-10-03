@@ -118,11 +118,32 @@ func (l *limiter) sweep(now time.Time) {
 }
 
 func withRateLimit(l *limiter, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return withRateLimitMethods(l, next)
+}
+
+// withRateLimitMethods charges only the explicitly listed HTTP methods. With
+// no methods listed it preserves withRateLimit's all-method behavior. Other
+// methods continue to the same downstream handler without consuming the
+// limiter, so that handler remains responsible for its existing response.
+func withRateLimitMethods(l *limiter, next http.Handler, methods ...string) http.Handler {
+	limited := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !l.allow(prefixKey(clientIP(r))) {
 			w.Header().Set("Retry-After", "60")
 			writeJSON(w, http.StatusTooManyRequests, map[string]any{"error": "too many requests"})
 			return
+		}
+		next.ServeHTTP(w, r)
+	})
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if len(methods) == 0 {
+			limited.ServeHTTP(w, r)
+			return
+		}
+		for _, method := range methods {
+			if r.Method == method {
+				limited.ServeHTTP(w, r)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
