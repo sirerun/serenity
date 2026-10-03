@@ -1,6 +1,8 @@
 # OAuth state creation method scope delivery
 
-## Tasks
+## E24: OAuth state-creation shared limiter method scope
+
+#### Wave 1
 
 - [x] T-OMS.1 — Freeze independently reviewed exact method scope. kind: agent stage: preflight
   acc: Exact6bfe7fc CLEAR, pinned protocol behavior and unchanged capacity policy recorded.
