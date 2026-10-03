@@ -126,7 +126,7 @@ The existing contract plan's `JournalWatermark` can represent M_w but cannot ret
 
 ## Validation, size bounds, and deterministic encoding
 
-Bounds are checked before allocating slices, decoding nested payloads, or hashing. Reject rather than truncate, normalize, sort on behalf of caller, or silently fill defaults. Proposed hard limits for v1 are: at most 100 eligible IDs; at most 10,000 snapshot accounts and 10,000 brains; at most 10,000 dispositions; at most 1 MiB combined encoded evidence-reference fields and approval proof bindings represented here; at most 4 MiB canonical envelope; and at most 4 MiB canonical contract-plan projection. The source manifest reader retains its existing 32 MiB bound. Checked arithmetic is required for aggregate sizes and byte counts. `DeclaredArtifactBytes` must be nonnegative and within the already configured inspection cap. Counts must equal actual slice lengths.
+Bounds are checked before allocating slices, decoding nested payloads, or hashing. Reject rather than truncate, normalize, sort on behalf of caller, or silently fill defaults. Proposed hard limits for v1 are: at most 100 eligible IDs; at most 10,000 snapshot accounts and 10,000 brains; at most 10,000 dispositions; at most 1 MiB combined encoded evidence-reference fields and approval proof bindings represented here; at most 4 MiB canonical envelope; and at most 1 MiB canonical contract-plan projection, preserving the existing RCP helper bound. The source manifest reader retains its existing 32 MiB bound. Checked arithmetic is required for aggregate sizes and byte counts. `DeclaredArtifactBytes` must be nonnegative and within the already configured inspection cap. Counts must equal actual slice lengths.
 
 Account and brain IDs are validated against the relevant existing backup manifest validators, not a new weaker approximation; snapshot account statuses are restricted to the source enum `active`, `deleted`, `deleting`, `restore_pending`. Account rows, brain rows/heads, allowlist, plan accounts, eligible IDs, and dispositions must be strictly sorted and unique by their specified key. Every eligible/disposition ID must be in the complete snapshot account inventory; frozen dispositions cover each snapshot account exactly once. `ELIGIBLE` requires a nonempty plan account set, exact equality between eligible IDs and contract-plan accounts and the authorized subset, and no frozen arm. `FROZEN_ONLY` requires an empty eligible scope and exactly the frozen arm; it has no contract plan. Empty inventories are allowed only if the source snapshot validator permits them; do not invent an eligible ID to satisfy `contracts.RecoveryPlan.Validate`.
 
@@ -150,3 +150,203 @@ The later pure component task should have exact new-file ownership for its priva
 ## Concrete preflight mismatches
 
 The proposal's string `SnapshotSchemaVersion` is incompatible with source `contracts.SourceRef.SchemaVersion int`. Its `SnapshotBuildSHA` label overstates source `BuildSHA`, which is an opaque nonempty token. Its account-ID-only list omits status and obscures that verified brain artifacts are also inventory. Its watermark-shaped cut cannot represent `JournalPosition`'s positive empty genesis/successor identities. The current shared contracts have no `EvidenceRef`, and current ancestry interfaces are watermark-only. Finally, the legacy artifact hash and contract plan hash are separate source identities. This contract records those mismatches as required corrections and amendments; none is silently normalized into the proposed envelope.
+
+## Normative v1 details (supersedes any earlier deferred wording)
+
+This section closes the pure codec contract. It does not close the separately identified authority-owner evidence gaps. Every domain prefix below is the exact ASCII byte sequence shown, including the final NUL byte (`00`); it is concatenated directly with canonical JSON bytes. JSON strings use UTF-8 and Go `encoding/json` string escaping (including HTML escaping of `<`, `>`, and `&`); integers use base-10 with no leading zeros except `0`; no insignificant whitespace or terminal newline is included in hashed bytes.
+
+### Exact nested canonical payloads and independently reproducible vectors
+
+Brain projection is canonical JSON for this ordered schema:
+
+```go
+type brainInventoryPayloadV1 struct {
+    Version int `json:"version"` // 1
+    Brains []brainV1Wire `json:"brains"`
+}
+type brainV1Wire struct {
+    ID string `json:"id"`
+    Empty bool `json:"empty"`
+    Artifact brainArtifactV1Wire `json:"artifact"`
+    Heads []brainHeadV1Wire `json:"heads"`
+}
+type brainArtifactV1Wire struct {
+    RelativePath string `json:"relative_path"`
+    Length int64 `json:"length"`
+    SHA256 string `json:"sha256"`
+}
+type brainHeadV1Wire struct {
+    Ref string `json:"ref"`
+    ObjectID string `json:"object_id"`
+}
+```
+
+For `Empty == true`, `artifact` is exactly `{ "relative_path":"", "length":0, "sha256":"" }` and `heads` is an empty array; an empty brain may not carry artifact bytes or heads. For nonempty brains all artifact fields are required and validated against the inspected manifest; heads are sorted by `ref`, unique, nonempty, and bounded. `Brains` are sorted by `ID`, unique, with no nil/absent slice distinction. Compute `BrainInventorySHA256 = SHA256("serenity.recovery-brain-inventory.v1\x00" || JSON(brainInventoryPayloadV1))`.
+
+The inventory payload is this exact ordered schema; `accounts` contains all snapshot accounts sorted by ID, while `brains` binds the count and previously specified brain digest:
+
+```go
+type snapshotInventoryPayloadV1 struct {
+    Version int `json:"version"` // 1
+    ManifestSHA256 string `json:"manifest_sha256"`
+    SourceBuildToken string `json:"source_build_token"`
+    SourceSchemaVersion int `json:"source_schema_version"`
+    Accounts []accountInventoryV1Wire `json:"accounts"`
+    BrainCount int `json:"brain_count"`
+    BrainInventorySHA256 string `json:"brain_inventory_sha256"`
+    VerifiedArtifactCount int `json:"verified_artifact_count"`
+    DeclaredArtifactBytes int64 `json:"declared_artifact_bytes"`
+}
+```
+
+Compute `SnapshotInventorySHA256 = SHA256("serenity.recovery-snapshot-inventory.v1\x00" || JSON(snapshotInventoryPayloadV1))`. Thus the outer field `SnapshotBrainInventory{Count, CanonicalDigest}` contains the same count and `BrainInventorySHA256`; the account list in the outer envelope is exactly the full account projection whose digest appears in this inventory hash. This codec computes hashes from caller-provided typed projection rows only. A digest-only value cannot recreate brain rows, manifest bytes, or `backup.VerifiedSnapshotInspection`; no decoder claims to recover those source objects.
+
+Synthetic golden vector, independently assembled as literal JSON (all hashes below are SHA-256 lowercase hex):
+
+```text
+brain JSON: {"version":1,"brains":[{"id":"brain-01","empty":true,"artifact":{"relative_path":"","length":0,"sha256":""},"heads":[]}]}
+brain prefix hex: 736572656e6974792e7265636f766572792d627261696e2d696e76656e746f72792e763100
+brain SHA256: f1eb7d370f424a93bd89aef88ddf05822fdc1eded3042719339054086d210c3e
+
+inventory JSON: {"version":1,"manifest_sha256":"0000000000000000000000000000000000000000000000000000000000000000","source_build_token":"fixture-build","source_schema_version":2,"accounts":[{"account_id":"acct0000000000001","status":"active"}],"brain_count":1,"brain_inventory_sha256":"f1eb7d370f424a93bd89aef88ddf05822fdc1eded3042719339054086d210c3e","verified_artifact_count":0,"declared_artifact_bytes":0}
+inventory prefix hex: 736572656e6974792e7265636f766572792d736e617073686f742d696e76656e746f72792e763100
+inventory SHA256: d25ad92fbfd48c565bc91bdfd25534a24b39b4a7aef43e02118c33e0953b6fe1
+```
+
+The vectors were independently assembled and hashed from literal bytes using Python's standard SHA-256 implementation, not by the proposed Go encoder. They are synthetic and make no claim about live source evidence.
+
+### Exact pure typed API and ownership behavior
+
+The source freeze must implement only the following pure package-local surface in `internal/hosted/recovery`; all wire structs remain unexported. Names/signatures are normative unless a reviewer approves an additive amendment:
+
+```go
+type RecoveryEnvelopeKind string
+const (
+    RecoveryEnvelopeEligible RecoveryEnvelopeKind = "ELIGIBLE"
+    RecoveryEnvelopeFrozenOnly RecoveryEnvelopeKind = "FROZEN_ONLY"
+)
+type RecoveryEnvelopeHash string
+var (
+    ErrRecoveryEnvelopeInvalid = errors.New("recovery: invalid recovery envelope")
+    ErrRecoveryEnvelopeTooLarge = errors.New("recovery: recovery envelope exceeds limit")
+    ErrRecoveryEnvelopeNonCanonical = errors.New("recovery: noncanonical recovery envelope")
+    ErrRecoveryEnvelopeContext = errors.New("recovery: recovery envelope context canceled")
+)
+type RecoveryEnvelopeV1 struct {
+    FormatVersion int
+    Kind RecoveryEnvelopeKind
+    PlanRef, SnapshotPinID string
+    ReservationVersion int64
+    ManifestSHA256 string
+    ManifestJournalWatermark WatermarkV1
+    SourceBuildToken string
+    SourceSchemaVersion int
+    SnapshotAccountInventory []SnapshotAccountV1
+    SnapshotBrainInventory BrainInventoryV1
+    VerifiedArtifactCount int
+    DeclaredArtifactBytes int64
+    SnapshotInventorySHA256 string
+    PlanApprovalRef EvidenceRefV1
+    PlanApprovalDigest, PlanApprovalNonce string
+    PlanApprovalExpiresAt time.Time
+    ActivationAllowlist []string
+    OperationID string
+    OldWriter WriterV1
+    JournalStoreID string
+    SnapshotCut JournalPositionV1
+    LastSealed WatermarkV1
+    PrefixEvidenceRef EvidenceRefV1
+    Eligible *EligibleArmV1
+    Frozen *FrozenArmV1
+}
+type WatermarkV1 struct { Generation, SequenceID int64; EntryHash string }
+type JournalPositionV1 struct {
+    ActiveGeneration int64
+    LastObjectInGeneration, PredecessorSeal WatermarkV1
+    GenesisIssuanceID, SuccessorAllocationID string
+}
+type SnapshotAccountV1 struct { ID, Status string }
+type BrainInventoryV1 struct { Count int; CanonicalDigest string }
+type EvidenceRefV1 struct { Authority, RecordID, Version string }
+type WriterV1 struct {
+    Provider, ScopeRef, WriterRef, BootRef, JournalStoreID string
+    Generation int64
+}
+type ContractPlanV1 struct {
+    SourceSnapshot string
+    JournalWatermark WatermarkV1
+    Generation int64
+    ProviderTruthAt time.Time
+    Accounts []string
+}
+type EligibleArmV1 struct {
+    LegacyPlanArtifactHash string
+    RecoveryContractPlanHash string
+    ContractPlan ContractPlanV1
+    EligibleAccountIDs []string
+}
+type FrozenArmV1 struct { Dispositions []FrozenDispositionV1 }
+type FrozenDispositionV1 struct { AccountID, Disposition, ReasonCode string }
+const (
+    FrozenDispositionWithheld = "WITHHELD_FROZEN"
+    FrozenDispositionDeleted = "DELETED"
+    FrozenDispositionDeleting = "DELETING"
+)
+type SnapshotInventoryV1 struct {
+    ManifestSHA256 string
+    SourceBuildToken string
+    SourceSchemaVersion int
+    Accounts []SnapshotAccountV1
+    Brains []contracts.BrainArtifact
+    VerifiedArtifactCount int
+    DeclaredArtifactBytes int64
+}
+func CloneRecoveryEnvelopeV1(in RecoveryEnvelopeV1) (RecoveryEnvelopeV1, error)
+func ValidateRecoveryEnvelopeV1(ctx context.Context, in RecoveryEnvelopeV1) error
+func EncodeRecoveryEnvelopeV1(ctx context.Context, in RecoveryEnvelopeV1) ([]byte, RecoveryEnvelopeHash, error)
+func DecodeRecoveryEnvelopeV1(ctx context.Context, encoded []byte) (RecoveryEnvelopeV1, RecoveryEnvelopeHash, error)
+func RecoveryEnvelopeHashV1(ctx context.Context, in RecoveryEnvelopeV1) (RecoveryEnvelopeHash, error)
+func BrainInventoryDigestV1(ctx context.Context, brains []contracts.BrainArtifact) (string, error)
+func SnapshotInventoryDigestV1(ctx context.Context, in SnapshotInventoryV1) (string, error)
+```
+
+The exact pure Go value types and fields are shown above; their ordered wire types and tags are specified in the prior section, and the public typed values are never marshaled directly. These values are not authority tokens and contain no `Verified*` fields or booleans. `Clone...` validates bounds before allocating and returns an independent value. It clones every nested account slice, contract-plan `Accounts`, eligible IDs, dispositions, and all `contracts.BrainArtifact` values including each `Heads` slice. Encode/Validate/Hash never mutate caller input. Decode copies input and returns independently owned slices. Both timestamps must have `Location() == time.UTC` and exact format/parse round-trip; a fixed-offset zero time is rejected. Errors wrap stable sentinels `ErrRecoveryEnvelopeInvalid`, `ErrRecoveryEnvelopeTooLarge`, `ErrRecoveryEnvelopeNonCanonical`, and `ErrRecoveryEnvelopeContext`; error strings may add field context but callers branch on sentinels. All functions check `ctx.Err()` before work, between bounded phases, and immediately before returning; cancellation returns the zero result and context sentinel joined with `ctx.Err()`.
+
+`SnapshotInventoryV1` and `SnapshotAccountV1` have exactly the fields/types shown. They carry no evidence of verification. `BrainInventoryDigestV1` and `SnapshotInventoryDigestV1` validate and deep-copy/project source-shaped values but do not claim the input came from the backup owner.
+
+`Encode` validates, builds canonical bytes, and returns their outer hash; `Hash` follows the exact same validation and canonical payload path without returning bytes. `Decode` performs bounded lexical validation before any proportional allocations: reject invalid UTF-8, duplicate keys at every depth, unknown/missing keys, non-integer numbers, overlong strings/arrays, excess nesting, trailing values, and input over 4 MiB. It then decodes, validates, re-encodes, and requires byte-for-byte equality with the original. It returns the outer hash only after exact equality. No API accepts a caller-supplied expected hash or treats a hash as proof.
+
+### Closed field validation and numeric limits
+
+All string lengths below are measured in UTF-8 bytes, after requiring valid UTF-8. ASCII-only fields reject every byte outside their stated alphabet; text fields reject NUL, C0 controls, DEL, and Unicode control-category runes, and are never trimmed, case-folded, or normalized. Empty values are permitted only where stated.
+
+| Field | Normative validation |
+| --- | --- |
+| SHA-256 values (`ManifestSHA256`, inventory/brain digests, `EntryHash`, plan hashes, approval digest) | Exactly 64 lowercase ASCII hex bytes. Empty only for a zero watermark's `EntryHash`. |
+| `SourceBuildToken` | 1–256 bytes; valid UTF-8; no Unicode whitespace/control characters. Opaque; no hex requirement. |
+| Plan ref, snapshot pin ID, operation ID, journal store ID, authority, record ID, version, nonce, writer provider/scope/writer/boot refs, genesis issuance ID, successor allocation ID | 1–256 bytes; ASCII `[A-Za-z0-9._:/-]`; must begin/end alphanumeric; no empty values. |
+| Account ID | 16–64 ASCII `[A-Za-z0-9]`, matching backup `safeID`. |
+| Brain ID | 1–255 bytes; valid UTF-8; not `.` or `..`; no slash, backslash, Unicode whitespace, or control rune. This matches source `validName`. |
+| Relative artifact path | 1–255 bytes; exactly one safe path element, valid UTF-8, not `.` or `..`, no slash, backslash, Unicode whitespace, or control rune. Empty only for `Empty` brain. |
+| Head ref | 1–1024 bytes; valid UTF-8; exact `HEAD` or prefix `refs/`; no Unicode whitespace or control rune, matching source `validRef`. |
+| Head object ID | Exactly 40 or 64 lowercase ASCII hex bytes, matching source `validObjectID`. |
+| Evidence ref strings | Each follows the 1–256 ASCII reference rule above; combined UTF-8 byte length across all refs in an envelope ≤1 MiB. No refs are accepted as authority. |
+| Frozen reason code | 1–64 ASCII `[A-Z0-9_]+`; disposition-specific values below only. |
+| Timestamps | 1–35 ASCII bytes, exact UTC RFC3339Nano parse/format round-trip; require terminal `Z`. |
+| `Kind`, status, disposition | Exact enums below; case-sensitive. |
+
+Explicit ceilings: envelope encoded/input bytes 4 MiB; contract-plan canonical projection 1 MiB (preserves RCP's existing limit); eligible/allowlist/account/disposition count 100 for eligible plan scopes and 10,000 for complete snapshot accounts; brains 10,000; total heads 100,000; heads per brain 1,000; artifact count 100,000; declared artifact bytes at most 1 TiB; decoded nesting depth at most 12; any individual JSON string at most 1024 bytes except source build token 256, timestamp 35, digest 64, and the narrower per-field maxima in the table. All integer fields are nonnegative unless generation/version requires positive; reject values above signed 64-bit max before conversion. `ReservationVersion` is 1..`math.MaxInt64`; schema version 1..`math.MaxInt32`; format version exactly 1; generations 1..`math.MaxInt64`; sequence IDs 0..`math.MaxInt64`; artifact lengths and aggregate bytes 0..1 TiB. `contracts.BrainArtifact.ArtifactRef.Length` for a nonempty brain is positive, matching source validation; empty-brain length is zero. Checked addition is mandatory for head, artifact, encoded, and evidence byte totals; overflow is invalid. Limits are checked before slice allocation or hashing. Canonical representation contains no maps. The outer 4 MiB bound does not relax the RCP contract-plan's 1 MiB bound.
+
+Snapshot account status enum is exactly `active`, `deleted`, `deleting`, `restore_pending`. Frozen disposition enum is exactly `WITHHELD_FROZEN`, `DELETED`, `DELETING`. `WITHHELD_FROZEN` requires a reason from `{APPROVAL_SCOPE, PROVIDER_INELIGIBLE, EVIDENCE_UNAVAILABLE, AMBIGUOUS, CURRENT_CHECK_FAILED, OTHER}`; `DELETED` requires reason `JOURNAL_DELETED`; `DELETING` requires reason `JOURNAL_DELETING`. A snapshot row whose status is `deleted` pairs only with `DELETED`; status `deleting` pairs only with `DELETING`; `active` and `restore_pending` pair only with `WITHHELD_FROZEN`. Deletion state wins over a candidate eligibility claim. No caller-supplied reason can turn a deleted/deleting account eligible. Every complete account is represented exactly once in frozen dispositions; eligible IDs are a nonempty subset of snapshot accounts with status `active` or `restore_pending`, and exact-match the contract-plan accounts. A frozen envelope has zero eligible IDs and dispositions for the whole snapshot. These values are data classifications, not authenticated current status.
+
+### Hash domains and compatibility note
+
+The required domain prefixes are exactly:
+
+```text
+brain inventory:   serenity.recovery-brain-inventory.v1\x00
+snapshot inventory: serenity.recovery-snapshot-inventory.v1\x00
+outer envelope:    serenity.recovery-envelope.v1\x00
+```
+
+The landed RCP v1 `CanonicalContractRecoveryPlanHash` has no byte-prefix: it is SHA-256 of its canonical payload containing `domain_version:1`, with a 1 MiB limit. Preserve that exact source behavior and do not silently add a prefix. Legacy artifact bytes and hashing remain untouched. The two inventory golden vectors above are synthetic, fully specified, and independently calculated; reviewers should reproduce them before accepting a later implementation.
