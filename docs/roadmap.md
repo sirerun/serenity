@@ -473,3 +473,5 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 - T-VSL.1–6: complete backup-owned verified snapshot producer landed PR355 at c2d5a543 with exact reviewed tree and narrow source claim released; production lifecycle owner/READY/provider/runtime/quota acceptance remains open.
 
 - T-ENV.1–4: pure bounded envelope source96bd06e full locally qualified and independently CLEAR after decode allocation/context findings; final integrated docs review and merge pending. This supplies integrity/canonicalization only, no approval/ancestry/pin/READY/runtime authority.
+
+2026-10-03: PR356 pure recovery envelope landed `189cdabe89ff296cfab42c72d7e3b8af030f332c` with exact reviewed/landed tree equality; all six component delivery stages complete. Qualified source full local race3,082 passes/84 packages plus vet/lint/Linux ARM64, independent source/final docs CLEAR. Historical allocation/context/privacy holds resolved. Inert codec only; pin owner qualification, full READY/coordinator/startup/provider/physical quota acceptance remain open.
