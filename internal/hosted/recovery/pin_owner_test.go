@@ -327,6 +327,42 @@ func TestPinOwnerCancellationTombstoneDoesNotTouchFreshAttempt(t *testing.T) {
 	}
 }
 
+func TestPinOwnerCancelRequiresConsumedProducerAbsenceProof(t *testing.T) {
+	root := pinOwnerTestRoot(t)
+	owner, leases, snapshot, digest, inspection := pinOwnerTestPair(t, root)
+	ctx := context.Background()
+	reserved, err := owner.ReservePinPlan(ctx, "op-cancel-proof-required")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := leases.Stage(ctx, snapshot, inspection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt, err := owner.BeginPinAttempt(ctx, reserved.PlanRef(), reserved.ReservationVersion(), lease.LeaseID(), digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := owner.ReservePinPlan(ctx, "op-cancel-proof-required")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = owner.CancelPinAttempt(ctx, attempt, backup.VerifiedPinAbsence{}); !errors.Is(err, ErrPinOwnerConflict) {
+		t.Fatalf("zero/unconsumed absence proof accepted: %v", err)
+	}
+	after, err := owner.ReservePinPlan(ctx, "op-cancel-proof-required")
+	if err != nil || after != before || after.State() != PinOwnerPinPending {
+		t.Fatalf("failed proof changed owner state: before=%+v after=%+v err=%v", before, after, err)
+	}
+	current, err := owner.FindPinAttempt(ctx, reserved.PlanRef(), digest)
+	if err != nil || current != attempt {
+		t.Fatalf("failed proof changed attempt: got %+v want %+v err=%v", current, attempt, err)
+	}
+	if err = leases.CancelPin(ctx, attempt); err != nil {
+		t.Fatalf("producer-verified cancellation: %v", err)
+	}
+}
+
 func TestPinOwnerRejectsMalformedAndUnorderedHistory(t *testing.T) {
 	root := pinOwnerTestRoot(t)
 	owner, _, _, _, _ := pinOwnerTestPair(t, root)
