@@ -443,6 +443,28 @@ func TestPinOwnerFutureRecordVersionUnavailablePreservesBytes(t *testing.T) {
 			wantNotErr: ErrPinOwnerCorrupt,
 		},
 		{
+			name: "max-uint64-future-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":18446744073709551615,`), 1)
+			},
+			want:       ErrPinOwnerUnavailable,
+			wantNotErr: ErrPinOwnerCorrupt,
+		},
+		{
+			name: "overflowing-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":18446744073709551616,`), 1)
+			},
+			want: ErrPinOwnerCorrupt,
+		},
+		{
+			name: "oversized-record",
+			mutate: func(raw []byte) []byte {
+				return append(raw, bytes.Repeat([]byte{' '}, pinOwnerMaxRecordBytes+1-len(raw))...)
+			},
+			want: ErrPinOwnerCorrupt,
+		},
+		{
 			name: "duplicate-version",
 			mutate: func(raw []byte) []byte {
 				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":1,"version":2,`), 1)
@@ -538,8 +560,12 @@ func TestPinOwnerFutureRecordVersionUnavailablePreservesBytes(t *testing.T) {
 			if !errors.Is(err, tc.want) || errors.Is(err, tc.wantNotErr) {
 				t.Fatalf("decode result = %v; want %v and not %v", err, tc.want, tc.wantNotErr)
 			}
-			if _, listErr := owner.ListPinAttempts(context.Background()); !errors.Is(listErr, tc.want) || errors.Is(listErr, tc.wantNotErr) {
+			listed, listErr := owner.ListPinAttempts(context.Background())
+			if !errors.Is(listErr, tc.want) || errors.Is(listErr, tc.wantNotErr) {
 				t.Fatalf("ListPinAttempts decode result = %v; want %v and not %v", listErr, tc.want, tc.wantNotErr)
+			}
+			if len(listed) != 0 {
+				t.Fatalf("ListPinAttempts returned partial authority on error: %+v", listed)
 			}
 			_, reopenErr := OpenSnapshotPinOwner(context.Background(), owner.options, owner.expected)
 			if !errors.Is(reopenErr, tc.want) || errors.Is(reopenErr, tc.wantNotErr) {
@@ -687,6 +713,84 @@ func TestPinOwnerOpenDoesNotRebindIncompleteOrUnknownRoots(t *testing.T) {
 			t.Fatalf("owner root entries changed: got %v want %v", gotNames, rootNamesBefore)
 		}
 	})
+}
+
+func TestPinOwnerConcurrentFreshOpenAndInitialReservation(t *testing.T) {
+	root := pinOwnerTestRoot(t)
+	leaseRoot := filepath.Join(root, "leases")
+	backupOptions := backup.SnapshotLeaseStoreOptions{LeaseRoot: leaseRoot, MaxArtifactBytesPerLease: 1 << 20, MaxMetadataBytesPerLease: 1 << 16, MaxRestoreScratchBytes: 1 << 20, MaxRetainedArtifactBytes: 1 << 22, MaxRetainedMetadataBytes: 1 << 20, MaxLeases: 4}
+	identity, err := backup.PreflightSnapshotStoreIdentity(context.Background(), backupOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerOptions := SnapshotPinOwnerOptions{OwnerRoot: filepath.Join(root, "owner"), BackupLeaseRoot: leaseRoot, MaxPlans: 4, MaxOwnerMetadataBytes: 2 << 20}
+	type openResult struct {
+		owner *SnapshotPinOwner
+		err   error
+	}
+	start := make(chan struct{})
+	results := make(chan openResult, 2)
+	for range 2 {
+		go func() {
+			<-start
+			owner, openErr := OpenSnapshotPinOwner(context.Background(), ownerOptions, identity)
+			results <- openResult{owner: owner, err: openErr}
+		}()
+	}
+	close(start)
+	opened := make([]*SnapshotPinOwner, 0, 2)
+	for range 2 {
+		result := <-results
+		if result.err != nil {
+			t.Fatalf("concurrent fresh owner open: %v", result.err)
+		}
+		opened = append(opened, result.owner)
+	}
+	if opened[0].storeID != opened[1].storeID || opened[0].ownerDevice != opened[1].ownerDevice || opened[0].ownerInode != opened[1].ownerInode || opened[0].ownerLockDev != opened[1].ownerLockDev || opened[0].ownerLockIno != opened[1].ownerLockIno {
+		t.Fatal("concurrent opens did not bind the same owner root, lock, and store identity")
+	}
+	superBefore, err := os.ReadFile(filepath.Join(ownerOptions.OwnerRoot, pinOwnerSuperName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	type reserveResult struct {
+		reservation PinOwnerReservation
+		err         error
+	}
+	reserveStart := make(chan struct{})
+	reservations := make(chan reserveResult, 2)
+	for _, owner := range opened {
+		go func(owner *SnapshotPinOwner) {
+			<-reserveStart
+			reservation, reserveErr := owner.ReservePinPlan(context.Background(), "op-concurrent-bootstrap")
+			reservations <- reserveResult{reservation: reservation, err: reserveErr}
+		}(owner)
+	}
+	close(reserveStart)
+	var first PinOwnerReservation
+	for range 2 {
+		result := <-reservations
+		if result.err != nil {
+			t.Fatalf("concurrent first reservation: %v", result.err)
+		}
+		if first.Valid() && result.reservation != first {
+			t.Fatalf("concurrent first reservations forked: %+v vs %+v", first, result.reservation)
+		}
+		first = result.reservation
+	}
+	superAfter, err := os.ReadFile(filepath.Join(ownerOptions.OwnerRoot, pinOwnerSuperName))
+	if err != nil || !bytes.Equal(superAfter, superBefore) {
+		t.Fatalf("concurrent initialization rewrote superblock: %v", err)
+	}
+	ownerRoot, err := pinOwnerOpenDirectory(ownerOptions.OwnerRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plans, loadErr := pinOwnerLoadAll(context.Background(), ownerRoot, opened[0])
+	closeErr := ownerRoot.Close()
+	if loadErr != nil || closeErr != nil || len(plans) != 1 || plans[0].head.RecordVersion != 1 {
+		t.Fatalf("concurrent initialization history = %d plans, load=%v close=%v", len(plans), loadErr, closeErr)
+	}
 }
 
 func pinOwnerTestTrimHistory(t *testing.T, owner *SnapshotPinOwner, planRef string, keepVersion uint64, changedPendingDigest string) {
