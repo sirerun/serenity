@@ -19,10 +19,16 @@ import (
 // contracts.JournalObjectStore. It consults no database: completeness comes
 // from the object layout alone.
 type Journal struct {
-	store    contracts.JournalObjectStore
-	writerID string
-	gen      int64
-	now      func() time.Time
+	store       contracts.JournalObjectStore
+	reader      contracts.JournalObjectReader
+	writerID    string
+	gen         int64
+	now         func() time.Time
+	reserved    *contracts.JournalPosition
+	prepared    bool
+	pending     *pendingObject
+	sealedAt    *contracts.DeletionWatermark
+	sealedBytes []byte
 
 	mu      sync.Mutex
 	loaded  bool
@@ -30,11 +36,47 @@ type Journal struct {
 	head    string
 }
 
+type pendingObject struct {
+	key      string
+	body     []byte
+	sequence int64
+	kind     contracts.JournalObjectKind
+	entry    contracts.DeletionEntry
+}
+
 func NewJournal(store contracts.JournalObjectStore, writerID string, generation int64, now func() time.Time) *Journal {
 	if now == nil {
 		now = time.Now
 	}
 	return &Journal{store: store, writerID: writerID, gen: generation, now: now}
+}
+
+// NewJournalAt creates a writer whose cursor is fixed to an authority-selected
+// positive position. It does not authenticate the supplied authority IDs.
+func NewJournalAt(store contracts.JournalObjectStore, writerID string, position contracts.JournalPosition, now func() time.Time) (*Journal, error) {
+	if isNilCapability(store) {
+		return nil, fmt.Errorf("nil journal object store")
+	}
+	if !validAuthorityID(writerID) {
+		return nil, fmt.Errorf("invalid journal writer identity")
+	}
+	if err := validateJournalPosition(position); err != nil {
+		return nil, err
+	}
+	if now == nil {
+		now = time.Now
+	}
+	j := &Journal{store: store, reader: store, writerID: writerID, gen: position.ActiveGeneration, now: now, reserved: &position}
+	j.head = position.PredecessorSeal.EntryHash
+	if position.ActiveGeneration == 1 {
+		j.head = ""
+	}
+	if !position.LastObjectInGeneration.IsZero() {
+		j.headSeq = position.LastObjectInGeneration.SequenceID
+		j.head = position.LastObjectInGeneration.EntryHash
+	}
+	j.loaded = true
+	return j, nil
 }
 
 // ProductionJournal is the JournalFactory for Journal.
@@ -210,6 +252,9 @@ func (j *Journal) loadHead(ctx context.Context) error {
 func (j *Journal) AppendDeletion(ctx context.Context, e contracts.DeletionEntry) (contracts.DeletionEntry, error) {
 	if err := e.Validate(); err != nil {
 		return contracts.DeletionEntry{}, err
+	}
+	if j.reserved != nil {
+		return j.appendReserved(ctx, e)
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -393,6 +438,9 @@ func (j *Journal) ReadThrough(ctx context.Context, from contracts.DeletionWaterm
 }
 
 func (j *Journal) Seal(ctx context.Context, generation int64) (contracts.DeletionWatermark, error) {
+	if j.reserved != nil {
+		return j.sealReserved(ctx, generation)
+	}
 	prev, err := j.genesisPrev(ctx, generation)
 	if err != nil {
 		return contracts.DeletionWatermark{}, err
