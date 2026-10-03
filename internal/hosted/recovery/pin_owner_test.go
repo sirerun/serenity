@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/backup"
 	"github.com/sirerun/serenity/internal/hosted/contracts"
@@ -732,6 +733,8 @@ func TestPinOwnerConcurrentFreshOpenAndInitialReservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	ownerOptions := SnapshotPinOwnerOptions{OwnerRoot: filepath.Join(root, "owner"), BackupLeaseRoot: leaseRoot, MaxPlans: 4, MaxOwnerMetadataBytes: 2 << 20}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	type openResult struct {
 		owner *SnapshotPinOwner
 		err   error
@@ -741,21 +744,31 @@ func TestPinOwnerConcurrentFreshOpenAndInitialReservation(t *testing.T) {
 	for range 2 {
 		go func() {
 			<-start
-			owner, openErr := OpenSnapshotPinOwner(context.Background(), ownerOptions, identity)
+			owner, openErr := OpenSnapshotPinOwner(ctx, ownerOptions, identity)
 			results <- openResult{owner: owner, err: openErr}
 		}()
 	}
 	close(start)
-	opened := make([]*SnapshotPinOwner, 0, 2)
+	publicOwners := make([]*SnapshotPinOwner, 0, 2)
 	for range 2 {
 		result := <-results
-		if result.err != nil {
+		if result.err != nil && !errors.Is(result.err, ErrPinOwnerUnavailable) {
 			t.Fatalf("concurrent fresh owner open: %v", result.err)
 		}
-		opened = append(opened, result.owner)
+		if result.owner != nil {
+			publicOwners = append(publicOwners, result.owner)
+		}
 	}
-	if opened[0].storeID != opened[1].storeID || opened[0].ownerDevice != opened[1].ownerDevice || opened[0].ownerInode != opened[1].ownerInode || opened[0].ownerLockDev != opened[1].ownerLockDev || opened[0].ownerLockIno != opened[1].ownerLockIno {
+	if len(publicOwners) > 1 && (publicOwners[0].storeID != publicOwners[1].storeID || publicOwners[0].ownerDevice != publicOwners[1].ownerDevice || publicOwners[0].ownerInode != publicOwners[1].ownerInode || publicOwners[0].ownerLockDev != publicOwners[1].ownerLockDev || publicOwners[0].ownerLockIno != publicOwners[1].ownerLockIno) {
 		t.Fatal("concurrent opens did not bind the same owner root, lock, and store identity")
+	}
+	if _, err = OpenSnapshotPinOwner(ctx, ownerOptions, identity); err != nil {
+		t.Fatalf("retry exact open after concurrent initialization: %v", err)
+	}
+	if len(publicOwners) > 0 {
+		if _, err = publicOwners[0].ReservePinPlan(ctx, "op-inactive-owner-must-not-reserve"); !errors.Is(err, ErrPinOwnerUnavailable) {
+			t.Fatalf("unpaired public owner became active: %v", err)
+		}
 	}
 	superBefore, err := os.ReadFile(filepath.Join(ownerOptions.OwnerRoot, pinOwnerSuperName))
 	if err != nil {
@@ -765,12 +778,24 @@ func TestPinOwnerConcurrentFreshOpenAndInitialReservation(t *testing.T) {
 		reservation PinOwnerReservation
 		err         error
 	}
+	backupOptions.LeaseRoot = leaseRoot
+	activeOwners := make([]*SnapshotPinOwner, 0, 2)
+	for range 2 {
+		activeOwner, _, openErr := pinOwnerOpenVerifiedPair(ctx, ownerOptions, backupOptions)
+		if openErr != nil {
+			t.Fatalf("open actual verified owner/backup pair: %v", openErr)
+		}
+		activeOwners = append(activeOwners, activeOwner)
+	}
+	if activeOwners[0].storeID != activeOwners[1].storeID || activeOwners[0].ownerLockDev != activeOwners[1].ownerLockDev || activeOwners[0].ownerLockIno != activeOwners[1].ownerLockIno {
+		t.Fatal("verified factory pairs did not share one owner identity")
+	}
 	reserveStart := make(chan struct{})
 	reservations := make(chan reserveResult, 2)
-	for _, owner := range opened {
+	for _, owner := range activeOwners {
 		go func(owner *SnapshotPinOwner) {
 			<-reserveStart
-			reservation, reserveErr := owner.ReservePinPlan(context.Background(), "op-concurrent-bootstrap")
+			reservation, reserveErr := owner.ReservePinPlan(ctx, "op-concurrent-bootstrap")
 			reservations <- reserveResult{reservation: reservation, err: reserveErr}
 		}(owner)
 	}
@@ -794,7 +819,7 @@ func TestPinOwnerConcurrentFreshOpenAndInitialReservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plans, loadErr := pinOwnerLoadAll(context.Background(), ownerRoot, opened[0])
+	plans, loadErr := pinOwnerLoadAll(ctx, ownerRoot, activeOwners[0])
 	closeErr := ownerRoot.Close()
 	if loadErr != nil || closeErr != nil || len(plans) != 1 || plans[0].head.RecordVersion != 1 {
 		t.Fatalf("concurrent initialization history = %d plans, load=%v close=%v", len(plans), loadErr, closeErr)
