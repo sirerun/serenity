@@ -29,7 +29,7 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: RESERVED and PIN_PENDING reconciliation checks exact digest/pin tuple without authorizing deletion.
 - [ ] T-PNOFIX.3 — Exercise durable cancel publication crash prefix. kind: agent stage: implement deps: [T-PNOAUD.1]
   acc: Actual child after-event:PIN_CANCEL crash reopens permanent tombstone, rejects old proof retry and permits only correctly fresh N+1.
-- [ ] T-PNOFIX.4 — Verify all three corrections at current bytes. kind: agent stage: verify deps: [T-PNOFIX.1, T-PNOFIX.2, T-PNOFIX.3]
+- [ ] T-PNOFIX.4 — Verify all three corrections at current bytes. kind: agent stage: verify deps: [T-PNOFIX.1, T-PNOFIX.2, T-PNOFIX.3, T-PNOFIX.5]
   acc: Meaningful regressions and compiled mutation controls, restored passing focused race/vet/lint with exact build lease releases. T-PNO.4 is the independent renewed review of these findings.
 - [x] T-SPS.1 — Adopt reviewed producer crash and restart rule. kind: agent stage: preflight deps: [T-PNO.1]
   acc: Proposal096 design CLEAR and coordinator source freeze e762c9c banked; exact source claim c20ad and disjoint backup/testhooks ownership; source acceptance remains HOLD.
@@ -43,3 +43,6 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: Same normal exact-head integrated PR as T-PNO.5; neither component merges past a HOLD.
 - [ ] T-SPS.6 — Verify producer landed and release its claim. kind: agent stage: verify-landed deps: [T-SPS.5]
   acc: Same reviewed/landed tree proof as T-PNO.6, with exact producer source claim release and preserved authored material.
+
+- [ ] T-PNOFIX.5 — Refuse owner bootstrap over retained or unknown history. kind: agent stage: implement deps: [T-PNOAUD.1]
+  acc: Before creating/rebinding lock, reservations or superblock, bounded no-follow scans reject retained history without its superblock, a superblock without its bound lock and unknown entries; bytes/inodes/inventory remain unchanged. Fresh empty and exact known empty bootstrap prefixes remain supported. Current focused checks/compiled control are required under T-PNOFIX.4.
