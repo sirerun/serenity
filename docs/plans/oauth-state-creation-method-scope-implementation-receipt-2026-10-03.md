@@ -10,7 +10,7 @@ New regressions prove excluded methods on both paths do not exhaust the shared b
 
 ## Validation evidence
 
-All Go stages used `/Volumes/BuildOffload/serenity-recovery-source-contract-evidence-20261003/run_worker_stage.py`, with a fresh load check, exact WON lease, durable stdout/stderr/JSON result, source fingerprint, and same-process finally release. Runtime tests used `-exec 'env TMPDIR=/Volumes/SerenityPrivateFixture20261001/tmp SERENITY_RECOVERY_TEST_TMPDIR=/Volumes/SerenityPrivateFixture20261001/tmp'`.
+All Go stages used the durable `run_worker_stage.py` runner with a fresh load check, exact WON lease, durable stdout/stderr/JSON result, source fingerprint, and same-process finally release. Runtime tests used `-exec 'env TMPDIR=<owned-APFS-runtime-fixture>/tmp SERENITY_RECOVERY_TEST_TMPDIR=<owned-APFS-runtime-fixture>/tmp'`.
 
 - Full OAuth package race: `go test -race -count=1 ... ./internal/hosted/oauth`; exit 0. Evidence `package-race-01`.
 - Focused race of the two new regressions: exit 0. Evidence `focused-race-01`.
@@ -19,10 +19,10 @@ All Go stages used `/Volumes/BuildOffload/serenity-recovery-source-contract-evid
 - Genuine compiled behavioral mutant, shared guard charges every method: focused test exit 1 at assertion `excluded method PUT /oauth/register consumed shared state budget`. Evidence `mutant-all-methods-02`.
 - Genuine compiled behavioral mutant, HEAD added to authorize charged set: focused test exit 1 at assertion `POST /oauth/register after excluded methods: 429`. This shows `HEAD /oauth/authorize` incorrectly consumed the shared slot. Evidence `mutant-head-01`.
 - Both mutant stages report Go test assertion failures after successful compilation; they are behavioral RED, not compile failures. Both restored-source checks above passed.
-- An earlier attempted mutant stage `mutant-all-methods-01` did not apply its edit to the assigned clone and passed unchanged bytes; it is retained as a non-mutant run and is not counted as RED evidence.
+- An earlier attempted mutant stage `mutant-all-methods-01` mistakenly ran with the primary main checkout as its shell working directory. Its replacement needle was absent there, so the write call left `internal/hosted/oauth/ratelimit.go` byte-identical to its committed main blob; the primary checkout at main `189cdabe89ff296cfab42c72d7e3b8af030f332c` had no tracked diff. For `internal/hosted/oauth/ratelimit.go`, `git rev-parse HEAD:path` and `git hash-object path` both returned blob `5524f0b2b636a8a3c7fd8300ec1bb87eb5bf78a5`; its SHA-256 was `ee6ab6a04dc13f24a10489d24b517613f4e93569d564832db2a2586c0fcab852`. That stage's runner operated on the assigned clone's unchanged bytes, so it is retained as a non-mutant run and is not counted as RED evidence. No other path was targeted.
 - `go.mod` remains at `github.com/ajent-social/go v0.0.0-20260924042100-b90bbb417d9d`.
 
-Evidence directory: `/Volumes/BuildOffload/serenity-oauth-state-method-scope-implementation-evidence-20261003/`.
+Evidence bundle: `serenity-oauth-state-method-scope-implementation-evidence-20261003` (external SSD), with per-stage JSON and stdout/stderr records keyed by the evidence labels above.
 
 ## Scope and limits
 
