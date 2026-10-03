@@ -33,7 +33,7 @@ Raw focused command records, source fingerprints, lease logs, mutant stdout, and
 
 ## Handoff
 
-Worker ownership covers only the new contracts reader and tests, `internal/hosted/deletion/journal.go`, new `journal_observation*.go` files and tests, and this receipt. No source claim was created or released, and no source was pushed, opened as a PR, or merged. Proposed roadmap line: `T-JRO.1–6 — complete bounded journal observation and reserved-writer source; focused race/vet/lint and behavioral mutants pass; pending independent exact-head review and coordinator full-module qualification.`
+Worker ownership covers only the new contracts reader and tests, `internal/hosted/deletion/journal.go`, new `journal_observation*.go` files and tests, and this receipt. No source claim was created or released, and no source was pushed, opened as a PR, or merged. Historical proposed roadmap line (superseded by Coordinator qualification below): `T-JRO.1–6 — complete bounded journal observation and reserved-writer source; focused race/vet/lint and behavioral mutants pass; pending independent exact-head review and coordinator full-module qualification.`
 
 ## Coordinator qualification
 
