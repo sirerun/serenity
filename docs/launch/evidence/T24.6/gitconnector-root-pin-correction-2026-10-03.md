@@ -12,3 +12,8 @@ Corrected combined controls pass race-enabled repeat10; entire connector package
 - `corrected-full-package-race.log` SHA256 `ba147868e86ca53df2e730c90a2f2daf21afb50238f4a7d3ed2e956bacb86ce9`
 - `corrected-package-vet.log` SHA256 `9b850f15a746ccc07172bfd64d77f2b8c515a12f161a815286c40afd7805b51c`
 - `corrected-package-lint.log` SHA256 `e6d89b2adb3e0627b1871ef7f51a52e64558c6063cc79f84604f9b92938e93a0`
+
+Poll root-close correction: the reviewer requested propagation instead of discarding the directory-close error. Poll now returns no items, the original cursor and a wrapped error on an otherwise-successful close failure; an earlier primary error remains primary. Final full connector package race/vet/lint pass after this change.
+- `close-checked-package-race.log` SHA256 `662069ef79fed8f4fba21ae0ba00d75bfa12030096d8171a557865a4b6690690`
+- `close-checked-package-vet.log` SHA256 `76aaea8fef2d16fffd57b9824d2782f8f36b4e33ee35d8335048924d123cc139`
+- `close-checked-package-lint.log` SHA256 `fcab51928fc0d626bf71e67d4a2af7ceddd664175cd3b402bcb88ddbad099291`

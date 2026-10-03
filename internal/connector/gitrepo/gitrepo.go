@@ -136,7 +136,7 @@ type cursorState struct {
 // moves -- and the underlying content-address dedup in internal/store
 // (T1.2) means even a forced re-poll of an unchanged tree adds no new
 // sources.
-func (c *Connector) Poll(ctx context.Context, cursor connector.Cursor) ([]connector.RawItem, connector.Cursor, error) {
+func (c *Connector) Poll(ctx context.Context, cursor connector.Cursor) (result []connector.RawItem, nextCursor connector.Cursor, retErr error) {
 	toplevel, err := c.toplevel(ctx)
 	if err != nil {
 		return nil, cursor, err
@@ -147,8 +147,11 @@ func (c *Connector) Poll(ctx context.Context, cursor connector.Cursor) ([]connec
 		return nil, cursor, err
 	}
 	defer func() {
-		// Read-only directory handles have no pending writes.
-		_ = confined.Close()
+		if err := confined.Close(); retErr == nil && err != nil {
+			result = nil
+			nextCursor = cursor
+			retErr = fmt.Errorf("gitrepo: close poll root: %w", err)
+		}
 	}()
 
 	if !c.cfg.IncludeBrainRepo && c.isBrainRepo(toplevel) {
