@@ -572,8 +572,14 @@ func (o *SnapshotPinOwner) ReconcilePin(ctx context.Context, pin backup.Snapshot
 			return backup.PinReconcileDecision{}, pinOwnerConflict()
 		}
 		switch PinOwnerState(head.State) {
-		case PinOwnerReserved, PinOwnerPinPending:
-			return backup.PinReconcileDecision{Action: backup.PinKeep}, nil
+		case PinOwnerReserved:
+			// No pin is bound to a RESERVED row. A caller-supplied pin ref is
+			// stale or unbound, so it cannot be acknowledged as an exact pin.
+			return backup.PinReconcileDecision{}, pinOwnerConflict()
+		case PinOwnerPinPending:
+			// PIN_PENDING has an exact attempt but no owner-recorded PinID yet.
+			// Do not bless an unverifiable producer PinID as an exact tuple.
+			return backup.PinReconcileDecision{}, pinOwnerConflict()
 		case PinOwnerPinned:
 			if head.ManifestSHA256 != pin.ManifestSHA256() || head.PinID != pin.ID() || head.AttemptState != pinOwnerAttemptCommitted {
 				return backup.PinReconcileDecision{}, pinOwnerConflict()
@@ -1192,13 +1198,87 @@ func pinOwnerDecodeSuper(raw []byte) (pinOwnerSuperblock, error) {
 	}
 	return b, nil
 }
+func pinOwnerRecordVersionHint(raw []byte) (uint64, bool, error) {
+	if len(raw) == 0 || len(raw) > pinOwnerMaxRecordBytes {
+		return 0, false, ErrPinOwnerCorrupt
+	}
+	d := json.NewDecoder(bytes.NewReader(raw))
+	tok, err := d.Token()
+	if err != nil {
+		return 0, false, errors.Join(ErrPinOwnerCorrupt, err)
+	}
+	open, ok := tok.(json.Delim)
+	if !ok || open != '{' {
+		return 0, false, nil // The strict v1 decoder classifies non-object records.
+	}
+	seen := make(map[string]struct{})
+	var rawVersion json.RawMessage
+	foundVersion := false
+	for d.More() {
+		keyToken, tokenErr := d.Token()
+		if tokenErr != nil {
+			return 0, false, errors.Join(ErrPinOwnerCorrupt, tokenErr)
+		}
+		key, ok := keyToken.(string)
+		if !ok {
+			return 0, false, ErrPinOwnerCorrupt
+		}
+		if _, duplicate := seen[key]; duplicate {
+			return 0, false, ErrPinOwnerCorrupt
+		}
+		seen[key] = struct{}{}
+		var value json.RawMessage
+		if tokenErr = d.Decode(&value); tokenErr != nil {
+			return 0, false, errors.Join(ErrPinOwnerCorrupt, tokenErr)
+		}
+		if key == "version" {
+			rawVersion = value
+			foundVersion = true
+		}
+	}
+	closeToken, err := d.Token()
+	if err != nil || closeToken != json.Delim('}') {
+		return 0, false, errors.Join(ErrPinOwnerCorrupt, err)
+	}
+	var trailing any
+	if err = d.Decode(&trailing); err != io.EOF {
+		return 0, false, errors.Join(ErrPinOwnerCorrupt, err)
+	}
+	if !foundVersion {
+		return 0, false, ErrPinOwnerCorrupt
+	}
+	var version uint64
+	if len(rawVersion) == 0 {
+		return 0, false, ErrPinOwnerCorrupt
+	}
+	for _, b := range rawVersion {
+		if b < '0' || b > '9' {
+			return 0, false, ErrPinOwnerCorrupt
+		}
+	}
+	if len(rawVersion) > 1 && rawVersion[0] == '0' {
+		return 0, false, ErrPinOwnerCorrupt
+	}
+	if err = json.Unmarshal(rawVersion, &version); err != nil || version == 0 {
+		return 0, false, ErrPinOwnerCorrupt
+	}
+	return version, true, nil
+}
+
 func pinOwnerDecodeRecord(raw []byte) (pinOwnerRecord, string, error) {
 	var r pinOwnerRecord
-	if err := pinOwnerStrictDecode(raw, &r); err != nil {
+	version, found, err := pinOwnerRecordVersionHint(raw)
+	if err != nil {
+		return r, "", err
+	}
+	if found && version != pinOwnerWireVersion {
+		return r, "", ErrPinOwnerUnavailable
+	}
+	if err = pinOwnerStrictDecode(raw, &r); err != nil {
 		return r, "", err
 	}
 	sum, e := pinOwnerChecksum(pinOwnerRecordPayloadOf(r))
-	if e != nil || sum != r.ChecksumSHA256 || r.Version != pinOwnerWireVersion {
+	if e != nil || sum != r.ChecksumSHA256 {
 		return r, "", ErrPinOwnerCorrupt
 	}
 	h := sha256.Sum256(raw)

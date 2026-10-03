@@ -1,6 +1,7 @@
 package recovery
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -390,6 +391,220 @@ func TestPinOwnerBoundedDirectoryScannerUsesFreshSortedDescriptions(t *testing.T
 	}
 }
 
+func TestPinOwnerFutureRecordVersionUnavailablePreservesBytes(t *testing.T) {
+	cases := []struct {
+		name       string
+		mutate     func([]byte) []byte
+		want       error
+		wantNotErr error
+	}{
+		{
+			name: "future-version-with-extension",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":2,"future_field":{"enabled":true},`), 1)
+			},
+			want:       ErrPinOwnerUnavailable,
+			wantNotErr: ErrPinOwnerCorrupt,
+		},
+		{
+			name: "duplicate-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":1,"version":2,`), 1)
+			},
+			want:       ErrPinOwnerCorrupt,
+			wantNotErr: ErrPinOwnerUnavailable,
+		},
+		{
+			name: "future-version-with-trailing-garbage",
+			mutate: func(raw []byte) []byte {
+				future := bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":2,"future_field":true,`), 1)
+				return append(future, 'x')
+			},
+			want:       ErrPinOwnerCorrupt,
+			wantNotErr: ErrPinOwnerUnavailable,
+		},
+		{
+			name: "zero-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":0,`), 1)
+			},
+			want: ErrPinOwnerCorrupt,
+		},
+		{
+			name: "null-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":null,`), 1)
+			},
+			want: ErrPinOwnerCorrupt,
+		},
+		{
+			name: "fractional-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":1.5,`), 1)
+			},
+			want: ErrPinOwnerCorrupt,
+		},
+		{
+			name: "negative-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":-1,`), 1)
+			},
+			want: ErrPinOwnerCorrupt,
+		},
+		{
+			name: "string-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":"2",`), 1)
+			},
+			want: ErrPinOwnerCorrupt,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := pinOwnerTestRoot(t)
+			owner, _, _, _, _ := pinOwnerTestPair(t, root)
+			reservation, err := owner.ReservePinPlan(context.Background(), "op-future-version")
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(owner.options.OwnerRoot, pinOwnerReservationsName, reservation.PlanRef(), pinOwnerRecordName(1))
+			original, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutated := tc.mutate(original)
+			if bytes.Equal(mutated, original) {
+				t.Fatal("test mutation did not change the fixture record")
+			}
+			if err = os.WriteFile(path, mutated, 0600); err != nil {
+				t.Fatal(err)
+			}
+			dir, err := os.Open(filepath.Dir(path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = errors.Join(dir.Sync(), dir.Close())
+			if err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = owner.ReservePinPlan(context.Background(), "op-future-version")
+			if !errors.Is(err, tc.want) || errors.Is(err, tc.wantNotErr) {
+				t.Fatalf("decode result = %v; want %v and not %v", err, tc.want, tc.wantNotErr)
+			}
+			reopened, reopenErr := OpenSnapshotPinOwner(context.Background(), owner.options, owner.expected)
+			if reopenErr != nil {
+				t.Fatalf("reopen owner: %v", reopenErr)
+			}
+			_, err = reopened.ReservePinPlan(context.Background(), "op-future-version")
+			if !errors.Is(err, tc.want) || errors.Is(err, tc.wantNotErr) {
+				t.Fatalf("reopened decode result = %v; want %v and not %v", err, tc.want, tc.wantNotErr)
+			}
+			after, readErr := os.ReadFile(path)
+			if readErr != nil || !bytes.Equal(after, before) {
+				t.Fatalf("unsupported/malformed record changed: readErr=%v", readErr)
+			}
+		})
+	}
+}
+
+func pinOwnerTestTrimHistory(t *testing.T, owner *SnapshotPinOwner, planRef string, keepVersion uint64, changedPendingDigest string) {
+	t.Helper()
+	planDir := filepath.Join(owner.options.OwnerRoot, pinOwnerReservationsName, planRef)
+	for version := uint64(3); version > keepVersion; version-- {
+		if err := os.Remove(filepath.Join(planDir, pinOwnerRecordName(version))); err != nil {
+			t.Fatalf("remove test history version %d: %v", version, err)
+		}
+	}
+	if changedPendingDigest != "" {
+		path := filepath.Join(planDir, pinOwnerRecordName(2))
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record, _, err := pinOwnerDecodeRecord(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		record.ManifestSHA256 = changedPendingDigest
+		updated, _, err := pinOwnerEncodeRecord(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(path, updated, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dir, err := os.Open(planDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = errors.Join(dir.Sync(), dir.Close()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestPinOwnerReconcileRejectsUnboundActivePinTuples(t *testing.T) {
+	cases := []struct {
+		name                string
+		keepVersion         uint64
+		changePendingDigest bool
+		wantState           PinOwnerState
+		wantRecordVersion   uint64
+	}{
+		{name: "reserved-has-no-bound-pin", keepVersion: 1, wantState: PinOwnerReserved, wantRecordVersion: 1},
+		{name: "pending-pin-id-not-yet-committed", keepVersion: 2, wantState: PinOwnerPinPending, wantRecordVersion: 2},
+		{name: "pending-manifest-does-not-match", keepVersion: 2, changePendingDigest: true, wantState: PinOwnerPinPending, wantRecordVersion: 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := pinOwnerTestRoot(t)
+			owner, leases, snapshot, digest, inspection := pinOwnerTestPair(t, root)
+			ctx := context.Background()
+			reservation, err := owner.ReservePinPlan(ctx, "op-reconcile-active-mismatch")
+			if err != nil {
+				t.Fatal(err)
+			}
+			lease, err := leases.Stage(ctx, snapshot, inspection)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stalePin, err := lease.Pin(ctx, reservation.PlanRef(), reservation.ReservationVersion(), digest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			changedDigest := ""
+			if tc.changePendingDigest {
+				changedDigest = strings.Repeat("d", 64)
+				if changedDigest == digest {
+					changedDigest = strings.Repeat("c", 64)
+				}
+			}
+			pinOwnerTestTrimHistory(t, owner, reservation.PlanRef(), tc.keepVersion, changedDigest)
+			headPath := filepath.Join(owner.options.OwnerRoot, pinOwnerReservationsName, reservation.PlanRef(), pinOwnerRecordName(tc.wantRecordVersion))
+			before, err := os.ReadFile(headPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			decision, err := owner.ReconcilePin(ctx, stalePin)
+			if !errors.Is(err, ErrPinOwnerConflict) || decision.Action != 0 {
+				t.Fatalf("ReconcilePin for %s = %+v, %v; want conflict without decision", tc.wantState, decision, err)
+			}
+			after, readErr := os.ReadFile(headPath)
+			if readErr != nil || !bytes.Equal(after, before) {
+				t.Fatalf("mismatched pin reconciliation mutated owner head: %v", readErr)
+			}
+			current, err := owner.ReservePinPlan(ctx, "op-reconcile-active-mismatch")
+			if err != nil || current.State() != tc.wantState || current.RecordVersion() != tc.wantRecordVersion {
+				t.Fatalf("owner changed after mismatch: %+v %v", current, err)
+			}
+		})
+	}
+}
+
 func TestPinOwnerCanonicalGoldenHistoryVectors(t *testing.T) {
 	const golden = `
 {"version":1,"store_id":"11111111111111111111111111111111","plan_ref":"2222222222222222222222222222222222222222222222222222222222222222","reservation_version":1,"record_version":1,"previous_sha256":"0000000000000000000000000000000000000000000000000000000000000000","operation_id":"op-001","event":"RESERVE","state":"RESERVED","attempt_high_water":0,"attempt_version":0,"lease_id":"","manifest_sha256":"","attempt_state":"","pin_id":"","release_disposition":"","release_record_version":0,"reason_code":"","checksum_sha256":"0d6c13a6cba21bfabe6f84f3ad0ca7060f3843f21e02e7cb44e72b574712d4fa"}
@@ -523,6 +738,15 @@ func TestPinOwnerChildCrashTarget(t *testing.T) {
 		if e = leases.CancelPin(ctx, attempt); e != nil {
 			t.Fatalf("child cancel: %v", e)
 		}
+	case "cancel-event":
+		digest := os.Getenv("SERENITY_PIN_OWNER_TEST_DIGEST")
+		attempt, e := owner.FindPinAttempt(ctx, reservation.PlanRef(), digest)
+		if e != nil {
+			t.Fatalf("child find pending attempt: %v", e)
+		}
+		if e = leases.CancelPin(ctx, attempt); e != nil {
+			t.Fatalf("child append cancellation: %v", e)
+		}
 	case "abandon":
 		_, e := owner.MarkAbandonedBeforeEffects(ctx, reservation, PinAbandonOperatorRequested)
 		if e != nil {
@@ -596,6 +820,7 @@ func TestPinOwnerLifecycleCrashPrefixesReplayExact(t *testing.T) {
 		{"after-event:PIN_BEGIN", "pin"},
 		{"after-event:PIN_COMMIT", "pin"},
 		{"after-proof-consume", "cancel-proof"},
+		{"after-event:PIN_CANCEL", "cancel-event"},
 		{"after-event:ABANDON", "abandon"},
 		{"after-event:RELEASE_BEGIN", "release-begin"},
 		{"after-event:RELEASE_COMPLETE", "complete-release"},
@@ -610,6 +835,17 @@ func TestPinOwnerLifecycleCrashPrefixesReplayExact(t *testing.T) {
 				t.Fatal(err)
 			}
 			var pin backup.SnapshotPinRef
+			var canceledAttempt backup.PinAttemptRef
+			if tc.action == "cancel-event" {
+				lease, e := leases.Stage(ctx, snapshot, inspection)
+				if e != nil {
+					t.Fatal(e)
+				}
+				canceledAttempt, e = owner.BeginPinAttempt(ctx, reservation.PlanRef(), reservation.ReservationVersion(), lease.LeaseID(), digest)
+				if e != nil {
+					t.Fatal(e)
+				}
+			}
 			if tc.action == "abandon" || tc.action == "release-begin" || tc.action == "complete-release" {
 				lease, e := leases.Stage(ctx, snapshot, inspection)
 				if e != nil {
@@ -667,6 +903,40 @@ func TestPinOwnerLifecycleCrashPrefixesReplayExact(t *testing.T) {
 				}
 				if _, e = reopened.FindPinAttempt(ctx, reservation.PlanRef(), digest); !errors.Is(e, ErrPinOwnerConflict) {
 					t.Fatalf("canceled tuple not tombstoned: %v", e)
+				}
+			case "cancel-event":
+				if e := reopenedLeases.CancelPin(ctx, canceledAttempt); e != nil {
+					t.Fatalf("retry durable canceled tuple: %v", e)
+				}
+				if _, e := reopened.FindPinAttempt(ctx, reservation.PlanRef(), digest); !errors.Is(e, ErrPinOwnerConflict) {
+					t.Fatalf("canceled tuple not tombstoned: %v", e)
+				}
+				beforeNPlusOne, e := reopened.ReservePinPlan(ctx, "op-child-crash")
+				if e != nil || beforeNPlusOne.State() != PinOwnerReserved || beforeNPlusOne.RecordVersion() != 3 {
+					t.Fatalf("canceled attempt replay = %+v %v", beforeNPlusOne, e)
+				}
+				nextLease, e := reopenedLeases.Stage(ctx, snapshot, inspection)
+				if e != nil {
+					t.Fatal(e)
+				}
+				nextPin, e := nextLease.Pin(ctx, beforeNPlusOne.PlanRef(), beforeNPlusOne.ReservationVersion(), digest)
+				if e != nil {
+					t.Fatalf("fresh N+1 pin: %v", e)
+				}
+				nextAttempt, e := reopened.FindPinAttempt(ctx, reservation.PlanRef(), digest)
+				if e != nil || nextAttempt.AttemptVersion != 2 || nextAttempt.LeaseID == canceledAttempt.LeaseID || nextPin.ID() == "" {
+					t.Fatalf("N+1 attempt = %+v, pin=%q, err=%v", nextAttempt, nextPin.ID(), e)
+				}
+				if e = reopenedLeases.CancelPin(ctx, canceledAttempt); e != nil {
+					t.Fatalf("delayed Cancel(N) after N+1: %v", e)
+				}
+				stillNPlusOne, e := reopened.FindPinAttempt(ctx, reservation.PlanRef(), digest)
+				if e != nil || stillNPlusOne != nextAttempt {
+					t.Fatalf("delayed Cancel(N) altered N+1: got %+v want %+v err=%v", stillNPlusOne, nextAttempt, e)
+				}
+				finalReservation, e := reopened.ReservePinPlan(ctx, "op-child-crash")
+				if e != nil || finalReservation.RecordVersion() != 5 || finalReservation.State() != PinOwnerPinned {
+					t.Fatalf("N+1 history changed after delayed retry: %+v %v", finalReservation, e)
 				}
 			case "abandon":
 				got, e := reopened.ReservePinPlan(ctx, "op-child-crash")
