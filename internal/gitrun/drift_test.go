@@ -71,9 +71,8 @@ func driftScan(moduleRoot string) ([]string, int, error) {
 				imports[name] = true
 			}
 		}
-		// Build a per-function lexical shadow set for parameters, receiver names,
-		// and declarations. This keeps a local exec/Command value from being
-		// confused with an imported package/function in common wrapper patterns.
+		// Resolve each candidate from the identifier at that callsite rather
+		// than collecting same-name declarations across a function or file.
 		ast.Inspect(file, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
@@ -81,10 +80,14 @@ func driftScan(moduleRoot string) ([]string, int, error) {
 			}
 			api := ""
 			if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
-				if pkg, ok := sel.X.(*ast.Ident); ok && imports[pkg.Name] && !lexicallyShadowed(file, call.Pos(), pkg.Name) && (sel.Sel.Name == "Command" || sel.Sel.Name == "CommandContext") {
+				// With parser object resolution enabled (the default), tests
+				// confirm imported package uses remain unresolved and local
+				// variable/parameter receivers link to their declaration. This
+				// evaluates the binding at this exact call.
+				if pkg, ok := sel.X.(*ast.Ident); ok && imports[pkg.Name] && pkg.Obj == nil && (sel.Sel.Name == "Command" || sel.Sel.Name == "CommandContext") {
 					api = sel.Sel.Name
 				}
-			} else if id, ok := call.Fun.(*ast.Ident); ok && dotImport && !lexicallyShadowed(file, call.Pos(), id.Name) && (id.Name == "Command" || id.Name == "CommandContext") {
+			} else if id, ok := call.Fun.(*ast.Ident); ok && dotImport && id.Obj == nil && (id.Name == "Command" || id.Name == "CommandContext") {
 				api = id.Name
 			}
 			if api == "" {
@@ -110,58 +113,6 @@ func driftScan(moduleRoot string) ([]string, int, error) {
 	}
 	sort.Strings(findings)
 	return findings, parsed, nil
-}
-
-func lexicallyShadowed(file *ast.File, pos token.Pos, name string) bool {
-	shadowed := false
-	ast.Inspect(file, func(n ast.Node) bool {
-		fn, ok := n.(*ast.FuncDecl)
-		if !ok || fn.Body == nil || pos < fn.Body.Pos() || pos > fn.Body.End() {
-			return true
-		}
-		local := map[string]bool{}
-		addFields := func(fields *ast.FieldList) {
-			if fields == nil {
-				return
-			}
-			for _, field := range fields.List {
-				for _, id := range field.Names {
-					local[id.Name] = true
-				}
-			}
-		}
-		addFields(fn.Type.Params)
-		addFields(fn.Recv)
-		ast.Inspect(fn.Body, func(child ast.Node) bool {
-			switch decl := child.(type) {
-			case *ast.ValueSpec:
-				for _, id := range decl.Names {
-					local[id.Name] = true
-				}
-			case *ast.AssignStmt:
-				if decl.Tok == token.DEFINE {
-					for _, lhs := range decl.Lhs {
-						if id, ok := lhs.(*ast.Ident); ok {
-							local[id.Name] = true
-						}
-					}
-				}
-			case *ast.RangeStmt:
-				if decl.Tok == token.DEFINE {
-					if id, ok := decl.Key.(*ast.Ident); ok {
-						local[id.Name] = true
-					}
-					if id, ok := decl.Value.(*ast.Ident); ok {
-						local[id.Name] = true
-					}
-				}
-			}
-			return true
-		})
-		shadowed = local[name]
-		return false
-	})
-	return shadowed
 }
 
 func strconvUnquote(s string) (string, error) {
@@ -242,6 +193,53 @@ func TestDriftScanHonorsLexicalShadowsAndRefusesErrors(t *testing.T) {
 	}
 	if _, _, err := driftScan(filepath.Join(root, "missing")); err == nil || !strings.Contains(err.Error(), "walk module") {
 		t.Fatalf("walk error = %v, want refusal", err)
+	}
+}
+
+func TestDriftScanShadowsOnlyAtCallsite(t *testing.T) {
+	root := t.TempDir()
+	writeGo(t, root, "pkg/callsite.go", `package pkg
+import ex "os/exec"
+import . "os/exec"
+type localExec struct{}
+func laterAlias() {
+	ex.Command("git")
+	ex := localExec{}
+	_ = ex
+}
+func innerAlias() {
+	{
+		ex := localExec{}
+		ex.Command("git-wrapper")
+	}
+	ex.Command("git")
+}
+func otherAlias() {
+	ex.Command("git")
+}
+func laterDot() {
+	Command("git")
+	Command := func(string) {}
+	_ = Command
+}
+func innerDot() {
+	{
+		Command := func(string) {}
+		Command("git-wrapper")
+	}
+	Command("git")
+}
+func otherDot() {
+	Command("git")
+}
+`)
+	findings, _, err := driftScan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"pkg/callsite.go:15", "pkg/callsite.go:18", "pkg/callsite.go:21", "pkg/callsite.go:30", "pkg/callsite.go:33", "pkg/callsite.go:6"}
+	if strings.Join(findings, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("findings = %q, want %q", findings, want)
 	}
 }
 

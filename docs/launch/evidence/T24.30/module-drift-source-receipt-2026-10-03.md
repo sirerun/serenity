@@ -24,3 +24,11 @@ Before cleanup, an owned untracked fixture was created at `evals/.t24-30-drift-r
 - All Go commands used the assigned external-SSD cache/temp paths and were run with fresh one-minute load below 10. Checks were scoped to the single package; no full-module race or multi-package gate was run.
 
 The root `ajent.social` feed file and coordinator board were read at task start; Ajent MCP tooling was unavailable in this environment. This receipt reports source-level local checks only. It does not claim registry acceptance, hosted/provider/live qualification, deployment, or full T24.30 acceptance. Independent exact-head review and coordinator full scoped gate remain outstanding.
+
+## Callsite binding correction (supplements commit 04cf9ff)
+
+A follow-up regression found that the initial 351-file GREEN did not cover a lexical false negative. The committed `04cf9ff` scanner aggregated same-name declarations over a function body; that hid imported calls before a later declaration and after a nested block ended. The source was otherwise unchanged when `TestDriftScanShadowsOnlyAtCallsite` was added. Against that scanner, the test failed: only `pkg/callsite.go:18` and `:33` were found, while imported Git calls at lines 6, 15, 21 and 30 were missed. These fixtures exercise both aliased package calls and dot-import calls; the other-function calls at lines 18 and 33 are positive controls.
+
+The correction uses the parser's callsite `ast.Ident.Obj` binding: default and aliased import package uses and unresolved dot-import names have no local object, while a local parameter or declaration links to its object. Regression fixtures verify this behavior for later declarations, nested block shadows, and separate functions. Calls are now classified at the expression itself, without a function- or file-wide name set. The targeted `go test -v -count=1 -run '^TestDriftScan' ./internal/gitrun` passes after correction.
+
+The original whole-module GREEN and its 351-file count are preserved as historical evidence only; they do not establish that the original scanner caught these lexical cases. Final whole-module/package verification is repeated with the correction before this supplemental commit. The original mutation evidence, exact cleanup, and PR348 assignment baseline above remain unchanged.
