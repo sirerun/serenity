@@ -1,0 +1,12 @@
+# Independent review: snapshot-pin absence amendment
+
+**Reviewed exact HEAD:** `089f883142cafd88d724e033e1d06e08d53ddd1f`  
+**Verdict:** CLEAR for the narrow backup producer API amendment; this does not CLEAR or imply implementation of the recovery factory or full plan store.
+
+The detached review clone is clean at the requested exact head. The commit adds only `docs/plans/snapshot-pin-absence-source-amendment-2026-10-03.md` over `66ac`; `git diff --check` passes and a privacy scan found no private machine paths or credential-like strings. No source edits, builds, claims, pushes, or merges were made.
+
+The producer-side API is concrete and mutually exclusive with the old shape: preflight returns opaque `SnapshotStoreIdentity`; the only store constructor requires that token as its fourth argument; the constructor reopens and validates the same root and stable lock; cancellation callback accepts the opaque absence proof; there is no optional three-argument fallback. The identity denotes actual device/inode pairs and configured root, is checked on lock acquisition, and is explicitly distinct from recovery-owner UUID and approval authority. The bootstrap sequence correctly places the recovery owner’s durable binding between preflight and backup-store construction, while expressly leaving that owner/factory implementation separate.
+
+Cancellation proof conditions bind exact plan/reservation/lease/digest/attempt version, verified backup store/lock identity, and the locked filesystem objects to one live synchronous callback. The exact STAGED/no-pin check fails closed on uncertain or changed state; the owner consumes proof under its CAS lock before tombstoning; one shared atomic state prevents alias reuse and expires on callback exit. The design specifies error/cancellation/panic cleanup, fresh proof on lost tombstone response, permanent canceled-tuple tombstones, and explicit fresh-stage/new-lease N+1. It states that this proof cannot cancel once backup has durably entered PIN_PENDING/PINNED and makes no overclaim against `unsafe` or memory compromise.
+
+The narrow producer API amendment is therefore sufficiently specified to freeze the backup-owned source slice after the separately required source-owner authorization. Recovery factory construction, owner implementation, full plan-store contract, production trust roots, provider/deployment, and acceptance remain open and outside this verdict.
