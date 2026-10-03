@@ -22,4 +22,4 @@ Restored file SHA-256s:
 - `internal/hosted/deletion/journal_observation.go`: `42abd0a58022d494dc59a77d27594fb8fd9a85c3ad787e4f39d5afb965d86e8f`
 - `internal/hosted/deletion/journal_observation_reserved.go`: `abd6b3395a659eec183107aa92eab19328cfae060f0f93652d96eac09a0778bc`
 
-No source change, push, PR edit, merge, or claim release was made by this review.
+No source change, push, PR edit, merge, or source-claim release was made by this review. Build leases were exactly released as described above.
