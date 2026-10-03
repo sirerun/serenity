@@ -6,7 +6,7 @@ Status: producer API frozen and complete source implementation in progress; reco
 
 Coordinator retains the backup lease claim. One isolated backup worker owns shared verifier extraction in `internal/hosted/backup/snapshot_inspect.go`, private restore-core extraction in `internal/hosted/backup/backup.go`, new `snapshot_lease*.go` implementation, platform helpers and tests, and one implementation receipt. No shared contracts, billing/service/CLI source, schema, module, registry, installed script or provider changes belong to this wave. Full recovered startup, genesis and ordinary restart remain separate deliverables.
 
-### E-VSL — Source delivery
+## E23: VSL source delivery
 
 #### Wave 1
 

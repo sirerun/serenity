@@ -2,7 +2,7 @@
 
 Status: corrected source seam independently CLEAR and coordinator frozen; isolated source assignment follows. Canonical coordinator resource claim `R-journal-read-observation` is `16733a33dd6a19a1278f2a87972e4ea151d9c110`, under retained logical task48. Prior global task41/packet and all other agent work are preserved.
 
-### E-JRO — Source delivery
+## E23: JRO source delivery
 
 #### Wave 1
 
