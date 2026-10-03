@@ -161,9 +161,7 @@ class TransportTests(unittest.TestCase):
 
     def _factory_with(self, **overrides):
         def factory(argv, **kwargs):
-            kwargs["env"] = dict(
-                kwargs["env"], **overrides, FAKE_AWS_LOG=str(self.log)
-            )
+            kwargs["env"] = dict(kwargs["env"], **overrides, FAKE_AWS_LOG=str(self.log))
             return self._real_popen(argv, **kwargs)
 
         return factory
@@ -674,7 +672,9 @@ class TransportTests(unittest.TestCase):
                     chunk_bytes=1024,
                 )
             calls = [json.loads(line) for line in self.log.read_text().splitlines()]
-            self.assertFalse(any(call.get("service") == "head-object" for call in calls))
+            self.assertFalse(
+                any(call.get("service") == "head-object" for call in calls)
+            )
 
     def test_multipart_part_spools_are_gone_before_complete_and_full_spool_before_return(
         self,
