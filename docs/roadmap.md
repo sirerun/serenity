@@ -469,3 +469,5 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 - T-RCP.1–6: verified artifact/contract identity component landed PR354 after corrected full qualification and independent review. Full task50 remains open.
 - Backup producer cancellation amendment backup-pin-absence-v1 independently CLEAR and frozen; complete producer source `f4de27e` passes full local qualification and independent source review after resolving retained expanded verification directories. Final integrated documentation review and normal merge remain pending. Whole recovery plan-store contract remains HOLD for exact wire schema, pinned abandonment and owner verifier dependencies.
+
+- T-VSL.1–6: complete backup-owned verified snapshot producer landed PR355 at c2d5a543 with exact reviewed tree and narrow source claim released; production lifecycle owner/READY/provider/runtime/quota acceptance remains open.
