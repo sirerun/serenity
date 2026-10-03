@@ -495,6 +495,9 @@ func TestPinOwnerFutureRecordVersionUnavailablePreservesBytes(t *testing.T) {
 			if !errors.Is(err, tc.want) || errors.Is(err, tc.wantNotErr) {
 				t.Fatalf("decode result = %v; want %v and not %v", err, tc.want, tc.wantNotErr)
 			}
+			if _, listErr := owner.ListPinAttempts(context.Background()); !errors.Is(listErr, tc.want) || errors.Is(listErr, tc.wantNotErr) {
+				t.Fatalf("ListPinAttempts decode result = %v; want %v and not %v", listErr, tc.want, tc.wantNotErr)
+			}
 			_, reopenErr := OpenSnapshotPinOwner(context.Background(), owner.options, owner.expected)
 			if !errors.Is(reopenErr, tc.want) || errors.Is(reopenErr, tc.wantNotErr) {
 				t.Fatalf("reopen decode result = %v; want %v and not %v", reopenErr, tc.want, tc.wantNotErr)
