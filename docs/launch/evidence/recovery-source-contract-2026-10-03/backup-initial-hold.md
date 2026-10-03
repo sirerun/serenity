@@ -27,7 +27,7 @@ The contract rejects “oversized identifiers/references” but gives no byte ce
 
 ## Review setup
 
-- SSD `/Volumes/BuildOffload`: writable, 760 GiB available before clone creation.
+- External SSD: writable, 760 GiB available before clone creation.
 - Reviewer clone: `[isolated external evidence]`, detached at exact reviewed head; clean at review start.
 - Review evidence is limited to this directory. No tests/builds were run, consistent with the assignment.
 
