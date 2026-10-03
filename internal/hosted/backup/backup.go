@@ -32,6 +32,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/gitrun"
 	"github.com/sirerun/serenity/internal/hosted/contracts"
+	"github.com/sirerun/serenity/internal/hosted/privatefs"
 	"github.com/sirerun/serenity/internal/hosted/store"
 	"github.com/sirerun/serenity/internal/hosted/testhooks"
 )
@@ -630,6 +631,12 @@ func resolveBuildSHA(explicit string) (string, error) {
 // failure at any point leaves no destination at all, never a partially
 // restored one that could be mistaken for usable.
 func Restore(ctx context.Context, snapshot, destination string) (err error) {
+	return restoreCore(ctx, snapshot, destination, "")
+}
+
+// restoreCore shares the public restore validation and freeze behavior while
+// letting the lease-backed path keep verification scratch in its owned root.
+func restoreCore(ctx context.Context, snapshot, destination, scratchRoot string) (err error) {
 	if isNilInterface(ctx) {
 		return ErrNilContext
 	}
@@ -646,7 +653,7 @@ func Restore(ctx context.Context, snapshot, destination string) (err error) {
 	if err != nil {
 		return fmt.Errorf("hosted/backup: open snapshot: %w", err)
 	}
-	defer func() { _ = root.Close() }()
+	defer func() { err = errors.Join(err, root.Close()) }()
 
 	manifest, err := readManifest(ctx, root)
 	if err != nil {
@@ -663,18 +670,50 @@ func Restore(ctx context.Context, snapshot, destination string) (err error) {
 	published := false
 	defer func() {
 		if !published {
-			_ = os.RemoveAll(staging)
+			err = errors.Join(err, os.RemoveAll(staging))
 		}
 	}()
 	// scratch holds verified-copy working files that never get published:
 	// every artifact is copied out of the untrusted snapshot exactly once,
 	// hashed while copying, and only ever read again from here afterward --
 	// never re-read from the original snapshot path after verification.
-	scratch, err := os.MkdirTemp("", "serenity-restore-verify-*")
-	if err != nil {
-		return fmt.Errorf("hosted/backup: create verification scratch directory: %w", err)
+	var scratch string
+	var scratchCleanup func() error
+	if scratchRoot == "" {
+		scratch, err = os.MkdirTemp("", "serenity-restore-verify-*")
+		if err != nil {
+			return fmt.Errorf("hosted/backup: create verification scratch directory: %w", err)
+		}
+		scratchCleanup = func() error { return os.RemoveAll(scratch) }
+	} else {
+		if err = privatefs.ValidateDirectory(ctx, scratchRoot); err != nil {
+			return fmt.Errorf("hosted/backup: validate restore scratch root: %w", err)
+		}
+		parent, openErr := os.OpenRoot(scratchRoot)
+		if openErr != nil {
+			return fmt.Errorf("hosted/backup: open restore scratch root: %w", openErr)
+		}
+		name, createErr := createInspectionScratch(parent)
+		var created os.FileInfo
+		if createErr == nil {
+			created, createErr = parent.Stat(name)
+		}
+		closeErr := parent.Close()
+		if createErr != nil || closeErr != nil {
+			if createErr == nil {
+				createErr = closeErr
+			} else {
+				createErr = errors.Join(createErr, closeErr)
+			}
+			if created != nil {
+				createErr = errors.Join(createErr, removeRetainedScratch(scratchRoot, name, created))
+			}
+			return fmt.Errorf("hosted/backup: create verification scratch directory: %w", createErr)
+		}
+		scratch = filepath.Join(scratchRoot, name)
+		scratchCleanup = func() error { return removeRetainedScratch(scratchRoot, name, created) }
 	}
-	defer func() { _ = os.RemoveAll(scratch) }()
+	defer func() { err = errors.Join(err, scratchCleanup()) }()
 
 	controlPath := filepath.Join(staging, controlDBName)
 	if _, err = verifyAndCopyContext(ctx, root, manifest.ControlDB, controlPath); err != nil {

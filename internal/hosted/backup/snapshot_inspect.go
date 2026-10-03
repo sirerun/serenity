@@ -28,6 +28,7 @@ type InspectionOptions struct {
 	MaxDeclaredBytes       int64
 	MaxAccounts            int
 	MaxBrains              int
+	maxMetadataBytes       int64
 }
 
 type SnapshotAccount struct {
@@ -45,140 +46,167 @@ type SnapshotInspection struct {
 	DeclaredArtifactBytes int64
 }
 
+type verifiedArtifacts struct {
+	inspection  SnapshotInspection
+	manifest    contracts.ManifestV2
+	manifestRaw []byte
+	scratch     string
+	scratchName string
+	scratchInfo os.FileInfo
+}
+
 // InspectSnapshot verifies a private snapshot without migrating or publishing
 // any of its contents. It does not authenticate who created the snapshot or
 // say whether any account is eligible for recovery.
-func InspectSnapshot(ctx context.Context, snapshot string, options InspectionOptions) (inspection SnapshotInspection, err error) {
+func InspectSnapshot(ctx context.Context, snapshot string, options InspectionOptions) (SnapshotInspection, error) {
+	verified, err := inspectVerified(ctx, snapshot, options, false)
+	return verified.inspection, err
+}
+
+func inspectVerified(ctx context.Context, snapshot string, options InspectionOptions, retain bool) (verified verifiedArtifacts, err error) {
 	if isNilInterface(ctx) {
-		return SnapshotInspection{}, ErrNilContext
+		return verifiedArtifacts{}, ErrNilContext
 	}
 	if err = validateInspectionOptions(options); err != nil {
-		return SnapshotInspection{}, err
+		return verifiedArtifacts{}, err
 	}
 	if err = privatefs.ValidateDirectory(ctx, snapshot); err != nil {
-		return SnapshotInspection{}, fmt.Errorf("hosted/backup: validate snapshot directory: %w", err)
+		return verifiedArtifacts{}, fmt.Errorf("hosted/backup: validate snapshot directory: %w", err)
 	}
 	if err = privatefs.ValidateDirectory(ctx, options.ScratchRoot); err != nil {
-		return SnapshotInspection{}, fmt.Errorf("hosted/backup: validate inspection scratch root: %w", err)
+		return verifiedArtifacts{}, fmt.Errorf("hosted/backup: validate inspection scratch root: %w", err)
 	}
 	if err = ctx.Err(); err != nil {
-		return SnapshotInspection{}, err
+		return verifiedArtifacts{}, err
 	}
 	root, err := os.OpenRoot(snapshot)
 	if err != nil {
-		return SnapshotInspection{}, fmt.Errorf("hosted/backup: open snapshot root: %w", err)
+		return verifiedArtifacts{}, fmt.Errorf("hosted/backup: open snapshot root: %w", err)
 	}
 	defer func() {
 		if closeErr := root.Close(); closeErr != nil {
 			err = errors.Join(err, fmt.Errorf("hosted/backup: close snapshot root: %w", closeErr))
 		}
 		if err != nil {
-			inspection = SnapshotInspection{}
+			verified = verifiedArtifacts{}
 		}
 	}()
 
 	manifestBytes, err := readManifestBytes(ctx, root)
 	if err != nil {
-		return SnapshotInspection{}, err
+		return verifiedArtifacts{}, err
 	}
 	manifestDigest := sha256.Sum256(manifestBytes)
 	manifestSHA := hex.EncodeToString(manifestDigest[:])
 	if manifestSHA != options.ExpectedManifestSHA256 {
-		return SnapshotInspection{}, errors.New("hosted/backup: manifest does not match the approved digest")
+		return verifiedArtifacts{}, errors.New("hosted/backup: manifest does not match the approved digest")
 	}
 	if err = ctx.Err(); err != nil {
-		return SnapshotInspection{}, err
+		return verifiedArtifacts{}, err
 	}
 	manifest, err := parseManifest(manifestBytes)
 	if err != nil {
-		return SnapshotInspection{}, fmt.Errorf("hosted/backup: parse manifest: %w", err)
+		return verifiedArtifacts{}, fmt.Errorf("hosted/backup: parse manifest: %w", err)
+	}
+	if options.maxMetadataBytes > 0 && int64(len(manifestBytes)) >= options.maxMetadataBytes {
+		return verifiedArtifacts{}, ErrSnapshotLeaseLimit
 	}
 	if len(manifest.Brains) > options.MaxBrains {
-		return SnapshotInspection{}, errors.New("hosted/backup: brain inventory exceeds inspection limit")
+		return verifiedArtifacts{}, errors.New("hosted/backup: brain inventory exceeds inspection limit")
 	}
 	declared, artifactCount, err := declaredArtifactSize(manifest, options.MaxDeclaredBytes)
 	if err != nil {
-		return SnapshotInspection{}, err
+		return verifiedArtifacts{}, err
 	}
 
 	scratchParent, err := os.OpenRoot(options.ScratchRoot)
 	if err != nil {
-		return SnapshotInspection{}, fmt.Errorf("hosted/backup: open inspection scratch root: %w", err)
+		return verifiedArtifacts{}, fmt.Errorf("hosted/backup: open inspection scratch root: %w", err)
 	}
 	scratchName, err := createInspectionScratch(scratchParent)
 	if err != nil {
-		_ = scratchParent.Close()
-		return SnapshotInspection{}, fmt.Errorf("hosted/backup: create inspection scratch: %w", err)
+		return verifiedArtifacts{}, errors.Join(fmt.Errorf("hosted/backup: create inspection scratch: %w", err), scratchParent.Close())
 	}
 	scratch := filepath.Join(options.ScratchRoot, scratchName)
 	scratchIdentity, err := scratchParent.Stat(scratchName)
 	if err != nil {
-		_ = scratchParent.Close()
-		return SnapshotInspection{}, fmt.Errorf("hosted/backup: stat inspection scratch: %w", err)
+		return verifiedArtifacts{}, errors.Join(fmt.Errorf("hosted/backup: stat inspection scratch: %w", err), scratchParent.Close())
 	}
 	defer func() {
-		if cleanupErr := removeInspectionScratch(scratchParent, scratchName, scratchIdentity); cleanupErr != nil {
-			err = errors.Join(err, fmt.Errorf("hosted/backup: remove inspection scratch: %w", cleanupErr))
+		if !retain || err != nil {
+			if cleanupErr := removeInspectionScratch(scratchParent, scratchName, scratchIdentity); cleanupErr != nil {
+				err = errors.Join(err, fmt.Errorf("hosted/backup: remove inspection scratch: %w", cleanupErr))
+			}
 		}
 		if closeErr := scratchParent.Close(); closeErr != nil {
 			err = errors.Join(err, fmt.Errorf("hosted/backup: close inspection scratch root: %w", closeErr))
+			if retain {
+				err = errors.Join(err, removeRetainedScratch(options.ScratchRoot, scratchName, scratchIdentity))
+			}
 		}
 		if err != nil {
-			inspection = SnapshotInspection{}
+			verified = verifiedArtifacts{}
 		}
 	}()
 	if err = privatefs.ValidateDirectory(ctx, scratch); err != nil {
-		return SnapshotInspection{}, fmt.Errorf("hosted/backup: validate private inspection scratch: %w", err)
+		return verifiedArtifacts{}, fmt.Errorf("hosted/backup: validate private inspection scratch: %w", err)
 	}
 
 	controlPath := filepath.Join(scratch, controlDBName)
 	if _, err = verifyAndCopyContext(ctx, root, manifest.ControlDB, controlPath); err != nil {
-		return SnapshotInspection{}, fmt.Errorf("hosted/backup: control database: %w", err)
+		return verifiedArtifacts{}, fmt.Errorf("hosted/backup: control database: %w", err)
 	}
 	db, err := openSnapshotControlDB(ctx, controlPath, manifest.Source.SchemaVersion)
 	if err != nil {
-		return SnapshotInspection{}, err
+		return verifiedArtifacts{}, err
 	}
 	defer func() {
 		if closeErr := db.Close(); closeErr != nil {
 			err = errors.Join(err, fmt.Errorf("hosted/backup: close read-only snapshot database: %w", closeErr))
 		}
 		if err != nil {
-			inspection = SnapshotInspection{}
+			verified = verifiedArtifacts{}
 		}
 	}()
 	if err = verifyBrainInventory(ctx, db, manifest.Brains, options.MaxBrains); err != nil {
-		return SnapshotInspection{}, err
+		return verifiedArtifacts{}, err
 	}
 	accounts, err := readSnapshotAccounts(ctx, db, options.MaxAccounts)
 	if err != nil {
-		return SnapshotInspection{}, err
+		return verifiedArtifacts{}, err
 	}
 	for _, brain := range manifest.Brains {
 		if err = ctx.Err(); err != nil {
-			return SnapshotInspection{}, err
+			return verifiedArtifacts{}, err
 		}
 		bundlePath := filepath.Join(scratch, brain.ID+".bundle")
 		if _, err = verifyAndCopyContext(ctx, root, brain.ArtifactRef, bundlePath); err != nil {
-			return SnapshotInspection{}, fmt.Errorf("hosted/backup: brain %s bundle: %w", brain.ID, err)
+			return verifiedArtifacts{}, fmt.Errorf("hosted/backup: brain %s bundle: %w", brain.ID, err)
 		}
 		if err = verifyStagedBrain(ctx, scratch, brain); err != nil {
-			return SnapshotInspection{}, fmt.Errorf("hosted/backup: brain %s: %w", brain.ID, err)
+			return verifiedArtifacts{}, fmt.Errorf("hosted/backup: brain %s: %w", brain.ID, err)
 		}
 	}
 	if err = ctx.Err(); err != nil {
-		return SnapshotInspection{}, err
+		return verifiedArtifacts{}, err
 	}
-	inspection = SnapshotInspection{
-		ManifestSHA256:        manifestSHA,
-		Source:                manifest.Source,
-		JournalWatermark:      manifest.JournalWatermark,
-		Accounts:              accounts,
-		Brains:                cloneBrainArtifacts(manifest.Brains),
-		VerifiedArtifactCount: artifactCount,
-		DeclaredArtifactBytes: declared,
+	verified = verifiedArtifacts{
+		inspection: SnapshotInspection{
+			ManifestSHA256:        manifestSHA,
+			Source:                manifest.Source,
+			JournalWatermark:      manifest.JournalWatermark,
+			Accounts:              accounts,
+			Brains:                cloneBrainArtifacts(manifest.Brains),
+			VerifiedArtifactCount: artifactCount,
+			DeclaredArtifactBytes: declared,
+		},
+		manifest:    manifest,
+		manifestRaw: slices.Clone(manifestBytes),
+		scratch:     scratch,
+		scratchName: scratchName,
+		scratchInfo: scratchIdentity,
 	}
-	return inspection, nil
+	return verified, nil
 }
 
 func createInspectionScratch(parent *os.Root) (string, error) {
