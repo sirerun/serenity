@@ -6,7 +6,7 @@ Full Go race:84 passing packages and2980 passing tests/subtests; four no-test pa
 
 All three ignored generating commands were separately compiled/tested by author and reviewer, with four genuine baseline-caller mutation REDs total; root explicit-file vet for each passed. Their main functions were not invoked and no generated report/trend/fixture was regenerated. The ordinary full suite excludes those ignored files, so its count does not imply otherwise.
 
-Existing skipped tests: importbudget10K, gbrainprotocolconformance, deliberately broken build helper, liveS3 qualification, importcrash helper, and two unconfigured classifier-router cases. No new source skip introduced.
+Existing skipped tests: importbudget10K, gbrainprotocolconformance, deliberately broken build helper, liveS3 qualification, importcrash helper, and two existing CheckPlanDrift cases (empty input and no configured classifier router). No new source skip introduced.
 
 - `eval-git-confined-full-race.jsonl` SHA256 `06cee54be8f20dac8ec1ef31b6454d0ff742e898ab29ab24eb1dc65f9557137c`
 - `eval-git-confined-full-vet.log` SHA256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
