@@ -541,6 +541,14 @@ func TestPinOwnerFutureRecordVersionUnavailablePreservesBytes(t *testing.T) {
 			if bytes.Equal(mutated, original) {
 				t.Fatal("test mutation did not change the fixture record")
 			}
+			if tc.name == "oversized-record" {
+				beforeDecode := append([]byte(nil), mutated...)
+				_, _, decodeErr := pinOwnerDecodeRecord(mutated)
+				if !errors.Is(decodeErr, tc.want) || !bytes.Equal(mutated, beforeDecode) {
+					t.Fatalf("oversized direct decode = %v; want %v and unchanged bytes", decodeErr, tc.want)
+				}
+				return
+			}
 			if err = os.WriteFile(path, mutated, 0600); err != nil {
 				t.Fatal(err)
 			}
