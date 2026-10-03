@@ -10,6 +10,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-10-03 [PR348](https://github.com/sirerun/serenity/pull/348) merged at2fee7e6: all four eval Git callers use the read-only runner; connector Poll pins its repository root and confines actual file reads. Dedicated independent reviews CLEAR with genuine hostile-environment, leaf/root replacement and skip controls. Full local race84 packages/2980 tests, vet/lint/LinuxARM64 build passed; landed treef011c37a exactly matches reviewed candidate. Seven existing skips disclosed; Actions billing remains locked. Whole-module drift enforcement and hosted/live security acceptance remain open.
+
 - 2026-10-01 [PR342](https://github.com/sirerun/serenity/pull/342) merged at cc442397: read-only snapshot inspection binds approved manifest bytes and verifies database/Git artifacts in private scratch; additive billing observation types remain unimplemented. Independent portability review and full local race84 packages/2907 tests, vet/lint/Linux ARM64 compilation passed; zero inspector skips. Reviewed/merged tree83d18169 matches. Physical quotas, current provider truth, planner/apply and activation remain open.
 - 2026-10-01 [PR343](https://github.com/sirerun/serenity/pull/343) merged at c3d491b: unwired bounded AWS CLI retention adapter with controlled environment, strict response validation and unreaped-child process cleanup. Independent26 adapter20 completion22 planner tests, coordinator68 hosted22 planner tests and Ruff passed; both pre-exit EPERM regressions reproduced RED. Reviewed/merged tree02746fe9 matches. Linux runtime, trusted installed CLI/exclusive reaper, IAM, timer and live retention qualification remain open.
 
