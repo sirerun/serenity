@@ -588,6 +588,114 @@ func TestPinOwnerFutureRecordVersionUnavailablePreservesBytes(t *testing.T) {
 	}
 }
 
+func TestPinOwnerFutureSuperblockUnavailablePreservesBytes(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func([]byte) []byte
+		want   error
+	}{
+		{
+			name: "future-version-extension",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":2,"future_field":{"ready":true},`), 1)
+			},
+			want: ErrPinOwnerUnavailable,
+		},
+		{
+			name: "max-uint64-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":18446744073709551615,`), 1)
+			},
+			want: ErrPinOwnerUnavailable,
+		},
+		{
+			name: "version-overflow",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":18446744073709551616,`), 1)
+			},
+			want: ErrPinOwnerCorrupt,
+		},
+		{
+			name: "duplicate-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":1,"version":2,`), 1)
+			},
+			want: ErrPinOwnerCorrupt,
+		},
+		{
+			name: "malformed-null-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":null,`), 1)
+			},
+			want: ErrPinOwnerCorrupt,
+		},
+		{
+			name: "missing-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), nil, 1)
+			},
+			want: ErrPinOwnerCorrupt,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := pinOwnerTestRoot(t)
+			owner, _, _, _, _ := pinOwnerTestPair(t, root)
+			path := filepath.Join(owner.options.OwnerRoot, pinOwnerSuperName)
+			original, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutated := tc.mutate(original)
+			if bytes.Equal(original, mutated) {
+				t.Fatal("superblock test mutation did not change bytes")
+			}
+			if err = os.WriteFile(path, mutated, 0600); err != nil {
+				t.Fatal(err)
+			}
+			dir, err := os.Open(owner.options.OwnerRoot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = errors.Join(dir.Sync(), dir.Close()); err != nil {
+				t.Fatal(err)
+			}
+			beforeInfo, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rootEntries := pinOwnerTestRootNames(t, owner.options.OwnerRoot)
+			_, openErr := OpenSnapshotPinOwner(context.Background(), owner.options, owner.expected)
+			if !errors.Is(openErr, tc.want) {
+				t.Fatalf("OpenSnapshotPinOwner = %v; want %v", openErr, tc.want)
+			}
+			got, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(got, mutated) {
+				t.Fatalf("superblock bytes changed: read err=%v", err)
+			}
+			afterInfo, err := os.Stat(path)
+			if err != nil || !os.SameFile(beforeInfo, afterInfo) {
+				t.Fatalf("superblock inode changed: stat err=%v", err)
+			}
+			if gotEntries := pinOwnerTestRootNames(t, owner.options.OwnerRoot); strings.Join(gotEntries, "\x00") != strings.Join(rootEntries, "\x00") {
+				t.Fatalf("owner root entries changed: got %v want %v", gotEntries, rootEntries)
+			}
+		})
+	}
+	t.Run("oversized-superblock-decode", func(t *testing.T) {
+		root := pinOwnerTestRoot(t)
+		owner, _, _, _, _ := pinOwnerTestPair(t, root)
+		raw, err := os.ReadFile(filepath.Join(owner.options.OwnerRoot, pinOwnerSuperName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		oversized := append(raw, bytes.Repeat([]byte{' '}, pinOwnerMaxSuperBytes+1-len(raw))...)
+		if _, err = pinOwnerDecodeSuper(oversized); !errors.Is(err, ErrPinOwnerCorrupt) {
+			t.Fatalf("oversized direct superblock decode = %v", err)
+		}
+	})
+}
+
 func pinOwnerTestRootNames(t *testing.T, root string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(root)

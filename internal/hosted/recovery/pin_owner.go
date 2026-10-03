@@ -1196,11 +1196,15 @@ func pinOwnerStrictDecode(raw []byte, v any) error {
 }
 func pinOwnerDecodeSuper(raw []byte) (pinOwnerSuperblock, error) {
 	var b pinOwnerSuperblock
-	if err := pinOwnerStrictDecode(raw, &b); err != nil {
+	version, found, err := pinOwnerWireVersionHint(raw, pinOwnerMaxSuperBytes)
+	if err != nil {
 		return b, err
 	}
-	if b.Version != pinOwnerWireVersion {
+	if found && version != pinOwnerWireVersion {
 		return b, ErrPinOwnerUnavailable
+	}
+	if err = pinOwnerStrictDecode(raw, &b); err != nil {
+		return b, err
 	}
 	sum, e := pinOwnerSuperChecksum(pinOwnerSuperPayload(b))
 	if e != nil || sum != b.ChecksumSHA256 || !pinOwnerIsHex(b.StoreID, 32) {
@@ -1209,7 +1213,11 @@ func pinOwnerDecodeSuper(raw []byte) (pinOwnerSuperblock, error) {
 	return b, nil
 }
 func pinOwnerRecordVersionHint(raw []byte) (uint64, bool, error) {
-	if len(raw) == 0 || len(raw) > pinOwnerMaxRecordBytes {
+	return pinOwnerWireVersionHint(raw, pinOwnerMaxRecordBytes)
+}
+
+func pinOwnerWireVersionHint(raw []byte, maxBytes int) (uint64, bool, error) {
+	if len(raw) == 0 || len(raw) > maxBytes {
 		return 0, false, ErrPinOwnerCorrupt
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))
