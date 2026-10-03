@@ -1,6 +1,6 @@
 # Startup journal observation implementation receipt
 
-Status: source implementation complete at the worker worktree. This receipt records local source evidence only; independent exact-head review and coordinator integration remain open.
+Status: source implementation complete at the worker worktree. This receipt records local source evidence only; coordinator integration, full local qualification and independent exact-head source review passed; normal merge and landed verification remain open.
 
 ## Scope and behavior
 
@@ -29,8 +29,18 @@ Behavioral mutation controls compiled and failed at the intended assertions:
 
 The first stale-head mutation attempt removed the guard and did not compile because its local became unused; it is excluded as RED evidence. Both valid mutants were restored, and the final source fingerprint matches the passing stages. The task-owned APFS fixture and its mode/owner were recorded in the external evidence directory. The fixture's size is not physical-capacity evidence.
 
-Raw focused command records, source fingerprints, lease logs, mutant stdout, and fixture verification are under `/Volumes/BuildOffload/serenity-journal-read-observation-implementation-evidence-20261003/`. The session had no Ajent MCP tools; the actual project `ajent.social` feed and coordination board were read.
+Raw focused command records, source fingerprints, lease logs, mutant stdout, and fixture verification are under `the external evidence store`. The session had no Ajent MCP tools; the actual project `ajent.social` feed and coordination board were read.
 
 ## Handoff
 
 Worker ownership covers only the new contracts reader and tests, `internal/hosted/deletion/journal.go`, new `journal_observation*.go` files and tests, and this receipt. No source claim was created or released, and no source was pushed, opened as a PR, or merged. Proposed roadmap line: `T-JRO.1–6 — complete bounded journal observation and reserved-writer source; focused race/vet/lint and behavioral mutants pass; pending independent exact-head review and coordinator full-module qualification.`
+
+## Coordinator qualification
+
+At integrated head `f3b9c26713dd790e4ed762b25de680975da7a0b3`, full-module `go test -race -json -count=1 ./...` passed 3,009 tests across 84 packages. Full `go vet ./...`, `golangci-lint run ./...`, and Linux ARM64 CLI compilation passed. Each stage won and exactly released the shared build lease after a fresh load check. Owned permission-enforced APFS fixture variables were propagated into test subprocesses; this fixture is not 500 GB capacity or provider qualification.
+
+Nine tests/subtests skipped: import-budget 10K; gbrain protocol conformance; deliberately broken-build disposal conformance; S3 qualification; two ownership-disabled-mount checks; import crash-helper dispatch; and two unsupported plan-drift classification cases. Four packages have no tests: CLI entrypoint, generated evaluation messages, hosted seed fixture, and dashboard. Raw JSON test events preserve their exact names. No skipped provider test is represented as passing.
+
+Independent exact-head review was CLEAR at the same integration SHA. A separate reviewer reproduced two compiled assertion failures when disabling cross-generation writer refusal and stale-head equality, restored the source exactly, and verified the clean head. Earlier static-only review and worker compile-failure mutation attempts remain disclosed.
+
+Subsequent qualification-record changes are documentation only; all Go source and tests remain byte-identical to the qualified integration. Hosted startup/service wiring and live provider acceptance remain open.
