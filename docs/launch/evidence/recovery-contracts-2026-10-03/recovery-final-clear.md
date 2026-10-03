@@ -1,0 +1,31 @@
+Original external report SHA-256: `1ab828dcc07e9c04d3ab3f7c551c0f2a77779223aa7d9f4ecb60b934c714439d`. Local paths sanitized and line-end whitespace normalized for public repository.
+
+# Independent re-review: recovery planner contract hash-domain amendment
+
+**Verdict: CLEAR for bounded full-coordinator contract freeze** at exact proposal head `a50c876f06682d42530d32e46a2ffc60aa0485f4`. The amendment resolves the sole P1 finding from review `331df646`: inner legacy plan hashing and the outer recovery-envelope hash now have distinct non-cyclic inputs, typed identifiers, explicit API routing, and separate epoch/account-record digests. I found no new critical semantic gap in that change or in the pin/zero-eligible/activation flows rechecked here.
+
+This CLEAR applies to the proposed design only. It does not authorize edits to existing shared interfaces, implementation, a provider call, or a live/production claim. Freeze/implementation still needs the owner approvals and additive amendments named in the proposal; physical storage, provider, revocation, adoption and deployment evidence remain separate gates.
+
+## Scope and evidence
+
+Reviewed exact diff `331df6469fbf4f884b06ed4e70bc5d2819bcaa4f..a50c876f06682d42530d32e46a2ffc60aa0485f4` and the full amended proposal in `[external evidence path] branch `review/recovery-planner-contract-hashdomain-20261003`. Current production source remained `db7625cfb6e29e3c7c42531c004d22d72af31c22`; the source `RecoveryPlan`, validation, current billing observer, and service admission remain unmodified from the reviewed 808 baseline. The current tree also has unrelated untracked authored bytes; none were touched. I reread the current `ajent.social` and coordination board; Ajent tooling is unavailable. I checked the independently cleared producer proposal `6a013b49b94e7f9286b782ad2827441d2e5bd737` and report. No source edits, builds, tests, provider calls, or shared-interface changes were made.
+
+## Hash-domain finding resolved
+
+The amendment explicitly preserves the legacy `contracts.RecoveryPlan.PlanHash` and `recovery.CreatePlan`/`LoadPlan` canonical `planPayload` domain, excluding only that field as the current implementation does; it forbids overwriting or renaming the inner digest. The new `RecoveryEnvelopeHash` hashes a tagged `ELIGIBLE`/`FROZEN_ONLY` payload. For `ELIGIBLE`, that payload includes the validated inner payload and already-computed legacy hash; for `FROZEN_ONLY`, it contains the full frozen payload and no synthetic inner plan. The outer hash excludes itself and later global epoch/effect/admission records. The constructor requires a private `VerifiedLegacyPlan` token created through the existing validation path, while load revalidates the inner artifact and recomputes the outer hash (`docs/plans/recovery-planner-and-admission-proposed-contract-2026-10-03.md:11-31, 57-90`). This breaks the former cycle without modifying legacy serialization.
+
+Hash routing is normative and coherent: legacy plan-file, `RecoveryApplyRequest`, and `FenceReceipt.SufficientFor` use only the inner hash; immutable READY envelope/store lookup, CLI plan/begin/continue/commit/status, global epoch approval/reservation, admission, and activation use only the outer hash. Epoch records use their own payload digest; account records have their own digest; activation approval binds the committed epoch digest plus outer hash. Frozen/global fencing never fabricates a legacy plan for `FenceReceipt` (`:47-56, 75-90, 336-378, 441-443`). The existing source requires `RecoveryPlan.PlanHash` to be valid and rejects an empty account set (`internal/hosted/contracts/backup.go:269-307`), which is preserved. The proposed zero-eligible `FROZEN_ONLY` branch therefore remains genuinely distinct and cannot create a legacy apply request (`:102-154, 410-412`).
+
+## Cross-owner and phase seams rechecked
+
+The backup producer handoff remains exact: reserved `planRef` and immutable reservation version, Stage, PIN_PENDING owner CAS, exact-attempt pin commit/tombstone, `FindPinned` after lost response, READY envelope containing pin ID, and no silent deletion of a durable pin (`:392`). This aligns with producer API and the producer's CLEAR limited to contract design; no implementation is inferred.
+
+Global approval is finalized only after the outer envelope hash exists; it binds the full inventory/scope/writer/operation/action set and is consumed before effects. Account activation approval binds one account and the committed epoch digest plus outer hash. Phases remain serialized and forward-only, with the full destination frozen and atomic publication/adoption/commit preceding service startup and later `ActivateOne` (`:404-443`). The plan remains read-only through journal cut `C`; the later post-stop/revocation seal is separate, and the observed old writer generation is rechecked before fence (`:9-12, 400-402`).
+
+The proposal still correctly requires new billing candidate/current-row projections and a shared service-owned mutation guard + final CAS. Existing `ObserveRestorePending` is not mistaken for those APIs: source only accepts a current `restore_pending` row with a valid local customer and no checkout (`internal/hosted/billing/recovery_observer.go:161-203`). Existing `RecoveryAdmission` remains sealed-history-only in current service (`internal/hosted/service/service.go:67-85, 334-365`); the amended recovered-start factory is a requested service-owner amendment, and genesis plus ordinary unsealed-`G+1` restart remain explicit separate fail-closed gaps (`proposal:447-451`).
+
+## Non-blocking record correction
+
+The current handoff paragraph still says producer proposal `6a013b49...` independent review “is in progress” (`:463`), while the fresh feed/board and independent producer report show it is CLEAR for producer-contract freeze. Update that status line when recording this review/freeze. It does not alter the API or make this proposal unclear.
+
+Source authority, producer code implementation, billing/service/journal owner amendments, authenticated provider evidence, credential/session revocation, physical quota/durability, deployment, and live recovery/activation remain unqualified. This review is a bounded design clearance only.
