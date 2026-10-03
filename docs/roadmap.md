@@ -10,6 +10,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-10-03 [PR351](https://github.com/sirerun/serenity/pull/351) merged at db7625cf: corrected finding source ledger covers 58 consolidated IDs, preserving prior HOLD/count history. Exact reviewed and landed trees match; docs-only qualification confirms unchanged production Go/module bytes. T24.39 final shared dispositions, live High traces and founder risk acceptance remain open.
+
 - 2026-10-03 [PR350](https://github.com/sirerun/serenity/pull/350) merged at a89adca3: whole-module AST guard covers direct literal Git execution in non-test Go, including ignored and platform files. Nine independent lexical/literal controls CLEAR; 18 package race tests, full vet and scoped lint passed. Reviewed and landed trees match. Formal T24.30 dependencies and live acceptance remain open.
 
 - 2026-10-03 [PR349](https://github.com/sirerun/serenity/pull/349) merged at8081632: unwired bounded version-pinned S3 transport and private child launcher, preserving only uncertain final COMPLETE read-only reconciliation. Corrected public failures invalidate later context writes; five genuine original-source REDs and dedicated final reviews CLEAR. Coordinator119 hosted tests, Ruff and owned-file format checks pass; landed tree01721c8c exactly matches reviewed candidate. Go/module files match qualified PR348 main. Installed runner, physical capacity, credential/IAM provenance, retention activation and provider/live qualification remain open.
@@ -382,6 +384,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 - 2026-10-01 [PR333](https://github.com/sirerun/serenity/pull/333), [PR334](https://github.com/sirerun/serenity/pull/334), [PR335](https://github.com/sirerun/serenity/pull/335) and [PR336](https://github.com/sirerun/serenity/pull/336) merged: canonical Git read isolation and forget/flush fence, unused all-version retention library, maintenance read fencing, and source-only canonical writer routing with cancellation fixes. Local full Go gates and independent mutation reviews support their bounded claims; provider activation, physical limits and hosted-completion acceptance remain open.
 
 ## In progress
+
+- 2026-10-03 Recovery source wave: complete verified snapshot lease producer implementation assigned in isolated backup lane under frozen v1; borrower/release locking and behavioral controls in progress, no checks/completion yet. Recovery and authenticated startup proposals have bounded independent CLEAR reports; recovery artifact/contract mapping has a subsequent source-preflight correction assigned. Additive journal observation seam is independently reviewed before source dispatch. Full coordinator, trusted startup/provider authority, physical quota/capacity and hosted acceptance remain open. Owner: coordinator and isolated source workers.
 
 - 2026-10-01 Recovery billing observation (Codex coordinator): additive types merged in PR342; a bounded GET-only implementation contract is being prepared from independent readiness review. Provider failure history must preserve the earliest current-period failure without extending grace. Source implementation, recovery planner/apply, production factory and activation remain open. Separate local completion and physical-storage readiness audits are in progress.
 
