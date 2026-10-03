@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -254,8 +255,19 @@ var (
 //     sides are resolved so a top level that itself lives under a symlink
 //     (macOS's /var -> /private/var) compares equal to its own files.
 //
-// Only the resolved path is then read.
-func readContained(toplevel, rel string) ([]byte, error) {
+// The actual file open is confined to an opened repository root, so a
+// concurrent pathname replacement cannot redirect the read outside it.
+func readContained(toplevel, rel string) (data []byte, retErr error) {
+	confined, err := os.OpenRoot(toplevel)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := confined.Close(); retErr == nil && err != nil {
+			data = nil
+			retErr = fmt.Errorf("gitrepo: close confined root: %w", err)
+		}
+	}()
 	p := filepath.Join(toplevel, filepath.FromSlash(rel))
 	fi, err := os.Lstat(p)
 	if err != nil {
@@ -275,7 +287,24 @@ func readContained(toplevel, rel string) ([]byte, error) {
 	if !strings.HasPrefix(real, root+string(filepath.Separator)) {
 		return nil, fmt.Errorf("gitrepo: skip %s: %w", rel, errEscapes)
 	}
-	return os.ReadFile(real)
+	file, err := confined.OpenFile(filepath.FromSlash(rel), containedReadFlags(), 0)
+	if err != nil {
+		return nil, fmt.Errorf("gitrepo: confined read %s: %w", rel, err)
+	}
+	defer func() {
+		if err := file.Close(); retErr == nil && err != nil {
+			data = nil
+			retErr = fmt.Errorf("gitrepo: close confined file: %w", err)
+		}
+	}()
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !opened.Mode().IsRegular() {
+		return nil, fmt.Errorf("gitrepo: skip %s: %w (%s)", rel, errNonRegular, opened.Mode().Type())
+	}
+	return io.ReadAll(file)
 }
 
 // ToSource builds the domain.Source shell for one crawled item. It never
