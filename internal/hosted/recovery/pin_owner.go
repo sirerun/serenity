@@ -724,6 +724,9 @@ func pinOwnerWithLock[T any](o *SnapshotPinOwner, ctx context.Context, fn func(*
 			result = failed
 		}
 	}()
+	if retErr = pinOwnerValidateSuperblock(ctx, root, o); retErr != nil {
+		return zero, retErr
+	}
 	result, retErr = fn(root)
 	return result, retErr
 }
@@ -1429,6 +1432,21 @@ func pinOwnerReadSuperblock(ctx context.Context, root *os.File) (pinOwnerSuperbl
 	}
 	return pinOwnerDecodeSuper(b)
 }
+
+func pinOwnerValidateSuperblock(ctx context.Context, root *os.File, o *SnapshotPinOwner) error {
+	if ctx == nil || root == nil || o == nil {
+		return ErrPinOwnerInvalid
+	}
+	block, err := pinOwnerReadSuperblock(ctx, root)
+	if err != nil {
+		return err
+	}
+	if block.StoreID != o.storeID || block.OwnerRootDevice != o.ownerDevice || block.OwnerRootInode != o.ownerInode || block.OwnerLockDevice != o.ownerLockDev || block.OwnerLockInode != o.ownerLockIno || block.BackupRootDevice != o.backupDevice || block.BackupRootInode != o.backupInode || block.BackupLockDevice != o.backupLockDev || block.BackupLockInode != o.backupLockIno {
+		return ErrPinOwnerUnavailable
+	}
+	return nil
+}
+
 func pinOwnerWriteSuperblock(ctx context.Context, root *os.File, b pinOwnerSuperblock) error {
 	raw, e := pinOwnerEncodeSuper(b)
 	if e != nil {
@@ -1470,6 +1488,9 @@ func pinOwnerAppend(ctx context.Context, root *os.File, o *SnapshotPinOwner, dir
 	}
 	if err := pinOwnerValidateNamedIdentity(ctx, o); err != nil {
 		return errors.Join(ErrPinOwnerUnavailable, err)
+	}
+	if err := pinOwnerValidateSuperblock(ctx, root, o); err != nil {
+		return err
 	}
 	raw, _, err := pinOwnerEncodeRecord(r)
 	if err != nil {

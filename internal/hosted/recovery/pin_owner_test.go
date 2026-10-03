@@ -696,6 +696,145 @@ func TestPinOwnerFutureSuperblockUnavailablePreservesBytes(t *testing.T) {
 	})
 }
 
+func TestPinOwnerActiveOperationsRefuseChangedSuperblock(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(t *testing.T, raw []byte) []byte
+		want   error
+	}{
+		{
+			name: "future-extension",
+			mutate: func(t *testing.T, raw []byte) []byte {
+				t.Helper()
+				return bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":2,"future_field":true,`), 1)
+			},
+			want: ErrPinOwnerUnavailable,
+		},
+		{
+			name: "bad-checksum",
+			mutate: func(t *testing.T, raw []byte) []byte {
+				t.Helper()
+				changed := append([]byte(nil), raw...)
+				changed[len(changed)-3] ^= 1
+				return changed
+			},
+			want: ErrPinOwnerCorrupt,
+		},
+		{
+			name: "mismatched-store-id",
+			mutate: func(t *testing.T, raw []byte) []byte {
+				t.Helper()
+				block, err := pinOwnerDecodeSuper(raw)
+				if err != nil {
+					t.Fatal(err)
+				}
+				originalStoreID := block.StoreID
+				block.StoreID = strings.Repeat("a", 32)
+				if block.StoreID == originalStoreID {
+					block.StoreID = strings.Repeat("b", 32)
+				}
+				encoded, err := pinOwnerEncodeSuper(block)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return encoded
+			},
+			want: ErrPinOwnerUnavailable,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := pinOwnerTestRoot(t)
+			owner, leases, snapshot, digest, inspection := pinOwnerTestPair(t, root)
+			ctx := context.Background()
+			reservation, err := owner.ReservePinPlan(ctx, "op-active-superblock-check")
+			if err != nil {
+				t.Fatal(err)
+			}
+			lease, err := leases.Stage(ctx, snapshot, inspection)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pin, err := lease.Pin(ctx, reservation.PlanRef(), reservation.ReservationVersion(), digest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			superPath := filepath.Join(owner.options.OwnerRoot, pinOwnerSuperName)
+			superRaw, err := os.ReadFile(superPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutated := tc.mutate(t, superRaw)
+			if bytes.Equal(superRaw, mutated) {
+				t.Fatal("superblock mutation did not change bytes")
+			}
+			if err = os.WriteFile(superPath, mutated, 0600); err != nil {
+				t.Fatal(err)
+			}
+			rootDir, err := os.Open(owner.options.OwnerRoot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = errors.Join(rootDir.Sync(), rootDir.Close()); err != nil {
+				t.Fatal(err)
+			}
+			planDir := filepath.Join(owner.options.OwnerRoot, pinOwnerReservationsName, reservation.PlanRef())
+			recordNames := pinOwnerTestRootNames(t, planDir)
+			recordBytes := make(map[string][]byte, len(recordNames))
+			recordInfos := make(map[string]os.FileInfo, len(recordNames))
+			for _, name := range recordNames {
+				path := filepath.Join(planDir, name)
+				recordBytes[name], err = os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				recordInfos[name], err = os.Stat(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			superInfo, err := os.Stat(superPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ownerEntries := pinOwnerTestRootNames(t, owner.options.OwnerRoot)
+			if _, err = owner.ReservePinPlan(ctx, "op-must-not-append-after-superblock-change"); !errors.Is(err, tc.want) {
+				t.Fatalf("active reserve after superblock change = %v; want %v", err, tc.want)
+			}
+			listed, err := owner.ListPinAttempts(ctx)
+			if !errors.Is(err, tc.want) || len(listed) != 0 {
+				t.Fatalf("active list after superblock change = %d refs, %v; want no refs and %v", len(listed), err, tc.want)
+			}
+			decision, err := owner.ReconcilePin(ctx, pin)
+			if !errors.Is(err, tc.want) || decision.Action != 0 {
+				t.Fatalf("active reconcile after superblock change = %+v, %v; want no decision and %v", decision, err, tc.want)
+			}
+			superAfter, err := os.ReadFile(superPath)
+			if err != nil || !bytes.Equal(superAfter, mutated) {
+				t.Fatalf("superblock changed after refusal: read err=%v", err)
+			}
+			superAfterInfo, err := os.Stat(superPath)
+			if err != nil || !os.SameFile(superInfo, superAfterInfo) {
+				t.Fatalf("superblock inode changed: stat err=%v", err)
+			}
+			if got := pinOwnerTestRootNames(t, owner.options.OwnerRoot); strings.Join(got, "\x00") != strings.Join(ownerEntries, "\x00") {
+				t.Fatalf("owner root entries changed: got %v want %v", got, ownerEntries)
+			}
+			if got := pinOwnerTestRootNames(t, planDir); strings.Join(got, "\x00") != strings.Join(recordNames, "\x00") {
+				t.Fatalf("owner history entries changed: got %v want %v", got, recordNames)
+			}
+			for _, name := range recordNames {
+				path := filepath.Join(planDir, name)
+				got, readErr := os.ReadFile(path)
+				info, statErr := os.Stat(path)
+				if readErr != nil || statErr != nil || !bytes.Equal(got, recordBytes[name]) || !os.SameFile(recordInfos[name], info) {
+					t.Fatalf("owner history record %s changed: read=%v stat=%v", name, readErr, statErr)
+				}
+			}
+		})
+	}
+}
+
 func pinOwnerTestRootNames(t *testing.T, root string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(root)
