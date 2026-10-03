@@ -1511,6 +1511,9 @@ func pinOwnerAppend(ctx context.Context, root *os.File, o *SnapshotPinOwner, dir
 	if err = pinOwnerValidateNamedIdentity(ctx, o); err != nil {
 		return errors.Join(ErrPinOwnerUnavailable, err)
 	}
+	if err = pinOwnerValidateSuperblock(ctx, root, o); err != nil {
+		return err
+	}
 	if err = pinOwnerAtomicWriteAt(ctx, dir, name, raw); err != nil {
 		return errors.Join(ErrPinOwnerOutcomeUnknown, err)
 	}
