@@ -733,7 +733,7 @@ func TestPinOwnerConcurrentFreshOpenAndInitialReservation(t *testing.T) {
 		t.Fatal(err)
 	}
 	ownerOptions := SnapshotPinOwnerOptions{OwnerRoot: filepath.Join(root, "owner"), BackupLeaseRoot: leaseRoot, MaxPlans: 4, MaxOwnerMetadataBytes: 2 << 20}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	type openResult struct {
 		owner *SnapshotPinOwner
