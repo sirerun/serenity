@@ -35,7 +35,7 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: Proposal096 design CLEAR and coordinator source freeze e762c9c banked; exact source claim c20ad and disjoint backup/testhooks ownership; source acceptance remains HOLD.
 - [ ] T-SPS.2 — Implement producer primitive controls and authorized restart. kind: agent stage: implement deps: [T-SPS.1]
   acc: Fresh exact owner authority precedes resumed deletion/new tombstone; completed tombstone uses exact terminal acknowledgement only after live lease absence; real tagged primitive controls and anchored reachable partial states preserve production no-op and RemoveAll. Adopted terminal amendment retains exact receipts with bounded4096 journal and complete peak metadata reservations.
-- [ ] T-SPS.3 — Verify producer current source and controls. kind: agent stage: verify deps: [T-SPS.2]
+- [ ] T-SPS.3 — Verify producer current source and controls. kind: agent stage: verify deps: [T-SPS.2, T-SPSFIX.1]
   acc: Ordinary/tagged child crash matrix, authority denial, cancellation, tuple/root/inode mismatch, live-present, repeated terminal real-pair reconciliation, bounded journal cap/overflow and peak metadata regressions; compiled RED/restored PASS and focused checks under exact released leases. Full integrated checks occur in T-PNO.3.
 - [ ] T-SPS.4 — Independently review producer source and reachable prefixes. kind: agent stage: review deps: [T-SPS.3]
   acc: Exact-head independent source review verifies canonical serializer/path/identity equivalence, real production recovery, authority before mutation, no production triggers, and accurate evidence limits.
@@ -54,3 +54,6 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
 
 - [ ] T-PNOFIX.7 — Revalidate the current superblock for active owner operations. kind: agent stage: implement deps: [T-PNOAUD.1]
   acc: Under the acquired owner lock, every active read and mutation checks supported canonical checksummed superblock, exact StoreID and all captured root/lock identities. Future/corrupt/missing or changed identity refuses with zero output and no history mutation; genuine-pair active API regressions and compiled control distinguish this boundary from constructor-only rejection.
+
+- [ ] T-SPSFIX.1 — Reserve complete release capacity before requesting owner release authority. kind: agent stage: implement deps: [T-SPS.1]
+  acc: Conservative actual-encoder footprint includes retained manifest-inclusive metadata and terminal/temp peak before any owner RELEASE_BEGIN or producer release mutation. Unknown future owner authorization uses a worst-width encoding bound for capacity only, never authority. Fresh exact owner authorization and the later exact capacity check remain mandatory; real-pair budget-gap/full-journal regressions preserve owner history and producer bytes on refusal.
