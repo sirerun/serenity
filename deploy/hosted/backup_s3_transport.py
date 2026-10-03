@@ -578,7 +578,16 @@ class S3Storage:
         if max_objects != MAX_OBJECTS or not prefix or ".." in prefix.split("/"):
             raise ValueError("inventory request exceeds fixed contract")
         publish._prefix(prefix)
-        op = self._new_operation()
+        try:
+            op = self._new_operation()
+            return self._list_prefix(op, prefix, max_objects)
+        except BaseException:
+            self._failed = True
+            raise
+
+    def _list_prefix(
+        self, op: _Executor, prefix: str, max_objects: int
+    ) -> list[publish.RemoteObject]:
         result = []
         key_marker = version_marker = None
         seen = set()
@@ -660,7 +669,30 @@ class S3Storage:
             raise ValueError("explicit non-null version ID is required")
         if not 0 < max_bytes <= MAX_OBJECT_BYTES or not 0 < chunk_bytes <= STREAM_BYTES:
             raise ValueError("read limits exceed fixed contract")
-        op = self._new_operation()
+        try:
+            op = self._new_operation()
+            return self._read_to(
+                op,
+                key,
+                destination,
+                version_id=version_id,
+                max_bytes=max_bytes,
+                chunk_bytes=chunk_bytes,
+            )
+        except BaseException:
+            self._failed = True
+            raise
+
+    def _read_to(
+        self,
+        op: _Executor,
+        key: str,
+        destination: BinaryIO,
+        *,
+        version_id: str,
+        max_bytes: int,
+        chunk_bytes: int,
+    ) -> int:
         head = _json_object(
             self._request(
                 op,
@@ -757,9 +789,9 @@ class S3Storage:
         self._bucket_url(key)
         if self._upload_bytes + length_bytes > MAX_TOTAL_BYTES + 16_777_216 + 4_096:
             raise TransportError("snapshot upload-byte ceiling exceeded")
-        op = self._new_operation()
         full_path = None
         try:
+            op = self._new_operation()
             self._ensure_upload_space()
             if not self._versioning_checked:
                 self._check_versioning(op)

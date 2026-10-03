@@ -55,7 +55,9 @@ if os.environ.get("FAKE_AWS_LOG"):
 if service == "get-bucket-versioning":
     print(json.dumps({"Status": os.environ.get("FAKE_VERSIONING", "Enabled")}))
 elif service == "list-object-versions":
-    if os.environ.get("FAKE_PAGINATE"):
+    if os.environ.get("FAKE_INVENTORY_MODE") == "malformed":
+        print("{")
+    elif os.environ.get("FAKE_PAGINATE"):
         if "--key-marker" in args:
             page = {"IsTruncated": False, "Versions": [{
                 "Key": "snapshots/20261002T000000Z/control.db", "VersionId": "v2", "IsLatest": True,
@@ -80,14 +82,16 @@ elif service == "list-object-versions":
             "ETag": '"etag"', "Size": @BODY_LEN@, "LastModified": "2026-10-02T00:00:00Z"
         }], "DeleteMarkers": []}))
 elif service == "head-object":
-    print(json.dumps({"ContentLength": @BODY_LEN@, "VersionId": "v1", "ETag": '"etag"'}))
+    version = "wrong-version" if os.environ.get("FAKE_HEAD_VERSION_MISMATCH") else "v1"
+    print(json.dumps({"ContentLength": @BODY_LEN@, "VersionId": version, "ETag": '"etag"'}))
 elif service == "get-object":
     output = args[args.index("--expected-bucket-owner") - 1]
     range_value = args[args.index("--range") + 1]
     first, last = map(int, range_value.removeprefix("bytes=").split("-"))
     chunk = @BODY@[first:last + 1]
     pathlib.Path(output).write_bytes(chunk)
-    print(json.dumps({"ContentLength": len(chunk), "ContentRange": f"bytes {first}-{last}/@BODY_LEN@", "VersionId": "v1"}))
+    version = "wrong-version" if os.environ.get("FAKE_RANGE_VERSION_MISMATCH") else "v1"
+    print(json.dumps({"ContentLength": len(chunk), "ContentRange": f"bytes {first}-{last}/@BODY_LEN@", "VersionId": version}))
 elif service == "put-object":
     if os.environ.get("FAKE_PUT_ERROR"):
         print(f"An error occurred ({os.environ['FAKE_PUT_ERROR']}) when calling the PutObject operation: injected", file=sys.stderr)
@@ -154,6 +158,150 @@ class TransportTests(unittest.TestCase):
     def _factory(self, argv, **kwargs):
         kwargs["env"] = dict(kwargs["env"], FAKE_AWS_LOG=str(self.log))
         return self._real_popen(argv, **kwargs)
+
+    def _factory_with(self, **overrides):
+        def factory(argv, **kwargs):
+            kwargs["env"] = dict(
+                kwargs["env"], **overrides, FAKE_AWS_LOG=str(self.log)
+            )
+            return self._real_popen(argv, **kwargs)
+
+        return factory
+
+    def _ambiguous_put_factory(self, **overrides):
+        clock_state = {"active": False, "poll": 0, "put_children": 0}
+
+        def factory(argv, **kwargs):
+            if "put-object" in argv:
+                clock_state["active"] = True
+                clock_state["put_children"] += 1
+            kwargs["env"] = dict(
+                kwargs["env"],
+                **overrides,
+                FAKE_PUT_SLEEP="1",
+                FAKE_AWS_LOG=str(self.log),
+            )
+            return self._real_popen(argv, **kwargs)
+
+        def clock():
+            if not clock_state["active"]:
+                return time.monotonic()
+            clock_state["poll"] += 1
+            return 0 if clock_state["poll"] <= 2 else 1_000_000
+
+        return factory, clock, clock_state
+
+    def _assert_failed_read_invalidates_put(self, storage):
+        with self.assertRaises(transport.TransportError):
+            storage.put_if_absent(
+                KEY,
+                io.BytesIO(BODY),
+                length_bytes=len(BODY),
+                sha256=hashlib.sha256(BODY).hexdigest(),
+                chunk_bytes=1024,
+            )
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertFalse(
+            any(call.get("service") == "put-object" for call in calls), calls
+        )
+
+    def test_malformed_inventory_invalidates_same_context_before_public_put(self):
+        with (
+            self._disk_reserve(),
+            transport.S3Storage(
+                self.config,
+                process_factory=self._factory_with(FAKE_INVENTORY_MODE="malformed"),
+            ) as storage,
+        ):
+            with self.assertRaises(transport.TransportError):
+                storage.list_prefix(PREFIX, max_objects=transport.MAX_OBJECTS)
+            self._assert_failed_read_invalidates_put(storage)
+
+    def test_wrong_head_version_invalidates_same_context_before_public_put(self):
+        with (
+            self._disk_reserve(),
+            transport.S3Storage(
+                self.config,
+                process_factory=self._factory_with(FAKE_HEAD_VERSION_MISMATCH="1"),
+            ) as storage,
+        ):
+            with self.assertRaises(transport.TransportError):
+                storage.read_to(
+                    KEY,
+                    io.BytesIO(),
+                    version_id="v1",
+                    max_bytes=1024,
+                    chunk_bytes=1024,
+                )
+            self._assert_failed_read_invalidates_put(storage)
+
+    def test_wrong_range_version_invalidates_same_context_before_public_put(self):
+        with (
+            self._disk_reserve(),
+            transport.S3Storage(
+                self.config,
+                process_factory=self._factory_with(FAKE_RANGE_VERSION_MISMATCH="1"),
+            ) as storage,
+        ):
+            with self.assertRaises(transport.TransportError):
+                storage.read_to(
+                    KEY,
+                    io.BytesIO(),
+                    version_id="v1",
+                    max_bytes=1024,
+                    chunk_bytes=1024,
+                )
+            self._assert_failed_read_invalidates_put(storage)
+
+    def test_destination_write_failure_invalidates_same_context_before_public_put(self):
+        class BrokenDestination:
+            def write(self, _chunk):
+                raise OSError("injected destination write failure")
+
+        with (
+            self._disk_reserve(),
+            transport.S3Storage(self.config, process_factory=self.factory) as storage,
+        ):
+            with self.assertRaisesRegex(OSError, "destination write"):
+                storage.read_to(
+                    KEY,
+                    BrokenDestination(),
+                    version_id="v1",
+                    max_bytes=1024,
+                    chunk_bytes=1024,
+                )
+            self._assert_failed_read_invalidates_put(storage)
+
+    def test_range_cleanup_failure_invalidates_same_context_before_public_put(self):
+        real_unlink = transport.os.unlink
+        injected = False
+
+        def fail_range_unlink(path, *args, **kwargs):
+            nonlocal injected
+            if not injected and Path(path).name.startswith("range-"):
+                injected = True
+                raise OSError("injected range cleanup failure")
+            return real_unlink(path, *args, **kwargs)
+
+        with (
+            self._disk_reserve(),
+            transport.S3Storage(self.config, process_factory=self.factory) as storage,
+        ):
+            with (
+                mock.patch.object(
+                    transport.os, "unlink", side_effect=fail_range_unlink
+                ),
+                self.assertRaisesRegex(OSError, "range cleanup"),
+            ):
+                storage.read_to(
+                    KEY,
+                    io.BytesIO(),
+                    version_id="v1",
+                    max_bytes=1024,
+                    chunk_bytes=1024,
+                )
+            self.assertTrue(injected)
+            self._assert_failed_read_invalidates_put(storage)
 
     def _disk_reserve(self):
         return mock.patch.object(
@@ -401,38 +549,132 @@ class TransportTests(unittest.TestCase):
             )
         self.assertEqual(caught.exception.error_code, "RequestTimeout")
 
-    def test_launched_write_timeout_is_the_only_fake_ambiguous_transport_result(self):
-        clock_state = {"active": False, "poll": 0}
-
-        def timeout(argv, **kwargs):
-            if "put-object" in argv:
-                clock_state["active"] = True
-            kwargs["env"] = dict(
-                kwargs["env"], FAKE_PUT_SLEEP="1", FAKE_AWS_LOG=str(self.log)
-            )
-            return self._real_popen(argv, **kwargs)
-
-        def clock():
-            if not clock_state["active"]:
-                return time.monotonic()
-            clock_state["poll"] += 1
-            return 0 if clock_state["poll"] <= 2 else 1_000_000
-
+    def test_ambiguous_non_complete_write_invalidates_context(self):
+        timeout, clock, clock_state = self._ambiguous_put_factory()
         digest = hashlib.sha256(BODY).hexdigest()
         with (
             self._disk_reserve(),
             transport.S3Storage(
                 self.config, process_factory=timeout, clock=clock
             ) as storage,
-            self.assertRaises(transport.AmbiguousStorageFailure),
         ):
-            storage.put_if_absent(
-                KEY,
-                io.BytesIO(BODY),
-                length_bytes=len(BODY),
-                sha256=digest,
-                chunk_bytes=1024,
+            with self.assertRaises(transport.AmbiguousStorageFailure):
+                storage.put_if_absent(
+                    KEY,
+                    io.BytesIO(BODY),
+                    length_bytes=len(BODY),
+                    sha256=digest,
+                    chunk_bytes=1024,
+                )
+            clock_state["active"] = False
+            calls_after_failure = self.log.read_text().splitlines()
+            with self.assertRaises(transport.TransportError):
+                storage.list_prefix(PREFIX, max_objects=transport.MAX_OBJECTS)
+            self.assertEqual(self.log.read_text().splitlines(), calls_after_failure)
+        self.assertEqual(clock_state["put_children"], 1)
+
+    def test_ambiguous_complete_write_allows_read_only_reconciliation(self):
+        timeout, clock, clock_state = self._ambiguous_put_factory()
+        digest = hashlib.sha256(BODY).hexdigest()
+        with (
+            self._disk_reserve(),
+            transport.S3Storage(
+                self.config, process_factory=timeout, clock=clock
+            ) as storage,
+        ):
+            with self.assertRaises(transport.AmbiguousStorageFailure):
+                storage.put_if_absent(
+                    PREFIX + "COMPLETE",
+                    io.BytesIO(BODY),
+                    length_bytes=len(BODY),
+                    sha256=digest,
+                    chunk_bytes=1024,
+                )
+            clock_state["active"] = False
+            destination = io.BytesIO()
+            self.assertEqual(
+                storage.read_to(
+                    PREFIX + "COMPLETE",
+                    destination,
+                    version_id="v1",
+                    max_bytes=1024,
+                    chunk_bytes=1024,
+                ),
+                len(BODY),
             )
+            self.assertEqual(destination.getvalue(), BODY)
+            with self.assertRaises(transport.TransportError):
+                storage.put_if_absent(
+                    KEY,
+                    io.BytesIO(BODY),
+                    length_bytes=len(BODY),
+                    sha256=digest,
+                    chunk_bytes=1024,
+                )
+        self.assertEqual(clock_state["put_children"], 1)
+
+    def test_failed_reconciliation_proof_poisons_read_only_context(self):
+        timeout, clock, clock_state = self._ambiguous_put_factory(
+            FAKE_INVENTORY_MODE="malformed"
+        )
+        digest = hashlib.sha256(BODY).hexdigest()
+        with (
+            self._disk_reserve(),
+            transport.S3Storage(
+                self.config, process_factory=timeout, clock=clock
+            ) as storage,
+        ):
+            with self.assertRaises(transport.AmbiguousStorageFailure):
+                storage.put_if_absent(
+                    PREFIX + "COMPLETE",
+                    io.BytesIO(BODY),
+                    length_bytes=len(BODY),
+                    sha256=digest,
+                    chunk_bytes=1024,
+                )
+            clock_state["active"] = False
+            with self.assertRaises(transport.TransportError):
+                storage.list_prefix(PREFIX, max_objects=transport.MAX_OBJECTS)
+            calls_after_failure = self.log.read_text().splitlines()
+            with self.assertRaises(transport.TransportError):
+                storage.list_prefix(PREFIX, max_objects=transport.MAX_OBJECTS)
+            self.assertEqual(self.log.read_text().splitlines(), calls_after_failure)
+
+    def test_final_complete_cleanup_failure_blocks_read_only_reconciliation(self):
+        timeout, clock, clock_state = self._ambiguous_put_factory()
+        digest = hashlib.sha256(BODY).hexdigest()
+        with (
+            self._disk_reserve(),
+            transport.S3Storage(
+                self.config, process_factory=timeout, clock=clock
+            ) as storage,
+        ):
+            with (
+                mock.patch.object(
+                    storage,
+                    "_unlink_confirmed",
+                    side_effect=OSError("injected final spool cleanup failure"),
+                ),
+                self.assertRaisesRegex(OSError, "final spool cleanup"),
+            ):
+                storage.put_if_absent(
+                    PREFIX + "COMPLETE",
+                    io.BytesIO(BODY),
+                    length_bytes=len(BODY),
+                    sha256=digest,
+                    chunk_bytes=1024,
+                )
+            clock_state["active"] = False
+            with self.assertRaises(transport.TransportError):
+                storage.read_to(
+                    PREFIX + "COMPLETE",
+                    io.BytesIO(),
+                    version_id="v1",
+                    max_bytes=1024,
+                    chunk_bytes=1024,
+                )
+            calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+            self.assertFalse(any(call.get("service") == "head-object" for call in calls))
 
     def test_multipart_part_spools_are_gone_before_complete_and_full_spool_before_return(
         self,
