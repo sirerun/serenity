@@ -120,6 +120,13 @@ func strconvUnquote(s string) (string, error) {
 }
 
 func isGitExecutable(expr ast.Expr) bool {
+	for {
+		paren, ok := expr.(*ast.ParenExpr)
+		if !ok {
+			break
+		}
+		expr = paren.X
+	}
 	lit, ok := expr.(*ast.BasicLit)
 	if !ok || lit.Kind != token.STRING {
 		return false
@@ -128,8 +135,8 @@ func isGitExecutable(expr ast.Expr) bool {
 	if err != nil {
 		return false
 	}
-	base := filepath.Base(filepath.ToSlash(value))
-	return base == "git" || base == "git.exe"
+	base := filepath.Base(strings.ReplaceAll(filepath.ToSlash(value), "\\", "/"))
+	return strings.EqualFold(base, "git") || strings.EqualFold(base, "git.exe")
 }
 
 func TestNoRawGitExecAcrossModule(t *testing.T) {
@@ -238,6 +245,19 @@ func otherDot() {
 		t.Fatal(err)
 	}
 	want := []string{"pkg/callsite.go:15", "pkg/callsite.go:18", "pkg/callsite.go:21", "pkg/callsite.go:30", "pkg/callsite.go:33", "pkg/callsite.go:6"}
+	if strings.Join(findings, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("findings = %q, want %q", findings, want)
+	}
+}
+
+func TestDriftScanLiteralExecutableParenthesesAndWindowsPath(t *testing.T) {
+	root := t.TempDir()
+	writeGo(t, root, "cmd/windows.go", "//go:build windows\n\npackage windows\nimport ex \"os/exec\"\nfunc run(){ ex.Command((`git`)); ex.Command(`C:\\Program Files\\Git\\bin\\git.exe`); ex.Command(`C:\\Program Files\\Git\\bin\\GIT.EXE`) }\n")
+	findings, _, err := driftScan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"cmd/windows.go:5", "cmd/windows.go:5", "cmd/windows.go:5"}
 	if strings.Join(findings, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("findings = %q, want %q", findings, want)
 	}
