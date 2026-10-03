@@ -48,6 +48,14 @@ class PublishError(RuntimeError):
     """The exact remote snapshot could not be proven complete."""
 
 
+class DefiniteStorageFailure(PublishError):
+    """Storage definitively rejected an operation."""
+
+
+class AmbiguousStorageFailure(PublishError):
+    """A transmitted write has an uncertain outcome requiring exact readback."""
+
+
 class ObjectExists(PublishError):
     """An object or prefix already exists and must not be overwritten."""
 
@@ -68,10 +76,10 @@ class Storage(Protocol):
     def put_if_absent(self, key: str, source: BinaryIO, *, length_bytes: int,
                       sha256: str, chunk_bytes: int) -> None: ...
 
-    def read_bytes(self, key: str, *, max_bytes: int) -> bytes: ...
+    def read_bytes(self, key: str, *, version_id: str, max_bytes: int) -> bytes: ...
 
-    def read_to(self, key: str, destination: BinaryIO, *, max_bytes: int,
-                chunk_bytes: int) -> int: ...
+    def read_to(self, key: str, destination: BinaryIO, *, version_id: str,
+                max_bytes: int, chunk_bytes: int) -> int: ...
 
 
 @dataclass(frozen=True)
@@ -129,6 +137,7 @@ class RemoteObject:
     key: str
     version_id: str
     delete_marker: bool
+    is_latest: bool
 
 
 class _UploadReader:
@@ -442,21 +451,64 @@ def _check_snapshot(snapshot: Path, staging_root: Path, limits: Limits) -> tuple
     return manifest, artifacts, total
 
 
-def _read_exact_keys(storage: Storage, prefix: str, expected: set[str], limits: Limits) -> None:
+def _inventory_snapshot(inventory: Sequence[RemoteObject]) -> tuple[tuple[str, str, bool, bool], ...]:
+    return tuple(sorted((item.key, item.version_id, item.delete_marker, item.is_latest)
+                        for item in inventory))
+
+
+def _read_inventory(storage: Storage, prefix: str, limits: Limits) -> tuple[RemoteObject, ...]:
     actual = storage.list_prefix(prefix, max_objects=limits.max_objects)
     if not isinstance(actual, Sequence) or isinstance(actual, (str, bytes)) or len(actual) > limits.max_objects:
         raise PublishError("remote prefix inventory is malformed or oversized")
-    keys: list[str] = []
+    inventory: list[RemoteObject] = []
+    seen: set[tuple[str, str, bool]] = set()
+    by_key: dict[str, list[RemoteObject]] = {}
     for item in actual:
         if not isinstance(item, RemoteObject) or not isinstance(item.key, str) or not item.key.startswith(prefix):
             raise PublishError("remote inventory escaped the snapshot prefix")
-        if not isinstance(item.version_id, str) or not item.version_id or type(item.delete_marker) is not bool:
+        if (not isinstance(item.version_id, str) or not item.version_id
+                or item.version_id == "null" or type(item.delete_marker) is not bool
+                or type(item.is_latest) is not bool):
             raise PublishError("remote version inventory is malformed")
+        identity = (item.key, item.version_id, item.delete_marker)
+        if identity in seen:
+            raise PublishError("remote version inventory contains a duplicate identity")
+        seen.add(identity)
+        inventory.append(item)
+        by_key.setdefault(item.key, []).append(item)
+    for rows in by_key.values():
+        if sum(item.is_latest for item in rows) != 1:
+            raise PublishError("remote key does not have exactly one latest version")
+    return tuple(inventory)
+
+
+def _exact_inventory_versions(inventory: Sequence[RemoteObject], expected: set[str]) -> dict[str, str]:
+    versions: dict[str, str] = {}
+    for item in inventory:
         if item.delete_marker:
             raise PublishError("snapshot prefix already contains a delete marker")
-        keys.append(item.key)
-    if len(set(keys)) != len(keys) or set(keys) != expected:
+        if item.key in versions:
+            raise PublishError("snapshot prefix contains unexpected object history")
+        if not item.is_latest:
+            raise PublishError("snapshot object is not the latest version")
+        versions[item.key] = item.version_id
+    if set(versions) != expected:
         raise PublishError("remote prefix contains missing or unexpected objects")
+    return versions
+
+
+def _read_exact_keys(storage: Storage, prefix: str, expected: set[str],
+                     limits: Limits) -> tuple[RemoteObject, ...]:
+    inventory = _read_inventory(storage, prefix, limits)
+    _exact_inventory_versions(inventory, expected)
+    return inventory
+
+
+def _assert_inventory_unchanged(storage: Storage, prefix: str,
+                                expected: Sequence[RemoteObject], limits: Limits) -> None:
+    actual = _read_inventory(storage, prefix, limits)
+    if _inventory_snapshot(actual) != _inventory_snapshot(expected):
+        raise PublishError("remote version inventory changed during verification")
 
 
 class _BoundedWriter:
@@ -481,12 +533,14 @@ class _BoundedWriter:
         self._stream.flush()
 
 
-def _download_file(storage: Storage, key: str, destination: Path, limit: int, limits: Limits) -> int:
+def _download_file(storage: Storage, key: str, version_id: str, destination: Path,
+                   limit: int, limits: Limits) -> int:
     descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     try:
         with os.fdopen(descriptor, "wb") as stream:
             bounded = _BoundedWriter(stream, limit, limits.chunk_bytes)
-            reported = storage.read_to(key, bounded, max_bytes=limit, chunk_bytes=limits.chunk_bytes)
+            reported = storage.read_to(key, bounded, version_id=version_id,
+                                       max_bytes=limit, chunk_bytes=limits.chunk_bytes)
             bounded.flush()
             os.fsync(stream.fileno())
             if type(reported) is not int or reported != bounded.written:
@@ -508,8 +562,8 @@ def _write_new_file(path: Path, body: bytes) -> None:
         os.fsync(stream.fileno())
 
 
-def _read_remote_small(storage: Storage, key: str, limit: int) -> bytes:
-    body = storage.read_bytes(key, max_bytes=limit)
+def _read_remote_small(storage: Storage, key: str, version_id: str, limit: int) -> bytes:
+    body = storage.read_bytes(key, version_id=version_id, max_bytes=limit)
     if not isinstance(body, bytes) or len(body) > limit:
         raise PublishError("remote record exceeds its byte limit")
     return body
@@ -563,11 +617,19 @@ def publish_snapshot(snapshot: str | os.PathLike[str], snapshot_prefix: str, *,
         except ObjectExists:
             # A definite occupied-key response is not an ambiguous write.
             raise
-        except Exception as put_error:  # noqa: BLE001 - transfer errors are adapter-defined
+        except AmbiguousStorageFailure as put_error:
             # The final put can succeed remotely while its response is lost.
             # Accept only an exact, fully verified readback of that commit.
             try:
-                actual = _read_remote_small(storage, prefix + "COMPLETE", limits.max_completion_bytes)
+                inventory = _read_inventory(storage, prefix, limits)
+                expected_keys = {prefix + item.name for item in artifacts} | {
+                    prefix + "manifest.json", prefix + "COMPLETE"
+                }
+                versions = _exact_inventory_versions(inventory, expected_keys)
+                actual = _read_remote_small(
+                    storage, prefix + "COMPLETE", versions[prefix + "COMPLETE"],
+                    limits.max_completion_bytes,
+                )
                 if actual != complete_bytes:
                     raise PublishError("ambiguous completion differs from intended record")
                 _verify_remote_completed(storage, prefix, complete_bytes, root, limits)
@@ -585,13 +647,17 @@ def _verify_remote_payload(storage: Storage, prefix: str, manifest: bytes,
                            artifacts: tuple[_Artifact, ...], target: Path,
                            limits: Limits) -> None:
     expected = {prefix + item.name for item in artifacts} | {prefix + "manifest.json"}
-    _read_exact_keys(storage, prefix, expected, limits)
-    remote_manifest = _read_remote_small(storage, prefix + "manifest.json", limits.max_manifest_bytes)
+    inventory = _read_inventory(storage, prefix, limits)
+    versions = _exact_inventory_versions(inventory, expected)
+    remote_manifest = _read_remote_small(
+        storage, prefix + "manifest.json", versions[prefix + "manifest.json"],
+        limits.max_manifest_bytes,
+    )
     if remote_manifest != manifest:
         raise PublishError("remote manifest bytes differ from local manifest")
     _write_new_file(target / "manifest.json", remote_manifest)
     for item in artifacts:
-        _download_file(storage, prefix + item.name, target / item.name,
+        _download_file(storage, prefix + item.name, versions[prefix + item.name], target / item.name,
                        item.length_bytes, limits)
     parsed, total = _parse_manifest(remote_manifest, limits)
     if parsed != artifacts or total > limits.max_snapshot_bytes:
@@ -600,6 +666,7 @@ def _verify_remote_payload(storage: Storage, prefix: str, manifest: bytes,
         length, digest = _hash_regular(target / item.name, limits.max_snapshot_bytes, limits.chunk_bytes)
         if (length, digest) != (item.length_bytes, item.sha256):
             raise PublishError("remote artifact checksum or length mismatch")
+    _assert_inventory_unchanged(storage, prefix, inventory, limits)
 
 
 def _remove_owned_private(path: Path) -> None:
@@ -615,23 +682,36 @@ def _verify_remote_completed(storage: Storage, prefix: str, complete_bytes: byte
     # always a direct child of the caller's private staging root.
     target = Path(tempfile.mkdtemp(prefix=".serenity-publish-final-", dir=staging_root))
     try:
-        manifest_body = _read_remote_small(storage, prefix + "manifest.json", limits.max_manifest_bytes)
+        inventory = _read_inventory(storage, prefix, limits)
+        provisional_versions = _exact_inventory_versions(
+            inventory, {item.key for item in inventory}
+        )
+        manifest_key = prefix + "manifest.json"
+        if manifest_key not in provisional_versions:
+            raise PublishError("remote manifest is missing from the version inventory")
+        manifest_body = _read_remote_small(
+            storage, manifest_key, provisional_versions[manifest_key], limits.max_manifest_bytes,
+        )
         artifacts, total = _parse_manifest(manifest_body, limits)
         expected = {prefix + item.name for item in artifacts} | {
             prefix + "manifest.json", prefix + "COMPLETE"
         }
-        _read_exact_keys(storage, prefix, expected, limits)
-        remote_complete = _read_remote_small(storage, prefix + "COMPLETE", limits.max_completion_bytes)
+        versions = _exact_inventory_versions(inventory, expected)
+        remote_complete = _read_remote_small(
+            storage, prefix + "COMPLETE", versions[prefix + "COMPLETE"],
+            limits.max_completion_bytes,
+        )
         if remote_complete != complete_bytes:
             raise PublishError("remote completion bytes differ from local completion")
         _write_new_file(target / "manifest.json", manifest_body)
         for item in artifacts:
-            _download_file(storage, prefix + item.name, target / item.name,
+            _download_file(storage, prefix + item.name, versions[prefix + item.name], target / item.name,
                            item.length_bytes, limits)
         _write_new_file(target / "COMPLETE", remote_complete)
         if sum(item.length_bytes for item in artifacts) != total:
             raise PublishError("artifact byte count changed")
         backup_completion.verify_completed(target, prefix)
+        _assert_inventory_unchanged(storage, prefix, inventory, limits)
     finally:
         _remove_owned_private(target)
 
@@ -644,26 +724,41 @@ def download_snapshot(snapshot_prefix: str, *, staging_parent: str | os.PathLike
     _check_private_root(parent)
     stage = Path(tempfile.mkdtemp(prefix=".serenity-download-", dir=parent))
     try:
-        complete_bytes = _read_remote_small(storage, prefix + "COMPLETE", limits.max_completion_bytes)
+        inventory = _read_inventory(storage, prefix, limits)
+        provisional_versions = _exact_inventory_versions(
+            inventory, {item.key for item in inventory}
+        )
+        complete_key = prefix + "COMPLETE"
+        if complete_key not in provisional_versions:
+            raise PublishError("remote completion is missing from the version inventory")
+        complete_bytes = _read_remote_small(
+            storage, complete_key, provisional_versions[complete_key], limits.max_completion_bytes,
+        )
         complete = _json_bytes(complete_bytes, "completion", limits)
         if set(complete) != {"version", "snapshot_prefix", "manifest_sha256"} or type(complete.get("version")) is not int or complete["version"] != 1 or complete.get("snapshot_prefix") != prefix or not isinstance(complete.get("manifest_sha256"), str) or not _SHA256.fullmatch(complete["manifest_sha256"]):
             raise PublishError("remote completion record is invalid")
-        manifest = _read_remote_small(storage, prefix + "manifest.json", limits.max_manifest_bytes)
+        manifest_key = prefix + "manifest.json"
+        if manifest_key not in provisional_versions:
+            raise PublishError("remote manifest is missing from the version inventory")
+        manifest = _read_remote_small(
+            storage, manifest_key, provisional_versions[manifest_key], limits.max_manifest_bytes,
+        )
         if hashlib.sha256(manifest).hexdigest() != complete["manifest_sha256"]:
             raise PublishError("completion does not bind the remote manifest")
         artifacts, total = _parse_manifest(manifest, limits)
         expected = {prefix + item.name for item in artifacts} | {
             prefix + "manifest.json", prefix + "COMPLETE"
         }
-        _read_exact_keys(storage, prefix, expected, limits)
+        versions = _exact_inventory_versions(inventory, expected)
         _write_new_file(stage / "manifest.json", manifest)
         for item in artifacts:
-            _download_file(storage, prefix + item.name, stage / item.name,
+            _download_file(storage, prefix + item.name, versions[prefix + item.name], stage / item.name,
                            item.length_bytes, limits)
         _write_new_file(stage / "COMPLETE", complete_bytes)
         if sum(item.length_bytes for item in artifacts) != total:
             raise PublishError("downloaded artifact inventory changed")
         backup_completion.verify_completed(stage, prefix)
+        _assert_inventory_unchanged(storage, prefix, inventory, limits)
         _fsync_dir(stage)
         return stage
     except Exception as error:
