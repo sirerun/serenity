@@ -61,7 +61,7 @@ func (h *Hosted) Handler() http.Handler {
 	// The global ceiling covers only the unauthenticated state-creating paths
 	// (register, authorize), so a flood there never refuses a token refresh.
 	stateCreating := newLimiter(0, h.limits.StateCreating, time.Minute)
-	mux.Handle("/oauth/authorize", withRateLimit(stateCreating, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/oauth/authorize", withRateLimitMethods(stateCreating, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if handle := r.URL.Query().Get("request"); r.Method == http.MethodGet && handle != "" {
 			req, err := h.Server.Consent(r.Context(), handle)
 			if err != nil {
@@ -72,9 +72,9 @@ func (h *Hosted) Handler() http.Handler {
 			return
 		}
 		authorize.ServeHTTP(w, r)
-	})))
+	}), http.MethodGet, http.MethodPost))
 	mux.HandleFunc("POST /oauth/consent", h.approve)
-	mux.Handle("/oauth/register", withRateLimit(newLimiter(h.limits.Register, 0, time.Minute), withRateLimit(stateCreating, h.Server.RegisterHandler())))
+	mux.Handle("/oauth/register", withRateLimit(newLimiter(h.limits.Register, 0, time.Minute), withRateLimitMethods(stateCreating, h.Server.RegisterHandler(), http.MethodPost)))
 	mux.Handle("/oauth/token", withRateLimit(newLimiter(h.limits.Token, 0, time.Minute), h.Server.TokenHandler()))
 	mux.Handle("/oauth/revoke", withRateLimit(newLimiter(h.limits.Token, 0, time.Minute), h.Server.RevokeHandler()))
 	mux.HandleFunc("GET /oauth/connections", h.connections)
