@@ -14,9 +14,9 @@ Focused verification passed:
 
 All stages ran through the durable external runner, with load below 10, a freshly won shared build lease, unchanged source fingerprint during execution, and exact lease release. Evidence is under `[external evidence store]`. An earlier stage 004 mutant attempt omitted the private fixture `-exec` environment and failed fixture setup; it is not counted as a behavioral RED. Stage 005 repeated the mutant with the required fixture environment and supplies the valid evidence.
 
-This receipt records only focused package checks. Full-module checks and independent exact-head review remain with the coordinator. No provider, writer, hosted-admission, deployment, PR, merge, or full-task acceptance evidence is claimed.
+Historical worker-only handoff: at author submission this receipt recorded focused package checks, and full-module checks and independent review were pending. The Final coordinator qualification section below supersedes that status. No provider, writer, hosted-admission, deployment, PR, merge, or full-task acceptance evidence is claimed.
 
-Independent review at integrated `ee1cafb3996f22b805768008a58285c699ed132e` found a missing explicit regression assertion that stored contract PlanHash equals the computed contract hash for both created and loaded tokens. Source already used the correct value. The assertion was added; final qualification/re-review follow at the corrected exact head. Earlier full qualification at ee1cafb passed 3,026 tests across 84 packages and vet/lint/Linux ARM64, with the same nine test/subtest skips and four no-test packages as PR353; it does not qualify the later test edit by itself.
+Independent review at integrated `ee1cafb3996f22b805768008a58285c699ed132e` found a missing explicit regression assertion that stored contract PlanHash equals the computed contract hash for both created and loaded tokens. Source already used the correct value. The assertion was added; the Final coordinator qualification section below records the completed qualification and re-review at the corrected exact head. Earlier full qualification at ee1cafb passed 3,026 tests across 84 packages and vet/lint/Linux ARM64, with the same nine test/subtest skips and four no-test packages as PR353; it does not qualify the later test edit by itself.
 
 ## Final coordinator qualification
 
