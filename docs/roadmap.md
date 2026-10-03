@@ -473,3 +473,5 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 - T-VSL.1–6: complete backup-owned verified snapshot producer landed PR355 at c2d5a543 with exact reviewed tree and narrow source claim released; production lifecycle owner/READY/provider/runtime/quota acceptance remains open.
 
 - T-ENV.1–4: pure bounded envelope source96bd06e full locally qualified and independently CLEAR after decode allocation/context findings; final integrated docs review and merge pending. This supplies integrity/canonicalization only, no approval/ancestry/pin/READY/runtime authority.
+
+2026-10-03: Narrow OAuth shared state budget method-scope source9948 independently CLEAR and full locally qualified3,084passes/84packages/vet/lint/Linux ARM64. Contract POSTregister/GET|POSTauthorize charging preserves pinnedb90 downstream405forPOSTauthorize; excludedmethods keepresponsebehavior without shared charge. PR357 finaldocsreview/merge/landed proof pending. SEC-H02 aggregate5000capacity/founder policy/live17prefix/refresh/consent/fullT24.39 remainopen.

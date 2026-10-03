@@ -3,6 +3,7 @@ package oauth
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -48,6 +49,20 @@ func requestFrom(t *testing.T, handler http.Handler, method, target, ip string, 
 		r = httptest.NewRequest(method, target, strings.NewReader(form.Encode()))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
+	host := ip
+	if strings.Contains(ip, ":") {
+		host = "[" + ip + "]"
+	}
+	r.RemoteAddr = host + ":40000"
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	return w
+}
+
+func requestBodyFrom(t *testing.T, handler http.Handler, method, target, ip, body, contentType string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := httptest.NewRequest(method, target, strings.NewReader(body))
+	r.Header.Set("Content-Type", contentType)
 	host := ip
 	if strings.Contains(ip, ":") {
 		host = "[" + ip + "]"
@@ -309,5 +324,84 @@ func TestSECH02GlobalCeilingIsAtLeastTenTimesPerKey(t *testing.T) {
 		if l.StateCreating < 10*perKey {
 			t.Errorf("StateCreating %d is below 10x %s %d", l.StateCreating, name, perKey)
 		}
+	}
+}
+
+func TestSECH02StateCreatingChargesOnlyContractMethods(t *testing.T) {
+	h, _ := floodHost(t)
+	h.limits.StateCreating = 1
+	handler := h.Handler()
+	unsupported := []struct {
+		method string
+		path   string
+		inner  http.Handler
+	}{
+		{http.MethodGet, "/oauth/register", h.Server.RegisterHandler()},
+		{http.MethodPut, "/oauth/register", h.Server.RegisterHandler()},
+		{http.MethodHead, "/oauth/register", h.Server.RegisterHandler()},
+		{http.MethodPut, "/oauth/authorize", h.Server.AuthorizeHandler(h.consent)},
+		{http.MethodDelete, "/oauth/authorize", h.Server.AuthorizeHandler(h.consent)},
+		{http.MethodHead, "/oauth/authorize", h.Server.AuthorizeHandler(h.consent)},
+	}
+	for i, tc := range unsupported {
+		ip := fmt.Sprintf("198.19.%d.1", i+1)
+		want := requestFrom(t, tc.inner, tc.method, tc.path, ip, nil)
+		got := requestFrom(t, handler, tc.method, tc.path, ip, nil)
+		if got.Code == http.StatusTooManyRequests {
+			t.Fatalf("excluded method %s %s consumed shared state budget", tc.method, tc.path)
+		}
+		if got.Code != want.Code || got.Body.String() != want.Body.String() || got.Header().Get("Allow") != want.Header().Get("Allow") {
+			t.Fatalf("excluded method %s %s response changed: got %d %q Allow=%q, want %d %q Allow=%q", tc.method, tc.path, got.Code, got.Body.String(), got.Header().Get("Allow"), want.Code, want.Body.String(), want.Header().Get("Allow"))
+		}
+	}
+
+	registration := requestBodyFrom(t, handler, http.MethodPost, "/oauth/register", "198.19.20.1", `{"client_name":"method scope test","redirect_uris":["https://client.example/cb"]}`, "application/json")
+	if registration.Code != http.StatusCreated {
+		t.Fatalf("POST /oauth/register after excluded methods: %d %s", registration.Code, registration.Body.String())
+	}
+	if got := requestBodyFrom(t, handler, http.MethodPost, "/oauth/register", "198.19.21.1", `{"client_name":"method scope test 2","redirect_uris":["https://client.example/cb"]}`, "application/json"); got.Code != http.StatusTooManyRequests {
+		t.Fatalf("POST /oauth/register did not consume shared budget: %d %s", got.Code, got.Body.String())
+	}
+}
+
+func TestSECH02StateCreatingChargesGetPostAuthorizeAndPostRegister(t *testing.T) {
+	h, _ := floodHost(t)
+	h.limits.StateCreating = 3
+	handler := h.Handler()
+
+	registered := requestBodyFrom(t, handler, http.MethodPost, "/oauth/register", "198.20.1.1", `{"client_name":"authorize method scope test","redirect_uris":["https://client.example/cb"]}`, "application/json")
+	if registered.Code != http.StatusCreated {
+		t.Fatalf("POST /oauth/register: %d %s", registered.Code, registered.Body.String())
+	}
+	var client struct {
+		ID string `json:"client_id"`
+	}
+	if err := json.Unmarshal(registered.Body.Bytes(), &client); err != nil || client.ID == "" {
+		t.Fatalf("decode registered client: id=%q err=%v body=%s", client.ID, err, registered.Body.String())
+	}
+
+	query := url.Values{
+		"client_id":             {client.ID},
+		"redirect_uri":          {"https://client.example/cb"},
+		"response_type":         {"code"},
+		"code_challenge_method": {"S256"},
+		"code_challenge":        {strings.Repeat("A", 43)},
+	}
+	getAuthorize := requestFrom(t, handler, http.MethodGet, "/oauth/authorize?"+query.Encode(), "198.20.2.1", nil)
+	if getAuthorize.Code != http.StatusSeeOther || getAuthorize.Header().Get("Location") != "/login" {
+		t.Fatalf("valid GET /oauth/authorize did not reach consent flow: %d %s Location=%q", getAuthorize.Code, getAuthorize.Body.String(), getAuthorize.Header().Get("Location"))
+	}
+	var consents int
+	if err := h.Store.DB.DB().QueryRowContext(ctxOf(t), "SELECT count(*) FROM oauth_consents").Scan(&consents); err != nil || consents != 1 {
+		t.Fatalf("valid GET /oauth/authorize persisted consent before callback: count=%d err=%v", consents, err)
+	}
+
+	wantPost := requestFrom(t, h.Server.AuthorizeHandler(h.consent), http.MethodPost, "/oauth/authorize", "198.20.3.1", nil)
+	postAuthorize := requestFrom(t, handler, http.MethodPost, "/oauth/authorize", "198.20.3.1", nil)
+	if wantPost.Code != http.StatusMethodNotAllowed || postAuthorize.Code != wantPost.Code || postAuthorize.Body.String() != wantPost.Body.String() || postAuthorize.Header().Get("Allow") != wantPost.Header().Get("Allow") {
+		t.Fatalf("POST /oauth/authorize response/counting changed: got %d %q Allow=%q, want existing %d %q Allow=%q", postAuthorize.Code, postAuthorize.Body.String(), postAuthorize.Header().Get("Allow"), wantPost.Code, wantPost.Body.String(), wantPost.Header().Get("Allow"))
+	}
+	if got := requestFrom(t, handler, http.MethodPost, "/oauth/authorize", "198.20.4.1", nil); got.Code != http.StatusTooManyRequests {
+		t.Fatalf("contract method set did not exhaust shared budget: %d %s", got.Code, got.Body.String())
 	}
 }
