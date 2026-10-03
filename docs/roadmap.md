@@ -466,3 +466,6 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 - T-JRO.1–6: bounded journal observation and reserved writer landed in PR353 after full local qualification and independent review; task48 startup/service/provider acceptance remains open.
 - T-RCP.1–6: additive artifact-to-contract mapping source completed and focused-qualified; coordinator full-module qualification, independent review and merge remain open. Full task50 coordinator remains incomplete.
+
+- T-RCP.1–6: verified artifact/contract identity component landed PR354 after corrected full qualification and independent review. Full task50 remains open.
+- Backup producer cancellation amendment backup-pin-absence-v1 independently CLEAR and frozen; source implementation underway. Whole recovery plan-store contract remains HOLD for exact wire schema, pinned abandonment and owner verifier dependencies.

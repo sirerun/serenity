@@ -1,0 +1,5 @@
+# Recovery contract-plan component landed
+
+[PR354](https://github.com/sirerun/serenity/pull/354) reviewed head `ff93b6f3512a784de1645bd8dfd2cb306e379b88` normally squash-merged as `66acb80f5a38fc00cd568f3d390b61167c587584` at 2026-10-03T12:57:02Z. Full reviewed/landed tree equality confirmed (`3222c4fc61b4ad741dc44300f7c15a8619fcd497`). Source-qualified corrected integration `1e921e5449aabf2601925f5a909efed174df7139` passed full race (3,026 tests/84 packages), vet, lint and Linux ARM64 build. Nine tests/subtests skipped and four packages had no tests. Independent source and final docs reviews CLEAR; intermediate regression-assertion and stale-wording HOLDs preserved. All build leases exactly released. Actions jobs did not start because of the account billing lock.
+
+The narrow adapter source claim was exactly released after landed proof; logical task50 remains with the coordinator for the full unfinished recovery coordinator. Original checkout safely fast-forwarded, preserving all14 authored untracked file byte hashes. No live provider, deployment, capacity, startup or full task50 acceptance is inferred.
