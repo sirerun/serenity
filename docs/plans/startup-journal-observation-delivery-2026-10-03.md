@@ -1,0 +1,18 @@
+# Startup journal observation delivery
+
+Status: corrected source seam independently CLEAR and coordinator frozen; isolated source assignment follows. Canonical coordinator resource claim `R-journal-read-observation` is `16733a33dd6a19a1278f2a87972e4ea151d9c110`, under retained logical task48. Prior global task41/packet and all other agent work are preserved.
+
+## E23: JRO source delivery
+
+#### Wave 1
+
+- [x] T-JRO.1 — JRO-PRE — Independently clear and freeze startup-journal-observation-v1. kind: agent stage: preflight deps: [] Acceptance: exact amended seam has independent CLEAR; original issuance gap and bounded-processing correction preserved; owner file list and additive decision recorded; mounted/writable SSD and explicit owned fixture verified. No startup factory/provider authority authorized.
+- [ ] T-JRO.2 — JRO-IMPL — Implement additive read-only observation and exact-position journal constructor. kind: agent stage: implement deps: [T-JRO.1] Acceptance: only new contracts reader declarations/tests and deletion-owned source/tests/receipt change; full-history digest/entry+seal provenance and positive empty generation match freeze; no writable reader capability; reserved first append/seal never silently advances and rejects cross-generation requested writer use. Existing public/conformance behavior remains compatible.
+- [ ] T-JRO.3 — JRO-VERIFY — Qualify source behavior locally. kind: agent stage: verify deps: [T-JRO.2] Acceptance: focused race/vet/lint plus genuine behavioral mutant REDs cover position/head/identity/pagination/limits; coordinator full-module race/vet/lint and Linux ARM64 compilation pass under real build lease and fresh load gate, with skips explicitly disclosed. No API compile failure masquerades as RED.
+- [ ] T-JRO.4 — JRO-REVIEW — Independently review exact committed source. kind: agent stage: review deps: [T-JRO.3] Acceptance: separate reviewer independently reproduces decisive behavioral RED controls, validates readonly method sets and old behavior, and reports exact-head CLEAR. Corrections receive affected verification and renewed review.
+- [ ] T-JRO.5 — JRO-MERGE — Normally merge the reviewed source. kind: agent stage: merge deps: [T-JRO.4] Acceptance: current main/head/discussions/check annotations and actual feed/board checked; no applicable hold; ADR024 founder-authorized local evidence supports ordinary expected-head merge without billing/protection bypass.
+- [ ] T-JRO.6 — JRO-LANDED — Verify remote source delivery. kind: agent stage: verify-landed deps: [T-JRO.5] Acceptance: landed main tree matches reviewed source; claim exactly released and receipt/roadmap updated. Startup authority adapter, namespace fencing, credential inventory, service admission and live acceptance remain open.
+
+Owner may edit only new internal/hosted/contracts/deletion_reader.go and its tests, internal/hosted/deletion/journal.go private reader extraction/reserved writer behavior, new internal/hosted/deletion/journal_observation*.go and affected deletion tests, and one new implementation receipt. No backup, recovery, service, CLI, schema, module, global interfaces packet, installed script or provider edits. Concrete source authorization requires the completed preflight and exact assignment; this preparation is not that authorization.
+
+Machine-readable task IDs above retain the original JRO stage names as aliases; earlier assignments and evidence keep their original stage labels. Dependency order and acceptance are unchanged.
