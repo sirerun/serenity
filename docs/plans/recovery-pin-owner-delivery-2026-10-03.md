@@ -23,11 +23,11 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
 
 - [x] T-PNOAUD.1 — Record independent baseline static HOLD. kind: agent stage: review deps: [T-PNO.1]
   acc: Exact ea318 review records three stable findings plus retained producer primitive gap; all WIP checks are evidence only, not source acceptance.
-- [ ] T-PNOFIX.1 — Correct unsupported future record version handling. kind: agent stage: implement deps: [T-PNOAUD.1]
+- [x] T-PNOFIX.1 — Correct unsupported future record version handling. kind: agent stage: implement deps: [T-PNOAUD.1]
   acc: Unsupported versions return Unavailable before current-version strict field decode and preserve disk bytes with no mutation; malformed current records remain corrupt.
-- [ ] T-PNOFIX.2 — Reject mismatched pin tuples before PinKeep. kind: agent stage: implement deps: [T-PNOAUD.1]
+- [x] T-PNOFIX.2 — Reject mismatched pin tuples before PinKeep. kind: agent stage: implement deps: [T-PNOAUD.1]
   acc: RESERVED and PIN_PENDING reconciliation checks exact digest/pin tuple without authorizing deletion.
-- [ ] T-PNOFIX.3 — Exercise durable cancel publication crash prefix. kind: agent stage: implement deps: [T-PNOAUD.1]
+- [x] T-PNOFIX.3 — Exercise durable cancel publication crash prefix. kind: agent stage: implement deps: [T-PNOAUD.1]
   acc: Actual child after-event:PIN_CANCEL crash reopens permanent tombstone, rejects old proof retry and permits only correctly fresh N+1.
 - [ ] T-PNOFIX.4 — Verify all three corrections at current bytes. kind: agent stage: verify deps: [T-PNOFIX.1, T-PNOFIX.2, T-PNOFIX.3, T-PNOFIX.5]
   acc: Meaningful regressions and compiled mutation controls, restored passing focused race/vet/lint with exact build lease releases. T-PNO.4 is the independent renewed review of these findings.
@@ -44,5 +44,7 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
 - [ ] T-SPS.6 — Verify producer landed and release its claim. kind: agent stage: verify-landed deps: [T-SPS.5]
   acc: Same reviewed/landed tree proof as T-PNO.6, with exact producer source claim release and preserved authored material.
 
-- [ ] T-PNOFIX.5 — Refuse owner bootstrap over retained or unknown history. kind: agent stage: implement deps: [T-PNOAUD.1]
+- [x] T-PNOFIX.5 — Refuse owner bootstrap over retained or unknown history. kind: agent stage: implement deps: [T-PNOAUD.1]
   acc: Before creating/rebinding lock, reservations or superblock, bounded no-follow scans reject retained history without its superblock, a superblock without its bound lock and unknown entries; bytes/inodes/inventory remain unchanged. Fresh empty and exact known empty bootstrap prefixes remain supported. Current focused checks/compiled control are required under T-PNOFIX.4.
+
+2026-10-03 current source update: the four accepted owner implementation findings are corrected in author60600440, integrated69c4a22 with identical six owned Go files. Package, race and vet stages passed on author current bytes. Lint, compiled behavioral controls, combined producer matrix and final independent source acceptance remain pending; verification and merge tasks stay open. Earlier full-module baseline is historical after these source changes.
