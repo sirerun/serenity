@@ -507,6 +507,142 @@ func TestPinOwnerFutureRecordVersionUnavailablePreservesBytes(t *testing.T) {
 	}
 }
 
+func pinOwnerTestRootNames(t *testing.T, root string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, len(entries))
+	for i, entry := range entries {
+		names[i] = entry.Name()
+	}
+	return names
+}
+
+func TestPinOwnerOpenDoesNotRebindIncompleteOrUnknownRoots(t *testing.T) {
+	t.Run("missing-superblock-with-retained-future-history", func(t *testing.T) {
+		root := pinOwnerTestRoot(t)
+		owner, _, _, _, _ := pinOwnerTestPair(t, root)
+		reservation, err := owner.ReservePinPlan(context.Background(), "op-retained-future-history")
+		if err != nil {
+			t.Fatal(err)
+		}
+		recordPath := filepath.Join(owner.options.OwnerRoot, pinOwnerReservationsName, reservation.PlanRef(), pinOwnerRecordName(1))
+		raw, err := os.ReadFile(recordPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		future := bytes.Replace(raw, []byte(`"version":1,`), []byte(`"version":2,"future_field":true,`), 1)
+		if bytes.Equal(raw, future) {
+			t.Fatal("future version fixture was unchanged")
+		}
+		if err = os.WriteFile(recordPath, future, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.Remove(filepath.Join(owner.options.OwnerRoot, pinOwnerSuperName)); err != nil {
+			t.Fatal(err)
+		}
+		ownerRootBefore := pinOwnerTestRootNames(t, owner.options.OwnerRoot)
+		lockPath := filepath.Join(owner.options.OwnerRoot, pinOwnerLockName)
+		lockBefore, err := os.Stat(lockPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		recordBefore, err := os.Stat(recordPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, openErr := OpenSnapshotPinOwner(context.Background(), owner.options, owner.expected)
+		if !errors.Is(openErr, ErrPinOwnerUnavailable) {
+			t.Fatalf("open with missing superblock and retained future history = %v", openErr)
+		}
+		got, err := os.ReadFile(recordPath)
+		if err != nil || !bytes.Equal(got, future) {
+			t.Fatalf("future record changed: read err=%v", err)
+		}
+		if _, err = os.Lstat(filepath.Join(owner.options.OwnerRoot, pinOwnerSuperName)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("superblock was recreated: %v", err)
+		}
+		lockAfter, err := os.Stat(lockPath)
+		if err != nil || !os.SameFile(lockBefore, lockAfter) {
+			t.Fatalf("owner lock was rebound: stat err=%v", err)
+		}
+		recordAfter, err := os.Stat(recordPath)
+		if err != nil || !os.SameFile(recordBefore, recordAfter) {
+			t.Fatalf("retained history was replaced: stat err=%v", err)
+		}
+		if gotNames := pinOwnerTestRootNames(t, owner.options.OwnerRoot); strings.Join(gotNames, "\x00") != strings.Join(ownerRootBefore, "\x00") {
+			t.Fatalf("owner root entries changed: got %v want %v", gotNames, ownerRootBefore)
+		}
+	})
+
+	t.Run("existing-superblock-with-missing-lock", func(t *testing.T) {
+		root := pinOwnerTestRoot(t)
+		owner, _, _, _, _ := pinOwnerTestPair(t, root)
+		superPath := filepath.Join(owner.options.OwnerRoot, pinOwnerSuperName)
+		superBefore, err := os.ReadFile(superPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.Remove(filepath.Join(owner.options.OwnerRoot, pinOwnerLockName)); err != nil {
+			t.Fatal(err)
+		}
+		ownerRootBefore := pinOwnerTestRootNames(t, owner.options.OwnerRoot)
+		_, openErr := OpenSnapshotPinOwner(context.Background(), owner.options, owner.expected)
+		if !errors.Is(openErr, ErrPinOwnerUnavailable) {
+			t.Fatalf("open with missing bound lock = %v", openErr)
+		}
+		if _, err = os.Lstat(filepath.Join(owner.options.OwnerRoot, pinOwnerLockName)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("missing owner lock was recreated: %v", err)
+		}
+		superAfter, err := os.ReadFile(superPath)
+		if err != nil || !bytes.Equal(superAfter, superBefore) {
+			t.Fatalf("superblock changed: read err=%v", err)
+		}
+		if gotNames := pinOwnerTestRootNames(t, owner.options.OwnerRoot); strings.Join(gotNames, "\x00") != strings.Join(ownerRootBefore, "\x00") {
+			t.Fatalf("owner root entries changed: got %v want %v", gotNames, ownerRootBefore)
+		}
+	})
+
+	t.Run("unknown-entry-before-bootstrap", func(t *testing.T) {
+		root := pinOwnerTestRoot(t)
+		leaseRoot := filepath.Join(root, "leases")
+		backupOptions := backup.SnapshotLeaseStoreOptions{LeaseRoot: leaseRoot, MaxArtifactBytesPerLease: 1 << 20, MaxMetadataBytesPerLease: 1 << 16, MaxRestoreScratchBytes: 1 << 20, MaxRetainedArtifactBytes: 1 << 22, MaxRetainedMetadataBytes: 1 << 20, MaxLeases: 2}
+		identity, err := backup.PreflightSnapshotStoreIdentity(context.Background(), backupOptions)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ownerOptions := SnapshotPinOwnerOptions{OwnerRoot: filepath.Join(root, "owner"), BackupLeaseRoot: leaseRoot, MaxPlans: 1, MaxOwnerMetadataBytes: 2 << 20}
+		if err = os.Mkdir(ownerOptions.OwnerRoot, 0700); err != nil {
+			t.Fatal(err)
+		}
+		unknownPath := filepath.Join(ownerOptions.OwnerRoot, "operator-data")
+		if err = os.WriteFile(unknownPath, []byte("preserve"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		unknownBefore, err := os.Stat(unknownPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rootNamesBefore := pinOwnerTestRootNames(t, ownerOptions.OwnerRoot)
+		if _, err = OpenSnapshotPinOwner(context.Background(), ownerOptions, identity); !errors.Is(err, ErrPinOwnerUnavailable) {
+			t.Fatalf("open with unknown root entry = %v", err)
+		}
+		unknownAfter, err := os.Stat(unknownPath)
+		if err != nil || !os.SameFile(unknownBefore, unknownAfter) {
+			t.Fatalf("unknown root entry replaced: stat err=%v", err)
+		}
+		content, err := os.ReadFile(unknownPath)
+		if err != nil || string(content) != "preserve" {
+			t.Fatalf("unknown root entry changed: read err=%v content=%q", err, content)
+		}
+		if gotNames := pinOwnerTestRootNames(t, ownerOptions.OwnerRoot); strings.Join(gotNames, "\x00") != strings.Join(rootNamesBefore, "\x00") {
+			t.Fatalf("owner root entries changed: got %v want %v", gotNames, rootNamesBefore)
+		}
+	})
+}
+
 func pinOwnerTestTrimHistory(t *testing.T, owner *SnapshotPinOwner, planRef string, keepVersion uint64, changedPendingDigest string) {
 	t.Helper()
 	planDir := filepath.Join(owner.options.OwnerRoot, pinOwnerReservationsName, planRef)

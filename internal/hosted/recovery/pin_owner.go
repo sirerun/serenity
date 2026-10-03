@@ -149,11 +149,15 @@ func OpenSnapshotPinOwner(ctx context.Context, options SnapshotPinOwnerOptions, 
 			owner = nil
 		}
 	}()
+	lockPresent, err := pinOwnerValidateBootstrapPrefix(ctx, ownerRoot)
+	if err != nil {
+		return nil, err
+	}
 	ownerDev, ownerIno, err := pinOwnerFileIdentity(ownerRoot)
 	if err != nil {
 		return nil, errors.Join(ErrPinOwnerUnavailable, err)
 	}
-	ownerLock, err := pinOwnerOpenLockAt(ownerRoot, pinOwnerLockName, true)
+	ownerLock, err := pinOwnerOpenLockAt(ownerRoot, pinOwnerLockName, !lockPresent)
 	if err != nil {
 		return nil, errors.Join(ErrPinOwnerUnavailable, err)
 	}
@@ -217,6 +221,9 @@ func OpenSnapshotPinOwner(ctx context.Context, options SnapshotPinOwnerOptions, 
 	if err = pinOwnerValidateNamedIdentity(ctx, o); err != nil {
 		return nil, errors.Join(ErrPinOwnerUnavailable, err)
 	}
+	if _, err = pinOwnerValidateBootstrapPrefix(ctx, ownerRoot); err != nil {
+		return nil, err
+	}
 	if err = pinOwnerEnsureDirectoryAt(ctx, ownerRoot, pinOwnerReservationsName); err != nil {
 		return nil, errors.Join(ErrPinOwnerUnavailable, err)
 	}
@@ -225,6 +232,9 @@ func OpenSnapshotPinOwner(ctx context.Context, options SnapshotPinOwnerOptions, 
 	}
 	block, err := pinOwnerReadSuperblock(ctx, ownerRoot)
 	if errors.Is(err, os.ErrNotExist) {
+		if _, err = pinOwnerValidateBootstrapPrefix(ctx, ownerRoot); err != nil {
+			return nil, err
+		}
 		storeID, idErr := pinOwnerRandomHex(32)
 		if idErr != nil {
 			return nil, idErr
@@ -1315,6 +1325,59 @@ func pinOwnerReadDirBounded(ctx context.Context, dir *os.File, max int) (entries
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 	return entries, nil
 }
+
+// pinOwnerValidateBootstrapPrefix permits only the durable prefixes that can
+// result from initializing a new owner root. It is called before creating the
+// lock and again while holding the lock before adding reservations or a
+// superblock, so existing history or unknown entries cannot be rebound.
+func pinOwnerValidateBootstrapPrefix(ctx context.Context, root *os.File) (lockPresent bool, retErr error) {
+	entries, err := pinOwnerReadDirBounded(ctx, root, 3)
+	if err != nil {
+		return false, errors.Join(ErrPinOwnerUnavailable, err)
+	}
+	hasSuper, hasReservations := false, false
+	for _, entry := range entries {
+		switch entry.Name() {
+		case pinOwnerLockName:
+			lockPresent = true
+		case pinOwnerSuperName:
+			hasSuper = true
+		case pinOwnerReservationsName:
+			hasReservations = true
+		default:
+			return false, ErrPinOwnerUnavailable
+		}
+	}
+	if !lockPresent {
+		if len(entries) != 0 {
+			return false, ErrPinOwnerUnavailable
+		}
+		return false, nil
+	}
+	lock, err := pinOwnerOpenLockAt(root, pinOwnerLockName, false)
+	if err != nil {
+		return false, errors.Join(ErrPinOwnerUnavailable, err)
+	}
+	if err = lock.Close(); err != nil {
+		return false, errors.Join(ErrPinOwnerUnavailable, err)
+	}
+	if hasSuper && !hasReservations {
+		return false, ErrPinOwnerUnavailable
+	}
+	if !hasSuper && hasReservations {
+		reservations, openErr := pinOwnerOpenDirAt(root, pinOwnerReservationsName)
+		if openErr != nil {
+			return false, errors.Join(ErrPinOwnerUnavailable, openErr)
+		}
+		children, readErr := pinOwnerReadDirBounded(ctx, reservations, 0)
+		closeErr := reservations.Close()
+		if readErr != nil || closeErr != nil || len(children) != 0 {
+			return false, errors.Join(ErrPinOwnerUnavailable, readErr, closeErr)
+		}
+	}
+	return true, nil
+}
+
 func pinOwnerReadBoundedAt(ctx context.Context, dir *os.File, name string, limit int64) (data []byte, retErr error) {
 	if ctx == nil {
 		return nil, ErrPinOwnerInvalid
