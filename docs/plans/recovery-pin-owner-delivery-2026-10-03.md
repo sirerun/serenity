@@ -29,7 +29,7 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: RESERVED and PIN_PENDING reconciliation checks exact digest/pin tuple without authorizing deletion.
 - [x] T-PNOFIX.3 — Exercise durable cancel publication crash prefix. kind: agent stage: implement deps: [T-PNOAUD.1]
   acc: Actual child after-event:PIN_CANCEL crash reopens permanent tombstone, rejects old proof retry and permits only correctly fresh N+1.
-- [ ] T-PNOFIX.4 — Verify all three corrections at current bytes. kind: agent stage: verify deps: [T-PNOFIX.1, T-PNOFIX.2, T-PNOFIX.3, T-PNOFIX.5, T-PNOFIX.6]
+- [ ] T-PNOFIX.4 — Verify all three corrections at current bytes. kind: agent stage: verify deps: [T-PNOFIX.1, T-PNOFIX.2, T-PNOFIX.3, T-PNOFIX.5, T-PNOFIX.6, T-PNOFIX.7]
   acc: Meaningful regressions and compiled mutation controls, restored passing focused race/vet/lint with exact build lease releases. T-PNO.4 is the independent renewed review of these findings.
 - [x] T-SPS.1 — Adopt reviewed producer crash and restart rule. kind: agent stage: preflight deps: [T-PNO.1]
   acc: Proposal096 design CLEAR and coordinator source freeze e762c9c banked; exact source claim c20ad and disjoint backup/testhooks ownership; source acceptance remains HOLD.
@@ -51,3 +51,6 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
 
 - [ ] T-PNOFIX.6 — Classify unsupported future superblock wire before v1 decode. kind: agent stage: implement deps: [T-PNOAUD.1]
   acc: Bounded syntactic version parsing precedes strict v1 superblock decoding; positive unsupported uint64 versions with future extension fields return Unavailable without mutation, while missing, zero, duplicate, malformed and overflowing versions remain corrupt. Active operations and reopening preserve superblock, lock and history bytes/inodes on refusal.
+
+- [ ] T-PNOFIX.7 — Revalidate the current superblock for active owner operations. kind: agent stage: implement deps: [T-PNOAUD.1]
+  acc: Under the acquired owner lock, every active read and mutation checks supported canonical checksummed superblock, exact StoreID and all captured root/lock identities. Future/corrupt/missing or changed identity refuses with zero output and no history mutation; genuine-pair active API regressions and compiled control distinguish this boundary from constructor-only rejection.
