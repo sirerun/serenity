@@ -494,6 +494,13 @@ func TestPinOwnerFutureRecordVersionUnavailablePreservesBytes(t *testing.T) {
 			},
 			want: ErrPinOwnerCorrupt,
 		},
+		{
+			name: "missing-version",
+			mutate: func(raw []byte) []byte {
+				return bytes.Replace(raw, []byte(`"version":1,`), nil, 1)
+			},
+			want: ErrPinOwnerCorrupt,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
