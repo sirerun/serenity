@@ -72,7 +72,7 @@ func DecodeRecoveryEnvelopeV1(ctx context.Context, encoded []byte) (RecoveryEnve
 		return RecoveryEnvelopeV1{}, "", fmt.Errorf("%w: input is not valid UTF-8", ErrRecoveryEnvelopeNonCanonical)
 	}
 	if err := preflightEnvelopeJSON(ctx, encoded); err != nil {
-		if errors.Is(err, ErrRecoveryEnvelopeTooLarge) {
+		if errors.Is(err, ErrRecoveryEnvelopeTooLarge) || errors.Is(err, ErrRecoveryEnvelopeContext) {
 			return RecoveryEnvelopeV1{}, "", err
 		}
 		return RecoveryEnvelopeV1{}, "", fmt.Errorf("%w: %v", ErrRecoveryEnvelopeNonCanonical, err)

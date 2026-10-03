@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -369,5 +370,19 @@ func TestRecoveryEnvelopePreflightChecksContextDuringScan(t *testing.T) {
 	}
 	if ctx.checks < ctx.cancelAt {
 		t.Fatalf("context was not checked throughout scan: checks=%d", ctx.checks)
+	}
+}
+
+func TestDecodeRecoveryEnvelopePreservesMidScanCancellation(t *testing.T) {
+	ctx := &cancelAfterChecksContext{Context: context.Background(), cancelAt: 8}
+	value, hash, err := DecodeRecoveryEnvelopeV1(ctx, []byte(goldenEligibleJSON))
+	if !errors.Is(err, ErrRecoveryEnvelopeContext) || !errors.Is(err, context.Canceled) {
+		t.Fatalf("decode error = %v, want both context sentinels", err)
+	}
+	if !reflect.DeepEqual(value, RecoveryEnvelopeV1{}) || hash != "" {
+		t.Fatalf("canceled decode returned partial result: kind=%q hash=%q", value.Kind, hash)
+	}
+	if ctx.checks < ctx.cancelAt {
+		t.Fatalf("context was not checked during decode scan: checks=%d", ctx.checks)
 	}
 }
