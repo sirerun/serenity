@@ -3,6 +3,7 @@ package recovery
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -289,4 +290,84 @@ func goldenEnvelope(kind RecoveryEnvelopeKind) RecoveryEnvelopeV1 {
 		value.Frozen = &FrozenArmV1{Dispositions: []FrozenDispositionV1{{AccountID: "acct0000000000001", Disposition: FrozenDispositionWithheld, ReasonCode: "PROVIDER_INELIGIBLE"}}}
 	}
 	return value
+}
+
+type cancelAfterChecksContext struct {
+	context.Context
+	checks   int
+	cancelAt int
+}
+
+func (c *cancelAfterChecksContext) Err() error {
+	c.checks++
+	if c.checks >= c.cancelAt {
+		return context.Canceled
+	}
+	return nil
+}
+
+func TestRecoveryEnvelopePreflightBoundsBeforeTypedDecode(t *testing.T) {
+	tooManyAllowlist := strings.Replace(goldenEligibleJSON,
+		`"activation_allowlist":["acct0000000000001"]`,
+		`"activation_allowlist":[`+strings.TrimSuffix(strings.Repeat(`"acct0000000000001",`, maxEnvelopeEligibleAccounts+1), ",")+`]`, 1)
+	manyUnknown := `{"` + strings.Repeat("u", 65) + `":0}`
+	manyUniqueUnknown := strings.Builder{}
+	manyUniqueUnknown.WriteByte('{')
+	for i := 0; i < 2000; i++ {
+		if i > 0 {
+			manyUniqueUnknown.WriteByte(',')
+		}
+		fmt.Fprintf(&manyUniqueUnknown, `"unknown_%04d":0`, i)
+	}
+	manyUniqueUnknown.WriteByte('}')
+	tooLongField := strings.Replace(goldenEligibleJSON, `"plan_ref":"plan-01"`, `"plan_ref":"`+strings.Repeat("p", maxEnvelopeFieldBytes+1)+`"`, 1)
+	tooLongAccountID := strings.Replace(goldenEligibleJSON, `acct0000000000001`, strings.Repeat("a", 65), 1)
+	tooLongRef := strings.Replace(goldenEligibleJSON, `"plan_ref":"plan-01"`, `"plan_ref":"`+strings.Repeat("p", 257)+`"`, 1)
+	missingCommonField := strings.Replace(goldenEligibleJSON, `,"source_schema_version":2`, ``, 1)
+	wrongArrayType := strings.Replace(goldenEligibleJSON, `"activation_allowlist":["acct0000000000001"]`, `"activation_allowlist":true`, 1)
+	nullRequiredArray := strings.Replace(goldenEligibleJSON, `"snapshot_account_inventory":[{"account_id":"acct0000000000001","status":"active"}]`, `"snapshot_account_inventory":null`, 1)
+	eligibleStart := strings.Index(goldenEligibleJSON, `,"eligible":`)
+	if eligibleStart < 0 {
+		t.Fatal("eligible arm missing in golden")
+	}
+	nullUnionArm := goldenEligibleJSON[:eligibleStart] + `,"eligible":null}`
+	missingUnionArm := goldenEligibleJSON[:eligibleStart] + `}`
+	extraUnionArm := strings.TrimSuffix(goldenEligibleJSON, `}`) + `,"frozen":{"dispositions":[]}}`
+	tooLargeInteger := strings.Replace(goldenEligibleJSON, `"reservation_version":1`, `"reservation_version":`+strings.Repeat("9", 40), 1)
+	disposition := `{"account_id":"acct0000000000001","disposition":"WITHHELD_FROZEN","reason_code":"OTHER"}`
+	tooManyDispositions := `{"frozen":{"dispositions":[` + strings.TrimSuffix(strings.Repeat(disposition+`,`, maxEnvelopeDispositions+1), `,`) + `]}}`
+	for name, input := range map[string]string{
+		"over-limit eligible array":       tooManyAllowlist,
+		"over-limit full inventory array": tooManyDispositions,
+		"oversized key":                   manyUnknown,
+		"many unknown members":            manyUniqueUnknown.String(),
+		"oversized string":                tooLongField,
+		"oversized account ID":            tooLongAccountID,
+		"oversized reference":             tooLongRef,
+		"integer overflow":                tooLargeInteger,
+		"missing required field":          missingCommonField,
+		"wrong array type":                wrongArrayType,
+		"null required array":             nullRequiredArray,
+		"null union arm":                  nullUnionArm,
+		"missing active union arm":        missingUnionArm,
+		"extra inactive union arm":        extraUnionArm,
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := preflightEnvelopeJSON(context.Background(), []byte(input))
+			if err == nil {
+				t.Fatal("preflight accepted over-bound input")
+			}
+		})
+	}
+}
+
+func TestRecoveryEnvelopePreflightChecksContextDuringScan(t *testing.T) {
+	ctx := &cancelAfterChecksContext{Context: context.Background(), cancelAt: 8}
+	err := preflightEnvelopeJSON(ctx, []byte(goldenEligibleJSON))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("preflight error = %v, want cancellation", err)
+	}
+	if ctx.checks < ctx.cancelAt {
+		t.Fatalf("context was not checked throughout scan: checks=%d", ctx.checks)
+	}
 }

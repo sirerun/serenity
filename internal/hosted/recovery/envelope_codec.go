@@ -71,7 +71,7 @@ func DecodeRecoveryEnvelopeV1(ctx context.Context, encoded []byte) (RecoveryEnve
 	if !utf8.Valid(encoded) {
 		return RecoveryEnvelopeV1{}, "", fmt.Errorf("%w: input is not valid UTF-8", ErrRecoveryEnvelopeNonCanonical)
 	}
-	if err := scanStrictEnvelopeJSON(encoded); err != nil {
+	if err := preflightEnvelopeJSON(ctx, encoded); err != nil {
 		if errors.Is(err, ErrRecoveryEnvelopeTooLarge) {
 			return RecoveryEnvelopeV1{}, "", err
 		}
@@ -121,92 +121,6 @@ func ensureEOF(decoder *json.Decoder) error {
 			return fmt.Errorf("%w: trailing JSON value", ErrRecoveryEnvelopeNonCanonical)
 		}
 		return fmt.Errorf("%w: trailing bytes: %v", ErrRecoveryEnvelopeNonCanonical, err)
-	}
-	return nil
-}
-
-func scanStrictEnvelopeJSON(encoded []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.UseNumber()
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	delim, ok := token.(json.Delim)
-	if !ok || delim != '{' {
-		return fmt.Errorf("top-level JSON value must be an object")
-	}
-	if err := scanEnvelopeObject(decoder, 1); err != nil {
-		return err
-	}
-	if _, err := decoder.Token(); err != io.EOF {
-		if err == nil {
-			return fmt.Errorf("trailing JSON value")
-		}
-		return err
-	}
-	return nil
-}
-
-func scanEnvelopeValue(decoder *json.Decoder, depth int) error {
-	if depth > maxEnvelopeNesting {
-		return ErrRecoveryEnvelopeTooLarge
-	}
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	switch value := token.(type) {
-	case json.Delim:
-		switch value {
-		case '{':
-			return scanEnvelopeObject(decoder, depth)
-		case '[':
-			for decoder.More() {
-				if err := scanEnvelopeValue(decoder, depth+1); err != nil {
-					return err
-				}
-			}
-			end, err := decoder.Token()
-			if err != nil || end != json.Delim(']') {
-				return fmt.Errorf("malformed JSON array")
-			}
-		default:
-			return fmt.Errorf("unexpected JSON delimiter")
-		}
-	case json.Number:
-		if !integerJSONPattern.MatchString(value.String()) {
-			return fmt.Errorf("non-integer JSON number")
-		}
-	}
-	return nil
-}
-
-func scanEnvelopeObject(decoder *json.Decoder, depth int) error {
-	if depth > maxEnvelopeNesting {
-		return ErrRecoveryEnvelopeTooLarge
-	}
-	seen := make(map[string]struct{})
-	for decoder.More() {
-		keyToken, err := decoder.Token()
-		if err != nil {
-			return err
-		}
-		key, ok := keyToken.(string)
-		if !ok {
-			return fmt.Errorf("object key is not a string")
-		}
-		if _, exists := seen[key]; exists {
-			return fmt.Errorf("duplicate JSON object key")
-		}
-		seen[key] = struct{}{}
-		if err := scanEnvelopeValue(decoder, depth+1); err != nil {
-			return err
-		}
-	}
-	end, err := decoder.Token()
-	if err != nil || end != json.Delim('}') {
-		return fmt.Errorf("malformed JSON object")
 	}
 	return nil
 }
