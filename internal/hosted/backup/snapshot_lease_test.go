@@ -27,6 +27,8 @@ type leaseTestAuthority struct {
 	consumeAttempt  func(PinAttemptRef) PinAttemptRef
 	consumeIdentity *SnapshotStoreIdentity
 	savedProof      VerifiedPinAbsence
+	beforeReconcile func(SnapshotPinRef) error
+	beforeComplete  func(PinReleaseAuthorization) error
 }
 
 func newLeaseTestAuthority() *leaseTestAuthority {
@@ -122,19 +124,26 @@ func (a *leaseTestAuthority) ListPinAttempts(context.Context) ([]PinAttemptRef, 
 }
 func (a *leaseTestAuthority) ReconcilePin(_ context.Context, p SnapshotPinRef) (PinReconcileDecision, error) {
 	a.mu.Lock()
-	defer a.mu.Unlock()
-	if d, ok := a.decisions[p.ID()]; ok {
+	d, ok := a.decisions[p.ID()]
+	before := a.beforeReconcile
+	a.mu.Unlock()
+	if before != nil {
+		if err := before(p); err != nil {
+			return PinReconcileDecision{}, err
+		}
+	}
+	if ok {
 		return d, nil
 	}
 	return PinReconcileDecision{Action: PinKeep}, nil
 }
 func (a *leaseTestAuthority) CompletePinRelease(_ context.Context, authorization PinReleaseAuthorization) error {
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	a.completes++
-	key := attemptKey(authorization.PlanRef, authorization.ManifestSHA256)
-	if current, ok := a.attempts[key]; ok && current.State == PinAttemptCommitted {
-		delete(a.attempts, key)
+	before := a.beforeComplete
+	a.mu.Unlock()
+	if before != nil {
+		return before(authorization)
 	}
 	return nil
 }
@@ -547,6 +556,9 @@ func TestSnapshotLeaseReconcileCompletesInterruptedReleaseWithDurableTombstone(t
 	if err = writeLeaseRecord(filepath.Join(root, lease.LeaseID()), &record, s.options.MaxMetadataBytesPerLease); err != nil {
 		t.Fatal(err)
 	}
+	a.mu.Lock()
+	a.decisions[pin.ID()] = PinReconcileDecision{Action: PinRelease, Authorization: auth}
+	a.mu.Unlock()
 	if err = s.Reconcile(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -578,8 +590,11 @@ func TestSnapshotLeaseReconcileCompletesInterruptedReleaseWithDurableTombstone(t
 	if err = s.Reconcile(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("completed release tombstone was not cleaned: %v", err)
+	if _, err = os.Stat(marker); err != nil {
+		t.Fatalf("completed release receipt was not retained: %v", err)
+	}
+	if err = s.Reconcile(context.Background()); err != nil {
+		t.Fatalf("second reconciliation with retained committed pair: %v", err)
 	}
 	a.mu.Lock()
 	completes := a.completes
