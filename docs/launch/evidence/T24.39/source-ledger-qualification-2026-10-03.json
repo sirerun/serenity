@@ -1,0 +1,14 @@
+{
+  "baseline": "a89adca37e82ca1a1fa7eba6e5ade6efabe09781",
+  "source_ids": 58,
+  "rows": 58,
+  "missing": [],
+  "extra": [],
+  "proposal_sha256": "771e7dd08412c3b54cf176f112100b89bbd1d5d4f9abfe51ee2b605d85fbcdab",
+  "changed_files": [
+    "docs/plans/finding-ledger-source-proposal-2026-10-03.md",
+    "docs/plans/high-retrace-delta-and-ledger-review-2026-10-03.md",
+    "docs/plans/high-retrace-delta-source-assignment-2026-10-03.md"
+  ],
+  "production_source_unchanged": true
+}

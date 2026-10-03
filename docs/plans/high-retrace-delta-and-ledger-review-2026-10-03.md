@@ -99,3 +99,7 @@ The rows below retain the original proposal's classification and assess whether 
 ## T24.39 contract result
 
 T24.39 requires every finding once with closed/deferred/accepted-risk status, a PR link for every closed item, fresh five-High traces, and live verification for T24.1, T24.2, and T24.3. This review provides source-level delta and finds the proposal's table inventory exact, but it does not satisfy the live requirement or resolve every open finding into a named deferral or explicitly named/date-stamped acceptance. **T24.39 remains open.** This report is a review handoff only; do not edit the shared ledger or infer acceptance from it.
+
+## Coverage correction after independent review
+
+The historical 59-ID coverage claims above are superseded. Strict complete-token extraction proves 58 consolidated findings; narrative `F-AI-08` is explicitly deduplicated to `AI-03` in the original report. Corrected proposal `06752800b9ab8848cd101f4def3fb150bfbf8c0a` and the banked final independent review account for exactly those 58 rows. Historical conclusions about unsupported deferrals remain preserved. This is not T24.39 acceptance.

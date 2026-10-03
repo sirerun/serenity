@@ -10,6 +10,8 @@ Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/pla
 
 ## Shipped
 
+- 2026-10-03 [PR350](https://github.com/sirerun/serenity/pull/350) merged at a89adca3: whole-module AST guard covers direct literal Git execution in non-test Go, including ignored and platform files. Nine independent lexical/literal controls CLEAR; 18 package race tests, full vet and scoped lint passed. Reviewed and landed trees match. Formal T24.30 dependencies and live acceptance remain open.
+
 - 2026-10-03 [PR349](https://github.com/sirerun/serenity/pull/349) merged at8081632: unwired bounded version-pinned S3 transport and private child launcher, preserving only uncertain final COMPLETE read-only reconciliation. Corrected public failures invalidate later context writes; five genuine original-source REDs and dedicated final reviews CLEAR. Coordinator119 hosted tests, Ruff and owned-file format checks pass; landed tree01721c8c exactly matches reviewed candidate. Go/module files match qualified PR348 main. Installed runner, physical capacity, credential/IAM provenance, retention activation and provider/live qualification remain open.
 
 - 2026-10-03 [PR348](https://github.com/sirerun/serenity/pull/348) merged at2fee7e6: all four eval Git callers use the read-only runner; connector Poll pins its repository root and confines actual file reads. Dedicated independent reviews CLEAR with genuine hostile-environment, leaf/root replacement and skip controls. Full local race84 packages/2980 tests, vet/lint/LinuxARM64 build passed; landed treef011c37a exactly matches reviewed candidate. Seven existing skips disclosed; Actions billing remains locked. Whole-module drift enforcement and hosted/live security acceptance remain open.
