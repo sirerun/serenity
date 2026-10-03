@@ -1,9 +1,9 @@
 # Independent renewed review: recovery envelope pure contract
 
-**Verdict: CLEAR for the bounded pure codec contract**  
-**Exact reviewed head:** `8e2d5dbd1c4ae90c64697edd8853c730258ac0c6`  
-**Document SHA-256:** `424a1dfa2159f0e591d830dd21949eedc903edf1858526c61c4add24d677ed75`  
-**Review clone:** detached at exact head, clean.  
+**Verdict: CLEAR for the bounded pure codec contract**
+**Exact reviewed head:** `8e2d5dbd1c4ae90c64697edd8853c730258ac0c6`
+**Document SHA-256:** `424a1dfa2159f0e591d830dd21949eedc903edf1858526c61c4add24d677ed75`
+**Review clone:** detached at exact head, clean.
 **Scope:** pure canonical codec and structural validation only; no builds, source edits, authority-owner claims, or integration claims.
 
 The amendments close all four findings from `final-review-f194ec08.md`:
