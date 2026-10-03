@@ -1,0 +1,16 @@
+# Snapshot pin/release fault-barrier proposal: static preflight
+
+**Verdict: HOLD**  
+**Proposal commit:** `f16d8b89e74b3f6a4ff08f7944c030a0b88f3647`  
+**Proposal:** `docs/plans/snapshot-pin-release-fault-barriers-proposed-contract-2026-10-03.md`  
+**Producer source inspected:** `internal/hosted/backup/snapshot_lease.go` at WIP checkout commit `1ab1ce39877d62cc048dab3f3a825885c63cf314`; no source was changed and no builds were run.
+
+The proposal identifies eight useful lifecycle checkpoints around PIN_PENDING, PINNED, RELEASING, lease-byte removal, RELEASED, and owner completion (proposal lines 9–18). Those outer checkpoints are source-grounded and the proposed no-op-production `testhooks.At` mechanism is a safe fit: `internal/hosted/testhooks/hook_prod.go:1-9` implements an unconditional no-op outside `hostedtest`; `hook_hostedtest.go` activates only via the tagged anonymous control-pipe mechanism; `testhooks.go:5-9,65` documents the split. The proposal also correctly rules out environment or executable-name switches (proposal lines 3–7).
+
+The proposal does not close the frozen pin-owner crash requirements. The frozen owner contract `docs/plans/recovery-pin-owner-source-proposed-contract-2026-10-03.md:320,324` requires producer-side prefixes for temporary-file creation, partial/complete write, file fsync, no-replace publish, directory/root sync, backup pin-file write/fsync/root sync, exact lease-byte deletion, and RELEASED tombstone, as well as the owner CAS points. Proposal line 20 explicitly excludes producer temporary-file write/fsync/rename and per-file deletion, saying the owner store's primitive tests cover the latter; those tests cannot exercise backup-owned files or removal.
+
+This is a real gap in the producer helpers. `backup.writeLeaseRecord` at `internal/hosted/backup/snapshot_lease.go:2631-2698` creates `.lease.tmp-*` at 2668–2671, writes and fsyncs at 2673–2677, publishes with `root.Rename` at 2685–2687, and syncs the directory at 2688–2693. The proposed `snapshot_pin_pending_written` fires only after this helper returns, and therefore cannot inject between those primitive operations. `backup.removeLeaseDirectory` at `snapshot_lease.go:2397-2441` performs identity checks at 2413–2429, calls `root.RemoveAll(id)` at 2432–2434, then syncs the store root at 2435–2440. The proposed `snapshot_release_bytes_removed` fires after the whole helper returns, so it cannot cover partial per-file deletion or the interval before the root sync.
+
+The fix is to keep hooks backup-owned and inert in ordinary builds, while adding named checkpoints inside the producer primitives and child-process probes that exercise/reopen each reachable prefix. Cover temp creation, partial and complete write, file fsync, publish, containing-directory/root sync, removal progress (or each independently meaningful deletion boundary), and final sync. If those prefixes are intentionally excluded, an explicit amendment to the frozen contract and equivalent crash evidence is required before source acceptance. The eight outer lifecycle checkpoints alone are not sufficient.
+
+Original external report SHA-256: `c6b59c1bc8f6ae41bb0c45b30167fd2a3d0cedd3e97d74c966c2bfcf56d4ec04`; local path locators redacted.
