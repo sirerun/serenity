@@ -637,6 +637,10 @@ func Restore(ctx context.Context, snapshot, destination string) (err error) {
 // restoreCore shares the public restore validation and freeze behavior while
 // letting the lease-backed path keep verification scratch in its owned root.
 func restoreCore(ctx context.Context, snapshot, destination, scratchRoot string) (err error) {
+	return restoreCoreWithScratch(ctx, snapshot, destination, scratchRoot, nil)
+}
+
+func restoreCoreWithScratch(ctx context.Context, snapshot, destination, scratchRoot string, onScratch func(string, os.FileInfo) error) (err error) {
 	if isNilInterface(ctx) {
 		return ErrNilContext
 	}
@@ -697,6 +701,9 @@ func restoreCore(ctx context.Context, snapshot, destination, scratchRoot string)
 		var created os.FileInfo
 		if createErr == nil {
 			created, createErr = parent.Stat(name)
+		}
+		if createErr == nil && onScratch != nil {
+			createErr = onScratch(name, created)
 		}
 		closeErr := parent.Close()
 		if createErr != nil || closeErr != nil {

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,21 +35,27 @@ var (
 )
 
 const (
-	leaseRecordName       = "lease.json"
-	releaseRecordName     = "release.json"
-	maxReleaseRecordBytes = 4096
-	leaseMetadataVersion  = 1
-	maxLeaseMetadataBytes = 1 << 20
-	maxLeaseBytes         = int64(1 << 40)
-	maxCandidateTextBytes = 256
-	maxCandidateRows      = 64
-	stageOrphanGrace      = 24 * time.Hour
+	leaseRecordName        = "lease.json"
+	releaseRecordName      = "release.json"
+	stageIntentName        = "stage-intent.json"
+	maxReleaseRecordBytes  = 4096
+	leaseMetadataVersion   = 1
+	maxLeaseMetadataBytes  = 1 << 20
+	maxLeaseBytes          = int64(1 << 40)
+	maxCandidateTextBytes  = 256
+	maxCandidateRows       = 64
+	maxIntentMetadataBytes = int64(4096)
+	maxSnapshotPinAttempts = 4096
+	stageOrphanGrace       = 24 * time.Hour
 )
 
 type SnapshotLeaseStoreOptions struct {
 	LeaseRoot                string
 	MaxArtifactBytesPerLease int64
 	MaxMetadataBytesPerLease int64
+	// MaxRestoreScratchBytes bounds each lease-backed raw artifact verifier copy
+	// (candidate projection or RestoreVerified scratch). It does not bound
+	// expanded restore output, destination database/WAL growth, or physical quota.
 	MaxRestoreScratchBytes   int64
 	MaxRetainedArtifactBytes int64
 	MaxRetainedMetadataBytes int64
@@ -56,23 +63,131 @@ type SnapshotLeaseStoreOptions struct {
 }
 
 type SnapshotLeaseStore struct {
-	root       string
-	rootDevice uint64
-	rootInode  uint64
-	options    SnapshotLeaseStoreOptions
-	authority  SnapshotPinLifecycleAuthority
-	mu         sync.Mutex
-	closed     bool
+	root            string
+	rootDevice      uint64
+	rootInode       uint64
+	lockDevice      uint64
+	lockInode       uint64
+	identity        SnapshotStoreIdentity
+	releaseDevice   uint64
+	releaseInode    uint64
+	beforeStoreLock func()
+	options         SnapshotLeaseStoreOptions
+	authority       SnapshotPinLifecycleAuthority
+	mu              sync.Mutex
+	closed          bool
 }
 
 type SnapshotPinLifecycleAuthority interface {
 	BeginPinAttempt(ctx context.Context, planRef string, reservationVersion uint64, leaseID, manifestSHA256 string) (PinAttemptRef, error)
 	CommitPinAttempt(ctx context.Context, attempt PinAttemptRef, pin SnapshotPinRef) error
-	CancelPinAttempt(ctx context.Context, attempt PinAttemptRef) error
+	CancelPinAttempt(ctx context.Context, attempt PinAttemptRef, proof VerifiedPinAbsence) error
 	FindPinAttempt(ctx context.Context, planRef, manifestSHA256 string) (PinAttemptRef, error)
 	ListPinAttempts(ctx context.Context) ([]PinAttemptRef, error)
 	ReconcilePin(ctx context.Context, pin SnapshotPinRef) (PinReconcileDecision, error)
 	CompletePinRelease(ctx context.Context, authorization PinReleaseAuthorization) error
+}
+
+type snapshotStoreIdentityState struct {
+	rootPath              string
+	rootDevice, rootInode uint64
+	lockDevice, lockInode uint64
+}
+
+// SnapshotStoreIdentity is an opaque capability tying the owner and backup
+// lifecycle to one verified private root and stable lock file.
+type SnapshotStoreIdentity struct{ state *snapshotStoreIdentityState }
+
+// VerifiedPinAbsence is an opaque, callback-scoped proof that the exact staged
+// lease has no durable pin while the producer's store and lease locks are held.
+type VerifiedPinAbsence struct{ state *pinAbsenceState }
+
+type pinAbsenceState struct {
+	mu                              sync.Mutex
+	active, consumed                bool
+	attempt                         PinAttemptRef
+	identity                        *snapshotStoreIdentityState
+	root                            *os.Root
+	storeLock, leaseLock            *os.File
+	leasePath                       string
+	leaseDevice, leaseInode         uint64
+	leaseLockDevice, leaseLockInode uint64
+}
+
+func (p VerifiedPinAbsence) Consume(exact PinAttemptRef, expected SnapshotStoreIdentity) error {
+	state := p.state
+	if state == nil || expected.state == nil || state.root == nil || state.storeLock == nil || state.leaseLock == nil {
+		return ErrSnapshotLeaseInvalid
+	}
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if !state.active || state.consumed || state.identity != expected.state || !sameAttempt(state.attempt, exact) {
+		return ErrSnapshotLeaseConflict
+	}
+	rootInfo, err := state.root.Stat(".")
+	if err != nil {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	rootDev, rootIno, err := fileIdentity(rootInfo)
+	if err != nil || rootDev != state.identity.rootDevice || rootIno != state.identity.rootInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	currentRoot, err := os.Lstat(state.identity.rootPath)
+	if err != nil || !os.SameFile(rootInfo, currentRoot) {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	storeInfo, err := state.storeLock.Stat()
+	if err != nil {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	lockDev, lockIno, err := fileIdentity(storeInfo)
+	if err != nil || lockDev != state.identity.lockDevice || lockIno != state.identity.lockInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	currentLock, err := os.Lstat(filepath.Join(state.identity.rootPath, ".store.lock"))
+	if err != nil || !os.SameFile(storeInfo, currentLock) {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	leaseInfo, err := os.Lstat(state.leasePath)
+	if err != nil || !leaseInfo.IsDir() {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	leaseDev, leaseIno, err := fileIdentity(leaseInfo)
+	if err != nil || leaseDev != state.leaseDevice || leaseIno != state.leaseInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	leaseLockInfo, err := state.leaseLock.Stat()
+	if err != nil {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	leaseLockDev, leaseLockIno, err := fileIdentity(leaseLockInfo)
+	if err != nil || leaseLockDev != state.leaseLockDevice || leaseLockIno != state.leaseLockInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	currentLeaseLock, err := os.Lstat(filepath.Join(state.leasePath, ".lease.lock"))
+	if err != nil || !os.SameFile(leaseLockInfo, currentLeaseLock) {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	state.consumed = true
+	return nil
+}
+
+func (p VerifiedPinAbsence) expire() {
+	if p.state == nil {
+		return
+	}
+	p.state.mu.Lock()
+	p.state.active = false
+	p.state.mu.Unlock()
+}
+
+func (p VerifiedPinAbsence) wasConsumed() bool {
+	if p.state == nil {
+		return false
+	}
+	p.state.mu.Lock()
+	defer p.state.mu.Unlock()
+	return p.state.consumed
 }
 
 type PinAttemptRef struct {
@@ -183,17 +298,181 @@ type leaseDiskRecord struct {
 	Files              []leaseFileRecord     `json:"files"`
 }
 
+type stageIntentRecord struct {
+	Version       int    `json:"version"`
+	Checksum      string `json:"checksum"`
+	Kind          string `json:"kind"`
+	ID            string `json:"id"`
+	OwnerLeaseID  string `json:"owner_lease_id,omitempty"`
+	ScratchName   string `json:"scratch_name"`
+	RootDevice    uint64 `json:"root_device"`
+	RootInode     uint64 `json:"root_inode"`
+	ScratchDevice uint64 `json:"scratch_device"`
+	ScratchInode  uint64 `json:"scratch_inode"`
+	ArtifactBytes int64  `json:"artifact_bytes"`
+	MetadataBytes int64  `json:"metadata_bytes"`
+	CreatedUnix   int64  `json:"created_unix"`
+}
+
+func writeStageIntent(storeRoot, name string, intent stageIntentRecord) (retErr error) {
+	if !strings.HasPrefix(name, ".serenity-snapshot-inspect-") || !isCanonicalID(intent.ID) || (intent.Kind != "stage" && intent.Kind != "candidate" && intent.Kind != "restore") || (intent.Kind != "stage" && !isCanonicalID(intent.OwnerLeaseID)) {
+		return ErrSnapshotLeaseInvalid
+	}
+	var raw []byte
+	stable := false
+	for i := 0; i < 8; i++ {
+		intent.Checksum = ""
+		base, err := json.Marshal(intent)
+		if err != nil {
+			return err
+		}
+		intent.Checksum = digestBytes(base)
+		raw, err = json.Marshal(intent)
+		if err != nil {
+			return err
+		}
+		if intent.Kind == "stage" || int64(len(raw)) == intent.MetadataBytes {
+			stable = true
+			break
+		}
+		intent.MetadataBytes = int64(len(raw))
+	}
+	if !stable {
+		return ErrSnapshotLeaseLimit
+	}
+	store, err := os.OpenRoot(storeRoot)
+	if err != nil {
+		return err
+	}
+	defer func() { retErr = errors.Join(retErr, store.Close()) }()
+	rootInfo, err := store.Stat(".")
+	if err != nil {
+		return err
+	}
+	rootDev, rootIno, err := fileIdentity(rootInfo)
+	if err != nil || rootDev != intent.RootDevice || rootIno != intent.RootInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	root, err := store.OpenRoot(name)
+	if err != nil {
+		return err
+	}
+	defer func() { retErr = errors.Join(retErr, root.Close()) }()
+	scratchInfo, err := root.Stat(".")
+	if err != nil {
+		return err
+	}
+	scratchDev, scratchIno, err := fileIdentity(scratchInfo)
+	if err != nil || scratchDev != intent.ScratchDevice || scratchIno != intent.ScratchInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	f, err := root.OpenFile(stageIntentName, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	_, writeErr := f.Write(raw)
+	writeErr = errors.Join(writeErr, f.Sync(), f.Close())
+	if writeErr != nil {
+		return writeErr
+	}
+	if err = syncOSRoot(root); err != nil {
+		return err
+	}
+	return syncOSRoot(store)
+}
+
+func readStageIntent(path string) (intent stageIntentRecord, retErr error) {
+	f, err := openRegularFile(filepath.Join(path, stageIntentName))
+	if err != nil {
+		return intent, err
+	}
+	raw, err := io.ReadAll(io.LimitReader(f, 4097))
+	err = errors.Join(err, f.Close())
+	if err != nil {
+		return intent, err
+	}
+	if len(raw) > 4096 || rejectDuplicateJSONKeys(raw) != nil {
+		return intent, ErrSnapshotLeaseInvalid
+	}
+	d := json.NewDecoder(bytes.NewReader(raw))
+	d.DisallowUnknownFields()
+	if err = d.Decode(&intent); err != nil {
+		return intent, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	if d.Decode(new(any)) != io.EOF {
+		return intent, ErrSnapshotLeaseInvalid
+	}
+	sum := intent.Checksum
+	intent.Checksum = ""
+	base, err := json.Marshal(intent)
+	if err != nil || digestBytes(base) != sum {
+		return intent, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	intent.Checksum = sum
+	canonical, err := json.Marshal(intent)
+	if err != nil || !bytes.Equal(canonical, raw) {
+		return intent, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	if intent.Version != 1 || !isCanonicalID(intent.ID) || intent.ArtifactBytes < 0 || intent.MetadataBytes < 0 || intent.CreatedUnix <= 0 || !strings.HasPrefix(intent.ScratchName, ".serenity-snapshot-inspect-") || (intent.Kind != "stage" && intent.Kind != "candidate" && intent.Kind != "restore") || (intent.Kind != "stage" && (!isCanonicalID(intent.OwnerLeaseID) || intent.MetadataBytes <= 0 || intent.MetadataBytes > maxIntentMetadataBytes)) || (intent.Kind == "stage" && (intent.OwnerLeaseID != "" || intent.MetadataBytes <= 0)) {
+		return intent, ErrSnapshotLeaseInvalid
+	}
+	return intent, nil
+}
+
+func removeStageIntent(storeRoot, name string, created os.FileInfo, expectedRootDevice, expectedRootInode uint64) (retErr error) {
+	root, err := os.OpenRoot(storeRoot)
+	if err != nil {
+		return err
+	}
+	defer func() { retErr = errors.Join(retErr, root.Close()) }()
+	rootInfo, err := root.Stat(".")
+	if err != nil {
+		return err
+	}
+	rootDevice, rootInode, err := fileIdentity(rootInfo)
+	if err != nil || rootDevice != expectedRootDevice || rootInode != expectedRootInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	info, err := root.Lstat(name)
+	if err != nil {
+		return err
+	}
+	if created == nil || !os.SameFile(info, created) || !info.IsDir() {
+		return ErrSnapshotLeaseInvalid
+	}
+	scratch, err := root.OpenRoot(name)
+	if err != nil {
+		return err
+	}
+	removeErr := scratch.Remove(stageIntentName)
+	removeErr = errors.Join(removeErr, syncOSRoot(scratch), scratch.Close())
+	if removeErr != nil {
+		return removeErr
+	}
+	return fsyncDir(storeRoot)
+}
+
+func syncOSRoot(root *os.Root) error {
+	dir, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	return errors.Join(dir.Sync(), dir.Close())
+}
+
 type releaseTombstone struct {
-	Version        int                   `json:"version"`
-	Checksum       string                `json:"checksum"`
-	ID             string                `json:"id"`
-	PinID          string                `json:"pin_id"`
-	PlanRef        string                `json:"plan_ref"`
-	ManifestSHA256 string                `json:"manifest_sha256"`
-	Disposition    PinReleaseDisposition `json:"disposition"`
-	RecordVersion  uint64                `json:"record_version"`
-	State          string                `json:"state"`
-	MetadataBytes  int64                 `json:"metadata_bytes"`
+	Version            int                   `json:"version"`
+	Checksum           string                `json:"checksum"`
+	ID                 string                `json:"id"`
+	PinID              string                `json:"pin_id"`
+	PlanRef            string                `json:"plan_ref"`
+	ManifestSHA256     string                `json:"manifest_sha256"`
+	ReservationVersion uint64                `json:"reservation_version"`
+	AttemptVersion     uint64                `json:"attempt_version"`
+	Disposition        PinReleaseDisposition `json:"disposition"`
+	RecordVersion      uint64                `json:"record_version"`
+	State              string                `json:"state"`
+	MetadataBytes      int64                 `json:"metadata_bytes"`
 }
 
 func (t releaseTombstone) authorization() PinReleaseAuthorization {
@@ -201,7 +480,7 @@ func (t releaseTombstone) authorization() PinReleaseAuthorization {
 }
 
 func validReleaseTombstone(t releaseTombstone) bool {
-	return t.Version == 1 && isCanonicalID(t.ID) && isCanonicalID(t.PinID) && validPlanRef(t.PlanRef) && isSHA256(t.ManifestSHA256) && t.RecordVersion > 0 && t.State == "RELEASED" && (t.Disposition == PinAbandonedBeforeEffects || t.Disposition == PinCommittedRestoreComplete) && t.MetadataBytes > 0 && t.MetadataBytes <= maxReleaseRecordBytes
+	return t.Version == 1 && isCanonicalID(t.ID) && isCanonicalID(t.PinID) && validPlanRef(t.PlanRef) && isSHA256(t.ManifestSHA256) && t.ReservationVersion > 0 && t.AttemptVersion > 0 && t.RecordVersion > 0 && t.State == "RELEASED" && (t.Disposition == PinAbandonedBeforeEffects || t.Disposition == PinCommittedRestoreComplete) && t.MetadataBytes > 0 && t.MetadataBytes <= maxReleaseRecordBytes
 }
 
 func readReleaseTombstone(path string) (t releaseTombstone, retErr error) {
@@ -243,7 +522,7 @@ func readReleaseTombstone(path string) (t releaseTombstone, retErr error) {
 }
 
 func writeReleaseTombstone(path string, r leaseDiskRecord) (retErr error) {
-	t := releaseTombstone{Version: 1, ID: r.ID, PinID: r.PinID, PlanRef: r.PlanRef, ManifestSHA256: r.ManifestSHA256, Disposition: r.Disposition, RecordVersion: r.RecordVersion, State: "RELEASED"}
+	t := releaseTombstone{Version: 1, ID: r.ID, PinID: r.PinID, PlanRef: r.PlanRef, ManifestSHA256: r.ManifestSHA256, ReservationVersion: r.ReservationVersion, AttemptVersion: r.AttemptVersion, Disposition: r.Disposition, RecordVersion: r.RecordVersion, State: "RELEASED"}
 	var raw []byte
 	stable := false
 	for i := 0; i < 8; i++ {
@@ -327,19 +606,128 @@ func writeReleaseTombstone(path string, r leaseDiskRecord) (retErr error) {
 }
 
 type VerifiedSnapshotLease struct {
-	store         *SnapshotLeaseStore
-	record        leaseDiskRecord
-	path          string
-	mu            sync.Mutex
-	cond          *sync.Cond
-	borrowers     int
-	closing       bool
-	closed        bool
-	restoreActive bool
-	borrowLocks   []*os.File
+	store                *SnapshotLeaseStore
+	record               leaseDiskRecord
+	path                 string
+	mu                   sync.Mutex
+	cond                 *sync.Cond
+	borrowers            int
+	closing              bool
+	closed               bool
+	restoreActive        bool
+	borrowLocks          []*os.File
+	beforeCandidateOpen  func(*os.File) error
+	candidateAfterIntent func()
+	restoreAfterIntent   func()
 }
 
-func NewSnapshotLeaseStore(ctx context.Context, options SnapshotLeaseStoreOptions, lifecycle SnapshotPinLifecycleAuthority) (store *SnapshotLeaseStore, retErr error) {
+func validateSnapshotLeaseOptions(options SnapshotLeaseStoreOptions) error {
+	if !filepath.IsAbs(options.LeaseRoot) || options.LeaseRoot == "" || filepath.Clean(options.LeaseRoot) != options.LeaseRoot || options.MaxLeases < 1 || options.MaxLeases > maxInspectionCount || options.MaxArtifactBytesPerLease < 1 || options.MaxArtifactBytesPerLease > maxLeaseBytes || options.MaxMetadataBytesPerLease < 1 || options.MaxMetadataBytesPerLease > maxLeaseMetadataBytes || options.MaxRestoreScratchBytes < 1 || options.MaxRestoreScratchBytes > maxLeaseBytes || options.MaxRetainedArtifactBytes < options.MaxArtifactBytesPerLease || options.MaxRetainedArtifactBytes > maxLeaseBytes || options.MaxRetainedMetadataBytes < options.MaxMetadataBytesPerLease || options.MaxRetainedMetadataBytes > maxLeaseBytes {
+		return fmt.Errorf("%w: invalid store limits or lease root", ErrSnapshotLeaseLimit)
+	}
+	return nil
+}
+
+// PreflightSnapshotStoreIdentity validates the configured private root and
+// establishes its stable lock inode before it is bound to an owner factory.
+func PreflightSnapshotStoreIdentity(ctx context.Context, options SnapshotLeaseStoreOptions) (identity SnapshotStoreIdentity, retErr error) {
+	if isNilInterface(ctx) {
+		return identity, ErrNilContext
+	}
+	if err := validateSnapshotLeaseOptions(options); err != nil {
+		return identity, err
+	}
+	if err := ctx.Err(); err != nil {
+		return identity, err
+	}
+	rootPath := options.LeaseRoot
+	if _, err := os.Lstat(rootPath); errors.Is(err, os.ErrNotExist) {
+		parentPath, base := filepath.Dir(rootPath), filepath.Base(rootPath)
+		if err = privatefs.ValidateDirectory(ctx, parentPath); err != nil {
+			return identity, fmt.Errorf("hosted/backup: validate lease root parent: %w", err)
+		}
+		parent, openErr := os.OpenRoot(parentPath)
+		if openErr != nil {
+			return identity, openErr
+		}
+		mkdirErr := parent.Mkdir(base, 0700)
+		if errors.Is(mkdirErr, os.ErrExist) {
+			mkdirErr = nil
+		}
+		if mkdirErr == nil {
+			mkdirErr = syncOSRoot(parent)
+		}
+		retErr = errors.Join(mkdirErr, parent.Close())
+		if retErr != nil {
+			return identity, retErr
+		}
+	} else if err != nil {
+		return identity, err
+	}
+	if err := privatefs.ValidateDirectory(ctx, rootPath); err != nil {
+		return identity, fmt.Errorf("hosted/backup: validate lease root: %w", err)
+	}
+	root, err := os.OpenRoot(rootPath)
+	if err != nil {
+		return identity, err
+	}
+	defer func() { retErr = errors.Join(retErr, root.Close()) }()
+	rootInfo, err := root.Stat(".")
+	if err != nil {
+		return identity, err
+	}
+	rootDev, rootIno, err := fileIdentity(rootInfo)
+	if err != nil || rootDev == 0 || rootIno == 0 {
+		return identity, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	lockPath := filepath.Join(rootPath, ".store.lock")
+	var lock *os.File
+	for i := 0; i < 2; i++ {
+		before, statErr := root.Lstat(".store.lock")
+		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+			return identity, statErr
+		}
+		if statErr == nil && (!before.Mode().IsRegular() || before.Mode().Perm()&0077 != 0) {
+			return identity, ErrSnapshotLeaseInvalid
+		}
+		lock, err = openLockFile(lockPath, errors.Is(statErr, os.ErrNotExist))
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		if err != nil {
+			return identity, err
+		}
+		break
+	}
+	if lock == nil {
+		return identity, ErrSnapshotLeaseConflict
+	}
+	lockInfo, statErr := lock.Stat()
+	pathInfo, pathErr := root.Lstat(".store.lock")
+	if statErr != nil || pathErr != nil {
+		return identity, errors.Join(ErrSnapshotLeaseInvalid, statErr, pathErr, lock.Close())
+	}
+	lockDev, lockIno, identityErr := fileIdentity(lockInfo)
+	if statErr != nil || pathErr != nil || identityErr != nil || !os.SameFile(lockInfo, pathInfo) || !lockInfo.Mode().IsRegular() || lockInfo.Mode().Perm()&0077 != 0 {
+		return identity, errors.Join(ErrSnapshotLeaseInvalid, statErr, pathErr, identityErr, lock.Close())
+	}
+	if err = lock.Sync(); err == nil {
+		err = syncOSRoot(root)
+	}
+	lockCloseErr := lock.Close()
+	if err != nil || lockCloseErr != nil {
+		return identity, errors.Join(err, lockCloseErr)
+	}
+	currentRoot, rootErr := os.Lstat(rootPath)
+	currentLock, lockErr := os.Lstat(lockPath)
+	if rootErr != nil || lockErr != nil || !os.SameFile(rootInfo, currentRoot) || !os.SameFile(lockInfo, currentLock) {
+		return identity, errors.Join(ErrSnapshotLeaseInvalid, rootErr, lockErr)
+	}
+	identity = SnapshotStoreIdentity{state: &snapshotStoreIdentityState{rootPath: rootPath, rootDevice: rootDev, rootInode: rootIno, lockDevice: lockDev, lockInode: lockIno}}
+	return identity, nil
+}
+
+func NewSnapshotLeaseStore(ctx context.Context, options SnapshotLeaseStoreOptions, lifecycle SnapshotPinLifecycleAuthority, expected SnapshotStoreIdentity) (store *SnapshotLeaseStore, retErr error) {
 	if isNilInterface(ctx) {
 		return nil, ErrNilContext
 	}
@@ -349,15 +737,14 @@ func NewSnapshotLeaseStore(ctx context.Context, options SnapshotLeaseStoreOption
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if options.LeaseRoot == "" || options.MaxLeases < 1 || options.MaxLeases > maxInspectionCount || options.MaxArtifactBytesPerLease < 1 || options.MaxArtifactBytesPerLease > maxLeaseBytes || options.MaxMetadataBytesPerLease < 1 || options.MaxMetadataBytesPerLease > maxLeaseMetadataBytes || options.MaxRestoreScratchBytes < 1 || options.MaxRestoreScratchBytes > maxLeaseBytes || options.MaxRetainedArtifactBytes < options.MaxArtifactBytesPerLease || options.MaxRetainedArtifactBytes > maxLeaseBytes || options.MaxRetainedMetadataBytes < options.MaxMetadataBytesPerLease || options.MaxRetainedMetadataBytes > maxLeaseBytes {
-		return nil, fmt.Errorf("%w: invalid store limits", ErrSnapshotLeaseLimit)
+	if err := validateSnapshotLeaseOptions(options); err != nil {
+		return nil, err
+	}
+	if expected.state == nil || expected.state.rootPath != options.LeaseRoot {
+		return nil, ErrSnapshotLeaseInvalid
 	}
 	if err := privatefs.ValidateDirectory(ctx, options.LeaseRoot); err != nil {
 		return nil, fmt.Errorf("hosted/backup: validate lease root: %w", err)
-	}
-	dev, ino, err := pathIdentity(options.LeaseRoot)
-	if err != nil {
-		return nil, err
 	}
 	rootPath := filepath.Clean(options.LeaseRoot)
 	root, err := os.OpenRoot(rootPath)
@@ -370,7 +757,15 @@ func NewSnapshotLeaseStore(ctx context.Context, options SnapshotLeaseStoreOption
 		return nil, err
 	}
 	rootDev, rootIno, err := fileIdentity(rootInfo)
-	if err != nil || rootDev != dev || rootIno != ino {
+	if err != nil || rootDev != expected.state.rootDevice || rootIno != expected.state.rootInode {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	lockInfo, err := root.Lstat(".store.lock")
+	if err != nil || !lockInfo.Mode().IsRegular() || lockInfo.Mode().Perm()&0077 != 0 {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	lockDev, lockIno, err := fileIdentity(lockInfo)
+	if err != nil || lockDev != expected.state.lockDevice || lockIno != expected.state.lockInode {
 		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
 	}
 	if err = root.Mkdir(".releases", 0700); err != nil && !errors.Is(err, os.ErrExist) {
@@ -380,9 +775,25 @@ func NewSnapshotLeaseStore(ctx context.Context, options SnapshotLeaseStoreOption
 	if err = privatefs.ValidateDirectory(ctx, releases); err != nil {
 		return nil, err
 	}
+	releaseInfo, err := root.Stat(".releases")
+	if err != nil || !releaseInfo.IsDir() {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	releaseDevice, releaseInode, err := fileIdentity(releaseInfo)
+	if err != nil || releaseDevice == 0 || releaseInode == 0 {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
 	current, err := os.Lstat(rootPath)
 	if err != nil || !os.SameFile(current, rootInfo) {
 		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	finalLock, err := root.Lstat(".store.lock")
+	if err != nil {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	finalLockDev, finalLockIno, finalLockIdentityErr := fileIdentity(finalLock)
+	if finalLockIdentityErr != nil || finalLockDev != expected.state.lockDevice || finalLockIno != expected.state.lockInode {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, finalLockIdentityErr)
 	}
 	dir, err := root.Open(".")
 	if err != nil {
@@ -393,7 +804,7 @@ func NewSnapshotLeaseStore(ctx context.Context, options SnapshotLeaseStoreOption
 	if err != nil {
 		return nil, err
 	}
-	return &SnapshotLeaseStore{root: rootPath, rootDevice: dev, rootInode: ino, options: options, authority: lifecycle}, nil
+	return &SnapshotLeaseStore{root: rootPath, rootDevice: rootDev, rootInode: rootIno, lockDevice: lockDev, lockInode: lockIno, identity: expected, releaseDevice: releaseDevice, releaseInode: releaseInode, options: options, authority: lifecycle}, nil
 }
 
 func (s *SnapshotLeaseStore) Stage(ctx context.Context, sourcePath string, options InspectionOptions) (lease *VerifiedSnapshotLease, retErr error) {
@@ -405,6 +816,28 @@ func (s *SnapshotLeaseStore) Stage(ctx context.Context, sourcePath string, optio
 	}
 	if options.MaxDeclaredBytes > s.options.MaxArtifactBytesPerLease {
 		options.MaxDeclaredBytes = s.options.MaxArtifactBytesPerLease
+	}
+	id, err := randomID()
+	if err != nil {
+		return nil, err
+	}
+	options.stageIntent = func(name string, info os.FileInfo, artifactBytes, manifestBytes int64) error {
+		if err := s.validateRoot(); err != nil {
+			return err
+		}
+		dev, ino, identityErr := fileIdentity(info)
+		if identityErr != nil {
+			return identityErr
+		}
+		currentDev, currentIno, identityErr := pathIdentity(filepath.Join(s.root, name))
+		if identityErr != nil || currentDev != dev || currentIno != ino {
+			return errors.Join(ErrSnapshotLeaseInvalid, identityErr)
+		}
+		intent := stageIntentRecord{Version: 1, Kind: "stage", ID: id, ScratchName: name, RootDevice: s.rootDevice, RootInode: s.rootInode, ScratchDevice: dev, ScratchInode: ino, ArtifactBytes: artifactBytes, MetadataBytes: s.options.MaxMetadataBytesPerLease, CreatedUnix: time.Now().Unix()}
+		if manifestBytes >= intent.MetadataBytes || artifactBytes < 0 || artifactBytes > s.options.MaxArtifactBytesPerLease {
+			return ErrSnapshotLeaseLimit
+		}
+		return writeStageIntent(s.root, name, intent)
 	}
 	options.ScratchRoot = s.root
 	options.maxMetadataBytes = s.options.MaxMetadataBytesPerLease
@@ -449,10 +882,6 @@ func (s *SnapshotLeaseStore) Stage(ctx context.Context, sourcePath string, optio
 	if verified.inspection.DeclaredArtifactBytes > s.options.MaxArtifactBytesPerLease || verified.inspection.DeclaredArtifactBytes > s.options.MaxRetainedArtifactBytes-usage.artifacts {
 		return nil, ErrSnapshotLeaseLimit
 	}
-	id, err := randomID()
-	if err != nil {
-		return nil, err
-	}
 	if err = ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -488,10 +917,16 @@ func (s *SnapshotLeaseStore) Stage(ctx context.Context, sourcePath string, optio
 		return nil, err
 	}
 	leasePath := filepath.Join(s.root, id)
+	if err = s.validateRoot(); err != nil {
+		return nil, err
+	}
 	if err = os.Rename(verified.scratch, leasePath); err != nil {
 		return nil, err
 	}
 	keep = true // The renamed STAGED record is durable inventory even if the parent sync fails.
+	if err = removeStageIntent(s.root, id, verified.scratchInfo, s.rootDevice, s.rootInode); err != nil {
+		return nil, err
+	}
 	if err = s.validateRoot(); err != nil {
 		return nil, err
 	}
@@ -587,6 +1022,9 @@ func (s *SnapshotLeaseStore) ResumePin(ctx context.Context, planRef string, rese
 			return SnapshotPinRef{}, ErrSnapshotLeaseConflict
 		}
 		record.State = "PINNED"
+		if err = s.validateRoot(); err != nil {
+			return SnapshotPinRef{}, err
+		}
 		if err = writeLeaseRecord(filepath.Join(s.root, record.ID), &record, s.options.MaxMetadataBytesPerLease); err != nil {
 			return SnapshotPinRef{}, err
 		}
@@ -688,10 +1126,145 @@ func (l *VerifiedSnapshotLease) Inspection() SnapshotInspection {
 	return cloneInspection(l.record.Inspection)
 }
 
+func (l *VerifiedSnapshotLease) prepareCandidateControlDB(ctx context.Context) (path string, projection *os.File, digest string, size int64, cleanup func() error, retErr error) {
+	var sourceRecord *leaseFileRecord
+	for i := range l.record.Files {
+		if l.record.Files[i].Name == controlDBName {
+			sourceRecord = &l.record.Files[i]
+			break
+		}
+	}
+	if sourceRecord == nil || sourceRecord.Size > l.store.options.MaxRestoreScratchBytes {
+		return "", nil, "", 0, nil, ErrSnapshotLeaseLimit
+	}
+	dev, ino, err := pathIdentity(l.path)
+	if err != nil || dev != l.record.RootDevice || ino != l.record.RootInode {
+		return "", nil, "", 0, nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	source, err := openRegularFile(filepath.Join(l.path, controlDBName))
+	if err != nil {
+		return "", nil, "", 0, nil, err
+	}
+	sourceInfo, err := source.Stat()
+	if err != nil {
+		return "", nil, "", 0, nil, errors.Join(err, source.Close())
+	}
+	sourceDev, sourceIno, err := fileIdentity(sourceInfo)
+	if err != nil || sourceDev != sourceRecord.Device || sourceIno != sourceRecord.Inode || sourceInfo.Size() != sourceRecord.Size || !sourceInfo.Mode().IsRegular() {
+		return "", nil, "", 0, nil, errors.Join(ErrSnapshotLeaseInvalid, err, source.Close())
+	}
+	parent, err := os.OpenRoot(l.store.root)
+	if err != nil {
+		return "", nil, "", 0, nil, errors.Join(err, source.Close())
+	}
+	parentInfo, err := parent.Stat(".")
+	if err != nil {
+		return "", nil, "", 0, nil, errors.Join(err, parent.Close(), source.Close())
+	}
+	parentDev, parentIno, identityErr := fileIdentity(parentInfo)
+	if identityErr != nil || parentDev != l.store.rootDevice || parentIno != l.store.rootInode {
+		return "", nil, "", 0, nil, errors.Join(ErrSnapshotLeaseInvalid, identityErr, parent.Close(), source.Close())
+	}
+	name, err := createInspectionScratch(parent)
+	if err != nil {
+		return "", nil, "", 0, nil, errors.Join(err, parent.Close(), source.Close())
+	}
+	created, err := parent.Stat(name)
+	if err != nil {
+		return "", nil, "", 0, nil, errors.Join(err, parent.Close(), source.Close())
+	}
+	cleanup = func() error { return removeRetainedScratch(l.store.root, name, created) }
+	intentID, err := randomID()
+	if err != nil {
+		return "", nil, "", 0, cleanup, errors.Join(err, cleanup())
+	}
+	dev, ino, err = fileIdentity(created)
+	if err != nil {
+		return "", nil, "", 0, cleanup, errors.Join(err, cleanup())
+	}
+	intent := stageIntentRecord{Version: 1, Kind: "candidate", ID: intentID, OwnerLeaseID: l.record.ID, ScratchName: name, RootDevice: l.store.rootDevice, RootInode: l.store.rootInode, ScratchDevice: dev, ScratchInode: ino, ArtifactBytes: sourceRecord.Size, CreatedUnix: time.Now().Unix()}
+	if err = l.store.validateRoot(); err != nil {
+		return "", nil, "", 0, cleanup, errors.Join(err, cleanup())
+	}
+	if err = writeStageIntent(l.store.root, name, intent); err != nil {
+		return "", nil, "", 0, cleanup, errors.Join(err, cleanup())
+	}
+	if l.candidateAfterIntent != nil {
+		l.candidateAfterIntent()
+	}
+	usage, err := l.store.usageLocked()
+	if err != nil || usage.artifacts > l.store.options.MaxRetainedArtifactBytes {
+		return "", nil, "", 0, cleanup, errors.Join(err, ErrSnapshotLeaseLimit, cleanup())
+	}
+	if err = l.store.validateRoot(); err != nil {
+		return "", nil, "", 0, cleanup, errors.Join(err, cleanup())
+	}
+	output, err := parent.OpenFile(filepath.Join(name, controlDBName), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return "", nil, "", 0, cleanup, errors.Join(err, parent.Close(), source.Close(), cleanup())
+	}
+	h := sha256.New()
+	copied, copyErr := copyContext(ctx, io.MultiWriter(output, h), source, sourceRecord.Size)
+	copyErr = errors.Join(copyErr, source.Close())
+	if copyErr == nil && copied == sourceRecord.Size && hex.EncodeToString(h.Sum(nil)) == sourceRecord.SHA256 {
+		copyErr = output.Sync()
+	} else if copyErr == nil {
+		copyErr = ErrSnapshotLeaseInvalid
+	}
+	if copyErr == nil {
+		copyErr = output.Chmod(0400)
+	}
+	copyErr = errors.Join(copyErr, output.Close())
+	parentCloseErr := parent.Close()
+	if copyErr != nil || parentCloseErr != nil {
+		return "", nil, "", 0, cleanup, errors.Join(copyErr, parentCloseErr, cleanup())
+	}
+	path = filepath.Join(l.store.root, name, controlDBName)
+	projectedInfo, err := os.Lstat(path)
+	if err != nil || !projectedInfo.Mode().IsRegular() || projectedInfo.Mode().Perm()&0222 != 0 {
+		return "", nil, "", 0, cleanup, errors.Join(ErrSnapshotLeaseInvalid, err, cleanup())
+	}
+	projection, err = openRegularFile(path)
+	if err != nil {
+		return "", nil, "", 0, cleanup, errors.Join(err, cleanup())
+	}
+	openedInfo, err := projection.Stat()
+	if err != nil || !os.SameFile(projectedInfo, openedInfo) || openedInfo.Size() != sourceRecord.Size {
+		return "", nil, "", 0, cleanup, errors.Join(ErrSnapshotLeaseInvalid, err, projection.Close(), cleanup())
+	}
+	if err = verifyCandidateProjection(ctx, projection, sourceRecord.SHA256, sourceRecord.Size); err != nil {
+		return "", nil, "", 0, cleanup, errors.Join(err, projection.Close(), cleanup())
+	}
+	return path, projection, sourceRecord.SHA256, sourceRecord.Size, cleanup, nil
+}
+
+func verifyCandidateProjection(ctx context.Context, file *os.File, digest string, size int64) error {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	h := sha256.New()
+	n, err := copyContext(ctx, h, file, size)
+	if err != nil {
+		return err
+	}
+	if _, err = file.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	if n != size || hex.EncodeToString(h.Sum(nil)) != digest {
+		return ErrSnapshotLeaseInvalid
+	}
+	return nil
+}
+
 func (l *VerifiedSnapshotLease) Candidate(ctx context.Context, accountID string) (candidate VerifiedAccountCandidate, retErr error) {
 	if !safeID(accountID) {
 		return nil, ErrSnapshotLeaseInvalid
 	}
+	unlockStore, err := l.store.lock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { retErr = errors.Join(retErr, unlockStore()) }()
 	if err := l.beginBorrow(ctx, false); err != nil {
 		return nil, err
 	}
@@ -699,7 +1272,19 @@ func (l *VerifiedSnapshotLease) Candidate(ctx context.Context, accountID string)
 	if err := verifyRecordFiles(ctx, l.path, l.record); err != nil {
 		return nil, err
 	}
-	db, err := openSnapshotControlDB(ctx, filepath.Join(l.path, controlDBName), l.record.Manifest.Source.SchemaVersion)
+	_, projectionFile, projectionDigest, projectionSize, cleanupProjection, err := l.prepareCandidateControlDB(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { retErr = errors.Join(retErr, cleanupProjection()) }()
+	defer func() { retErr = errors.Join(retErr, projectionFile.Close()) }()
+	fdPath := filepath.Join("/dev/fd", strconv.FormatUint(uint64(projectionFile.Fd()), 10))
+	if l.beforeCandidateOpen != nil {
+		if err = l.beforeCandidateOpen(projectionFile); err != nil {
+			return nil, err
+		}
+	}
+	db, err := openSnapshotControlDB(ctx, fdPath, l.record.Manifest.Source.SchemaVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -768,6 +1353,9 @@ func (l *VerifiedSnapshotLease) Candidate(ctx context.Context, accountID string)
 	}
 	rowsClosed = true
 	if err = ctx.Err(); err != nil {
+		return nil, err
+	}
+	if err = verifyCandidateProjection(ctx, projectionFile, projectionDigest, projectionSize); err != nil {
 		return nil, err
 	}
 	if err = db.Close(); err != nil {
@@ -854,6 +1442,9 @@ func (s *SnapshotLeaseStore) finishPinLocked(ctx context.Context, record leaseDi
 	if growth < 0 || usage.metadata > s.options.MaxRetainedMetadataBytes || growth > s.options.MaxRetainedMetadataBytes-usage.metadata {
 		return SnapshotPinRef{}, ErrSnapshotLeaseLimit
 	}
+	if err = s.validateRoot(); err != nil {
+		return SnapshotPinRef{}, err
+	}
 	if err = writeLeaseRecord(filepath.Join(s.root, record.ID), &record, s.options.MaxMetadataBytesPerLease); err != nil {
 		return SnapshotPinRef{}, fmt.Errorf("write PIN_PENDING lease record: %w", err)
 	}
@@ -871,6 +1462,9 @@ func (s *SnapshotLeaseStore) finishPinLocked(ctx context.Context, record leaseDi
 		return SnapshotPinRef{}, err
 	}
 	record.State = "PINNED"
+	if err = s.validateRoot(); err != nil {
+		return SnapshotPinRef{}, err
+	}
 	if err = writeLeaseRecord(filepath.Join(s.root, record.ID), &record, s.options.MaxMetadataBytesPerLease); err != nil {
 		return SnapshotPinRef{}, err
 	}
@@ -887,39 +1481,60 @@ func (s *SnapshotLeaseStore) CancelPin(ctx context.Context, attempt PinAttemptRe
 	if !validPlanRef(attempt.PlanRef) || !isCanonicalID(attempt.LeaseID) || !isSHA256(attempt.ManifestSHA256) || attempt.ReservationVersion == 0 || attempt.AttemptVersion == 0 {
 		return ErrSnapshotLeaseInvalid
 	}
-	unlock, err := s.lock(ctx)
+	storeLock, unlock, err := s.lockHandle(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { retErr = errors.Join(retErr, unlock()) }()
 	path := filepath.Join(s.root, attempt.LeaseID)
-	if _, err = os.Lstat(path); err == nil {
-		leaseLock, lockErr := lockLeaseContext(ctx, path, false)
-		if lockErr != nil {
-			return lockErr
-		}
-		defer func() { retErr = errors.Join(retErr, unlockFile(leaseLock), leaseLock.Close()) }()
-		r, readErr := readLeaseRecord(path, s.options.MaxMetadataBytesPerLease)
-		if readErr != nil {
-			return readErr
-		}
-		if r.ManifestSHA256 != attempt.ManifestSHA256 {
-			return ErrSnapshotLeaseConflict
-		}
-		if r.State == "PIN_PENDING" || r.State == "PINNED" {
-			if r.PlanRef == attempt.PlanRef && r.ReservationVersion == attempt.ReservationVersion && r.AttemptVersion == attempt.AttemptVersion {
-				return ErrSnapshotLeaseConflict
-			}
-		} else if r.State != "STAGED" {
-			return ErrSnapshotLeaseConflict
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
+	leaseInfo, err := os.Lstat(path)
+	if err != nil {
+		return errors.Join(ErrSnapshotLeaseConflict, err)
+	}
+	if !leaseInfo.IsDir() {
+		return ErrSnapshotLeaseInvalid
+	}
+	leaseLock, err := lockLeaseContext(ctx, path, false)
+	if err != nil {
 		return err
 	}
+	defer func() { retErr = errors.Join(retErr, unlockFile(leaseLock), leaseLock.Close()) }()
+	r, err := readLeaseRecord(path, s.options.MaxMetadataBytesPerLease)
+	if err != nil {
+		return err
+	}
+	if r.ID != attempt.LeaseID || r.ManifestSHA256 != attempt.ManifestSHA256 || r.State != "STAGED" || r.PinID != "" || r.PlanRef != "" || r.ReservationVersion != 0 || r.AttemptVersion != 0 {
+		return ErrSnapshotLeaseConflict
+	}
+	root, err := os.OpenRoot(s.root)
+	if err != nil {
+		return err
+	}
+	rootInfo, err := root.Stat(".")
+	if err != nil {
+		return errors.Join(err, root.Close())
+	}
+	leaseLockInfo, err := leaseLock.Stat()
+	if err != nil {
+		return errors.Join(err, root.Close())
+	}
+	rootDev, rootIno, e1 := fileIdentity(rootInfo)
+	leaseDev, leaseIno, e2 := fileIdentity(leaseInfo)
+	leaseLockDev, leaseLockIno, e3 := fileIdentity(leaseLockInfo)
+	currentLease, currentErr := os.Lstat(path)
+	if e1 != nil || e2 != nil || e3 != nil || currentErr != nil || !os.SameFile(leaseInfo, currentLease) || s.identity.state == nil || rootDev != s.identity.state.rootDevice || rootIno != s.identity.state.rootInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, e1, e2, e3, currentErr, root.Close())
+	}
+	proof := VerifiedPinAbsence{state: &pinAbsenceState{active: true, attempt: attempt, identity: s.identity.state, root: root, storeLock: storeLock, leaseLock: leaseLock, leasePath: path, leaseDevice: leaseDev, leaseInode: leaseIno, leaseLockDevice: leaseLockDev, leaseLockInode: leaseLockIno}}
+	defer func() { retErr = errors.Join(retErr, root.Close()) }()
+	defer proof.expire()
 	// The owner implements exact-attempt CAS and durable canceled tombstones.
 	// It must not consult or mutate a later attempt when this is a retry of N.
-	if err = s.authority.CancelPinAttempt(ctx, attempt); err != nil {
+	if err = s.authority.CancelPinAttempt(ctx, attempt, proof); err != nil {
 		return err
+	}
+	if !proof.wasConsumed() {
+		return ErrSnapshotLeaseConflict
 	}
 	return ctx.Err()
 }
@@ -930,24 +1545,89 @@ func (s *SnapshotLeaseStore) Reconcile(ctx context.Context) (retErr error) {
 		return err
 	}
 	defer func() { retErr = errors.Join(retErr, unlock()) }()
-	if err = s.finishReleaseJournal(ctx); err != nil {
-		return err
-	}
 	attempts, err := s.authority.ListPinAttempts(ctx)
 	if err != nil {
 		return err
 	}
+	if err = validatePinAttemptList(attempts); err != nil {
+		return err
+	}
+	if err = validateLocalPinAttemptPairs(s.root, s.options.MaxMetadataBytesPerLease, attempts); err != nil {
+		return err
+	}
+	if err = s.finishReleaseJournal(ctx); err != nil {
+		return err
+	}
 	protected := map[string]bool{}
 	for _, a := range attempts {
-		if a.State == PinAttemptPending {
-			protected[a.LeaseID] = true
-		}
+		protected[a.LeaseID] = true
 	}
 	entries, err := os.ReadDir(s.root)
 	if err != nil {
 		return err
 	}
 	var errs []error
+	for _, entry := range entries {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".serenity-snapshot-inspect-") {
+			continue
+		}
+		path := filepath.Join(s.root, entry.Name())
+		intent, intentErr := readStageIntent(path)
+		if errors.Is(intentErr, os.ErrNotExist) {
+			continue
+		}
+		if intentErr != nil {
+			errs = append(errs, intentErr)
+			continue
+		}
+		rootDev, rootIno, identityErr := pathIdentity(s.root)
+		dev, ino, scratchErr := pathIdentity(path)
+		if identityErr != nil || scratchErr != nil || rootDev != intent.RootDevice || rootIno != intent.RootInode || dev != intent.ScratchDevice || ino != intent.ScratchInode || intent.ScratchName != entry.Name() {
+			errs = append(errs, errors.Join(ErrSnapshotLeaseInvalid, identityErr, scratchErr))
+			continue
+		}
+		created, statErr := os.Lstat(path)
+		identityErr = errors.Join(identityErr, statErr)
+		if intent.Kind == "candidate" || intent.Kind == "restore" {
+			ownerPath := filepath.Join(s.root, intent.OwnerLeaseID)
+			owner, ownerErr := readLeaseRecord(ownerPath, s.options.MaxMetadataBytesPerLease)
+			if ownerErr != nil || owner.ID != intent.OwnerLeaseID {
+				errs = append(errs, errors.Join(ErrSnapshotLeaseInvalid, ownerErr))
+				continue
+			}
+			leaseLock, lockErr := lockLeaseContext(ctx, ownerPath, false)
+			if lockErr != nil {
+				errs = append(errs, lockErr)
+				continue
+			}
+			if identityErr == nil {
+				identityErr = s.validateRoot()
+			}
+			if identityErr == nil {
+				identityErr = removeRetainedScratch(s.root, entry.Name(), created)
+			}
+			identityErr = errors.Join(identityErr, unlockFile(leaseLock), leaseLock.Close())
+			if identityErr == nil {
+				identityErr = fsyncDir(s.root)
+			}
+			if identityErr != nil {
+				errs = append(errs, identityErr)
+			}
+			continue
+		}
+		if identityErr == nil {
+			identityErr = s.validateRoot()
+		}
+		if identityErr == nil {
+			identityErr = removeRetainedScratch(s.root, entry.Name(), created)
+		}
+		if identityErr == nil {
+			identityErr = fsyncDir(s.root)
+		}
+		if identityErr != nil {
+			errs = append(errs, identityErr)
+		}
+	}
 	for _, e := range entries {
 		if err = ctx.Err(); err != nil {
 			return errors.Join(errors.Join(errs...), err)
@@ -959,6 +1639,21 @@ func (s *SnapshotLeaseStore) Reconcile(ctx context.Context) (retErr error) {
 		r, e2 := readLeaseRecord(path, s.options.MaxMetadataBytesPerLease)
 		if e2 != nil {
 			errs = append(errs, e2)
+			continue
+		}
+		if intent, intentErr := readStageIntent(path); intentErr == nil {
+			dev, ino, identityErr := pathIdentity(path)
+			created, statErr := os.Lstat(path)
+			if intent.ID != r.ID || !strings.HasPrefix(intent.ScratchName, ".serenity-snapshot-inspect-") || intent.RootDevice != s.rootDevice || intent.RootInode != s.rootInode || intent.ScratchDevice != dev || intent.ScratchInode != ino || identityErr != nil || statErr != nil {
+				errs = append(errs, errors.Join(ErrSnapshotLeaseInvalid, identityErr, statErr))
+				continue
+			}
+			if e2 = removeStageIntent(s.root, r.ID, created, s.rootDevice, s.rootInode); e2 != nil {
+				errs = append(errs, e2)
+				continue
+			}
+		} else if !errors.Is(intentErr, os.ErrNotExist) {
+			errs = append(errs, intentErr)
 			continue
 		}
 		if r.State == "PIN_PENDING" {
@@ -1050,7 +1745,7 @@ func (s *SnapshotLeaseStore) Reconcile(ctx context.Context) (retErr error) {
 				continue
 			}
 			if e2 = s.validateRoot(); e2 == nil {
-				e2 = os.RemoveAll(path)
+				e2 = s.removeLeaseDirectory(r.ID, r.RootDevice, r.RootInode)
 			}
 			unlockErr := errors.Join(unlockFile(leaseLock), leaseLock.Close())
 			if e2 = errors.Join(e2, unlockErr); e2 != nil {
@@ -1061,6 +1756,78 @@ func (s *SnapshotLeaseStore) Reconcile(ctx context.Context) (retErr error) {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func validatePinAttemptList(attempts []PinAttemptRef) error {
+	if uint64(len(attempts)) > uint64(maxSnapshotPinAttempts) {
+		return ErrSnapshotLeaseLimit
+	}
+	seenAttempts := make(map[string]struct{}, len(attempts))
+	seenReservations := make(map[string]string, len(attempts))
+	seenLeases := make(map[string]string, len(attempts))
+	for _, a := range attempts {
+		if (a.State != PinAttemptPending && a.State != PinAttemptCommitted) || !validPlanRef(a.PlanRef) || !isCanonicalID(a.LeaseID) || !isSHA256(a.ManifestSHA256) || a.ReservationVersion == 0 || a.AttemptVersion == 0 {
+			return ErrSnapshotLeaseInvalid
+		}
+		attemptKey := fmt.Sprintf("%s:%d:%s:%d", a.PlanRef, a.ReservationVersion, a.LeaseID, a.AttemptVersion)
+		if _, ok := seenAttempts[attemptKey]; ok {
+			return ErrSnapshotLeaseConflict
+		}
+		seenAttempts[attemptKey] = struct{}{}
+		reservationKey := fmt.Sprintf("%s:%d", a.PlanRef, a.ReservationVersion)
+		if old, ok := seenReservations[reservationKey]; ok && old != attemptKey {
+			return ErrSnapshotLeaseConflict
+		}
+		seenReservations[reservationKey] = attemptKey
+		if old, ok := seenLeases[a.LeaseID]; ok && old != attemptKey {
+			return ErrSnapshotLeaseConflict
+		}
+		seenLeases[a.LeaseID] = attemptKey
+	}
+	return nil
+}
+
+func validateLocalPinAttemptPairs(root string, maxMetadata int64, attempts []PinAttemptRef) error {
+	for _, a := range attempts {
+		r, err := readLeaseRecord(filepath.Join(root, a.LeaseID), maxMetadata)
+		if errors.Is(err, os.ErrNotExist) && a.State == PinAttemptCommitted {
+			marker := filepath.Join(root, ".releases", a.LeaseID)
+			release, markerErr := readLeaseRecord(marker, maxLeaseMetadataBytes)
+			if markerErr == nil && release.ID == a.LeaseID && release.ManifestSHA256 == a.ManifestSHA256 && release.PlanRef == a.PlanRef && release.ReservationVersion == a.ReservationVersion && release.AttemptVersion == a.AttemptVersion && release.State == "RELEASING" && release.PinID != "" {
+				continue
+			}
+			tombstone, tombstoneErr := readReleaseTombstone(marker)
+			if tombstoneErr == nil && tombstone.ID == a.LeaseID && tombstone.ManifestSHA256 == a.ManifestSHA256 && tombstone.PlanRef == a.PlanRef && tombstone.ReservationVersion == a.ReservationVersion && tombstone.AttemptVersion == a.AttemptVersion && tombstone.State == "RELEASED" && tombstone.PinID != "" {
+				continue
+			}
+			return errors.Join(ErrSnapshotLeaseConflict, err, markerErr, tombstoneErr)
+		}
+		if err != nil {
+			return errors.Join(ErrSnapshotLeaseConflict, err)
+		}
+		if r.ID != a.LeaseID || r.ManifestSHA256 != a.ManifestSHA256 {
+			return ErrSnapshotLeaseConflict
+		}
+		fieldsMatch := r.PlanRef == a.PlanRef && r.ReservationVersion == a.ReservationVersion && r.AttemptVersion == a.AttemptVersion
+		switch a.State {
+		case PinAttemptPending:
+			if r.State == "STAGED" && r.PlanRef == "" && r.PinID == "" && r.ReservationVersion == 0 && r.AttemptVersion == 0 {
+				continue
+			}
+			if r.State == "PIN_PENDING" && fieldsMatch && r.PinID != "" {
+				continue
+			}
+			return ErrSnapshotLeaseConflict
+		case PinAttemptCommitted:
+			if (r.State == "PIN_PENDING" || r.State == "PINNED" || r.State == "RELEASING") && fieldsMatch && r.PinID != "" {
+				continue
+			}
+			return ErrSnapshotLeaseConflict
+		default:
+			return ErrSnapshotLeaseInvalid
+		}
+	}
+	return nil
 }
 
 func (l *VerifiedSnapshotLease) Close(ctx context.Context) (retErr error) {
@@ -1120,8 +1887,14 @@ func (l *VerifiedSnapshotLease) Close(ctx context.Context) (retErr error) {
 	if err != nil {
 		return err
 	}
+	if err = validatePinAttemptList(attempts); err != nil {
+		return err
+	}
+	if err = validateLocalPinAttemptPairs(l.store.root, l.store.options.MaxMetadataBytesPerLease, attempts); err != nil {
+		return err
+	}
 	for _, attempt := range attempts {
-		if attempt.State == PinAttemptPending && attempt.LeaseID == current.ID {
+		if attempt.LeaseID == current.ID {
 			l.mu.Lock()
 			l.closed = true
 			l.mu.Unlock()
@@ -1134,120 +1907,62 @@ func (l *VerifiedSnapshotLease) Close(ctx context.Context) (retErr error) {
 	if err = l.store.validateRoot(); err != nil {
 		return err
 	}
-	if err = os.RemoveAll(l.path); err != nil {
+	if err = l.store.removeLeaseDirectory(current.ID, current.RootDevice, current.RootInode); err != nil {
 		return err
 	}
 	l.mu.Lock()
 	l.closed = true
 	l.mu.Unlock()
-	return fsyncDir(l.store.root)
+	return nil
 }
 
 func RestoreVerified(ctx context.Context, lease *VerifiedSnapshotLease, destination string) (retErr error) {
 	if lease == nil {
 		return ErrSnapshotLeaseInvalid
 	}
+	unlockStore, err := lease.store.lock(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { retErr = errors.Join(retErr, unlockStore()) }()
 	if err := lease.beginBorrow(ctx, true); err != nil {
 		return err
 	}
 	defer func() { retErr = errors.Join(retErr, lease.endBorrow()) }()
-	snapshot, cleanup, err := lease.prepareRestoreSnapshot(ctx)
-	if err != nil {
+	if lease.record.ArtifactBytes > lease.store.options.MaxRestoreScratchBytes {
+		return ErrSnapshotLeaseLimit
+	}
+	if err = verifyRecordFiles(ctx, lease.path, lease.record); err != nil {
 		return err
 	}
-	defer func() { retErr = errors.Join(retErr, cleanup()) }()
-	return restoreCore(ctx, snapshot, destination, lease.store.root)
-}
-
-func (l *VerifiedSnapshotLease) prepareRestoreSnapshot(ctx context.Context) (string, func() error, error) {
-	if err := ctx.Err(); err != nil {
-		return "", nil, err
-	}
-	if l.record.ArtifactBytes > l.store.options.MaxRestoreScratchBytes {
-		return "", nil, ErrSnapshotLeaseLimit
-	}
-	rootDev, rootIno, err := pathIdentity(l.path)
-	if err != nil || rootDev != l.record.RootDevice || rootIno != l.record.RootInode {
-		return "", nil, errors.Join(ErrSnapshotLeaseInvalid, err)
-	}
-	sourceRoot, err := os.OpenRoot(l.path)
-	if err != nil {
-		return "", nil, err
-	}
-	sourceInfo, err := sourceRoot.Stat(".")
-	if err != nil {
-		return "", nil, errors.Join(err, sourceRoot.Close())
-	}
-	d, i, err := fileIdentity(sourceInfo)
-	if err != nil || d != l.record.RootDevice || i != l.record.RootInode {
-		return "", nil, errors.Join(ErrSnapshotLeaseInvalid, err, sourceRoot.Close())
-	}
-	parent, err := os.OpenRoot(l.store.root)
-	if err != nil {
-		return "", nil, errors.Join(err, sourceRoot.Close())
-	}
-	name, err := createInspectionScratch(parent)
-	if err != nil {
-		return "", nil, errors.Join(err, parent.Close(), sourceRoot.Close())
-	}
-	created, err := parent.Stat(name)
-	if err != nil {
-		return "", nil, errors.Join(err, parent.Close(), sourceRoot.Close())
-	}
-	cleanup := func() error {
-		var ce error
-		if re := removeInspectionScratch(parent, name, created); re != nil {
-			ce = errors.Join(ce, re)
-		}
-		return errors.Join(ce, parent.Close(), sourceRoot.Close())
-	}
-	for _, fr := range l.record.Files {
-		if err = ctx.Err(); err != nil {
-			return "", nil, errors.Join(err, cleanup())
-		}
-		if filepath.Base(fr.Name) != fr.Name {
-			return "", nil, errors.Join(ErrSnapshotLeaseInvalid, cleanup())
-		}
-		if e := ctx.Err(); e != nil {
-			return "", nil, errors.Join(e, cleanup())
-		}
-		in, e := openRegularFile(filepath.Join(l.path, fr.Name))
+	return restoreCoreWithScratch(ctx, lease.path, destination, lease.store.root, func(name string, created os.FileInfo) error {
+		dev, ino, e := fileIdentity(created)
 		if e != nil {
-			return "", nil, errors.Join(e, cleanup())
+			return e
 		}
-		info, e := in.Stat()
+		id, e := randomID()
 		if e != nil {
-			return "", nil, errors.Join(e, in.Close(), cleanup())
+			return e
 		}
-		dev, ino, e := fileIdentity(info)
-		if e != nil || !info.Mode().IsRegular() || info.Size() != fr.Size || dev != fr.Device || ino != fr.Inode {
-			return "", nil, errors.Join(ErrSnapshotLeaseInvalid, e, in.Close(), cleanup())
+		intent := stageIntentRecord{Version: 1, Kind: "restore", ID: id, OwnerLeaseID: lease.record.ID, ScratchName: name, RootDevice: lease.store.rootDevice, RootInode: lease.store.rootInode, ScratchDevice: dev, ScratchInode: ino, ArtifactBytes: lease.record.ArtifactBytes, CreatedUnix: time.Now().Unix()}
+		if e = lease.store.validateRoot(); e != nil {
+			return e
 		}
-		out, e := parent.OpenFile(filepath.Join(name, fr.Name), os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+		if e = writeStageIntent(lease.store.root, name, intent); e != nil {
+			return e
+		}
+		usage, e := lease.store.usageLocked()
 		if e != nil {
-			return "", nil, errors.Join(e, in.Close(), cleanup())
+			return e
 		}
-		h := sha256.New()
-		n, e := copyContext(ctx, io.MultiWriter(out, h), in, fr.Size)
-		inClose := in.Close()
-		if e == nil {
-			e = out.Sync()
+		if usage.artifacts > lease.store.options.MaxRetainedArtifactBytes || usage.metadata > lease.store.options.MaxRetainedMetadataBytes {
+			return ErrSnapshotLeaseLimit
 		}
-		outClose := out.Close()
-		if e != nil || inClose != nil || outClose != nil {
-			return "", nil, errors.Join(e, inClose, outClose, cleanup())
+		if lease.restoreAfterIntent != nil {
+			lease.restoreAfterIntent()
 		}
-		if n != fr.Size || hex.EncodeToString(h.Sum(nil)) != fr.SHA256 {
-			return "", nil, errors.Join(ErrSnapshotLeaseInvalid, cleanup())
-		}
-	}
-	if err = syncTree(filepath.Join(l.store.root, name)); err != nil {
-		return "", nil, errors.Join(err, cleanup())
-	}
-	if err = fsyncDir(l.store.root); err != nil {
-		return "", nil, errors.Join(err, cleanup())
-	}
-	return filepath.Join(l.store.root, name), cleanup, nil
+		return lease.store.validateRoot()
+	})
 }
 
 func (l *VerifiedSnapshotLease) beginBorrow(ctx context.Context, restore bool) error {
@@ -1318,6 +2033,7 @@ type leaseUsage struct {
 
 func (s *SnapshotLeaseStore) usageLocked() (leaseUsage, error) {
 	var u leaseUsage
+	counted := map[string]bool{}
 	es, err := os.ReadDir(s.root)
 	if err != nil {
 		return u, err
@@ -1337,9 +2053,60 @@ func (s *SnapshotLeaseStore) usageLocked() (leaseUsage, error) {
 			u.leases++
 			u.artifacts += r.ArtifactBytes
 			u.metadata += r.MetadataBytes
+			counted[r.ID] = true
 		}
 	}
+	rootDev, rootIno, rootErr := pathIdentity(s.root)
+	if rootErr != nil || rootDev != s.rootDevice || rootIno != s.rootInode {
+		return u, errors.Join(ErrSnapshotLeaseInvalid, rootErr)
+	}
+	for _, entry := range es {
+		if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".serenity-snapshot-inspect-") {
+			continue
+		}
+		p := filepath.Join(s.root, entry.Name())
+		intent, intentErr := readStageIntent(p)
+		if errors.Is(intentErr, os.ErrNotExist) {
+			contents, readErr := os.ReadDir(p)
+			if readErr != nil || len(contents) != 0 {
+				return u, errors.Join(ErrSnapshotLeaseInvalid, readErr)
+			}
+			continue
+		}
+		if intentErr != nil {
+			return u, intentErr
+		}
+		dev, ino, identityErr := pathIdentity(p)
+		if identityErr != nil || intent.RootDevice != rootDev || intent.RootInode != rootIno || intent.ScratchName != entry.Name() || intent.ScratchDevice != dev || intent.ScratchInode != ino {
+			return u, errors.Join(ErrSnapshotLeaseInvalid, identityErr)
+		}
+		if intent.Kind == "candidate" || intent.Kind == "restore" {
+			if intent.ArtifactBytes > s.options.MaxRestoreScratchBytes || intent.MetadataBytes > s.options.MaxRetainedMetadataBytes-u.metadata || intent.ArtifactBytes > s.options.MaxRetainedArtifactBytes-u.artifacts {
+				return u, ErrSnapshotLeaseLimit
+			}
+			u.artifacts += intent.ArtifactBytes
+			u.metadata += intent.MetadataBytes
+			continue
+		}
+		if counted[intent.ID] {
+			continue
+		}
+		if intent.ArtifactBytes > s.options.MaxArtifactBytesPerLease || intent.MetadataBytes != s.options.MaxMetadataBytesPerLease || u.leases >= s.options.MaxLeases || intent.ArtifactBytes > s.options.MaxRetainedArtifactBytes-u.artifacts || intent.MetadataBytes > s.options.MaxRetainedMetadataBytes-u.metadata {
+			return u, ErrSnapshotLeaseLimit
+		}
+		u.leases++
+		u.artifacts += intent.ArtifactBytes
+		u.metadata += intent.MetadataBytes
+	}
 	journal := filepath.Join(s.root, ".releases")
+	journalInfo, err := os.Lstat(journal)
+	if err != nil || !journalInfo.IsDir() || journalInfo.Mode()&os.ModeSymlink != 0 {
+		return u, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	journalDevice, journalInode, err := fileIdentity(journalInfo)
+	if err != nil || journalDevice != s.releaseDevice || journalInode != s.releaseInode {
+		return u, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
 	entries, err := os.ReadDir(journal)
 	if err != nil {
 		return u, err
@@ -1377,11 +2144,16 @@ func (s *SnapshotLeaseStore) usageLocked() (leaseUsage, error) {
 }
 
 func (s *SnapshotLeaseStore) lock(ctx context.Context) (func() error, error) {
+	_, unlock, err := s.lockHandle(ctx)
+	return unlock, err
+}
+
+func (s *SnapshotLeaseStore) lockHandle(ctx context.Context) (*os.File, func() error, error) {
 	if isNilInterface(ctx) {
-		return nil, ErrNilContext
+		return nil, nil, ErrNilContext
 	}
 	if err := s.validateRoot(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	lockPath := filepath.Join(s.root, ".store.lock")
 	var f *os.File
@@ -1389,42 +2161,65 @@ func (s *SnapshotLeaseStore) lock(ctx context.Context) (func() error, error) {
 	for tries := 0; tries < 2; tries++ {
 		before, statErr := os.Lstat(lockPath)
 		if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
-			return nil, statErr
+			return nil, nil, statErr
+		}
+		if errors.Is(statErr, os.ErrNotExist) {
+			return nil, nil, ErrSnapshotLeaseInvalid
 		}
 		if statErr == nil && (!before.Mode().IsRegular() || before.Mode().Perm()&0077 != 0) {
-			return nil, ErrSnapshotLeaseInvalid
+			return nil, nil, ErrSnapshotLeaseInvalid
 		}
-		f, err = openLockFile(lockPath, errors.Is(statErr, os.ErrNotExist))
+		f, err = openLockFile(lockPath, false)
 		if errors.Is(err, os.ErrExist) {
 			continue
 		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		break
 	}
 	if f == nil {
-		return nil, ErrSnapshotLeaseConflict
+		return nil, nil, ErrSnapshotLeaseConflict
 	}
 	opened, err := f.Stat()
 	if err != nil {
-		return nil, errors.Join(err, f.Close())
+		return nil, nil, errors.Join(err, f.Close())
 	}
 	current, err := os.Lstat(lockPath)
-	if err != nil || !os.SameFile(current, opened) || !current.Mode().IsRegular() || current.Mode().Perm()&0077 != 0 {
-		return nil, errors.Join(ErrSnapshotLeaseInvalid, err, f.Close())
+	lockDev, lockIno, identityErr := fileIdentity(opened)
+	if err != nil || identityErr != nil || !os.SameFile(current, opened) || !current.Mode().IsRegular() || current.Mode().Perm()&0077 != 0 || lockDev != s.lockDevice || lockIno != s.lockInode {
+		return nil, nil, errors.Join(ErrSnapshotLeaseInvalid, err, identityErr, f.Close())
+	}
+	if s.beforeStoreLock != nil {
+		s.beforeStoreLock()
 	}
 	if err = lockFileContext(ctx, f, false); err != nil {
-		return nil, errors.Join(err, f.Close())
+		return nil, nil, errors.Join(err, f.Close())
 	}
 	if err = s.validateRoot(); err != nil {
-		return nil, errors.Join(err, unlockFile(f), f.Close())
+		return nil, nil, errors.Join(err, unlockFile(f), f.Close())
 	}
 	current, err = os.Lstat(lockPath)
-	if err != nil || !os.SameFile(current, opened) {
-		return nil, errors.Join(ErrSnapshotLeaseInvalid, err, unlockFile(f), f.Close())
+	if err != nil || !os.SameFile(current, opened) || lockDev != s.lockDevice || lockIno != s.lockInode {
+		return nil, nil, errors.Join(ErrSnapshotLeaseInvalid, err, unlockFile(f), f.Close())
 	}
-	return func() error { return errors.Join(unlockFile(f), f.Close()) }, nil
+	return f, func() error { return errors.Join(unlockFile(f), f.Close()) }, nil
+}
+
+func (s *SnapshotLeaseStore) validateReleaseRoot() error {
+	if err := s.validateRoot(); err != nil {
+		return err
+	}
+	journal := filepath.Join(s.root, ".releases")
+	info, err := os.Lstat(journal)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	device, inode, err := fileIdentity(info)
+	if err != nil || device != s.releaseDevice || inode != s.releaseInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	return nil
 }
 
 func (s *SnapshotLeaseStore) validateRoot() error {
@@ -1446,6 +2241,18 @@ func (s *SnapshotLeaseStore) validateRoot() error {
 	d, i, e := fileIdentity(info)
 	if e != nil || d != s.rootDevice || i != s.rootInode {
 		return errors.Join(ErrSnapshotLeaseInvalid, e, root.Close())
+	}
+	lockInfo, lockErr := root.Stat(".store.lock")
+	if lockErr != nil || !lockInfo.Mode().IsRegular() || lockInfo.Mode().Perm()&0077 != 0 {
+		return errors.Join(ErrSnapshotLeaseInvalid, lockErr, root.Close())
+	}
+	lockDev, lockIno, identityErr := fileIdentity(lockInfo)
+	if identityErr != nil || lockDev != s.lockDevice || lockIno != s.lockInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, identityErr, root.Close())
+	}
+	currentLock, pathErr := os.Lstat(filepath.Join(s.root, ".store.lock"))
+	if pathErr != nil || !os.SameFile(lockInfo, currentLock) {
+		return errors.Join(ErrSnapshotLeaseInvalid, pathErr, root.Close())
 	}
 	return root.Close()
 }
@@ -1587,6 +2394,103 @@ func pathIdentity(path string) (uint64, uint64, error) {
 	}
 	return fileIdentity(i)
 }
+func (s *SnapshotLeaseStore) removeLeaseDirectory(id string, device, inode uint64) (retErr error) {
+	if !isCanonicalID(id) {
+		return ErrSnapshotLeaseInvalid
+	}
+	if err := s.validateRoot(); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(s.root)
+	if err != nil {
+		return err
+	}
+	defer func() { retErr = errors.Join(retErr, root.Close()) }()
+	rootInfo, err := root.Stat(".")
+	if err != nil {
+		return err
+	}
+	d, i, err := fileIdentity(rootInfo)
+	if err != nil || d != s.rootDevice || i != s.rootInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	entry, err := root.Lstat(id)
+	if err != nil {
+		return err
+	}
+	if !entry.IsDir() || entry.Mode()&os.ModeSymlink != 0 {
+		return ErrSnapshotLeaseInvalid
+	}
+	d, i, err = fileIdentity(entry)
+	if err != nil || d != device || i != inode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	current, err := os.Lstat(filepath.Join(s.root, id))
+	if err != nil || !os.SameFile(current, entry) {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	if err = root.RemoveAll(id); err != nil {
+		return err
+	}
+	dir, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	err = dir.Sync()
+	return errors.Join(err, dir.Close())
+}
+
+func (s *SnapshotLeaseStore) removeReleaseMarker(id string) (retErr error) {
+	if !isCanonicalID(id) {
+		return ErrSnapshotLeaseInvalid
+	}
+	if err := s.validateRoot(); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(s.root)
+	if err != nil {
+		return err
+	}
+	defer func() { retErr = errors.Join(retErr, root.Close()) }()
+	rootInfo, err := root.Stat(".")
+	if err != nil {
+		return err
+	}
+	d, i, err := fileIdentity(rootInfo)
+	if err != nil || d != s.rootDevice || i != s.rootInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	journal, err := root.OpenRoot(".releases")
+	if err != nil {
+		return err
+	}
+	defer func() { retErr = errors.Join(retErr, journal.Close()) }()
+	journalInfo, err := journal.Stat(".")
+	if err != nil {
+		return err
+	}
+	journalDevice, journalInode, err := fileIdentity(journalInfo)
+	if err != nil || journalDevice != s.releaseDevice || journalInode != s.releaseInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	marker, err := journal.Lstat(id)
+	if err != nil {
+		return err
+	}
+	if !marker.IsDir() || marker.Mode()&os.ModeSymlink != 0 {
+		return ErrSnapshotLeaseInvalid
+	}
+	if err = journal.RemoveAll(id); err != nil {
+		return err
+	}
+	dir, err := journal.Open(".")
+	if err != nil {
+		return err
+	}
+	err = dir.Sync()
+	return errors.Join(err, dir.Close())
+}
+
 func verifyRecordFiles(ctx context.Context, path string, r leaseDiskRecord) (retErr error) {
 	dev, ino, e := pathIdentity(path)
 	if e != nil {
@@ -1941,13 +2845,16 @@ func (s *SnapshotLeaseStore) releaseLease(ctx context.Context, path string, r le
 	if err := writeLeaseRecord(path, &r, s.options.MaxMetadataBytesPerLease); err != nil {
 		return err
 	}
+	if err := s.validateReleaseRoot(); err != nil {
+		return err
+	}
 	journal := filepath.Join(s.root, ".releases")
 	marker := filepath.Join(journal, r.ID)
 	if err := os.Mkdir(marker, 0700); err != nil && !errors.Is(err, os.ErrExist) {
 		return err
 	}
 	if existing, err := readLeaseRecord(marker, maxLeaseMetadataBytes); err == nil {
-		if existing.ID != r.ID || existing.PinID != r.PinID || existing.PlanRef != r.PlanRef || existing.ManifestSHA256 != r.ManifestSHA256 || existing.Disposition != r.Disposition || existing.RecordVersion != r.RecordVersion || (existing.State != "RELEASING" && existing.State != "RELEASED") {
+		if existing.ID != r.ID || existing.PinID != r.PinID || existing.PlanRef != r.PlanRef || existing.ManifestSHA256 != r.ManifestSHA256 || existing.ReservationVersion != r.ReservationVersion || existing.AttemptVersion != r.AttemptVersion || existing.Disposition != r.Disposition || existing.RecordVersion != r.RecordVersion || (existing.State != "RELEASING" && existing.State != "RELEASED") {
 			return ErrSnapshotLeaseConflict
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -1962,13 +2869,10 @@ func (s *SnapshotLeaseStore) releaseLease(ctx context.Context, path string, r le
 	if err := fsyncDir(journal); err != nil {
 		return err
 	}
-	if err := s.validateRoot(); err != nil {
+	if err := s.validateReleaseRoot(); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(path); err != nil {
-		return err
-	}
-	if err := fsyncDir(s.root); err != nil {
+	if err := s.removeLeaseDirectory(r.ID, r.RootDevice, r.RootInode); err != nil {
 		return err
 	}
 	r.State = "RELEASED"
@@ -1988,6 +2892,14 @@ func (s *SnapshotLeaseStore) finishReleaseJournal(ctx context.Context) error {
 	journal := filepath.Join(s.root, ".releases")
 	if err := privatefs.ValidateDirectory(ctx, journal); err != nil {
 		return err
+	}
+	journalInfo, err := os.Lstat(journal)
+	if err != nil || !journalInfo.IsDir() || journalInfo.Mode()&os.ModeSymlink != 0 {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	journalDevice, journalInode, err := fileIdentity(journalInfo)
+	if err != nil || journalDevice != s.releaseDevice || journalInode != s.releaseInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
 	}
 	entries, err := os.ReadDir(journal)
 	if err != nil {
@@ -2010,11 +2922,7 @@ func (s *SnapshotLeaseStore) finishReleaseJournal(ctx context.Context) error {
 				errs = append(errs, err)
 				continue
 			}
-			if err = os.RemoveAll(marker); err != nil {
-				errs = append(errs, err)
-				continue
-			}
-			if err = fsyncDir(journal); err != nil {
+			if err = s.removeReleaseMarker(entry.Name()); err != nil {
 				errs = append(errs, err)
 			}
 			continue
@@ -2064,7 +2972,7 @@ func (s *SnapshotLeaseStore) finishReleaseJournal(ctx context.Context) error {
 					le = s.validateRoot()
 				}
 				if le == nil {
-					le = os.RemoveAll(live)
+					le = s.removeLeaseDirectory(r.ID, r.RootDevice, r.RootInode)
 				}
 				le = errors.Join(le, unlockFile(lk), lk.Close())
 				if le != nil {
@@ -2104,28 +3012,9 @@ func (s *SnapshotLeaseStore) finishReleaseJournal(ctx context.Context) error {
 			errs = append(errs, e)
 			continue
 		}
-		if e = os.RemoveAll(marker); e != nil {
-			errs = append(errs, e)
-			continue
-		}
-		if e = fsyncDir(journal); e != nil {
+		if e = s.removeReleaseMarker(entry.Name()); e != nil {
 			errs = append(errs, e)
 		}
 	}
 	return errors.Join(errs...)
-}
-
-func syncLeaseFiles(path string, r leaseDiskRecord) error {
-	for _, f := range r.Files {
-		h, e := os.OpenFile(filepath.Join(path, f.Name), os.O_RDONLY, 0)
-		if e != nil {
-			return e
-		}
-		e = h.Sync()
-		ce := h.Close()
-		if e != nil || ce != nil {
-			return errors.Join(e, ce)
-		}
-	}
-	return nil
 }

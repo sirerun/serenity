@@ -29,6 +29,8 @@ type InspectionOptions struct {
 	MaxAccounts            int
 	MaxBrains              int
 	maxMetadataBytes       int64
+	stageIntent            func(string, os.FileInfo, int64, int64) error
+	stageAfterIntent       func()
 }
 
 type SnapshotAccount struct {
@@ -150,6 +152,14 @@ func inspectVerified(ctx context.Context, snapshot string, options InspectionOpt
 	}()
 	if err = privatefs.ValidateDirectory(ctx, scratch); err != nil {
 		return verifiedArtifacts{}, fmt.Errorf("hosted/backup: validate private inspection scratch: %w", err)
+	}
+	if options.stageIntent != nil {
+		if err = options.stageIntent(scratchName, scratchIdentity, declared, int64(len(manifestBytes))); err != nil {
+			return verifiedArtifacts{}, fmt.Errorf("hosted/backup: persist stage intent: %w", err)
+		}
+		if options.stageAfterIntent != nil {
+			options.stageAfterIntent()
+		}
 	}
 
 	controlPath := filepath.Join(scratch, controlDBName)
