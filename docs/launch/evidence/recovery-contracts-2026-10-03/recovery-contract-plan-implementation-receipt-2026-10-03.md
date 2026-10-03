@@ -6,12 +6,12 @@ Implemented the additive, read-only artifact-to-contract-plan boundary in new `i
 
 Focused verification passed:
 
-- `go test -race -exec 'env TMPDIR=/Volumes/SerenityPrivateFixture20261001/tmp SERENITY_RECOVERY_TEST_TMPDIR=/Volumes/SerenityPrivateFixture20261001/tmp' ./internal/hosted/recovery` — stage 007.
+- `go test -race -exec 'env TMPDIR=<owned-fixture-temp> SERENITY_RECOVERY_TEST_TMPDIR=<owned-fixture-temp>' ./internal/hosted/recovery` — stage 007.
 - `go vet ./internal/hosted/recovery` — stage 008.
 - `golangci-lint run ./internal/hosted/recovery` — stage 009.
 - Behavioral mutant: mapping `PlanHash` into `SourceSnapshot` compiled and failed the direct frozen-mapping assertion — stage 005.
 - Behavioral mutant: changing canonical `domain_version` from 1 to 2 compiled and failed the independent golden digest assertion — stage 006.
 
-All stages ran through the durable external runner, with load below 10, a freshly won shared build lease, unchanged source fingerprint during execution, and exact lease release. Evidence is under `/Volumes/BuildOffload/serenity-recovery-contract-plan-implementation-evidence-20261003/`. An earlier stage 004 mutant attempt omitted the private fixture `-exec` environment and failed fixture setup; it is not counted as a behavioral RED. Stage 005 repeated the mutant with the required fixture environment and supplies the valid evidence.
+All stages ran through the durable external runner, with load below 10, a freshly won shared build lease, unchanged source fingerprint during execution, and exact lease release. Evidence is under `[external evidence store]`. An earlier stage 004 mutant attempt omitted the private fixture `-exec` environment and failed fixture setup; it is not counted as a behavioral RED. Stage 005 repeated the mutant with the required fixture environment and supplies the valid evidence.
 
 This receipt records only focused package checks. Full-module checks and independent exact-head review remain with the coordinator. No provider, writer, hosted-admission, deployment, PR, merge, or full-task acceptance evidence is claimed.
