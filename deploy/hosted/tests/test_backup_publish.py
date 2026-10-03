@@ -2,6 +2,7 @@
 
 import hashlib
 import importlib.util
+import inspect
 import json
 import os
 import sys
@@ -41,9 +42,14 @@ class FakeStore:
     def __init__(self):
         self.objects = {}
         self.extra_versions = []
+        self.version_ids = {}
+        self.historical = {}
+        self.read_versions = []
+        self.mutate_on_read = None
         self.put_order = []
         self.fail_put_at = None
         self.fail_put_after_commit_at = None
+        self.after_commit_error = publish.AmbiguousStorageFailure
         self.rewrite_after_commit_at = None
         self.rewrite_after_commit_body = b""
         self.fail_reads = set()
@@ -51,7 +57,7 @@ class FakeStore:
         self.puts = 0
 
     def list_prefix(self, prefix, *, max_objects):
-        found = [publish.RemoteObject(key, "v1", False)
+        found = [publish.RemoteObject(key, self.version_ids.get(key, "v1"), False, True)
                  for key in self.objects if key.startswith(prefix)]
         found.extend(item for item in self.extra_versions if item.key.startswith(prefix))
         if len(found) > max_objects:
@@ -72,6 +78,7 @@ class FakeStore:
         if len(body) != length_bytes or hashlib.sha256(body).hexdigest() != sha256:
             raise AssertionError("put did not receive exact advertised bytes")
         self.objects[key] = bytes(body)
+        self.version_ids[key] = "v1"
         self.put_order.append(key)
         if self.rewrite_after_commit_at == self.puts:
             self.objects[key] = self.rewrite_after_commit_body
@@ -79,20 +86,35 @@ class FakeStore:
             self.mutate_source()
             self.mutate_source = None
         if self.fail_put_after_commit_at == self.puts:
-            raise OSError("injected lost response after remote commit")
+            raise self.after_commit_error("injected lost response after remote commit")
 
-    def read_bytes(self, key, *, max_bytes):
+    def _read_body(self, key, version_id):
+        self.read_versions.append((key, version_id))
+        if self.mutate_on_read == key:
+            self.mutate_on_read = None
+            old_version = self.version_ids[key]
+            self.historical[(key, old_version)] = self.objects[key]
+            self.extra_versions.append(publish.RemoteObject(key, old_version, False, False))
+            self.version_ids[key] = "v2"
+            self.objects[key] = b"newer version contents"
         if key in self.fail_reads:
             raise OSError("injected read failure")
-        body = self.objects[key]
+        if version_id == self.version_ids.get(key):
+            return self.objects[key]
+        return self.historical[(key, version_id)]
+
+    def read_bytes(self, key, *, version_id, max_bytes):
+        if key in self.fail_reads:
+            raise OSError("injected read failure")
+        body = self._read_body(key, version_id)
         if len(body) > max_bytes:
             raise publish.PublishError("fake object exceeds read bound")
         return body
 
-    def read_to(self, key, destination, *, max_bytes, chunk_bytes):
+    def read_to(self, key, destination, *, version_id, max_bytes, chunk_bytes):
         if key in self.fail_reads:
             raise OSError("injected stream failure")
-        body = self.objects[key]
+        body = self._read_body(key, version_id)
         if len(body) > max_bytes:
             for start in range(0, max_bytes, chunk_bytes):
                 destination.write(body[start:min(max_bytes, start + chunk_bytes)])
@@ -117,6 +139,28 @@ class PublisherTests(unittest.TestCase):
         self.limits = supported_limits()
         self.store = FakeStore()
         self._make_snapshot(1)
+
+    def test_storage_read_handshake_binds_every_call_to_inventory_version(self):
+        self.assertIn("version_id", inspect.signature(publish.Storage.read_bytes).parameters)
+        self.assertIn("version_id", inspect.signature(publish.Storage.read_to).parameters)
+        item = publish.RemoteObject(PREFIX + "control.db", "version-1", False, True)
+        self.assertIs(item.is_latest, True)
+
+    def test_same_key_new_version_after_inventory_is_pinned_then_refused(self):
+        self._make_snapshot(1)
+        publish.publish_snapshot(
+            self.snapshot, PREFIX, staging_root=self.root,
+            storage=self.store, limits=self.limits,
+        )
+        self.store.mutate_on_read = PREFIX + "control.db"
+        with self.assertRaises(publish.PublishError):
+            publish.download_snapshot(
+                PREFIX, staging_parent=self.root,
+                storage=self.store, limits=self.limits,
+            )
+        self.assertIn((PREFIX + "control.db", "v1"), self.store.read_versions)
+        self.assertEqual(self.store.version_ids[PREFIX + "control.db"], "v2")
+        self.assertFalse(any(p.name.startswith(".serenity-download-") for p in self.root.iterdir()))
 
     def _make_snapshot(self, brain_count):
         brains = []
@@ -236,6 +280,26 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(receipt.snapshot_prefix, PREFIX)
         self.assertEqual(self.store.put_order[-1], PREFIX + "COMPLETE")
 
+    def test_untyped_final_failure_is_never_reconciled(self):
+        self.store.fail_put_after_commit_at = 4
+        self.store.after_commit_error = RuntimeError
+        with self.assertRaises(publish.PublishError):
+            publish.publish_snapshot(
+                self.snapshot, PREFIX, staging_root=self.root,
+                storage=self.store, limits=self.limits,
+            )
+        self.assertFalse(any(key == PREFIX + "COMPLETE" for key, _ in self.store.read_versions))
+
+    def test_definite_final_failure_is_never_reconciled(self):
+        self.store.fail_put_after_commit_at = 4
+        self.store.after_commit_error = publish.DefiniteStorageFailure
+        with self.assertRaises(publish.PublishError):
+            publish.publish_snapshot(
+                self.snapshot, PREFIX, staging_root=self.root,
+                storage=self.store, limits=self.limits,
+            )
+        self.assertFalse(any(key == PREFIX + "COMPLETE" for key, _ in self.store.read_versions))
+
     def test_definite_completion_collision_is_not_reconciled(self):
         class CompletionCollisionStore(FakeStore):
             def put_if_absent(self, key, source, *, length_bytes, sha256, chunk_bytes):
@@ -298,7 +362,7 @@ class PublisherTests(unittest.TestCase):
             )
         self.assertEqual(self.store.put_order, [])
         other = FakeStore()
-        other.extra_versions.append(publish.RemoteObject(PREFIX + "old", "v0", True))
+        other.extra_versions.append(publish.RemoteObject(PREFIX + "old", "v0", True, True))
         with self.assertRaises(publish.PublishError):
             publish.publish_snapshot(
                 self.snapshot, PREFIX, staging_root=self.root,
