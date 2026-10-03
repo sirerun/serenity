@@ -27,3 +27,5 @@ Evidence bundle: `serenity-oauth-state-method-scope-implementation-evidence-2026
 ## Scope and limits
 
 Only `internal/hosted/oauth/hosted.go`, `internal/hosted/oauth/ratelimit.go`, `internal/hosted/oauth/ratelimit_test.go`, and this receipt are owned. Local package validation does not establish the full-module gates, production approval, live 17-prefix/refresh acceptance, deployed service behavior, cross-process aggregation, 5000/minute capacity policy, or full SEC-H02/T24.39 acceptance. Root owns full-module verification, independent exact-head review, merge and landed verification.
+
+Root integration supersedes the earlier pending full-module/source-review gates: qualified `9948c633a95d7af93e1451656e0cfc21e104241a` passed full local race3,084results/84packages, vet/lint/Linux ARM64 and exact isolated independent source review is CLEAR. All shared leases released. Current docs-only changes preserve all qualified Go/module bytes. Final integrated documentation review, normal merge and landed proof remain pending. Capacity and hosted/live acceptance remain open.

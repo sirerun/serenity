@@ -10,7 +10,7 @@
   acc: Only owned OAuth files; exact downstream responses and other limits preserved.
 - [x] T-OMS.3 — Qualify exact source locally. kind: agent stage: verify deps: T-OMS.2
   acc: Focused behavioral controls plus root full race, vet, lint and Linux build with real leases.
-- [ ] T-OMS.4 — Independently review exact integrated source and receipts. kind: agent stage: review deps: T-OMS.3
+- [x] T-OMS.4 — Independently review exact integrated source and receipts. kind: agent stage: review deps: T-OMS.3
   acc: Compiled mutant controls and restored passes; no unresolved findings or trusted holds.
 - [ ] T-OMS.5 — Merge through normal expected-head operation. kind: agent stage: merge deps: T-OMS.4
   acc: Fresh head/base/check annotations and coordination checked under ADR024.
@@ -19,4 +19,4 @@
 
 Source correction only; SEC-H02 capacity/founder policy, live prefix/refresh/consent acceptance and full E24 hosted gates remain open.
 
-Current qualified source `9948c633a95d7af93e1451656e0cfc21e104241a` passes full local race3,084 results/84packages, full vet/lint/Linux ARM64, plus author compiled method/HEAD behavioral controls and restored passes. Independent integrated source review remains pending; normal merge/landed gates remain pending. No5000/minute policy or live acceptance is inferred.
+Current qualified source `9948c633a95d7af93e1451656e0cfc21e104241a` passes full local race3,084 results/84packages, full vet/lint/Linux ARM64, plus author compiled method/HEAD behavioral controls and restored passes. Independent exact integrated source review is CLEAR after two compiled assertion REDs and restored race passes; normal merge/landed gates remain pending. No5000/minute policy or live acceptance is inferred.
