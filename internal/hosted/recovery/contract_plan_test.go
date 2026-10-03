@@ -155,6 +155,11 @@ func TestVerifiedEligiblePlanCreateLoadAndArtifactIdentity(t *testing.T) {
 	if !reflect.DeepEqual(before, after) {
 		t.Fatal("read-only contract mapping changed legacy artifact bytes")
 	}
+	for _, verified := range []VerifiedEligiblePlan{token, loaded} {
+		if verified.contractPlan.PlanHash != string(verified.contractHash) || verified.contractPlan.PlanHash == string(verified.artifactHash) {
+			t.Fatal("stored contract PlanHash does not equal the separate computed contract hash")
+		}
+	}
 	if loaded.artifactHash != token.artifactHash || loaded.contractHash != token.contractHash || !reflect.DeepEqual(loaded.contractPlan, token.contractPlan) {
 		t.Fatal("loaded verified plan differs from created token")
 	}
