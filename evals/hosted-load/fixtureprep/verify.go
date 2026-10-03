@@ -12,7 +12,6 @@ import (
 	"io/fs"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -22,6 +21,7 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/config"
+	"github.com/sirerun/serenity/internal/gitrun"
 	"github.com/sirerun/serenity/internal/hosted/plans"
 	cstore "github.com/sirerun/serenity/internal/store"
 
@@ -730,9 +730,9 @@ func observeConfig(root string, obs *BrainObs) {
 }
 
 func observeGit(ctx context.Context, root string, obs *BrainObs) {
+	runner := gitrun.Foreign(root)
 	git := func(args ...string) ([]byte, error) {
-		out, err := exec.CommandContext(ctx, "git", append([]string{"--no-optional-locks", "-C", root}, args...)...).Output()
-		return out, err
+		return runner.Output(ctx, args...)
 	}
 	out, err := git("rev-list", "--count", "HEAD")
 	if err != nil {

@@ -35,6 +35,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -135,11 +136,23 @@ type cursorState struct {
 // moves -- and the underlying content-address dedup in internal/store
 // (T1.2) means even a forced re-poll of an unchanged tree adds no new
 // sources.
-func (c *Connector) Poll(ctx context.Context, cursor connector.Cursor) ([]connector.RawItem, connector.Cursor, error) {
+func (c *Connector) Poll(ctx context.Context, cursor connector.Cursor) (result []connector.RawItem, nextCursor connector.Cursor, retErr error) {
 	toplevel, err := c.toplevel(ctx)
 	if err != nil {
 		return nil, cursor, err
 	}
+
+	confined, err := openContainedRoot(toplevel)
+	if err != nil {
+		return nil, cursor, err
+	}
+	defer func() {
+		if err := confined.Close(); retErr == nil && err != nil {
+			result = nil
+			nextCursor = cursor
+			retErr = fmt.Errorf("gitrepo: close poll root: %w", err)
+		}
+	}()
 
 	if !c.cfg.IncludeBrainRepo && c.isBrainRepo(toplevel) {
 		return nil, cursor, nil
@@ -177,7 +190,7 @@ func (c *Connector) Poll(ctx context.Context, cursor connector.Cursor) ([]connec
 		if !isDoc(rel) {
 			continue
 		}
-		data, err := readContained(toplevel, rel)
+		data, err := readContainedRoot(confined, toplevel, rel)
 		if errors.Is(err, errNonRegular) || errors.Is(err, errEscapes) {
 			// SEC-H04: a tracked symlink (or any other non-regular entry)
 			// is never followed. Skip it, count it, and keep crawling --
@@ -254,8 +267,56 @@ var (
 //     sides are resolved so a top level that itself lives under a symlink
 //     (macOS's /var -> /private/var) compares equal to its own files.
 //
-// Only the resolved path is then read.
-func readContained(toplevel, rel string) ([]byte, error) {
+// The actual file open is confined to an opened repository root, so a
+// concurrent pathname replacement cannot redirect the read outside it.
+func readContained(toplevel, rel string) (data []byte, retErr error) {
+	confined, err := openContainedRoot(toplevel)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := confined.Close(); retErr == nil && err != nil {
+			data = nil
+			retErr = fmt.Errorf("gitrepo: close confined root: %w", err)
+		}
+	}()
+	return readContainedRoot(confined, toplevel, rel)
+}
+
+// openContainedRoot refuses a symlinked/replaced top-level directory and pins
+// the directory identity before Poll collects HEAD and its listed paths.
+func openContainedRoot(toplevel string) (*os.Root, error) {
+	before, err := os.Lstat(toplevel)
+	if err != nil {
+		return nil, err
+	}
+	if !before.IsDir() || before.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("gitrepo: repository root changed or is not a directory: %s", toplevel)
+	}
+	confined, err := os.OpenRoot(toplevel)
+	if err != nil {
+		return nil, err
+	}
+	opened, err := confined.Stat(".")
+	if err != nil || !os.SameFile(before, opened) {
+		closeErr := confined.Close()
+		return nil, fmt.Errorf("gitrepo: repository root identity changed: %w", errors.Join(err, closeErr, errEscapes))
+	}
+	return confined, nil
+}
+
+func readContainedRoot(confined *os.Root, toplevel, rel string) (data []byte, retErr error) {
+	current, err := os.Lstat(toplevel)
+	if err != nil {
+		return nil, err
+	}
+	anchored, err := confined.Stat(".")
+	if err != nil {
+		return nil, err
+	}
+	if !current.IsDir() || !os.SameFile(current, anchored) {
+		return nil, fmt.Errorf("gitrepo: repository root identity changed during poll")
+	}
 	p := filepath.Join(toplevel, filepath.FromSlash(rel))
 	fi, err := os.Lstat(p)
 	if err != nil {
@@ -275,7 +336,30 @@ func readContained(toplevel, rel string) ([]byte, error) {
 	if !strings.HasPrefix(real, root+string(filepath.Separator)) {
 		return nil, fmt.Errorf("gitrepo: skip %s: %w", rel, errEscapes)
 	}
-	return os.ReadFile(real)
+	file, err := confined.OpenFile(filepath.FromSlash(rel), containedReadFlags(), 0)
+	if err != nil {
+		if containedSymlinkError(err) {
+			return nil, fmt.Errorf("gitrepo: skip %s: %w", rel, errors.Join(errNonRegular, err))
+		}
+		if containedEscapeError(confined, err) {
+			return nil, fmt.Errorf("gitrepo: skip %s: %w", rel, errors.Join(errEscapes, err))
+		}
+		return nil, fmt.Errorf("gitrepo: confined read %s: %w", rel, err)
+	}
+	defer func() {
+		if err := file.Close(); retErr == nil && err != nil {
+			data = nil
+			retErr = fmt.Errorf("gitrepo: close confined file: %w", err)
+		}
+	}()
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !opened.Mode().IsRegular() {
+		return nil, fmt.Errorf("gitrepo: skip %s: %w (%s)", rel, errNonRegular, opened.Mode().Type())
+	}
+	return io.ReadAll(file)
 }
 
 // ToSource builds the domain.Source shell for one crawled item. It never
@@ -461,4 +545,12 @@ func (c *Connector) git(ctx context.Context, dir string, args ...string) (string
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
+}
+
+// Root's escape sentinel is unexported. A parent traversal is guaranteed to
+// be refused; use that refusal's typed identity rather than matching text.
+func containedEscapeError(root *os.Root, err error) bool {
+	_, refusal := root.Lstat("..")
+	var pathErr *os.PathError
+	return errors.As(refusal, &pathErr) && errors.Is(err, pathErr.Err)
 }

@@ -13,13 +13,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
+	"github.com/sirerun/serenity/internal/gitrun"
 	"github.com/sirerun/serenity/internal/ladder"
 )
 
@@ -54,7 +55,7 @@ func main() {
 		log.Fatalf("gen_calibration: write %s: %v", outPath, err)
 	}
 
-	commit := commitSHA()
+	commit := commitSHA(context.Background())
 	log.Printf("gen_calibration: wrote %s (commit %s, chosen min_dispositions=%d min_accept=%.2f sample_rate=%.2f)",
 		outPath, commit, report.Chosen.MinDispositions, report.Chosen.MinAccept, report.Chosen.SampleRate)
 }
@@ -62,8 +63,8 @@ func main() {
 // commitSHA is informational only (log line, not written into the
 // report -- Report.GeneratedAt plus the file's own git history already
 // pin provenance); a missing commit id should never fail the run.
-func commitSHA() string {
-	out, err := exec.Command("git", "rev-parse", "HEAD").Output()
+func commitSHA(ctx context.Context) string {
+	out, err := gitrun.Foreign(".").Output(ctx, "rev-parse", "HEAD")
 	if err != nil {
 		return "unknown"
 	}

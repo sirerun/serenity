@@ -675,3 +675,53 @@ func TestVerifyRefusesAMissingOrUnfinishedMarker(t *testing.T) {
 		t.Fatalf("an unrelated directory must be refused, got %v", err)
 	}
 }
+
+func TestObserveGitIgnoresInheritedGitDir(t *testing.T) {
+	root := t.TempDir()
+	foreign := t.TempDir()
+	makeRepo := func(dir, name string) {
+		t.Helper()
+		for _, args := range [][]string{{"init", "-q"}, {"config", "user.name", "Fixture"}, {"config", "user.email", "fixture@example.invalid"}} {
+			cmd := exec.Command("git", args...)
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v: %s", args, err, out)
+			}
+		}
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(name+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		for _, args := range [][]string{{"add", name}, {"commit", "-qm", "fixture"}} {
+			cmd := exec.Command("git", args...)
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v: %s", args, err, out)
+			}
+		}
+	}
+	makeRepo(root, filepath.Join("brain", "sources", "intended.txt"))
+	makeRepo(foreign, "foreign.txt")
+	t.Setenv("GIT_DIR", filepath.Join(foreign, ".git"))
+
+	obs := &BrainObs{}
+	observeGit(context.Background(), root, obs)
+	if obs.GitCommits != 1 || obs.GitTrackedSources != 1 || obs.GitDirtyPaths != 0 {
+		t.Fatalf("observation followed inherited GIT_DIR instead of intended repo: commits=%d tracked=%d dirty=%d errors=%v", obs.GitCommits, obs.GitTrackedSources, obs.GitDirtyPaths, obs.Errors)
+	}
+}
+
+func TestObserveGitHonorsCanceledContext(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	obs := &BrainObs{}
+	observeGit(ctx, root, obs)
+	if len(obs.Errors) == 0 || !strings.Contains(obs.Errors[0], "git rev-list") {
+		t.Fatalf("canceled Git observation errors = %v, want observational rev-list failure", obs.Errors)
+	}
+}

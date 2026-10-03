@@ -1,0 +1,13 @@
+# Eval read-only Git caller source assignment
+
+Baseline: main 4b2fd8e656e448d712b2c7d9fa2bc28b9d78c469, after independently reviewed PR347. This is a source-only lane, not T24.30 or upstream hosted-task acceptance. Coordinator owns integration, review and final checks. Worker holds canonical R-eval-git-migration 9220d83cc56c4053132cc309649a62aca8868cb8.
+
+Worker owns only evals/calibration/gen_calibration.go, evals/brainbench/publish_trend.go, evals/hosted-load/fixtureprep/verify.go, narrowly scoped adjacent tests, and its own new evidence receipt. Follow eval-git-migration-readiness-2026-10-02.md. Use gitrun.Foreign read-only with intended caller directory and context, preserve arguments, unknown provenance fallback and observational errors. No gitrun API/allowlist/module edits, scanner edits, generated reports/trends/fixtures, provider calls or load runs.
+
+Capture genuine hostile inherited GIT_DIR fixture-observation RED before source edits using owned temporary repositories. Prove provenance failure, intended-directory behavior and cancellation. Ignored command files need explicit-file compilation/tests without invoking their generating main functions; keep accompanying tests ignored so ordinary package tests compile. Record preservation controls separately from regression REDs. All Go execution requires fresh load <=10, SSD cache/tmp, and actual shared lease for multi-package checks. Independent review in another dedicated clone and coordinator integration qualification remain required before merge. Release exact source claim only after banked handoff or coordinator instruction.
+
+## Coordinator amendment — 2026-10-02
+
+Coordinator expands this source lane, under the same canonical R-eval-git-migration claim, to include `evals/brainbench/gen_trend.go` and its narrowly scoped adjacent ignored explicit-file tests. Preserve its `GITHUB_SHA` precedence, missing-commit `unknown` fallback, caller-directory behavior, and non-generating verification. Do not invoke any generating main function. No additional files or authority are included.
+
+The initial readiness inventory was incomplete and mislocated one reported fixture provenance probe. A direct audit of the four named production files confirms four literal raw Git subprocess call sites total: one each in `evals/calibration/gen_calibration.go`, `evals/brainbench/gen_trend.go`, `evals/brainbench/publish_trend.go`, and `evals/hosted-load/fixtureprep/verify.go`. The verifier's three Git arguments share one closure and therefore one subprocess call site. The former `verify.go:775` reference was not a Git call. This correction is historical; it does not assert whole-module scanner coverage or T24.30 acceptance.
