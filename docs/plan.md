@@ -48,6 +48,7 @@ Out of scope: Flutter app, Graph email, ANN index, multi-principal enforcement i
 ### E22 -- Final import performance investigation  -> docs/plans/E22-import-budget-investigation.md  (0/1)
 ### E23 -- Hosted Serenity launch  -> docs/launch/hosted-plan.md  (0/40; executable; contracts in docs/tasks/T23.*.md)
 ### E24 -- Deep review 001 remediation  -> docs/plans/deep-review-001-remediation.md  (0/42; executable; contracts in docs/tasks/deep-review-001/T24.*.md)
+### INS -- Spatial inspector and Book Binder release -> [plan](plans/inspector-brand-release.md) (source draft PR361; verification, frontend and release open)
 
 Decisions confirmed by David on 2026 08 27 (OD-1..OD-4) stand; see ADR 005 and ADR 010. Decisions on 2026 09 11 for E23 are in ADR 014-016. Decisions on 2026 09 27 for E24 (erasure semantics, edge trust, ownership of overlapping findings, untrusted-connector claims) are in ADR 018-022; E24 closes deep review 001 (`docs/deep-reviews/001-full-codebase.md`, 5 High) against a hosted candidate that `ajent.social` records as live since 2026-09-26, with GitHub Actions billing-locked (T24.41).
 
