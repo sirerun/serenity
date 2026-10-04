@@ -1,0 +1,365 @@
+{
+  "contractVersion": "0.0.1",
+  "fixtures": [
+    {
+      "id": "authored-checkbox-only",
+      "path": "fixtures/valid/authored-checkbox-only.json",
+      "valid": true,
+      "rule": "checkbox-is-not-qualified"
+    },
+    {
+      "id": "parallel-checks-review-join",
+      "path": "fixtures/valid/parallel-checks-review-join.json",
+      "valid": true,
+      "rule": "parallel-logical-gates"
+    },
+    {
+      "id": "unsupported-stage-preserved",
+      "path": "fixtures/valid/unsupported-stage-preserved.json",
+      "valid": true,
+      "rule": "open-stage-token"
+    },
+    {
+      "id": "negative-review",
+      "path": "fixtures/valid/negative-review.json",
+      "valid": true,
+      "rule": "negative-review-remains-unsatisfied"
+    },
+    {
+      "id": "bounded-fix-stable-gate",
+      "path": "fixtures/valid/bounded-fix-stable-gate.json",
+      "valid": true,
+      "rule": "fix-not-blocked-on-positive-review"
+    },
+    {
+      "id": "merged-not-deployed",
+      "path": "fixtures/valid/merged-not-deployed.json",
+      "valid": true,
+      "rule": "landing-not-deployment"
+    },
+    {
+      "id": "canceled-late-audit",
+      "path": "fixtures/valid/canceled-late-audit.json",
+      "valid": true,
+      "rule": "terminal-audit-only"
+    },
+    {
+      "id": "expired-late-audit",
+      "path": "fixtures/valid/expired-late-audit.json",
+      "valid": true,
+      "rule": "terminal-audit-only"
+    },
+    {
+      "id": "stale-audit-observation",
+      "path": "fixtures/valid/stale-audit-observation.json",
+      "valid": true,
+      "rule": "historical-evidence-retained"
+    },
+    {
+      "id": "compound-canonical-unit",
+      "path": "fixtures/valid/compound-canonical-unit.json",
+      "valid": true,
+      "rule": "single-compound-authority"
+    },
+    {
+      "id": "native-narrative-unqualified",
+      "path": "fixtures/valid/native-narrative-unqualified.json",
+      "valid": true,
+      "rule": "native-authority-narrative-boundary"
+    },
+    {
+      "id": "unavailable-hosted-check",
+      "path": "fixtures/valid/unavailable-hosted-check.json",
+      "valid": true,
+      "rule": "raw-hosted-result-retained"
+    },
+    {
+      "id": "approved-local-alternative",
+      "path": "fixtures/valid/approved-local-alternative.json",
+      "valid": true,
+      "rule": "scoped-policy-alternative"
+    },
+    {
+      "id": "authority-attested-independence",
+      "path": "fixtures/valid/authority-attested-independence.json",
+      "valid": true,
+      "rule": "attestation-still-needs-authentication"
+    },
+    {
+      "id": "duplicate-task-id",
+      "path": "fixtures/invalid/duplicate-task-id.json",
+      "valid": false,
+      "rule": "duplicate-task-id"
+    },
+    {
+      "id": "dangling-dependency",
+      "path": "fixtures/invalid/dangling-dependency.json",
+      "valid": false,
+      "rule": "dangling-dependency"
+    },
+    {
+      "id": "dependency-cycle",
+      "path": "fixtures/invalid/dependency-cycle.json",
+      "valid": false,
+      "rule": "dependency-cycle"
+    },
+    {
+      "id": "source-revision-disagreement",
+      "path": "fixtures/invalid/source-revision-disagreement.json",
+      "valid": false,
+      "rule": "source-revision-disagreement"
+    },
+    {
+      "id": "source-digest-disagreement",
+      "path": "fixtures/invalid/source-digest-disagreement.json",
+      "valid": false,
+      "rule": "source-digest-disagreement"
+    },
+    {
+      "id": "lossy-acceptance",
+      "path": "fixtures/invalid/lossy-acceptance.json",
+      "valid": false,
+      "rule": "lossy-acceptance"
+    },
+    {
+      "id": "unqualified-task-id",
+      "path": "fixtures/invalid/unqualified-task-id.json",
+      "valid": false,
+      "rule": "unqualified-task-id"
+    },
+    {
+      "id": "unknown-contract-version",
+      "path": "fixtures/invalid/unknown-contract-version.json",
+      "valid": false,
+      "rule": "unknown-contract-version"
+    },
+    {
+      "id": "unknown-core-field",
+      "path": "fixtures/invalid/unknown-core-field.json",
+      "valid": false,
+      "rule": "unknown-core-field"
+    },
+    {
+      "id": "stale-head",
+      "path": "fixtures/invalid/stale-head.json",
+      "valid": false,
+      "rule": "stale-head"
+    },
+    {
+      "id": "stale-base",
+      "path": "fixtures/invalid/stale-base.json",
+      "valid": false,
+      "rule": "stale-base"
+    },
+    {
+      "id": "stale-policy",
+      "path": "fixtures/invalid/stale-policy.json",
+      "valid": false,
+      "rule": "stale-policy"
+    },
+    {
+      "id": "stale-attempt",
+      "path": "fixtures/invalid/stale-attempt.json",
+      "valid": false,
+      "rule": "stale-attempt"
+    },
+    {
+      "id": "stale-revision-success",
+      "path": "fixtures/invalid/stale-revision-success.json",
+      "valid": false,
+      "rule": "stale-revision-success"
+    },
+    {
+      "id": "dirty-success",
+      "path": "fixtures/invalid/dirty-success.json",
+      "valid": false,
+      "rule": "dirty-success"
+    },
+    {
+      "id": "audit-satisfies-gate",
+      "path": "fixtures/invalid/audit-satisfies-gate.json",
+      "valid": false,
+      "rule": "audit-satisfies-gate"
+    },
+    {
+      "id": "unverified-success",
+      "path": "fixtures/invalid/unverified-success.json",
+      "valid": false,
+      "rule": "unverified-success"
+    },
+    {
+      "id": "unknown-success",
+      "path": "fixtures/invalid/unknown-success.json",
+      "valid": false,
+      "rule": "unknown-success"
+    },
+    {
+      "id": "self-review-author",
+      "path": "fixtures/invalid/self-review-author.json",
+      "valid": false,
+      "rule": "self-review-author"
+    },
+    {
+      "id": "self-review-fix-author",
+      "path": "fixtures/invalid/self-review-fix-author.json",
+      "valid": false,
+      "rule": "self-review-fix-author"
+    },
+    {
+      "id": "singular-author-proof",
+      "path": "fixtures/invalid/singular-author-proof.json",
+      "valid": false,
+      "rule": "singular-author-proof"
+    },
+    {
+      "id": "missing-contributor-proof",
+      "path": "fixtures/invalid/missing-contributor-proof.json",
+      "valid": false,
+      "rule": "missing-contributor-proof"
+    },
+    {
+      "id": "context-as-execution-authority",
+      "path": "fixtures/invalid/context-as-execution-authority.json",
+      "valid": false,
+      "rule": "context-as-execution-authority"
+    },
+    {
+      "id": "missing-evidence-success",
+      "path": "fixtures/invalid/missing-evidence-success.json",
+      "valid": false,
+      "rule": "missing-evidence-success"
+    },
+    {
+      "id": "wrong-requirement-task",
+      "path": "fixtures/invalid/wrong-requirement-task.json",
+      "valid": false,
+      "rule": "wrong-requirement-task"
+    },
+    {
+      "id": "canceled-reopened",
+      "path": "fixtures/invalid/canceled-reopened.json",
+      "valid": false,
+      "rule": "canceled-reopened"
+    },
+    {
+      "id": "expired-reopened",
+      "path": "fixtures/invalid/expired-reopened.json",
+      "valid": false,
+      "rule": "expired-reopened"
+    },
+    {
+      "id": "unapproved-local-alternative",
+      "path": "fixtures/invalid/unapproved-local-alternative.json",
+      "valid": false,
+      "rule": "alternative-needs-owner-policy"
+    },
+    {
+      "id": "alternative-deployment-scope",
+      "path": "fixtures/invalid/alternative-deployment-scope.json",
+      "valid": false,
+      "rule": "source-merge-only"
+    },
+    {
+      "id": "duplicate-compound-dispatch",
+      "path": "fixtures/invalid/duplicate-compound-dispatch.json",
+      "valid": false,
+      "rule": "duplicate-canonical-unit"
+    },
+    {
+      "id": "missing-deployment-approval",
+      "path": "fixtures/invalid/missing-deployment-approval.json",
+      "valid": false,
+      "rule": "deployment-needs-explicit-policy-approval"
+    },
+    {
+      "id": "explicit-deployment-claim",
+      "path": "fixtures/valid/explicit-deployment-claim.json",
+      "valid": true,
+      "rule": "reported-deployment-not-runtime-proof"
+    },
+    {
+      "id": "wrong-environment",
+      "path": "fixtures/invalid/wrong-environment.json",
+      "valid": false,
+      "rule": "subject-environment-binding"
+    },
+    {
+      "id": "conflicting-current-evaluations",
+      "path": "fixtures/invalid/conflicting-current-evaluations.json",
+      "valid": false,
+      "rule": "unique-logical-evaluation"
+    },
+    {
+      "id": "missing-observation-retained",
+      "path": "fixtures/valid/missing-observation-retained.json",
+      "valid": true,
+      "rule": "non-success-outcomes-preserved"
+    },
+    {
+      "id": "unverified-observation-retained",
+      "path": "fixtures/valid/unverified-observation-retained.json",
+      "valid": true,
+      "rule": "non-success-outcomes-preserved"
+    },
+    {
+      "id": "unknown-observation-retained",
+      "path": "fixtures/valid/unknown-observation-retained.json",
+      "valid": true,
+      "rule": "non-success-outcomes-preserved"
+    },
+    {
+      "id": "unsupported-observation-retained",
+      "path": "fixtures/valid/unsupported-observation-retained.json",
+      "valid": true,
+      "rule": "non-success-outcomes-preserved"
+    },
+    {
+      "id": "rejected-observation-retained",
+      "path": "fixtures/valid/rejected-observation-retained.json",
+      "valid": true,
+      "rule": "non-success-outcomes-preserved"
+    },
+    {
+      "id": "stale-observation-retained",
+      "path": "fixtures/valid/stale-observation-retained.json",
+      "valid": true,
+      "rule": "non-success-outcomes-preserved"
+    },
+    {
+      "id": "snapshot-digest-disagreement",
+      "path": "fixtures/invalid/snapshot-digest-disagreement.json",
+      "valid": false,
+      "rule": "snapshot-bound-to-authority"
+    },
+    {
+      "id": "duplicate-current-execution",
+      "path": "fixtures/invalid/duplicate-current-execution.json",
+      "valid": false,
+      "rule": "one-current-attempt"
+    },
+    {
+      "id": "duplicate-evidence-id",
+      "path": "fixtures/invalid/duplicate-evidence-id.json",
+      "valid": false,
+      "rule": "unique-evidence-identity"
+    },
+    {
+      "id": "private-reference-leakage",
+      "path": "fixtures/invalid/private-reference-leakage.json",
+      "valid": false,
+      "rule": "portable-references"
+    },
+    {
+      "id": "credential-reference-leakage",
+      "path": "fixtures/invalid/credential-reference-leakage.json",
+      "valid": false,
+      "rule": "portable-references"
+    },
+    {
+      "id": "revoked-local-alternative",
+      "path": "fixtures/invalid/revoked-local-alternative.json",
+      "valid": false,
+      "rule": "approval-current-qualified"
+    }
+  ]
+}
