@@ -19,7 +19,7 @@ func TestInspectorFilterContract(t *testing.T) {
 		bad   bool
 	}{
 		{query: "", want: inspectorFilters{Scope: "all", Limit: inspectorDefaultLimit}},
-		{query: "scope=private&year=unknown&q=  tea%20  ", want: inspectorFilters{Scope: "private", Year: "unknown", Query: "tea", Limit: inspectorDefaultLimit}},
+		{query: "scope=private&year=unknown&q=%20%20tea%20%20", want: inspectorFilters{Scope: "private", Year: "unknown", Query: "tea", Limit: inspectorDefaultLimit}},
 		{query: "limit=100&year=2024", want: inspectorFilters{Scope: "all", Year: "2024", Limit: 100}},
 		{query: "limit=101", bad: true},
 		{query: "year=20x4", bad: true},
