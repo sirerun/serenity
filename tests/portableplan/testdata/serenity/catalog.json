@@ -1,0 +1,95 @@
+{
+  "contractVersion": "0.0.1",
+  "fixtures": [
+    {
+      "id": "SCTX-01",
+      "path": "valid/context-scoped-available.json",
+      "valid": true,
+      "rule": "context-is-not-authority"
+    },
+    {
+      "id": "SCTX-02",
+      "path": "valid/context-unavailable-unmapped.json",
+      "valid": true,
+      "rule": "unavailable-context-preserved"
+    },
+    {
+      "id": "SCTX-03",
+      "path": "valid/provider-capable-recall-excluded.json",
+      "valid": true,
+      "rule": "provider-capable-context-excluded"
+    },
+    {
+      "id": "SPOL-01",
+      "path": "valid/hosted-check-unavailable-no-alternative.json",
+      "valid": true,
+      "rule": "raw-hosted-failure-unavailable-gate-unsatisfied"
+    },
+    {
+      "id": "SPOL-02",
+      "path": "valid/approved-source-merge-alternative.json",
+      "valid": true,
+      "rule": "scoped-source-merge-alternative-retains-hosted-failure"
+    },
+    {
+      "id": "SPOL-03",
+      "path": "valid/local-check-failed-unsatisfied.json",
+      "valid": true,
+      "rule": "failed-local-check-does-not-satisfy-gate"
+    },
+    {
+      "id": "SPOL-04",
+      "path": "invalid/missing-alternative-approval.json",
+      "valid": false,
+      "rule": "alternative-approval-reference-missing"
+    },
+    {
+      "id": "SPOL-05",
+      "path": "invalid/revoked-alternative-approval.json",
+      "valid": false,
+      "rule": "revoked-approval-cannot-satisfy"
+    },
+    {
+      "id": "SPOL-06",
+      "path": "invalid/stale-source-head-success.json",
+      "valid": false,
+      "rule": "stale-source-head-cannot-satisfy"
+    },
+    {
+      "id": "SPOL-07",
+      "path": "invalid/stale-policy-revision-success.json",
+      "valid": false,
+      "rule": "stale-policy-cannot-satisfy"
+    },
+    {
+      "id": "SCTX-04",
+      "path": "invalid/context-as-execution-success.json",
+      "valid": false,
+      "rule": "context-kind-cannot-satisfy-execution"
+    },
+    {
+      "id": "SCTX-05",
+      "path": "invalid/context-as-check-or-approval-success.json",
+      "valid": false,
+      "rule": "context-kind-cannot-satisfy-check-or-approval"
+    },
+    {
+      "id": "SPOL-08",
+      "path": "invalid/source-merge-alternative-as-deployment.json",
+      "valid": false,
+      "rule": "source-merge-alternative-cannot-satisfy-deployment"
+    },
+    {
+      "id": "SAUD-01",
+      "path": "valid/canceled-late-audit-context.json",
+      "valid": true,
+      "rule": "terminal-late-context-audit-only"
+    },
+    {
+      "id": "SAUD-02",
+      "path": "valid/expired-late-audit-context.json",
+      "valid": true,
+      "rule": "terminal-late-context-audit-only"
+    }
+  ]
+}

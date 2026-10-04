@@ -1,0 +1,270 @@
+{
+  "contractVersion": "0.0.1",
+  "definition": {
+    "id": "serenity:fixture:portable-plan",
+    "revision": "fixture-revision-1",
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "title": "Synthetic Serenity context and policy fixture",
+    "source": {
+      "authority": "markdown",
+      "authorityId": "serenity:fixture-repository",
+      "ref": "docs/fixture/portable-plan.md",
+      "revision": "fixture-revision-1",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "adapterVersion": "serenity-fixture/1"
+    },
+    "tasks": [
+      {
+        "id": "serenity:fixture:portable-plan:T-check",
+        "title": "Check candidate source",
+        "stage": "verify",
+        "authoredStatus": "active",
+        "acceptance": "Preserve the fixture assertion as context; do not infer authority.",
+        "source": {
+          "ref": "docs/fixture/portable-plan.md",
+          "line": 1,
+          "raw": "synthetic fixture task"
+        },
+        "dependencies": [],
+        "metadata": {
+          "serenity:fixture": {
+            "synthetic": true,
+            "case": "T-check",
+            "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+          }
+        }
+      },
+      {
+        "id": "serenity:fixture:portable-plan:T-review",
+        "title": "Review candidate source",
+        "stage": "rereview",
+        "authoredStatus": "active",
+        "acceptance": "Preserve the fixture assertion as context; do not infer authority.",
+        "source": {
+          "ref": "docs/fixture/portable-plan.md",
+          "line": 2,
+          "raw": "synthetic fixture task"
+        },
+        "dependencies": [],
+        "metadata": {
+          "serenity:fixture": {
+            "synthetic": true,
+            "case": "T-review",
+            "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+          }
+        }
+      },
+      {
+        "id": "serenity:fixture:portable-plan:T-merge",
+        "title": "Merge source candidate",
+        "stage": "merge",
+        "authoredStatus": "pending",
+        "acceptance": "Preserve the fixture assertion as context; do not infer authority.",
+        "source": {
+          "ref": "docs/fixture/portable-plan.md",
+          "line": 3,
+          "raw": "synthetic fixture task"
+        },
+        "dependencies": [
+          {
+            "taskId": "serenity:fixture:portable-plan:T-check",
+            "predicate": "checks-satisfied",
+            "requirementId": "serenity:fixture:portable-plan:R-check"
+          },
+          {
+            "taskId": "serenity:fixture:portable-plan:T-review",
+            "predicate": "independent-approved",
+            "requirementId": "serenity:fixture:portable-plan:R-review"
+          }
+        ],
+        "metadata": {
+          "serenity:fixture": {
+            "synthetic": true,
+            "case": "T-merge",
+            "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+          }
+        }
+      }
+    ],
+    "requirements": [
+      {
+        "id": "serenity:fixture:portable-plan:R-check",
+        "taskId": "serenity:fixture:portable-plan:T-check",
+        "predicate": "checks-satisfied",
+        "policyRevision": "serenity:fixture-policy/1",
+        "subject": {
+          "head": "fixture-head-current",
+          "base": "fixture-base-current",
+          "artifact": "urn:fixture:artifact:current",
+          "environment": "urn:fixture:environment:staging"
+        },
+        "allowLocalAlternative": true
+      },
+      {
+        "id": "serenity:fixture:portable-plan:R-review",
+        "taskId": "serenity:fixture:portable-plan:T-review",
+        "predicate": "independent-approved",
+        "policyRevision": "serenity:fixture-policy/1",
+        "subject": {
+          "head": "fixture-head-current",
+          "base": "fixture-base-current",
+          "artifact": "urn:fixture:artifact:current",
+          "environment": "urn:fixture:environment:staging"
+        }
+      }
+    ],
+    "executionUnits": [],
+    "metadata": {
+      "sourceState": "clean",
+      "serenity:fixture": {
+        "synthetic": true,
+        "case": "SPOL-03",
+        "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+      }
+    }
+  },
+  "snapshot": {
+    "planId": "serenity:fixture:portable-plan",
+    "planRevision": "fixture-revision-1",
+    "planDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "observedAt": "2000-01-01T00:00:00Z",
+    "subject": {
+      "head": "fixture-head-current",
+      "base": "fixture-base-current",
+      "artifact": "urn:fixture:artifact:current",
+      "environment": "urn:fixture:environment:staging"
+    },
+    "executions": [
+      {
+        "taskId": "serenity:fixture:portable-plan:T-check",
+        "attemptId": "serenity:fixture:portable-plan:A-check",
+        "state": "active"
+      },
+      {
+        "taskId": "serenity:fixture:portable-plan:T-review",
+        "attemptId": "serenity:fixture:portable-plan:A-review",
+        "state": "active"
+      },
+      {
+        "taskId": "serenity:fixture:portable-plan:T-merge",
+        "attemptId": "serenity:fixture:portable-plan:A-merge",
+        "state": "waiting"
+      }
+    ],
+    "metadata": {
+      "serenity:fixtureAssertion": {
+        "synthetic": true,
+        "case": "SPOL-03",
+        "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+      }
+    }
+  },
+  "evidence": [
+    {
+      "id": "serenity:fixture:portable-plan:EV-hosted",
+      "taskId": "serenity:fixture:portable-plan:T-check",
+      "attemptId": "serenity:fixture:portable-plan:A-check",
+      "planRevision": "fixture-revision-1",
+      "planDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "check",
+      "subject": {
+        "head": "fixture-head-current",
+        "base": "fixture-base-current",
+        "artifact": "urn:fixture:artifact:current",
+        "environment": "urn:fixture:environment:staging"
+      },
+      "producer": "serenity:fixture-hosted-observer",
+      "verifier": "serenity:fixture-verifier",
+      "contributors": [
+        "serenity:fixture-author"
+      ],
+      "result": "unavailable",
+      "observedAt": "2000-01-01T00:00:00Z",
+      "provenance": "urn:fixture:evidence:EV-hosted",
+      "trust": "unverified",
+      "auditOnly": false,
+      "policyRevision": "serenity:fixture-policy/1",
+      "metadata": {
+        "serenity:fixtureAssertion": {
+          "synthetic": true,
+          "case": "EV-hosted",
+          "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+        },
+        "serenity:hostedObservation": {
+          "synthetic": true,
+          "rawConclusion": "failure",
+          "jobStarted": false,
+          "nonStartCategory": "billing-unavailable",
+          "observationLimit": "fixture-only; not a live provider observation"
+        }
+      }
+    },
+    {
+      "id": "serenity:fixture:portable-plan:EV-local",
+      "taskId": "serenity:fixture:portable-plan:T-check",
+      "attemptId": "serenity:fixture:portable-plan:A-check",
+      "planRevision": "fixture-revision-1",
+      "planDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "check",
+      "subject": {
+        "head": "fixture-head-current",
+        "base": "fixture-base-current",
+        "artifact": "urn:fixture:artifact:current",
+        "environment": "urn:fixture:environment:staging"
+      },
+      "producer": "serenity:fixture-local-check-runner",
+      "verifier": "serenity:fixture-verifier",
+      "contributors": [
+        "serenity:fixture-author"
+      ],
+      "result": "failed",
+      "observedAt": "2000-01-01T00:00:00Z",
+      "provenance": "urn:fixture:evidence:EV-local",
+      "trust": "unverified",
+      "auditOnly": false,
+      "policyRevision": "serenity:fixture-policy/1",
+      "metadata": {
+        "serenity:fixtureAssertion": {
+          "synthetic": true,
+          "case": "EV-local",
+          "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+        },
+        "serenity:localCheck": {
+          "synthetic": true,
+          "sourceRevision": "fixture-head-current",
+          "baseRevision": "fixture-base-current",
+          "commands": [
+            "go test ./pkg/fixture"
+          ],
+          "limits": "illustrative only; no command was run"
+        }
+      }
+    }
+  ],
+  "evaluations": [
+    {
+      "id": "serenity:fixture:portable-plan:J-check",
+      "requirementId": "serenity:fixture:portable-plan:R-check",
+      "taskId": "serenity:fixture:portable-plan:T-check",
+      "attemptId": "serenity:fixture:portable-plan:A-check",
+      "planRevision": "fixture-revision-1",
+      "planDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "evidenceIds": [
+        "serenity:fixture:portable-plan:EV-hosted",
+        "serenity:fixture:portable-plan:EV-local"
+      ],
+      "policyRevision": "serenity:fixture-policy/1",
+      "outcome": "unsatisfied",
+      "evaluatedAt": "2000-01-01T00:01:00Z",
+      "authority": "serenity:fixture-policy-owner",
+      "qualification": "unverified",
+      "metadata": {
+        "serenity:fixtureAssertion": {
+          "synthetic": true,
+          "case": "J-check",
+          "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+        }
+      }
+    }
+  ]
+}
