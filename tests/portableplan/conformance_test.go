@@ -6,16 +6,20 @@ package portableplan_test
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 )
@@ -279,6 +283,94 @@ func TestValidExamplesMatchPinnedStructuralSchema(t *testing.T) {
 				}
 				if err := sch.Validate(value); err != nil {
 					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
+type validatorReport struct {
+	Version   string `json:"contractVersion"`
+	Digest    string `json:"contractDigest"`
+	Valid     *bool  `json:"valid"`
+	Authority *bool  `json:"authorityAuthenticated"`
+	Findings  []struct {
+		Code string `json:"code"`
+	} `json:"findings"`
+}
+
+func runValidator(t *testing.T, binary string, args ...string) ([]byte, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, binary, args...).CombinedOutput()
+	if ctx.Err() != nil {
+		t.Fatalf("validator timed out: %v", ctx.Err())
+	}
+	return output, err
+}
+
+func TestOwningSemanticConformance(t *testing.T) {
+	binary := os.Getenv("WAZI_PLAN_VALIDATOR")
+	if !filepath.IsAbs(binary) {
+		t.Fatal("WAZI_PLAN_VALIDATOR must name an absolute owner-qualified offline binary")
+	}
+	data, err := os.ReadFile(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(data)
+	t.Logf("validator artifact SHA256: %x; source qualification must accompany this result", digest)
+	output, err := runValidator(t, binary, "version")
+	if err != nil {
+		t.Fatalf("validator version: %v: %s", err, output)
+	}
+	var version validatorReport
+	if err := json.Unmarshal(output, &version); err != nil {
+		t.Fatalf("validator version JSON: %v", err)
+	}
+	if version.Version != contractVersion || version.Digest != contractDigest || version.Authority == nil || *version.Authority {
+		t.Fatalf("unexpected validator identity/authority report: %s", output)
+	}
+	for _, root := range []string{"testdata/upstream/fixtures", "testdata/serenity"} {
+		for _, fixture := range catalog(t, root) {
+			t.Run(filepath.Base(root)+"/"+fixture.ID, func(t *testing.T) {
+				path := fixture.Path
+				if strings.HasSuffix(root, "fixtures") {
+					path = strings.TrimPrefix(path, "fixtures/")
+				}
+				path, err := filepath.Abs(filepath.Join(root, path))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var document map[string]any
+				readJSON(t, path, &document)
+				output, runErr := runValidator(t, binary, "validate", "--contract-digest", contractDigest, path)
+				var report validatorReport
+				if err := json.Unmarshal(output, &report); err != nil {
+					t.Fatalf("validator report JSON: %v: %s", err, output)
+				}
+				if report.Version != contractVersion || report.Digest != contractDigest || report.Valid == nil || report.Authority == nil || *report.Authority {
+					t.Fatalf("unexpected report identity/authority: %s", output)
+				}
+				if *report.Valid != fixture.Valid {
+					t.Fatalf("%s: expected valid=%t: %s", fixture.Rule, fixture.Valid, output)
+				}
+				if fixture.Valid {
+					if runErr != nil || len(report.Findings) != 0 {
+						t.Fatalf("valid fixture failed: %v: %s", runErr, output)
+					}
+					return
+				}
+				var exitErr *exec.ExitError
+				if !errors.As(runErr, &exitErr) || exitErr.ExitCode() != 1 || len(report.Findings) == 0 {
+					t.Fatalf("invalid fixture lacked a validation rejection: %v: %s", runErr, output)
+				}
+				for _, finding := range report.Findings {
+					switch finding.Code {
+					case "", "schema_compile", "schema_init", "contract_digest_mismatch", "contract_unavailable", "duplicate_json_member", "invalid_json":
+						t.Fatalf("infrastructure/input failure is not conformance: %s", output)
+					}
 				}
 			})
 		}
