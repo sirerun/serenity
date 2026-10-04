@@ -52,7 +52,9 @@ func TestInspectorYearFilterIncludesExplicitUnknownAndEntityEarliestDate(t *test
 	if got := filterInspectorNodes(nodes, inspectorFilters{Year: "2024"}); len(got) != 2 || got[0].ID != "entity:three" || got[1].ID != "fact:one" {
 		t.Fatalf("known-year nodes = %#v", got)
 	}
-	if got := filterInspectorNodes(nodes, inspectorFilters{Year: "unknown"}); len(got) != 1 || got[0].ID != "claim:unknown" {
+	// An observed date is not a captured date; those records remain unknown
+	// on the capture-time axis rather than appearing in the observed year.
+	if got := filterInspectorNodes(nodes, inspectorFilters{Year: "unknown"}); len(got) != 3 || got[0].ID != "claim:two" || got[1].ID != "claim:unknown" || got[2].ID != "source:four" {
 		t.Fatalf("unknown-date nodes = %#v", got)
 	}
 }
