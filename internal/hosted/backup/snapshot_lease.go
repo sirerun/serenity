@@ -3320,9 +3320,10 @@ func writeLeaseRecord(path string, r *leaseDiskRecord, limit int64) (retErr erro
 	if pinPhase == "pinned" {
 		testhooks.At(testhooks.PhaseSnapshotPinPinnedPublished)
 	}
-	if releasePhase == "live" {
+	switch releasePhase {
+	case "live":
 		testhooks.At(testhooks.PhaseSnapshotReleaseLiveRecordPublished)
-	} else if releasePhase == "marker" {
+	case "marker":
 		testhooks.At(testhooks.PhaseSnapshotReleaseMarkerRecordPublished)
 	}
 	dir, e := root.Open(".")
@@ -3337,9 +3338,10 @@ func writeLeaseRecord(path string, r *leaseDiskRecord, limit int64) (retErr erro
 		if pinPhase == "pinned" {
 			testhooks.At(testhooks.PhaseSnapshotPinPinnedDirectorySynced)
 		}
-		if releasePhase == "live" {
+		switch releasePhase {
+		case "live":
 			testhooks.At(testhooks.PhaseSnapshotReleaseLiveRecordDirectorySynced)
-		} else if releasePhase == "marker" {
+		case "marker":
 			testhooks.At(testhooks.PhaseSnapshotReleaseMarkerRecordDirectorySynced)
 		}
 	}
