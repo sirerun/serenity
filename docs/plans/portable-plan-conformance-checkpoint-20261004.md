@@ -94,3 +94,34 @@ All observed 75-case passes above remain true but preliminary/incomplete.
 T-PC-SERENITY.4 requires a corrected exact source/artifact handoff and rerun,
 as well as admitted Go tests/vet. No final conformance or merge is authorized
 by the obsolete artifact. Existing resource/deadline checkpoint remains.
+
+## Independent source review and resume contract
+
+Independent reviewer `/root/serenity_conformance_review` returned CLEAR for
+source/docs at base `e2b5dd17c889219ad50a1dbaa3b5c932c0dd930f`, exact source
+head `96fec95067ab4205e992ad2fb0ce5cfc53d565db`. Independently reproduced
+66 hashes/aggregate pin, 8 positive structural checks, 7 structurally valid
+semantic counterexamples, and 75 preliminary owner-CLI outcomes including
+specific Serenity rejection paths. No blocking source finding. Later commits
+only preserve qualification/checkpoint documentation. Final T-PC-SERENITY.5
+acceptance remains open until T-PC-SERENITY.4 completes on the final candidate.
+
+Resume in the existing controller worktree/branch; preserve all other lanes.
+1. Claim R-portable-plan-conformance before edits; verify exact current PR head.
+2. Read steward/shared channels for corrected G2 validator source/artifact,
+   regression/review and hold disposition. Verify version/digest, binary hash
+   and exact CI source. Rerun all 75 cases; never reuse obsolete qualification.
+3. Admit local Go only when one-minute load <=10 and shared build lease is
+   won; retain and release its exact token. Set GOWORK=off, GOMAXPROCS=2,
+   GOFLAGS=-p=1 and cache/module/temp directories on the external SSD.
+   With WAZI_PLAN_VALIDATOR naming the corrected absolute binary, run
+   `go test -tags portableplan -count=1 -v ./tests/portableplan`, then
+   `go vet -tags portableplan ./tests/portableplan` and
+   `golangci-lint run --build-tags portableplan ./tests/portableplan`.
+4. Obtain independent exact-head review including meaningful negative controls,
+   recheck all holds/current CI annotations, evaluate ADR 024 separately,
+   then perform authorized rebase merge and verify the landed bytes/checks.
+   Hosted CI non-starts must stay raw failures. No deploy/provider action.
+
+Latest reviewed source head test check `111383608846`, run `37184535565`,
+failed without starting with the billing-lock annotation; no hosted pass.
