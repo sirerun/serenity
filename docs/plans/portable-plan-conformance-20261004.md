@@ -49,14 +49,26 @@ needed for this offline conformance slice.
 
 ## Checkable delivery plan
 
-- [x] PCS.0 Reconcile scope, ownership, tools and source mapping  Owner: pc-serenity-coordinator kind: agent stage: preflight  delivers: [UC-PC1, UC-PC2]  acc: [external SSD writable; isolated clean candidate; existing owners/holds preserved; actual tools and resource gaps recorded]
-- [ ] PCS.1 Inventory context/policy surfaces and send consumer fixture requirements  Owner: pc-serenity-inventory kind: agent stage: implement  blocked-by: [PCS.0]  delivers: [source inventory and Wazi counterexample requirements]  acc: [provider-free versus provider-capable reads identified; ADR024 source-merge scope preserved; context is never execution evidence]
-- [ ] PCS.2 Pin Wazi's frozen experimental contract  Owner: pc-serenity-coordinator kind: agent stage: preflight  blocked-by: [PCS.1]  delivers: [contract manifest]  acc: [owner-confirmed exact revision/digest, schemas, semantic validator and fixture instructions available; no schema fork]
-- [ ] PCS.3 Implement contextual and policy conformance examples  Owner: pc-serenity-coordinator kind: agent stage: implement  blocked-by: [PCS.2]  verifies: [UC-PC1, UC-PC2]  acc: [fixtures preserve context provenance/unavailable states and separate hosted observations from authorized local evaluation; necessary projection is read-only only]
-- [ ] PCS.4 Verify behavior and required checks  Owner: pc-serenity-coordinator kind: agent stage: verify  blocked-by: [PCS.3]  verifies: [UC-PC1, UC-PC2]  acc: [pinned validator accepts valid fixtures and rejects invalid trust/mapping cases; targeted tests and formatting/lint pass on exact candidate; hosted CI outcome recorded honestly]
-- [ ] PCS.5 Independent exact-head review of PCS.3 and PCS.4  Owner: independent-reviewer kind: agent stage: review  blocked-by: [PCS.4]  verifies: [UC-PC1, UC-PC2]  acc: [reviewer distinct from authors; base/head and stable findings recorded; meaningful negative controls reproduced; all blocking findings resolved]
-- [ ] PCS.6 Evaluate checks/holds and GitHub rebase merge  Owner: pc-serenity-coordinator kind: agent stage: merge  blocked-by: [PCS.5]  verifies: [UC-PC1, UC-PC2]  acc: [exact approved head, current policy/required checks and named holds reconciled; rebase merged without protections changes]
-- [ ] PCS.7 Verify landed revision and hand off  Owner: pc-serenity-coordinator kind: agent stage: verify-landed  blocked-by: [PCS.6]  verifies: [UC-PC1, UC-PC2]  acc: [landed artifacts match reviewed candidate and pass scoped conformance; PR/review/check/landed evidence shared; claims released exactly]
+The initial channel labels `PCS.0`–`PCS.7` are historical aliases for the
+parseable stable IDs `T-PC-SERENITY.0`–`T-PC-SERENITY.7` below. This correction
+precedes implementation and preserves the one-to-one stage/dependency mapping.
+
+### E-PCS — Conformance delivery
+
+#### Wave 1 — Source inventory, contract pin and bounded delivery
+
+Tasks: T-PC-SERENITY.0, T-PC-SERENITY.1, T-PC-SERENITY.2,
+T-PC-SERENITY.3, T-PC-SERENITY.4, T-PC-SERENITY.5,
+T-PC-SERENITY.6, T-PC-SERENITY.7.
+
+- [x] T-PC-SERENITY.0 Reconcile scope, ownership, tools and source mapping  Owner: pc-serenity-coordinator kind: agent stage: preflight  delivers: [UC-PC1, UC-PC2]  acc: [external SSD writable; isolated clean candidate; existing owners/holds preserved; actual tools and resource gaps recorded]
+- [ ] T-PC-SERENITY.1 Inventory context/policy surfaces and send consumer fixture requirements  Owner: pc-serenity-inventory kind: agent stage: implement  blocked-by: [T-PC-SERENITY.0]  delivers: [source inventory and Wazi counterexample requirements]  acc: [provider-free versus provider-capable reads identified; ADR024 source-merge scope preserved; context is never execution evidence]
+- [ ] T-PC-SERENITY.2 Pin Wazi's frozen experimental contract  Owner: pc-serenity-coordinator kind: agent stage: preflight  blocked-by: [T-PC-SERENITY.1]  delivers: [contract manifest]  acc: [owner-confirmed exact revision/digest, schemas, semantic validator and fixture instructions available; no schema fork]
+- [ ] T-PC-SERENITY.3 Implement contextual and policy conformance examples  Owner: pc-serenity-coordinator kind: agent stage: implement  blocked-by: [T-PC-SERENITY.2]  verifies: [UC-PC1, UC-PC2]  acc: [fixtures preserve context provenance/unavailable states and separate hosted observations from authorized local evaluation; necessary projection is read-only only]
+- [ ] T-PC-SERENITY.4 Verify behavior and required checks  Owner: pc-serenity-coordinator kind: agent stage: verify  blocked-by: [T-PC-SERENITY.3]  verifies: [UC-PC1, UC-PC2]  acc: [pinned validator accepts valid fixtures and rejects invalid trust/mapping cases; targeted tests and formatting/lint pass on exact candidate; hosted CI outcome recorded honestly]
+- [ ] T-PC-SERENITY.5 Independent exact-head review of T-PC-SERENITY.3 and T-PC-SERENITY.4  Owner: independent-reviewer kind: agent stage: review  blocked-by: [T-PC-SERENITY.4]  verifies: [UC-PC1, UC-PC2]  acc: [reviewer distinct from authors; base/head and stable findings recorded; meaningful negative controls reproduced; all blocking findings resolved]
+- [ ] T-PC-SERENITY.6 Evaluate checks/holds and GitHub rebase merge  Owner: pc-serenity-coordinator kind: agent stage: merge  blocked-by: [T-PC-SERENITY.5]  verifies: [UC-PC1, UC-PC2]  acc: [exact approved head, current policy/required checks and named holds reconciled; rebase merged without protections changes]
+- [ ] T-PC-SERENITY.7 Verify landed revision and hand off  Owner: pc-serenity-coordinator kind: agent stage: verify-landed  blocked-by: [T-PC-SERENITY.6]  verifies: [UC-PC1, UC-PC2]  acc: [landed artifacts match reviewed candidate and pass scoped conformance; PR/review/check/landed evidence shared; claims released exactly]
 
 ## Verification and boundaries
 
@@ -75,7 +87,7 @@ Production deployment and release publication are outside the dispatch.
 
 ## Status and handoff
 
-Source/doc preflight passed; builds remain resource-held. First runnable task is PCS.1. PCS.2 and
+Source/doc preflight passed; builds remain resource-held. First runnable task is T-PC-SERENITY.1. T-PC-SERENITY.2 and
 descendants require Wazi's published frozen contract; no such revision has yet
 been supplied in the inspected dispatch/channel. Coordination messages are
 handoffs, not authenticated execution receipts.

@@ -12,12 +12,12 @@
   no parallel build wave admitted. Load 32.89 initially, no heavy check started.
 - Graph/Ajent MCP tools unavailable; source reads and user-designated channel
   are the qualified fallbacks. No cloud/model/brain credentials required.
-- PCS.1 inventory worker owns only its source inventory doc in its isolated
+- T-PC-SERENITY.1 inventory worker owns only its source inventory doc in its isolated
   external worktree. Coordinator owns plan/checkpoint, integration and eventual
   conformance artifacts. Independent reviewer will own a separate exact-head
   read/test worktree when PCS.5 becomes runnable.
 - Contract prerequisite: Wazi owner has not yet published a frozen portable
-  contract. PCS.2 and later implementation/conformance are gated, not authorized
+  contract. T-PC-SERENITY.2 and later implementation/conformance are gated, not authorized
   to invent a schema. Requested handoff includes revision/digest, validator,
   schemas and offline fixture instructions.
 - No source mutation, new authority issuer, policy-hold removal or recovery
