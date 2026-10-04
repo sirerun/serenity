@@ -560,6 +560,7 @@ func writeReleaseTombstone(path string, r leaseDiskRecord) (retErr error) {
 	if err != nil {
 		return err
 	}
+	snapshotLeaseCaptureTemp(path, temp, r, raw, root, f)
 	testhooks.At(testhooks.PhaseSnapshotReleaseTombstoneTempCreated)
 	n, writeErr := f.Write(raw)
 	if writeErr == nil && n != len(raw) {
@@ -3254,6 +3255,7 @@ func writeLeaseRecord(path string, r *leaseDiskRecord, limit int64) (retErr erro
 			releasePhase = "live"
 		}
 	}
+	snapshotLeaseCaptureTemp(path, tmp, *r, raw, root, f)
 	if pinPhase == "pending" {
 		testhooks.At(testhooks.PhaseSnapshotPinPendingTempCreated)
 	}

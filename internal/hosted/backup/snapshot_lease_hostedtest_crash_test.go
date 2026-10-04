@@ -206,6 +206,34 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 	if os.Getenv("SERENITY_TEST_SNAPSHOT_MATRIX_CHILD") == "1" {
 		root, snapshot, digest := os.Getenv("SERENITY_TEST_LEASE_ROOT"), os.Getenv("SERENITY_TEST_SNAPSHOT"), os.Getenv("SERENITY_TEST_MANIFEST_SHA")
 		mode := os.Getenv("SERENITY_TEST_SNAPSHOT_MODE")
+		if target := os.Getenv("SERENITY_TEST_SNAPSHOT_PREFIX_KIND"); target != "" {
+			captureFile := os.NewFile(6, "captured-lease-temp")
+			if captureFile == nil {
+				t.Fatal("missing inherited canonical temp capture pipe")
+			}
+			defer captureFile.Close()
+			restoreCaptureObserver := setSnapshotLeaseTempCaptureObserverForTest(func(capture snapshotLeaseTempCapture) {
+				matches := false
+				switch target {
+				case "pin-pending":
+					matches = capture.Kind == "lease" && capture.Record.State == "PIN_PENDING"
+				case "pin-pinned":
+					matches = capture.Kind == "lease" && capture.Record.State == "PINNED"
+				case "release-live":
+					matches = capture.Kind == "lease" && capture.Record.State == "RELEASING" && filepath.Base(filepath.Dir(capture.Path)) != ".releases"
+				case "release-marker":
+					matches = capture.Kind == "lease" && capture.Record.State == "RELEASING" && filepath.Base(filepath.Dir(capture.Path)) == ".releases"
+				case "release-tombstone":
+					matches = capture.Kind == "tombstone" && filepath.Base(filepath.Dir(capture.Path)) == ".releases"
+				}
+				if matches {
+					if err := json.NewEncoder(captureFile).Encode(capture); err != nil {
+						t.Errorf("write canonical temp capture: %v", err)
+					}
+				}
+			})
+			defer restoreCaptureObserver()
+		}
 		a := newLeaseTestAuthority()
 		s := testLeaseStoreOptions(t, SnapshotLeaseStoreOptions{LeaseRoot: root, MaxArtifactBytesPerLease: 1 << 30, MaxMetadataBytesPerLease: 1 << 20, MaxRestoreScratchBytes: 1 << 30, MaxRetainedArtifactBytes: 2 << 30, MaxRetainedMetadataBytes: 2 << 20, MaxLeases: 8}, a)
 		opts, _ := inspectionOptions(t, snapshot)
@@ -277,13 +305,19 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestSnapshotLeaseCrashBarrierMatrix$")
-			cmd.ExtraFiles = []*os.File{armR, statusW, stateW}
-			cmd.Env = append(os.Environ(), "SERENITY_HOSTED_TESTHOOKS_ARM_FD=3", "SERENITY_HOSTED_TESTHOOKS_STATUS_FD=4", "SERENITY_TEST_AUTHORITY_STATE_FD=5", "SERENITY_TEST_SNAPSHOT_MATRIX_CHILD=1", "SERENITY_TEST_SNAPSHOT_MODE="+tc.mode, "SERENITY_TEST_LEASE_ROOT="+root, "SERENITY_TEST_SNAPSHOT="+snapshot, "SERENITY_TEST_MANIFEST_SHA="+digest)
+			captureR, captureW, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer captureR.Close()
+			cmd.ExtraFiles = []*os.File{armR, statusW, stateW, captureW}
+			cmd.Env = append(os.Environ(), "SERENITY_HOSTED_TESTHOOKS_ARM_FD=3", "SERENITY_HOSTED_TESTHOOKS_STATUS_FD=4", "SERENITY_TEST_AUTHORITY_STATE_FD=5", "SERENITY_TEST_SNAPSHOT_PREFIX_KIND="+tc.prefix, "SERENITY_TEST_SNAPSHOT_MATRIX_CHILD=1", "SERENITY_TEST_SNAPSHOT_MODE="+tc.mode, "SERENITY_TEST_LEASE_ROOT="+root, "SERENITY_TEST_SNAPSHOT="+snapshot, "SERENITY_TEST_MANIFEST_SHA="+digest)
 			if err = cmd.Start(); err != nil {
 				t.Fatal(err)
 			}
 			_ = statusW.Close()
 			_ = stateW.Close()
+			_ = captureW.Close()
 			waited := false
 			stop := func() {
 				if !waited && cmd.Process != nil {
@@ -310,7 +344,13 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 				t.Fatalf("timed out waiting for %s barrier", tc.name)
 			}
 			var prefixState leaseTestAuthorityState
+			var prefixCapture snapshotLeaseTempCapture
 			if tc.prefix != "" {
+				captureCh := make(chan error, 1)
+				go func() {
+					decoder := json.NewDecoder(io.LimitReader(captureR, 2<<20))
+					captureCh <- decoder.Decode(&prefixCapture)
+				}()
 				stateCh := make(chan result, 1)
 				wantLines := 1
 				if tc.prefix == "pin-pinned" {
@@ -345,7 +385,17 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 					stop()
 					t.Fatalf("timed out waiting for child authority state at %s", tc.name)
 				}
-				if err = writeSnapshotLeaseCrashTempPrefix(root, prefixState, tc.prefix); err != nil {
+				select {
+				case err = <-captureCh:
+					if err != nil {
+						stop()
+						t.Fatalf("receive exact canonical temp capture: %v", err)
+					}
+				case <-ctx.Done():
+					stop()
+					t.Fatalf("timed out waiting for canonical temp capture at %s", tc.name)
+				}
+				if err = writeSnapshotLeaseCrashTempPrefix(root, prefixState, prefixCapture, tc.prefix); err != nil {
 					stop()
 					t.Fatalf("write reachable %s temp prefix: %v", tc.prefix, err)
 				}
@@ -484,114 +534,62 @@ func snapshotLeaseCrashTree(root string) (map[string]string, error) {
 	return state, nil
 }
 
-func writeSnapshotLeaseCrashTempPrefix(root string, state leaseTestAuthorityState, kind string) error {
+func writeSnapshotLeaseCrashTempPrefix(root string, state leaseTestAuthorityState, capture snapshotLeaseTempCapture, kind string) error {
 	if strings.HasPrefix(kind, "release-") && (!state.HasRelease || state.Attempt.State != PinAttemptCommitted || state.Authorization.PlanRef != state.Attempt.PlanRef || state.Authorization.ManifestSHA256 != state.Attempt.ManifestSHA256) {
 		return ErrSnapshotLeaseConflict
 	}
 	if kind == "pin-pending" && state.Attempt.State != PinAttemptPending || kind == "pin-pinned" && state.Attempt.State != PinAttemptCommitted {
 		return ErrSnapshotLeaseConflict
 	}
-	dir := filepath.Join(root, state.Attempt.LeaseID)
+	expectedDir := filepath.Join(root, state.Attempt.LeaseID)
 	tempPrefix := ".lease.tmp-"
+	expectedCaptureKind := "lease"
 	if kind == "release-marker" || kind == "release-tombstone" {
-		dir = filepath.Join(root, ".releases", state.Attempt.LeaseID)
+		expectedDir = filepath.Join(root, ".releases", state.Attempt.LeaseID)
 	}
 	if kind == "release-tombstone" {
 		tempPrefix = ".release.tmp-"
+		expectedCaptureKind = "tombstone"
 	}
-	var canonical []byte
-	if kind == "release-tombstone" {
-		record, err := readLeaseRecord(dir, maxLeaseMetadataBytes)
-		if err != nil {
-			return err
-		}
-		if record.ID != state.Attempt.LeaseID || record.PinID != state.Authorization.PinID || record.PlanRef != state.Authorization.PlanRef || record.ManifestSHA256 != state.Authorization.ManifestSHA256 || record.RecordVersion != state.Authorization.RecordVersion || record.Disposition != state.Authorization.Disposition {
-			return ErrSnapshotLeaseConflict
-		}
-		_, canonical, err = encodeReleaseTombstone(record)
-		if err != nil {
-			return err
-		}
-	} else {
-		record, err := readLeaseRecord(filepath.Join(root, state.Attempt.LeaseID), maxLeaseMetadataBytes)
-		if err != nil {
-			return err
-		}
-		switch kind {
-		case "pin-pending":
-			record.State = "PIN_PENDING"
-			record.PinID = strings.Repeat("c", 64)
-			record.PlanRef = state.Attempt.PlanRef
-			record.ReservationVersion = state.Attempt.ReservationVersion
-			record.AttemptVersion = state.Attempt.AttemptVersion
-		case "pin-pinned":
-			record.State = "PINNED"
-		case "release-live", "release-marker":
-			if record.ID != state.Attempt.LeaseID || record.PinID != state.Authorization.PinID || record.PlanRef != state.Authorization.PlanRef || record.ManifestSHA256 != state.Authorization.ManifestSHA256 {
-				return ErrSnapshotLeaseConflict
-			}
-			record.State = "RELEASING"
-			record.Disposition = state.Authorization.Disposition
-			record.RecordVersion = state.Authorization.RecordVersion
-		default:
-			return fmt.Errorf("unknown temp prefix fixture %q", kind)
-		}
-		canonical, err = encodeLeaseRecord(&record, maxLeaseMetadataBytes)
-		if err != nil {
-			return err
-		}
+	if capture.Kind != expectedCaptureKind || capture.Path != expectedDir || !strings.HasPrefix(capture.Name, tempPrefix) || len(capture.Raw) < 2 || capture.Record.ID != state.Attempt.LeaseID || capture.Record.ManifestSHA256 != state.Attempt.ManifestSHA256 || capture.Record.PlanRef != state.Attempt.PlanRef || capture.Record.ReservationVersion != state.Attempt.ReservationVersion || capture.Record.AttemptVersion != state.Attempt.AttemptVersion {
+		return ErrSnapshotLeaseConflict
 	}
-	if len(canonical) < 2 {
-		return errors.Join(ErrSnapshotLeaseInvalid, fmt.Errorf("canonical temp payload too short"))
+	if strings.HasPrefix(kind, "release-") && (capture.Record.PinID != state.Authorization.PinID || capture.Record.RecordVersion != state.Authorization.RecordVersion || capture.Record.Disposition != state.Authorization.Disposition) {
+		return ErrSnapshotLeaseConflict
 	}
-	prefix := canonical[:len(canonical)/3]
-	dirInfo, err := os.Lstat(dir)
+	if kind == "pin-pending" && (capture.Record.State != "PIN_PENDING" || capture.Record.PinID == "") || kind == "pin-pinned" && capture.Record.State != "PINNED" || kind == "release-live" && capture.Record.State != "RELEASING" || kind == "release-marker" && capture.Record.State != "RELEASING" || kind == "release-tombstone" && capture.Record.State != "RELEASING" {
+		return ErrSnapshotLeaseConflict
+	}
+	rootDev, rootIno, err := pathIdentity(root)
+	if err != nil || rootDev != capture.Record.RootDevice || rootIno != capture.Record.RootInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	dirInfo, err := os.Lstat(expectedDir)
 	if err != nil || !dirInfo.IsDir() || dirInfo.Mode()&os.ModeSymlink != 0 {
 		return errors.Join(ErrSnapshotLeaseInvalid, err)
 	}
-	rootDev, rootIno, err := pathIdentity(root)
-	if err != nil {
-		return err
+	dirDev, dirIno, err := fileIdentity(dirInfo)
+	if err != nil || dirDev != capture.DirDevice || dirIno != capture.DirInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
 	}
-	if kind != "release-marker" && kind != "release-tombstone" {
-		record, readErr := readLeaseRecord(dir, maxLeaseMetadataBytes)
-		if readErr == nil && (record.RootDevice != rootDev || record.RootInode != rootIno) {
-			return ErrSnapshotLeaseInvalid
-		}
-		if readErr != nil && kind != "pin-pending" {
-			return readErr
-		}
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	var temp string
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), tempPrefix) {
-			if temp != "" {
-				return errors.Join(ErrSnapshotLeaseInvalid, fmt.Errorf("multiple temp files in fixture"))
-			}
-			temp = entry.Name()
-		}
-	}
-	if temp == "" {
-		return errors.Join(ErrSnapshotLeaseInvalid, fmt.Errorf("missing exact temp file"))
-	}
-	path := filepath.Join(dir, temp)
+	path := filepath.Join(expectedDir, capture.Name)
 	before, err := os.Lstat(path)
 	if err != nil || !before.Mode().IsRegular() || before.Mode().Perm() != 0600 || before.Size() != 0 {
 		return errors.Join(ErrSnapshotLeaseInvalid, err)
 	}
-	anchored, err := os.OpenRoot(dir)
+	fileDev, fileIno, err := fileIdentity(before)
+	if err != nil || fileDev != capture.TempDevice || fileIno != capture.TempInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	anchored, err := os.OpenRoot(expectedDir)
 	if err != nil {
 		return err
 	}
-	opened, err := anchored.Stat(".")
-	if err != nil || !os.SameFile(dirInfo, opened) {
+	openedDir, err := anchored.Stat(".")
+	if err != nil || !os.SameFile(dirInfo, openedDir) {
 		return errors.Join(ErrSnapshotLeaseInvalid, err, anchored.Close())
 	}
-	f, err := anchored.OpenFile(temp, os.O_WRONLY, 0)
+	f, err := anchored.OpenFile(capture.Name, os.O_WRONLY, 0)
 	if err != nil {
 		return errors.Join(err, anchored.Close())
 	}
@@ -599,6 +597,7 @@ func writeSnapshotLeaseCrashTempPrefix(root string, state leaseTestAuthorityStat
 	if err != nil || !os.SameFile(before, openedFile) {
 		return errors.Join(ErrSnapshotLeaseInvalid, err, f.Close(), anchored.Close())
 	}
+	prefix := capture.Raw[:len(capture.Raw)/3]
 	n, writeErr := f.Write(prefix)
 	if writeErr == nil && n != len(prefix) {
 		writeErr = io.ErrShortWrite
@@ -621,7 +620,7 @@ func writeSnapshotLeaseCrashTempPrefix(root string, state leaseTestAuthorityStat
 		writeErr = errors.Join(writeErr, ErrSnapshotLeaseInvalid, statErr)
 	}
 	finalRootDev, finalRootIno, rootErr := pathIdentity(root)
-	finalDir, dirErr := os.Lstat(dir)
+	finalDir, dirErr := os.Lstat(expectedDir)
 	if rootErr != nil || dirErr != nil || finalRootDev != rootDev || finalRootIno != rootIno || !os.SameFile(dirInfo, finalDir) {
 		writeErr = errors.Join(writeErr, ErrSnapshotLeaseInvalid, rootErr, dirErr)
 	}
