@@ -35,7 +35,7 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: Proposal096 design CLEAR and coordinator source freeze e762c9c banked; exact source claim c20ad and disjoint backup/testhooks ownership; source acceptance remains HOLD.
 - [x] T-SPS.2 — Implement producer primitive controls and authorized restart. kind: agent stage: implement deps: [T-SPS.1]
   acc: Fresh exact owner authority precedes resumed deletion/new tombstone; completed tombstone uses exact terminal acknowledgement only after live lease absence; real tagged primitive controls and anchored reachable partial states preserve production no-op and RemoveAll. Adopted terminal amendment retains exact receipts with bounded4096 journal and complete peak metadata reservations.
-- [x] T-SPS.3 — Verify producer current source and controls. kind: agent stage: verify deps: [T-SPS.2, T-SPSFIX.1]
+- [ ] T-SPS.3 — Verify producer current source and controls. kind: agent stage: verify deps: [T-SPS.2, T-SPSFIX.1, T-SPSFIX.3]
   acc: Ordinary/tagged child crash matrix, authority denial, cancellation, tuple/root/inode mismatch, live-present, repeated terminal real-pair reconciliation, bounded journal cap/overflow and peak metadata regressions; compiled RED/restored PASS and focused checks under exact released leases. Full integrated checks occur in T-PNO.3.
 - [ ] T-SPS.4 — Independently review producer source and reachable prefixes. kind: agent stage: review deps: [T-SPS.3]
   acc: Exact-head independent source review verifies canonical serializer/path/identity equivalence, real production recovery, authority before mutation, no production triggers, and accurate evidence limits.
@@ -56,10 +56,19 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: Under the acquired owner lock, every active read and mutation checks supported canonical checksummed superblock, exact StoreID and all captured root/lock identities. Future/corrupt/missing or changed identity refuses with zero output and no history mutation; genuine-pair active API regressions and compiled control distinguish this boundary from constructor-only rejection.
 
 - [x] T-SPSFIX.1 — Reserve complete release capacity before requesting owner release authority. kind: agent stage: implement deps: [T-SPS.1]
-  acc: Conservative actual-encoder footprint includes retained manifest-inclusive metadata and terminal/temp peak before any owner RELEASE_BEGIN or producer release mutation. Unknown future owner authorization uses a worst-width encoding bound for capacity only, never authority. Fresh exact owner authorization and the later exact capacity check remain mandatory; real-pair budget-gap/full-journal regressions preserve owner history and producer bytes on refusal.
+  acc: Conservative actual-encoder footprint includes retained manifest-inclusive metadata and terminal/temp peak before any owner RELEASE_BEGIN or producer release mutation. Unknown future owner authorization uses a worst-width encoding bound for capacity only, never authority. Fresh exact owner authorization and the later exact capacity check remain mandatory; a real-pair budget-gap regression preserves owner history and producer bytes on refusal; actual-encoder storage-only fixtures verify the journal cap without fabricating authority-backed receipts.
 
 2026-10-03 implementation checkpoint: integrated38f08ae contains the current owner core, active-superblock revalidation, complete pre-authority release capacity reservation, retained terminal receipts and actual canonical tagged crash fixtures. Independent preliminary static reviews clear the accepted source findings narrowly. Implementation rows are complete; verification rows remain open until current producer/combined checks, decisive compiled controls and final independent exact-head source review are recorded. The owner author revision a3526dc has focused package/race/vet/lint passes, which do not substitute for combined-source qualification.
 
 Current owner-focused verification is complete at a352: package/race/vet/lint, three compiled assertion REDs and restored combined targeted PASS have exact released leases. The current-focused-controls receipt records their scope; combined producer/full-module qualification and final independent review remain open.
 
 Current producer verification is complete at c754/root e050 with identical Go fingerprint bfd24dc: tagged race, vet, lint, four current compiled behavioral REDs and restored full tagged race PASS. Full-module qualification, final independent review and merge remain open.
+
+#### Wave 3 — Final review and full-module findings
+
+- [x] T-SPSFIX.2 — Enforce tombstone fixture lifecycle and distinct phase inventory. kind: agent stage: fix deps: [T-SPS.2]
+  acc: A captured RELEASED tombstone prefix requires absent live lease; earlier prefixes retain live-directory identity checks. The distinct phase-name test lists each existing wire phase exactly once, with constants and actual hook calls unchanged.
+- [ ] T-SPSFIX.3 — Qualify final test corrections at current bytes. kind: agent stage: verify deps: [T-SPSFIX.2]
+  acc: Current ordinary/tagged checks cover the phase catalog and stricter tombstone fixture; compiled actual writer-order regression is detected, existing authority/receipt/capacity controls remain compiled RED, and restored current source passes. Root full-module qualification then completes T-PNO.3.
+
+First full-module race snapshot at 1c9 failed the distinct-phase-name test because the same phase was listed twice. It recorded 3159 passing test/subtest events and 83 passing packages, command exit 1, unchanged source and exact released build lease fdafdf38ec21684ab714abebd32bd9cb3af5133b. This is a failed snapshot, not full qualification. Author f1d9 (including reviewer tombstone fixture correction 11f4) is integrated ad3d129; current producer verification is reopened, and final combined checks/review/merge remain pending.

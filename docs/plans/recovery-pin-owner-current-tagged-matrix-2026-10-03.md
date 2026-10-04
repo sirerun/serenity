@@ -16,3 +16,5 @@ Four current-source compiled mutants exited 1 at their intended assertions; each
 - Bypassing the pre-owner capacity reservation let release return success where the valid budget-gap fixture required refusal. Lease `a558a6b4e8ec90e4f7d875394b45720616904d7c`.
 
 After all four mutations were restored, current-tagged-race-17 repeated the full tagged backup/recovery race run successfully on the original fingerprint. The coordinator inspected the stage records and assertion output. No compile/setup failure or lost claim is counted as a negative control.
+
+Currentness notice: the c754 focused checks above are now historical after the reviewer-required tombstone absence assertion and duplicate phase-inventory test correction. Author f1d9/root ad3d129 require fresh qualification; the first root full-module race failed on the duplicate phase-list entry. No full-module or final review acceptance is claimed.
