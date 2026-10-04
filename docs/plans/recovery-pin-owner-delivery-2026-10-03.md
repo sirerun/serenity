@@ -12,9 +12,9 @@
   acc: Current-byte real producer-pair lifecycle, crash, identity, bounds, stale tuple and proof tests pass; compiled mutation RED/restored PASS, focused race/vet/lint and root full-module race/vet/lint/Linux checks recorded under real exact-released leases.
 - [x] T-PNO.4 — Independently review exact source and mutation controls. kind: agent stage: review deps: [T-PNO.3, T-SPS.4]
   acc: Independent isolated exact-head reviewer checks all lifecycle/wire/factory assumptions and reproduces decisive behavioral RED controls; all source findings resolved and renewed CLEAR recorded.
-- [ ] T-PNO.5 — Merge normally after fresh holds and head checks. kind: agent stage: merge deps: [T-PNO.4]
+- [x] T-PNO.5 — Merge normally after fresh holds and head checks. kind: agent stage: merge deps: [T-PNO.4]
   acc: Fresh exact head/base/discussions/check annotations and trusted feed/board checked; expected-head normal merge under ADR024 without admin/protection/billing bypass.
-- [ ] T-PNO.6 — Verify landed tree and exact claim release. kind: agent stage: verify-landed deps: [T-PNO.5]
+- [x] T-PNO.6 — Verify landed tree and exact claim release. kind: agent stage: verify-landed deps: [T-PNO.5]
   acc: Remote merge/main tree equals final reviewed tree, source claim exactly released, fourteen original authored files preserved and landed receipt persisted.
 
 Logical T23.50, full READY/coordinator/factory authority, post-restore release, runtime/provider and physical quota remain open.
@@ -39,9 +39,9 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: Ordinary/tagged child crash matrix, authority denial, cancellation, tuple/root/inode mismatch, live-present, repeated terminal real-pair reconciliation, bounded journal cap/overflow and peak metadata regressions; compiled RED/restored PASS and focused checks under exact released leases. Full integrated checks occur in T-PNO.3.
 - [x] T-SPS.4 — Independently review producer source and reachable prefixes. kind: agent stage: review deps: [T-SPS.3]
   acc: Exact-head independent source review verifies canonical serializer/path/identity equivalence, real production recovery, authority before mutation, no production triggers, and accurate evidence limits.
-- [ ] T-SPS.5 — Merge producer with qualified owner delivery. kind: agent stage: merge deps: [T-PNO.4, T-SPS.4]
+- [x] T-SPS.5 — Merge producer with qualified owner delivery. kind: agent stage: merge deps: [T-PNO.4, T-SPS.4]
   acc: Same normal exact-head integrated PR as T-PNO.5; neither component merges past a HOLD.
-- [ ] T-SPS.6 — Verify producer landed and release its claim. kind: agent stage: verify-landed deps: [T-SPS.5]
+- [x] T-SPS.6 — Verify producer landed and release its claim. kind: agent stage: verify-landed deps: [T-SPS.5]
   acc: Same reviewed/landed tree proof as T-PNO.6, with exact producer source claim release and preserved authored material.
 
 - [x] T-PNOFIX.5 — Refuse owner bootstrap over retained or unknown history. kind: agent stage: implement deps: [T-PNOAUD.1]
@@ -76,3 +76,5 @@ First full-module race snapshot at 1c9 failed the distinct-phase-name test becau
 Current-source qualification: integration c916bcd7ed30592efb065c876455d1bb51509523 / Go fingerprint 5176070520a9496599cbf0aabe44cfcc2daae34fa26681c13b231f6c4d1c0425 passed the three-package tagged race/vet/lint, all five compiled assertion controls, restored tagged race, and full-module race (3160 passing test/subtest events, 84 passing packages), vet, lint and Linux ARM64 build. All command/release exits were 0 except the intentional compiled assertion controls (command 1, exact release 0). See the current tagged matrix and full local qualification receipt. Independent exact-head review and merge/landed stages remain open; no READY, provider, startup or physical quota acceptance is granted.
 
 Final narrow independent source review CLEAR at PR358 head8321d6ee229ce01879158bb8ea76b784d0c3f26d/tree1e9e2d260f89361dc2569ca3e3d13cf2738189b0 and basebee4790cf9e53e858802b059f3e6f0af38153e41. Four independent compiled assertion REDs and restored three-package tagged race PASS were inspected. Narrative report SHA-256 d38d0ff95f800ee48d6db6c800ec0e25aecfafc5ce89300b1f14a7628bb7594a is copied exactly in the final source review. Earlier skipped owner-proof and non-target writer-order attempts are explicitly excluded; neither is RED evidence. This bank changes documentation only; final documentation review, normal merge and landed proof remain required.
+
+Landed verification: PR358 normal expected-head squash merged reviewed 8ed1b761f45151d7c00620c185629ddcda55a234 as bc4689434e7c25ab8e5674be8fd7df250c20b45b. Exact reviewed/landed full-tree equality 6a94cf84b8a006ea0cd59762ad3263fe97de2518 was confirmed against remote main. Narrow pin-owner 8559348 and release-primitive c20ad source claims were compare-and-swap released after proof. The original checkout fast-forwarded with all 14 authored file hashes preserved. All 23 narrow delivery tasks are complete; parent full recovery/startup/physical/provider tasks remain open. See docs/reviews/pr358-landed-verification.md.
