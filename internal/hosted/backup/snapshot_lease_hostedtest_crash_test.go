@@ -264,10 +264,10 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 	releasePhases := []string{testhooks.PhaseSnapshotReleaseOwnerAuthorized, testhooks.PhaseSnapshotReleaseLiveRecordTempCreated, testhooks.PhaseSnapshotReleaseLiveRecordTempWritten, testhooks.PhaseSnapshotReleaseLiveRecordTempSynced, testhooks.PhaseSnapshotReleaseLiveRecordPublished, testhooks.PhaseSnapshotReleaseLiveRecordDirectorySynced, testhooks.PhaseSnapshotReleaseMarkerCreated, testhooks.PhaseSnapshotReleaseMarkerRecordTempCreated, testhooks.PhaseSnapshotReleaseMarkerRecordTempWritten, testhooks.PhaseSnapshotReleaseMarkerRecordTempSynced, testhooks.PhaseSnapshotReleaseMarkerRecordPublished, testhooks.PhaseSnapshotReleaseMarkerRecordDirectorySynced, testhooks.PhaseSnapshotReleaseMarkerJournalSynced, testhooks.PhaseSnapshotReleaseLiveTreeRemoved, testhooks.PhaseSnapshotReleaseLiveTreeRootSynced, testhooks.PhaseSnapshotReleaseTombstoneTempCreated, testhooks.PhaseSnapshotReleaseTombstoneTempWritten, testhooks.PhaseSnapshotReleaseTombstoneTempSynced, testhooks.PhaseSnapshotReleaseTombstonePublished, testhooks.PhaseSnapshotReleaseTombstoneDirectorySynced, testhooks.PhaseSnapshotReleaseMarkerRecordRemoved, testhooks.PhaseSnapshotReleaseMarkerDirectorySynced, testhooks.PhaseSnapshotReleaseTombstoneJournalSynced, testhooks.PhaseSnapshotReleaseOwnerCompletionStarting, testhooks.PhaseSnapshotReleaseOwnerCompleted}
 	phases := make([]barrier, 0, len(pinPhases)+len(releasePhases))
 	for _, phase := range pinPhases {
-		phases = append(phases, barrier{phase, "pin"})
+		phases = append(phases, barrier{phase, "pin", ""})
 	}
 	for _, phase := range releasePhases {
-		phases = append(phases, barrier{phase, "release"})
+		phases = append(phases, barrier{phase, "release", ""})
 	}
 	phases = append(phases,
 		barrier{testhooks.PhaseSnapshotPinPendingTempCreated, "pin", "pin-pending"},
