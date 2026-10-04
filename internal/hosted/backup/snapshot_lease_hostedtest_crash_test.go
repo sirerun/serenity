@@ -45,7 +45,8 @@ func TestSnapshotLeaseCrashRestartAfterCapturedPartialRelease(t *testing.T) {
 		t.Fatal("release returned instead of pausing at the armed marker barrier")
 	}
 	_, snapshot, _ := freshPrivateSnapshot(t, 1)
-	_, digest := inspectionOptions(t, snapshot)
+	opts, _ := inspectionOptions(t, snapshot)
+	digest := opts.ExpectedManifestSHA256
 	root := filepath.Join(privateTempDir(t), "snapshot-lease-real-crash-restart")
 	armR, armW, err := os.Pipe()
 	if err != nil {
@@ -277,7 +278,8 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 		barrier{testhooks.PhaseSnapshotReleaseTombstoneTempCreated, "release", "release-tombstone"},
 	)
 	_, snapshot, _ := freshPrivateSnapshot(t, 1)
-	_, digest := inspectionOptions(t, snapshot)
+	opts, _ := inspectionOptions(t, snapshot)
+	digest := opts.ExpectedManifestSHA256
 	for _, tc := range phases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

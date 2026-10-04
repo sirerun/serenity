@@ -293,7 +293,8 @@ func TestSnapshotLeaseSameInodeReceiptMutationDuringTerminalAckIsRejected(t *tes
 
 func TestSnapshotLeaseReleasePeakReservationIncludesTerminalReceiptBeforeEffects(t *testing.T) {
 	_, snapshot, _ := freshPrivateSnapshot(t, 1)
-	options, digest := inspectionOptions(t, snapshot)
+	options, _ := inspectionOptions(t, snapshot)
+	digest := options.ExpectedManifestSHA256
 	root := filepath.Join(privateTempDir(t), "snapshot-lease-release-peak-budget")
 	a := newLeaseTestAuthority()
 	s := testLeaseStoreOptions(t, SnapshotLeaseStoreOptions{LeaseRoot: root, MaxArtifactBytesPerLease: 1 << 30, MaxMetadataBytesPerLease: 1 << 20, MaxRestoreScratchBytes: 1 << 30, MaxRetainedArtifactBytes: 2 << 30, MaxRetainedMetadataBytes: 2 << 20, MaxLeases: 8}, a)
