@@ -125,3 +125,33 @@ Resume in the existing controller worktree/branch; preserve all other lanes.
 
 Latest reviewed source head test check `111383608846`, run `37184535565`,
 failed without starting with the billing-lock annotation; no hosted pass.
+
+## Corrected validator candidate and bounded resource checkpoint
+
+PC-WAZI-GO-G2-CORRECTED-01 corrected the initial hold diagnosis: audit-only
+proof was already rejected; the actual flaw was an unrelated head/base review
+lending independence to a current review without its own proof.
+
+Corrected source `8693d3dccc3346509a107ec6259a8cc0a1a7200f`, successful
+CI `37184831031`, artifact `11296745936`; archive digest
+`sha256:839baed515453c778e4c9266329678f6198635d8ddf0d109b04ae9e58c28f410`,
+binary SHA256 `f26d7731a0b4f9662dedb7d007ee375236c7dc8f7f3cff9393cf9d0aab59695e`.
+All 75 cases rerun successfully with intended Serenity finding paths. A separate
+wrong-head/base independence probe accepts on the old binary (exit 0) and rejects
+with independence_missing on the corrected binary (exit 2). This independently
+reproduces the actual fix rather than relying on the initial mistaken diagnosis.
+Owner PC-WAZI-REVIEW-01 permits corrected Go candidate testing; overall Wazi
+final acceptance/merge still awaits a separate browser duplicate-key G3 fix.
+No final Wazi landed receipt or Serenity conformance acceptance is claimed.
+
+Resource wait deadline 07:10 UTC expired with one-minute load above 30 and
+foreign build lease intact. No eligible Go compiler/test/lint work can start.
+T-PC-SERENITY.4-.7 remain open; PR360 stays draft and unmerged. Resume steps
+above remain authoritative. Preserve controller/worker worktrees and branches;
+none are merged/obsolete. Release only this lane's exact resource token on
+checkpoint; another session must reacquire before writing. No user approval
+is needed to resume routine verification once the resource gate clears.
+
+External F01 duplicate-ID finding was withdrawn: catalog() already records
+seen[fixture.ID]=true at the cited cdbecb09 head (line265, introduced e0f9ddb9c).
+No implementation change or fictitious regression claim was made for it.
