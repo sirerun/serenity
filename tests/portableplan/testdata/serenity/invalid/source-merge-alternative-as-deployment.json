@@ -1,0 +1,191 @@
+{
+  "contractVersion": "0.0.1",
+  "definition": {
+    "id": "serenity:fixture:portable-plan",
+    "revision": "fixture-revision-1",
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "title": "Synthetic Serenity context and policy fixture",
+    "source": {
+      "authority": "markdown",
+      "authorityId": "serenity:fixture-repository",
+      "ref": "docs/fixture/portable-plan.md",
+      "revision": "fixture-revision-1",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "adapterVersion": "serenity-fixture/1"
+    },
+    "tasks": [
+      {
+        "id": "serenity:fixture:portable-plan:T-deploy",
+        "title": "Verify deployment",
+        "stage": "deploy",
+        "authoredStatus": "active",
+        "acceptance": "Preserve the fixture assertion as context; do not infer authority.",
+        "source": {
+          "ref": "docs/fixture/portable-plan.md",
+          "line": 1,
+          "raw": "synthetic fixture task"
+        },
+        "dependencies": [],
+        "metadata": {
+          "serenity:fixture": {
+            "synthetic": true,
+            "case": "T-deploy",
+            "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+          }
+        }
+      }
+    ],
+    "requirements": [
+      {
+        "id": "serenity:fixture:portable-plan:R-deploy",
+        "taskId": "serenity:fixture:portable-plan:T-deploy",
+        "predicate": "deployment-verified",
+        "policyRevision": "serenity:fixture-policy/1",
+        "subject": {
+          "head": "fixture-head-current",
+          "base": "fixture-base-current",
+          "artifact": "urn:fixture:artifact:current",
+          "environment": "urn:fixture:environment:staging"
+        }
+      }
+    ],
+    "executionUnits": [],
+    "metadata": {
+      "sourceState": "clean",
+      "serenity:fixture": {
+        "synthetic": true,
+        "case": "SPOL-08",
+        "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+      }
+    }
+  },
+  "snapshot": {
+    "planId": "serenity:fixture:portable-plan",
+    "planRevision": "fixture-revision-1",
+    "planDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "observedAt": "2000-01-01T00:00:00Z",
+    "subject": {
+      "head": "fixture-head-current",
+      "base": "fixture-base-current",
+      "artifact": "urn:fixture:artifact:current",
+      "environment": "urn:fixture:environment:staging"
+    },
+    "executions": [
+      {
+        "taskId": "serenity:fixture:portable-plan:T-deploy",
+        "attemptId": "serenity:fixture:portable-plan:A-deploy",
+        "state": "active"
+      }
+    ],
+    "metadata": {
+      "serenity:fixtureAssertion": {
+        "synthetic": true,
+        "case": "SPOL-08",
+        "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+      }
+    }
+  },
+  "evidence": [
+    {
+      "id": "serenity:fixture:portable-plan:EV-deploy",
+      "taskId": "serenity:fixture:portable-plan:T-deploy",
+      "attemptId": "serenity:fixture:portable-plan:A-deploy",
+      "planRevision": "fixture-revision-1",
+      "planDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "deployment",
+      "subject": {
+        "head": "fixture-head-current",
+        "base": "fixture-base-current",
+        "artifact": "urn:fixture:artifact:current",
+        "environment": "urn:fixture:environment:staging"
+      },
+      "producer": "serenity:fixture-deployment-observer",
+      "verifier": "serenity:fixture-verifier",
+      "contributors": [
+        "serenity:fixture-author"
+      ],
+      "result": "passed",
+      "observedAt": "2000-01-01T00:00:00Z",
+      "provenance": "urn:fixture:evidence:EV-deploy",
+      "trust": "verified",
+      "auditOnly": false,
+      "policyRevision": "serenity:fixture-policy/1",
+      "metadata": {
+        "serenity:fixtureAssertion": {
+          "synthetic": true,
+          "case": "EV-deploy",
+          "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+        }
+      }
+    },
+    {
+      "id": "serenity:fixture:portable-plan:EV-policy",
+      "taskId": "serenity:fixture:portable-plan:T-deploy",
+      "attemptId": "serenity:fixture:portable-plan:A-deploy",
+      "planRevision": "fixture-revision-1",
+      "planDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "policy-approval",
+      "subject": {
+        "head": "fixture-head-current",
+        "base": "fixture-base-current",
+        "artifact": "urn:fixture:artifact:current",
+        "environment": "urn:fixture:environment:staging"
+      },
+      "producer": "serenity:fixture-policy-owner",
+      "verifier": "serenity:fixture-verifier",
+      "contributors": [
+        "serenity:fixture-author"
+      ],
+      "result": "passed",
+      "observedAt": "2000-01-01T00:00:00Z",
+      "provenance": "urn:fixture:evidence:EV-policy",
+      "trust": "verified",
+      "auditOnly": false,
+      "policyRevision": "serenity:fixture-policy/1",
+      "metadata": {
+        "serenity:fixtureAssertion": {
+          "synthetic": true,
+          "case": "EV-policy",
+          "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+        },
+        "scope": "source-merge",
+        "serenity:policyAssertion": {
+          "synthetic": true,
+          "policyRevision": "serenity:fixture-policy/1",
+          "qualificationLimit": "source-merge-only fixture assertion; not deployment authority"
+        }
+      }
+    }
+  ],
+  "evaluations": [
+    {
+      "id": "serenity:fixture:portable-plan:J-deploy",
+      "requirementId": "serenity:fixture:portable-plan:R-deploy",
+      "taskId": "serenity:fixture:portable-plan:T-deploy",
+      "attemptId": "serenity:fixture:portable-plan:A-deploy",
+      "planRevision": "fixture-revision-1",
+      "planDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "evidenceIds": [
+        "serenity:fixture:portable-plan:EV-deploy",
+        "serenity:fixture:portable-plan:EV-policy"
+      ],
+      "policyRevision": "serenity:fixture-policy/1",
+      "outcome": "satisfied",
+      "evaluatedAt": "2000-01-01T00:01:00Z",
+      "authority": "serenity:fixture-policy-owner",
+      "qualification": "verified",
+      "metadata": {
+        "serenity:fixtureAssertion": {
+          "synthetic": true,
+          "case": "J-deploy",
+          "qualificationLimit": "fixture producer assertion only; not authenticated runtime evidence"
+        }
+      },
+      "alternative": {
+        "approvalEvidenceId": "serenity:fixture:portable-plan:EV-policy",
+        "scope": "source-merge"
+      },
+      "approvalEvidenceId": "serenity:fixture:portable-plan:EV-policy"
+    }
+  ]
+}
