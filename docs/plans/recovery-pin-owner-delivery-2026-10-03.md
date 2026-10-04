@@ -29,7 +29,7 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: RESERVED and PIN_PENDING reconciliation checks exact digest/pin tuple without authorizing deletion.
 - [x] T-PNOFIX.3 — Exercise durable cancel publication crash prefix. kind: agent stage: implement deps: [T-PNOAUD.1]
   acc: Actual child after-event:PIN_CANCEL crash reopens permanent tombstone, rejects old proof retry and permits only correctly fresh N+1.
-- [ ] T-PNOFIX.4 — Verify all three corrections at current bytes. kind: agent stage: verify deps: [T-PNOFIX.1, T-PNOFIX.2, T-PNOFIX.3, T-PNOFIX.5, T-PNOFIX.6, T-PNOFIX.7]
+- [x] T-PNOFIX.4 — Verify all three corrections at current bytes. kind: agent stage: verify deps: [T-PNOFIX.1, T-PNOFIX.2, T-PNOFIX.3, T-PNOFIX.5, T-PNOFIX.6, T-PNOFIX.7]
   acc: Meaningful regressions and compiled mutation controls, restored passing focused race/vet/lint with exact build lease releases. T-PNO.4 is the independent renewed review of these findings.
 - [x] T-SPS.1 — Adopt reviewed producer crash and restart rule. kind: agent stage: preflight deps: [T-PNO.1]
   acc: Proposal096 design CLEAR and coordinator source freeze e762c9c banked; exact source claim c20ad and disjoint backup/testhooks ownership; source acceptance remains HOLD.
@@ -59,3 +59,5 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: Conservative actual-encoder footprint includes retained manifest-inclusive metadata and terminal/temp peak before any owner RELEASE_BEGIN or producer release mutation. Unknown future owner authorization uses a worst-width encoding bound for capacity only, never authority. Fresh exact owner authorization and the later exact capacity check remain mandatory; real-pair budget-gap/full-journal regressions preserve owner history and producer bytes on refusal.
 
 2026-10-03 implementation checkpoint: integrated38f08ae contains the current owner core, active-superblock revalidation, complete pre-authority release capacity reservation, retained terminal receipts and actual canonical tagged crash fixtures. Independent preliminary static reviews clear the accepted source findings narrowly. Implementation rows are complete; verification rows remain open until current producer/combined checks, decisive compiled controls and final independent exact-head source review are recorded. The owner author revision a3526dc has focused package/race/vet/lint passes, which do not substitute for combined-source qualification.
+
+Current owner-focused verification is complete at a352: package/race/vet/lint, three compiled assertion REDs and restored combined targeted PASS have exact released leases. The current-focused-controls receipt records their scope; combined producer/full-module qualification and final independent review remain open.
