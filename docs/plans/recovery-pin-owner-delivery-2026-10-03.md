@@ -8,7 +8,7 @@
   acc: Exact6588 contract and independent CLEAR banked, single-owner/factory publication boundaries recorded, writable SSD and narrow claim verified.
 - [x] T-PNO.2 — Implement exact durable pin owner core. kind: agent stage: implement deps: [T-PNO.1]
   acc: Only owned new pin_owner files implement all reviewed events, methods, exact tuple/CAS/tombstones and bounded crash replay; READY/effects/committed-restore release remain rejected.
-- [ ] T-PNO.3 — Verify current owner and real producer pair behavior. kind: agent stage: verify deps: [T-PNO.2, T-PNOFIX.4, T-SPS.3]
+- [x] T-PNO.3 — Verify current owner and real producer pair behavior. kind: agent stage: verify deps: [T-PNO.2, T-PNOFIX.4, T-SPS.3]
   acc: Current-byte real producer-pair lifecycle, crash, identity, bounds, stale tuple and proof tests pass; compiled mutation RED/restored PASS, focused race/vet/lint and root full-module race/vet/lint/Linux checks recorded under real exact-released leases.
 - [ ] T-PNO.4 — Independently review exact source and mutation controls. kind: agent stage: review deps: [T-PNO.3, T-SPS.4]
   acc: Independent isolated exact-head reviewer checks all lifecycle/wire/factory assumptions and reproduces decisive behavioral RED controls; all source findings resolved and renewed CLEAR recorded.
@@ -35,7 +35,7 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: Proposal096 design CLEAR and coordinator source freeze e762c9c banked; exact source claim c20ad and disjoint backup/testhooks ownership; source acceptance remains HOLD.
 - [x] T-SPS.2 — Implement producer primitive controls and authorized restart. kind: agent stage: implement deps: [T-SPS.1]
   acc: Fresh exact owner authority precedes resumed deletion/new tombstone; completed tombstone uses exact terminal acknowledgement only after live lease absence; real tagged primitive controls and anchored reachable partial states preserve production no-op and RemoveAll. Adopted terminal amendment retains exact receipts with bounded4096 journal and complete peak metadata reservations.
-- [ ] T-SPS.3 — Verify producer current source and controls. kind: agent stage: verify deps: [T-SPS.2, T-SPSFIX.1, T-SPSFIX.3]
+- [x] T-SPS.3 — Verify producer current source and controls. kind: agent stage: verify deps: [T-SPS.2, T-SPSFIX.1, T-SPSFIX.3]
   acc: Ordinary/tagged child crash matrix, authority denial, cancellation, tuple/root/inode mismatch, live-present, repeated terminal real-pair reconciliation, bounded journal cap/overflow and peak metadata regressions; compiled RED/restored PASS and focused checks under exact released leases. Full integrated checks occur in T-PNO.3.
 - [ ] T-SPS.4 — Independently review producer source and reachable prefixes. kind: agent stage: review deps: [T-SPS.3]
   acc: Exact-head independent source review verifies canonical serializer/path/identity equivalence, real production recovery, authority before mutation, no production triggers, and accurate evidence limits.
@@ -68,7 +68,9 @@ Current producer verification is complete at c754/root e050 with identical Go fi
 
 - [x] T-SPSFIX.2 — Enforce tombstone fixture lifecycle and distinct phase inventory. kind: agent stage: fix deps: [T-SPS.2]
   acc: A captured RELEASED tombstone prefix requires absent live lease; earlier prefixes retain live-directory identity checks. The distinct phase-name test lists each existing wire phase exactly once, with constants and actual hook calls unchanged.
-- [ ] T-SPSFIX.3 — Qualify final test corrections at current bytes. kind: agent stage: verify deps: [T-SPSFIX.2]
+- [x] T-SPSFIX.3 — Qualify final test corrections at current bytes. kind: agent stage: verify deps: [T-SPSFIX.2]
   acc: Current ordinary/tagged checks cover the phase catalog and stricter tombstone fixture; compiled actual writer-order regression is detected, existing authority/receipt/capacity controls remain compiled RED, and restored current source passes. Root full-module qualification then completes T-PNO.3.
 
 First full-module race snapshot at 1c9 failed the distinct-phase-name test because the same phase was listed twice. It recorded 3159 passing test/subtest events and 83 passing packages, command exit 1, unchanged source and exact released build lease fdafdf38ec21684ab714abebd32bd9cb3af5133b. This is a failed snapshot, not full qualification. Author f1d9 (including reviewer tombstone fixture correction 11f4) is integrated ad3d129; current producer verification is reopened, and final combined checks/review/merge remain pending.
+
+Current-source qualification: integration c916bcd7ed30592efb065c876455d1bb51509523 / Go fingerprint 5176070520a9496599cbf0aabe44cfcc2daae34fa26681c13b231f6c4d1c0425 passed the three-package tagged race/vet/lint, all five compiled assertion controls, restored tagged race, and full-module race (3160 passing test/subtest events, 84 passing packages), vet, lint and Linux ARM64 build. All command/release exits were 0 except the intentional compiled assertion controls (command 1, exact release 0). See the current tagged matrix and full local qualification receipt. Independent exact-head review and merge/landed stages remain open; no READY, provider, startup or physical quota acceptance is granted.
