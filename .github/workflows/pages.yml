@@ -22,6 +22,7 @@ jobs:
       - run: pip install -r requirements-docs.txt
       - run: mkdocs build --strict --site-dir "$RUNNER_TEMP/mkdocs-site"
       - run: python3 scripts/site/check.py
+      - run: python3 -m unittest discover -s tests/site -p 'test_*.py' -v
       - run: python3 -m unittest discover -s deploy/chat -p 'test_*.py' -v
       - run: node --check site/assets/chat.js && node --check site/assets/site.js && node --check site/assets/adoption.js
   browser:

@@ -77,6 +77,9 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("GET /login/consume", d.consume)
 	mux.Handle("GET /", website.Handler())
 	mux.HandleFunc("GET /dashboard", d.home)
+	mux.HandleFunc("GET /api/inspector/v1/brains", d.inspectorBrains)
+	mux.HandleFunc("GET /api/inspector/v1/brains/{brainID}/graph", d.inspectorGraph)
+	mux.HandleFunc("GET /api/inspector/v1/brains/{brainID}/nodes/{nodeID}", d.inspectorNode)
 	for _, path := range []string{"connections", "memories", "usage", "settings"} {
 		mux.HandleFunc("GET /dashboard/"+path, d.home)
 	}
