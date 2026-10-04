@@ -133,8 +133,8 @@ proof was already rejected; the actual flaw was an unrelated head/base review
 lending independence to a current review without its own proof.
 
 Corrected source `8693d3dccc3346509a107ec6259a8cc0a1a7200f`, successful
-CI `37184831031`, artifact `11296745936`; archive digest
-`sha256:839baed515453c778e4c9266329678f6198635d8ddf0d109b04ae9e58c28f410`,
+CI `37184831031`, artifact `11296781315`; archive digest
+`sha256:839baed5154585224945ed81a0171c460956d1de0a006a423fff5588343d92b8`,
 binary SHA256 `f26d7731a0b4f9662dedb7d007ee375236c7dc8f7f3cff9393cf9d0aab59695e`.
 All 75 cases rerun successfully with intended Serenity finding paths. A separate
 wrong-head/base independence probe accepts on the old binary (exit 0) and rejects
