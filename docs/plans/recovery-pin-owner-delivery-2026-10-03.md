@@ -6,7 +6,7 @@
 
 - [x] T-PNO.1 — Freeze narrow owner contract and ownership. kind: agent stage: preflight deps: []
   acc: Exact6588 contract and independent CLEAR banked, single-owner/factory publication boundaries recorded, writable SSD and narrow claim verified.
-- [ ] T-PNO.2 — Implement exact durable pin owner core. kind: agent stage: implement deps: [T-PNO.1]
+- [x] T-PNO.2 — Implement exact durable pin owner core. kind: agent stage: implement deps: [T-PNO.1]
   acc: Only owned new pin_owner files implement all reviewed events, methods, exact tuple/CAS/tombstones and bounded crash replay; READY/effects/committed-restore release remain rejected.
 - [ ] T-PNO.3 — Verify current owner and real producer pair behavior. kind: agent stage: verify deps: [T-PNO.2, T-PNOFIX.4, T-SPS.3]
   acc: Current-byte real producer-pair lifecycle, crash, identity, bounds, stale tuple and proof tests pass; compiled mutation RED/restored PASS, focused race/vet/lint and root full-module race/vet/lint/Linux checks recorded under real exact-released leases.
@@ -33,7 +33,7 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
   acc: Meaningful regressions and compiled mutation controls, restored passing focused race/vet/lint with exact build lease releases. T-PNO.4 is the independent renewed review of these findings.
 - [x] T-SPS.1 — Adopt reviewed producer crash and restart rule. kind: agent stage: preflight deps: [T-PNO.1]
   acc: Proposal096 design CLEAR and coordinator source freeze e762c9c banked; exact source claim c20ad and disjoint backup/testhooks ownership; source acceptance remains HOLD.
-- [ ] T-SPS.2 — Implement producer primitive controls and authorized restart. kind: agent stage: implement deps: [T-SPS.1]
+- [x] T-SPS.2 — Implement producer primitive controls and authorized restart. kind: agent stage: implement deps: [T-SPS.1]
   acc: Fresh exact owner authority precedes resumed deletion/new tombstone; completed tombstone uses exact terminal acknowledgement only after live lease absence; real tagged primitive controls and anchored reachable partial states preserve production no-op and RemoveAll. Adopted terminal amendment retains exact receipts with bounded4096 journal and complete peak metadata reservations.
 - [ ] T-SPS.3 — Verify producer current source and controls. kind: agent stage: verify deps: [T-SPS.2, T-SPSFIX.1]
   acc: Ordinary/tagged child crash matrix, authority denial, cancellation, tuple/root/inode mismatch, live-present, repeated terminal real-pair reconciliation, bounded journal cap/overflow and peak metadata regressions; compiled RED/restored PASS and focused checks under exact released leases. Full integrated checks occur in T-PNO.3.
@@ -49,11 +49,13 @@ Logical T23.50, full READY/coordinator/factory authority, post-restore release, 
 
 2026-10-03 current source update: the four accepted owner implementation findings are corrected in author60600440, integrated69c4a22 with identical six owned Go files. Package, race and vet stages passed on author current bytes. Lint, compiled behavioral controls, combined producer matrix and final independent source acceptance remain pending; verification and merge tasks stay open. Earlier full-module baseline is historical after these source changes.
 
-- [ ] T-PNOFIX.6 — Classify unsupported future superblock wire before v1 decode. kind: agent stage: implement deps: [T-PNOAUD.1]
+- [x] T-PNOFIX.6 — Classify unsupported future superblock wire before v1 decode. kind: agent stage: implement deps: [T-PNOAUD.1]
   acc: Bounded syntactic version parsing precedes strict v1 superblock decoding; positive unsupported uint64 versions with future extension fields return Unavailable without mutation, while missing, zero, duplicate, malformed and overflowing versions remain corrupt. Active operations and reopening preserve superblock, lock and history bytes/inodes on refusal.
 
-- [ ] T-PNOFIX.7 — Revalidate the current superblock for active owner operations. kind: agent stage: implement deps: [T-PNOAUD.1]
+- [x] T-PNOFIX.7 — Revalidate the current superblock for active owner operations. kind: agent stage: implement deps: [T-PNOAUD.1]
   acc: Under the acquired owner lock, every active read and mutation checks supported canonical checksummed superblock, exact StoreID and all captured root/lock identities. Future/corrupt/missing or changed identity refuses with zero output and no history mutation; genuine-pair active API regressions and compiled control distinguish this boundary from constructor-only rejection.
 
-- [ ] T-SPSFIX.1 — Reserve complete release capacity before requesting owner release authority. kind: agent stage: implement deps: [T-SPS.1]
+- [x] T-SPSFIX.1 — Reserve complete release capacity before requesting owner release authority. kind: agent stage: implement deps: [T-SPS.1]
   acc: Conservative actual-encoder footprint includes retained manifest-inclusive metadata and terminal/temp peak before any owner RELEASE_BEGIN or producer release mutation. Unknown future owner authorization uses a worst-width encoding bound for capacity only, never authority. Fresh exact owner authorization and the later exact capacity check remain mandatory; real-pair budget-gap/full-journal regressions preserve owner history and producer bytes on refusal.
+
+2026-10-03 implementation checkpoint: integrated38f08ae contains the current owner core, active-superblock revalidation, complete pre-authority release capacity reservation, retained terminal receipts and actual canonical tagged crash fixtures. Independent preliminary static reviews clear the accepted source findings narrowly. Implementation rows are complete; verification rows remain open until current producer/combined checks, decisive compiled controls and final independent exact-head source review are recorded. The owner author revision a3526dc has focused package/race/vet/lint passes, which do not substitute for combined-source qualification.
