@@ -19,7 +19,12 @@ This is consumption of one shared schema, not a Serenity schema fork.
 The source freeze initially existed locally in the steward's repository. Its
 public mirror is `f04497a3fcde3c1b78d09b683405d4d9f7645efc` on the steward's
 `contract/experimental-0.0.1` branch; all 66 pinned paths were verified identical.
-Publication does not establish runtime qualification.
+Publication does not establish runtime qualification. The separately qualified
+validator implementation landed at
+`47b9d91bca0d30ac44337a6e5aa710efa89bfcfd` ([Wazi PR #1](https://github.com/kazi-org/wazi/pull/1)).
+Its final offline verification artifact is tied to CI run `37185594744`; this
+three-day artifact is disposable, while that exact source revision can be rebuilt.
+Serenity consumer verification remains a separate gate.
 The steward's Go implementation and operational instructions have a separate
 source/artifact qualification from the frozen schema/fixture digest.
 
