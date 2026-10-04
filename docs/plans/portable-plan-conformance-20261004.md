@@ -61,7 +61,7 @@ T-PC-SERENITY.6, T-PC-SERENITY.7.
 
 - [x] T-PC-SERENITY.0 Reconcile scope, ownership, tools and source mapping  Owner: pc-serenity-coordinator kind: agent stage: preflight  delivers: [UC-PC1, UC-PC2]  acc: [external SSD writable; isolated clean candidate; existing owners/holds preserved; actual tools and resource gaps recorded]
 - [x] T-PC-SERENITY.1 Inventory context/policy surfaces and send consumer fixture requirements  Owner: pc-serenity-inventory kind: agent stage: implement  blocked-by: [T-PC-SERENITY.0]  delivers: [source inventory and Wazi counterexample requirements]  acc: [provider-free versus provider-capable reads identified; ADR024 source-merge scope preserved; context is never execution evidence]
-- [ ] T-PC-SERENITY.2 Pin Wazi's frozen experimental contract  Owner: pc-serenity-coordinator kind: agent stage: preflight  blocked-by: [T-PC-SERENITY.1]  delivers: [contract manifest]  acc: [owner-confirmed exact revision/digest, schemas, semantic validator and fixture instructions available; no schema fork]
+- [x] T-PC-SERENITY.2 Pin Wazi's frozen experimental contract  Owner: pc-serenity-coordinator kind: agent stage: preflight  blocked-by: [T-PC-SERENITY.1]  delivers: [contract manifest]  acc: [owner-confirmed exact revision/digest, schemas and fixtures pinned unchanged; steward validator contract remains an explicit verification prerequisite; no schema fork]
 - [ ] T-PC-SERENITY.3 Implement contextual and policy conformance examples  Owner: pc-serenity-coordinator kind: agent stage: implement  blocked-by: [T-PC-SERENITY.2]  verifies: [UC-PC1, UC-PC2]  acc: [fixtures preserve context provenance/unavailable states and separate hosted observations from authorized local evaluation; necessary projection is read-only only]
 - [ ] T-PC-SERENITY.4 Verify behavior and required checks  Owner: pc-serenity-coordinator kind: agent stage: verify  blocked-by: [T-PC-SERENITY.3]  verifies: [UC-PC1, UC-PC2]  acc: [pinned validator accepts valid fixtures and rejects invalid trust/mapping cases; targeted tests and formatting/lint pass on exact candidate; hosted CI outcome recorded honestly]
 - [ ] T-PC-SERENITY.5 Independent exact-head review of T-PC-SERENITY.3 and T-PC-SERENITY.4  Owner: independent-reviewer kind: agent stage: review  blocked-by: [T-PC-SERENITY.4]  verifies: [UC-PC1, UC-PC2]  acc: [reviewer distinct from authors; base/head and stable findings recorded; meaningful negative controls reproduced; all blocking findings resolved]
@@ -85,10 +85,14 @@ Production deployment and release publication are outside the dispatch.
 
 ## Status and handoff
 
-Source/doc preflight and inventory passed; builds remain resource-held. Next task is T-PC-SERENITY.2. T-PC-SERENITY.2 and
-descendants require Wazi's published frozen contract; no such revision has yet
-been supplied in the inspected dispatch/channel. Coordination messages are
-handoffs, not authenticated execution receipts.
+Source/doc preflight and inventory passed; builds remain resource-held. Wazi
+froze 0.0.1 at `16b66e5eedf20d52e72928bb56a0c19e391e8ce9`, digest
+`sha256:7582512f122d2f2a9c4461facc7541c9887053f137260d6ebe9c6dea611d039d`
+in `PC-WAZI-FROZEN-0.0.1`. All 66 schema/semantics/catalog/fixture paths are
+copied byte-for-byte and independently hashed under `tests/portableplan/testdata/upstream`.
+This owner source freeze unblocks T-PC-SERENITY.3; the steward's Go validator and
+offline runtime qualification remain required by T-PC-SERENITY.4. No usable
+validator or passed conformance is inferred from the source freeze.
 
 Inventory evidence: [source inventory](portable-plan-source-inventory-20261004.md),
 worker commit `48029dbfe863b8837d464eb02a093f32bfc7e08a`, integrated by the

@@ -1,0 +1,718 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wazi:plan:0.0.1",
+  "title": "Wazi experimental portable plan contract 0.0.1",
+  "type": "object",
+  "properties": {
+    "contractVersion": {
+      "const": "0.0.1"
+    },
+    "definition": {
+      "$ref": "urn:wazi:plan:0.0.1#/$defs/PlanDefinition"
+    },
+    "snapshot": {
+      "$ref": "urn:wazi:plan:0.0.1#/$defs/ExecutionSnapshot"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wazi:plan:0.0.1#/$defs/Evidence"
+      }
+    },
+    "evaluations": {
+      "type": "array",
+      "items": {
+        "$ref": "urn:wazi:plan:0.0.1#/$defs/Evaluation"
+      }
+    }
+  },
+  "required": [
+    "contractVersion",
+    "definition",
+    "evidence",
+    "evaluations"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "Subject": {
+      "type": "object",
+      "properties": {
+        "head": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "environment": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "Source": {
+      "type": "object",
+      "properties": {
+        "authority": {
+          "type": "string",
+          "enum": [
+            "markdown",
+            "native"
+          ]
+        },
+        "authorityId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "adapterVersion": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "authority",
+        "authorityId",
+        "ref",
+        "revision",
+        "digest",
+        "adapterVersion"
+      ],
+      "additionalProperties": false
+    },
+    "TaskSource": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "canonicalId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "raw": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "additionalProperties": false
+    },
+    "Dependency": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "predicate": {
+          "type": "string",
+          "enum": [
+            "execution-complete",
+            "checks-satisfied",
+            "independent-approved",
+            "landing-verified",
+            "deployment-verified",
+            "domain-accepted"
+          ]
+        },
+        "requirementId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        }
+      },
+      "required": [
+        "taskId",
+        "predicate"
+      ],
+      "additionalProperties": false
+    },
+    "Task": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stage": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authoredStatus": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "active",
+            "blocked",
+            "complete"
+          ]
+        },
+        "acceptance": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "urn:wazi:plan:0.0.1#/$defs/TaskSource"
+        },
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wazi:plan:0.0.1#/$defs/Dependency"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "executionUnitId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "stage",
+        "authoredStatus",
+        "acceptance",
+        "source",
+        "dependencies",
+        "metadata"
+      ],
+      "additionalProperties": false
+    },
+    "Requirement": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "taskId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "predicate": {
+          "type": "string",
+          "enum": [
+            "execution-complete",
+            "checks-satisfied",
+            "independent-approved",
+            "landing-verified",
+            "deployment-verified",
+            "domain-accepted"
+          ]
+        },
+        "policyRevision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject": {
+          "$ref": "urn:wazi:plan:0.0.1#/$defs/Subject"
+        },
+        "domain": {
+          "type": "string",
+          "minLength": 1
+        },
+        "allowLocalAlternative": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "taskId",
+        "predicate",
+        "policyRevision",
+        "subject"
+      ],
+      "additionalProperties": false
+    },
+    "ExecutionUnit": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "authority": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "canonicalId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "taskIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+          }
+        },
+        "stages": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "id",
+        "authority",
+        "canonicalId",
+        "taskIds",
+        "stages"
+      ],
+      "additionalProperties": false
+    },
+    "PlanDefinition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "revision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "urn:wazi:plan:0.0.1#/$defs/Source"
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wazi:plan:0.0.1#/$defs/Task"
+          }
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wazi:plan:0.0.1#/$defs/Requirement"
+          }
+        },
+        "executionUnits": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wazi:plan:0.0.1#/$defs/ExecutionUnit"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "id",
+        "revision",
+        "digest",
+        "title",
+        "source",
+        "tasks",
+        "requirements",
+        "executionUnits",
+        "metadata"
+      ],
+      "additionalProperties": false
+    },
+    "Execution": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "attemptId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "waiting",
+            "active",
+            "complete",
+            "canceled",
+            "expired",
+            "unknown"
+          ]
+        },
+        "executionUnitId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        }
+      },
+      "required": [
+        "taskId",
+        "attemptId",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "ExecutionSnapshot": {
+      "type": "object",
+      "properties": {
+        "planId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "planRevision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "planDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "executions": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wazi:plan:0.0.1#/$defs/Execution"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "subject": {
+          "$ref": "urn:wazi:plan:0.0.1#/$defs/Subject"
+        }
+      },
+      "required": [
+        "planId",
+        "planRevision",
+        "planDigest",
+        "observedAt",
+        "executions",
+        "metadata",
+        "subject"
+      ],
+      "additionalProperties": false
+    },
+    "Evidence": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "taskId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "attemptId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "planRevision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "planDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "execution",
+            "check",
+            "review",
+            "landing",
+            "deployment",
+            "domain",
+            "context",
+            "policy-approval"
+          ]
+        },
+        "subject": {
+          "$ref": "urn:wazi:plan:0.0.1#/$defs/Subject"
+        },
+        "producer": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "verifier": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "contributors": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+          }
+        },
+        "result": {
+          "type": "string",
+          "enum": [
+            "passed",
+            "failed",
+            "missing",
+            "unverified",
+            "stale",
+            "rejected",
+            "unknown",
+            "canceled",
+            "expired",
+            "unsupported",
+            "unavailable"
+          ]
+        },
+        "observedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "provenance": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trust": {
+          "type": "string",
+          "enum": [
+            "unverified",
+            "verified"
+          ]
+        },
+        "auditOnly": {
+          "type": "boolean"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "policyRevision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "independence": {
+          "$ref": "urn:wazi:plan:0.0.1#/$defs/Independence"
+        }
+      },
+      "required": [
+        "id",
+        "taskId",
+        "attemptId",
+        "planRevision",
+        "planDigest",
+        "kind",
+        "subject",
+        "producer",
+        "verifier",
+        "contributors",
+        "result",
+        "observedAt",
+        "provenance",
+        "trust",
+        "auditOnly",
+        "metadata",
+        "policyRevision"
+      ],
+      "additionalProperties": false
+    },
+    "Alternative": {
+      "type": "object",
+      "properties": {
+        "approvalEvidenceId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "scope": {
+          "const": "source-merge"
+        }
+      },
+      "required": [
+        "approvalEvidenceId",
+        "scope"
+      ],
+      "additionalProperties": false
+    },
+    "Evaluation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "requirementId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "taskId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "attemptId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "planRevision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "planDigest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "evidenceIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+          }
+        },
+        "policyRevision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "satisfied",
+            "unsatisfied",
+            "unknown",
+            "unavailable",
+            "stale",
+            "unsupported"
+          ]
+        },
+        "evaluatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "authority": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        },
+        "qualification": {
+          "type": "string",
+          "enum": [
+            "unverified",
+            "verified"
+          ]
+        },
+        "alternative": {
+          "$ref": "urn:wazi:plan:0.0.1#/$defs/Alternative"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "approvalEvidenceId": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@+-]*$"
+        }
+      },
+      "required": [
+        "id",
+        "requirementId",
+        "taskId",
+        "attemptId",
+        "planRevision",
+        "planDigest",
+        "evidenceIds",
+        "policyRevision",
+        "outcome",
+        "evaluatedAt",
+        "authority",
+        "qualification",
+        "metadata"
+      ],
+      "additionalProperties": false
+    },
+    "EvidenceEvaluations": {
+      "type": "object",
+      "properties": {
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wazi:plan:0.0.1#/$defs/Evidence"
+          }
+        },
+        "evaluations": {
+          "type": "array",
+          "items": {
+            "$ref": "urn:wazi:plan:0.0.1#/$defs/Evaluation"
+          }
+        }
+      },
+      "required": [
+        "evidence",
+        "evaluations"
+      ],
+      "additionalProperties": false
+    },
+    "Independence": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "contributors",
+            "authority-attestation",
+            "singular"
+          ]
+        },
+        "authority": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provenance": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

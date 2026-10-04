@@ -1,0 +1,253 @@
+{
+  "contractVersion": "0.0.1",
+  "definition": {
+    "id": "example:plan",
+    "revision": "r1",
+    "digest": "sha256:6acd6eb83e2ee7706bbc87dc6da1aa7e41459457c108ac38b9f64759e9550700",
+    "title": "Neutral delivery plan",
+    "source": {
+      "authority": "markdown",
+      "authorityId": "example:repository",
+      "ref": "docs/plan.md",
+      "revision": "r1",
+      "digest": "sha256:6acd6eb83e2ee7706bbc87dc6da1aa7e41459457c108ac38b9f64759e9550700",
+      "adapterVersion": "example/1"
+    },
+    "tasks": [
+      {
+        "id": "example:plan:T1",
+        "title": "Neutral task 1",
+        "stage": "implement",
+        "authoredStatus": "complete",
+        "acceptance": "Preserve this exact authored criterion.\nIncluding this line.",
+        "source": {
+          "ref": "docs/plan.md",
+          "line": 2,
+          "raw": "neutral authored row"
+        },
+        "dependencies": [],
+        "metadata": {
+          "provider": "example:service",
+          "opaque": {
+            "retained": true
+          }
+        }
+      },
+      {
+        "id": "example:plan:T2",
+        "title": "Neutral task 2",
+        "stage": "verify",
+        "authoredStatus": "pending",
+        "acceptance": "Preserve this exact authored criterion.\nIncluding this line.",
+        "source": {
+          "ref": "docs/plan.md",
+          "line": 3,
+          "raw": "neutral authored row",
+          "canonicalId": "example:service:T2"
+        },
+        "dependencies": [
+          {
+            "taskId": "example:plan:T1",
+            "predicate": "execution-complete"
+          }
+        ],
+        "metadata": {
+          "provider": "example:service",
+          "opaque": {
+            "retained": true
+          }
+        },
+        "executionUnitId": "example:plan:U1"
+      },
+      {
+        "id": "example:plan:T3",
+        "title": "Neutral task 3",
+        "stage": "rereview",
+        "authoredStatus": "pending",
+        "acceptance": "Preserve this exact authored criterion.\nIncluding this line.",
+        "source": {
+          "ref": "docs/plan.md",
+          "line": 4,
+          "raw": "neutral authored row",
+          "canonicalId": "example:service:T3"
+        },
+        "dependencies": [
+          {
+            "taskId": "example:plan:T1",
+            "predicate": "execution-complete"
+          }
+        ],
+        "metadata": {
+          "provider": "example:service",
+          "opaque": {
+            "retained": true
+          }
+        },
+        "executionUnitId": "example:plan:U1"
+      },
+      {
+        "id": "example:plan:T4",
+        "title": "Neutral task 4",
+        "stage": "merge",
+        "authoredStatus": "pending",
+        "acceptance": "Preserve this exact authored criterion.\nIncluding this line.",
+        "source": {
+          "ref": "docs/plan.md",
+          "line": 5,
+          "raw": "neutral authored row"
+        },
+        "dependencies": [
+          {
+            "taskId": "example:plan:T2",
+            "predicate": "checks-satisfied",
+            "requirementId": "example:plan:R2"
+          },
+          {
+            "taskId": "example:plan:T3",
+            "predicate": "independent-approved",
+            "requirementId": "example:plan:R3"
+          }
+        ],
+        "metadata": {
+          "provider": "example:service",
+          "opaque": {
+            "retained": true
+          }
+        }
+      },
+      {
+        "id": "example:plan:T5",
+        "title": "Neutral task 5",
+        "stage": "deploy",
+        "authoredStatus": "pending",
+        "acceptance": "Preserve this exact authored criterion.\nIncluding this line.",
+        "source": {
+          "ref": "docs/plan.md",
+          "line": 6,
+          "raw": "neutral authored row"
+        },
+        "dependencies": [
+          {
+            "taskId": "example:plan:T4",
+            "predicate": "landing-verified",
+            "requirementId": "example:plan:R4"
+          }
+        ],
+        "metadata": {
+          "provider": "example:service",
+          "opaque": {
+            "retained": true
+          }
+        }
+      },
+      {
+        "id": "example:plan:T6",
+        "title": "Neutral task 6",
+        "stage": "verify-deployed",
+        "authoredStatus": "pending",
+        "acceptance": "Preserve this exact authored criterion.\nIncluding this line.",
+        "source": {
+          "ref": "docs/plan.md",
+          "line": 7,
+          "raw": "neutral authored row"
+        },
+        "dependencies": [
+          {
+            "taskId": "example:plan:T5",
+            "predicate": "deployment-verified",
+            "requirementId": "example:plan:R5"
+          }
+        ],
+        "metadata": {
+          "provider": "example:service",
+          "opaque": {
+            "retained": true
+          }
+        }
+      }
+    ],
+    "requirements": [
+      {
+        "id": "example:plan:R2",
+        "taskId": "example:plan:T2",
+        "predicate": "checks-satisfied",
+        "policyRevision": "example-policy/1",
+        "subject": {
+          "head": "head-1",
+          "base": "base-1",
+          "artifact": "artifact-1",
+          "environment": "example:staging"
+        }
+      },
+      {
+        "id": "example:plan:R3",
+        "taskId": "example:plan:T3",
+        "predicate": "independent-approved",
+        "policyRevision": "example-policy/1",
+        "subject": {
+          "head": "head-1",
+          "base": "base-1",
+          "artifact": "artifact-1",
+          "environment": "example:staging"
+        }
+      },
+      {
+        "id": "example:plan:R4",
+        "taskId": "example:plan:T4",
+        "predicate": "landing-verified",
+        "policyRevision": "example-policy/1",
+        "subject": {
+          "head": "head-1",
+          "base": "base-1",
+          "artifact": "artifact-1",
+          "environment": "example:staging"
+        }
+      },
+      {
+        "id": "example:plan:R5",
+        "taskId": "example:plan:T5",
+        "predicate": "deployment-verified",
+        "policyRevision": "example-policy/1",
+        "subject": {
+          "head": "head-1",
+          "base": "base-1",
+          "artifact": "artifact-1",
+          "environment": "example:staging"
+        }
+      },
+      {
+        "id": "example:plan:R6",
+        "taskId": "example:plan:T6",
+        "predicate": "domain-accepted",
+        "policyRevision": "example-policy/1",
+        "subject": {
+          "head": "head-1",
+          "base": "base-1",
+          "artifact": "artifact-1",
+          "environment": "example:staging"
+        },
+        "domain": "example:acceptance"
+      }
+    ],
+    "executionUnits": [
+      {
+        "id": "example:plan:U1",
+        "authority": "example:canonical-service",
+        "canonicalId": "example:service:unit1",
+        "taskIds": [
+          "example:plan:T2",
+          "example:plan:T3"
+        ],
+        "stages": [
+          "verify",
+          "rereview"
+        ]
+      }
+    ],
+    "metadata": {
+      "sourceState": "clean"
+    }
+  },
+  "evidence": [],
+  "evaluations": []
+}

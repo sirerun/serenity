@@ -1,0 +1,417 @@
+{
+  "contractVersion": "0.0.1",
+  "definition": {
+    "id": "example:plan",
+    "revision": "r1",
+    "digest": "sha256:6acd6eb83e2ee7706bbc87dc6da1aa7e41459457c108ac38b9f64759e9550700",
+    "title": "Neutral delivery plan",
+    "source": {
+      "authority": "markdown",
+      "authorityId": "example:repository",
+      "ref": "docs/plan.md",
+      "revision": "r1",
+      "digest": "sha256:6acd6eb83e2ee7706bbc87dc6da1aa7e41459457c108ac38b9f64759e9550700",
+      "adapterVersion": "example/1"
+    },
+    "tasks": [
+      {
+        "id": "example:plan:T1",
+        "title": "Neutral task 1",
+        "stage": "implement",
+        "authoredStatus": "complete",
+        "acceptance": "Preserve this exact authored criterion.\nIncluding this line.",
+        "source": {
+          "ref": "docs/plan.md",
+          "line": 2,
+          "raw": "neutral authored row"
+        },
+        "dependencies": [],
+        "metadata": {
+          "provider": "example:service",
+          "opaque": {
+            "retained": true
+          }
+        }
+      },
+      {
+        "id": "example:plan:T2",
+        "title": "Neutral task 2",
+        "stage": "verify",
+        "authoredStatus": "pending",
+        "acceptance": "Preserve this exact authored criterion.\nIncluding this line.",
+        "source": {
+          "ref": "docs/plan.md",
+          "line": 3,
+          "raw": "neutral authored row"
+        },
+        "dependencies": [
+          {
+            "taskId": "example:plan:T1",
+            "predicate": "execution-complete"
+          }
+        ],
+        "metadata": {
+          "provider": "example:service",
+          "opaque": {
+            "retained": true
+          }
+        }
+      },
+      {
+        "id": "example:plan:T3",
+        "title": "Neutral task 3",
+        "stage": "rereview",
+        "authoredStatus": "pending",
+        "acceptance": "Preserve this exact authored criterion.\nIncluding this line.",
+        "source": {
+          "ref": "docs/plan.md",
+          "line": 4,
+          "raw": "neutral authored row"
+        },
+        "dependencies": [
+          {
+            "taskId": "example:plan:T1",
+            "predicate": "execution-complete"
+          }
+        ],
+        "metadata": {
+          "provider": "example:service",
+          "opaque": {
+            "retained": true
+          }
+        }
+      },
+      {
+        "id": "example:plan:T4",
+        "title": "Neutral task 4",
+        "stage": "merge",
+        "authoredStatus": "pending",
+        "acceptance": "Preserve this exact authored criterion.\nIncluding this line.",
+        "source": {
+          "ref": "docs/plan.md",
+          "line": 5,
+          "raw": "neutral authored row"
+        },
+        "dependencies": [
+          {
+            "taskId": "example:plan:T2",
+            "predicate": "checks-satisfied",
+            "requirementId": "example:plan:R2"
+          },
+          {
+            "taskId": "example:plan:T3",
+            "predicate": "independent-approved",
+            "requirementId": "example:plan:R3"
+          }
+        ],
+        "metadata": {
+          "provider": "example:service",
+          "opaque": {
+            "retained": true
+          }
+        }
+      },
+      {
+        "id": "example:plan:T5",
+        "title": "Neutral task 5",
+        "stage": "deploy",
+        "authoredStatus": "pending",
+        "acceptance": "Preserve this exact authored criterion.\nIncluding this line.",
+        "source": {
+          "ref": "docs/plan.md",
+          "line": 6,
+          "raw": "neutral authored row"
+        },
+        "dependencies": [
+          {
+            "taskId": "example:plan:T4",
+            "predicate": "landing-verified",
+            "requirementId": "example:plan:R4"
+          }
+        ],
+        "metadata": {
+          "provider": "example:service",
+          "opaque": {
+            "retained": true
+          }
+        }
+      },
+      {
+        "id": "example:plan:T6",
+        "title": "Neutral task 6",
+        "stage": "verify-deployed",
+        "authoredStatus": "pending",
+        "acceptance": "Preserve this exact authored criterion.\nIncluding this line.",
+        "source": {
+          "ref": "docs/plan.md",
+          "line": 7,
+          "raw": "neutral authored row"
+        },
+        "dependencies": [
+          {
+            "taskId": "example:plan:T5",
+            "predicate": "deployment-verified",
+            "requirementId": "example:plan:R5"
+          }
+        ],
+        "metadata": {
+          "provider": "example:service",
+          "opaque": {
+            "retained": true
+          }
+        }
+      }
+    ],
+    "requirements": [
+      {
+        "id": "example:plan:R2",
+        "taskId": "example:plan:T2",
+        "predicate": "checks-satisfied",
+        "policyRevision": "example-policy/1",
+        "subject": {
+          "head": "head-1",
+          "base": "base-1",
+          "artifact": "artifact-1",
+          "environment": "example:staging"
+        }
+      },
+      {
+        "id": "example:plan:R3",
+        "taskId": "example:plan:T3",
+        "predicate": "independent-approved",
+        "policyRevision": "example-policy/1",
+        "subject": {
+          "head": "head-1",
+          "base": "base-1",
+          "artifact": "artifact-1",
+          "environment": "example:staging"
+        }
+      },
+      {
+        "id": "example:plan:R4",
+        "taskId": "example:plan:T4",
+        "predicate": "landing-verified",
+        "policyRevision": "example-policy/1",
+        "subject": {
+          "head": "head-1",
+          "base": "base-1",
+          "artifact": "artifact-1",
+          "environment": "example:staging"
+        }
+      },
+      {
+        "id": "example:plan:R5",
+        "taskId": "example:plan:T5",
+        "predicate": "deployment-verified",
+        "policyRevision": "example-policy/1",
+        "subject": {
+          "head": "head-1",
+          "base": "base-1",
+          "artifact": "artifact-1",
+          "environment": "example:staging"
+        }
+      },
+      {
+        "id": "example:plan:R6",
+        "taskId": "example:plan:T6",
+        "predicate": "domain-accepted",
+        "policyRevision": "example-policy/1",
+        "subject": {
+          "head": "head-1",
+          "base": "base-1",
+          "artifact": "artifact-1",
+          "environment": "example:staging"
+        },
+        "domain": "example:acceptance"
+      }
+    ],
+    "executionUnits": [],
+    "metadata": {
+      "sourceState": "clean"
+    }
+  },
+  "evidence": [
+    {
+      "id": "example:plan:EV2",
+      "taskId": "example:plan:T2",
+      "attemptId": "example:plan:A2",
+      "planRevision": "r1",
+      "planDigest": "sha256:6acd6eb83e2ee7706bbc87dc6da1aa7e41459457c108ac38b9f64759e9550700",
+      "kind": "check",
+      "subject": {
+        "head": "head-1",
+        "base": "base-1",
+        "artifact": "artifact-1",
+        "environment": "example:staging"
+      },
+      "producer": "example:observer",
+      "verifier": "example:reviewer",
+      "contributors": [
+        "example:author",
+        "example:fix-author"
+      ],
+      "result": "passed",
+      "observedAt": "2026-01-01T00:00:00Z",
+      "provenance": "urn:example:receipt:2",
+      "trust": "verified",
+      "auditOnly": false,
+      "policyRevision": "example-policy/1",
+      "metadata": {}
+    },
+    {
+      "id": "example:plan:EV3",
+      "taskId": "example:plan:T3",
+      "attemptId": "example:plan:A3",
+      "planRevision": "r1",
+      "planDigest": "sha256:6acd6eb83e2ee7706bbc87dc6da1aa7e41459457c108ac38b9f64759e9550700",
+      "kind": "review",
+      "subject": {
+        "head": "head-1",
+        "base": "base-1",
+        "artifact": "artifact-1",
+        "environment": "example:staging"
+      },
+      "producer": "example:observer",
+      "verifier": "example:reviewer",
+      "contributors": [
+        "example:author",
+        "example:fix-author"
+      ],
+      "result": "passed",
+      "observedAt": "2026-01-01T00:00:00Z",
+      "provenance": "urn:example:receipt:3",
+      "trust": "verified",
+      "auditOnly": false,
+      "policyRevision": "example-policy/1",
+      "metadata": {},
+      "independence": {
+        "mode": "contributors"
+      }
+    },
+    {
+      "id": "example:plan:EV4",
+      "taskId": "example:plan:T4",
+      "attemptId": "example:plan:A4",
+      "planRevision": "r1",
+      "planDigest": "sha256:6acd6eb83e2ee7706bbc87dc6da1aa7e41459457c108ac38b9f64759e9550700",
+      "kind": "landing",
+      "subject": {
+        "head": "head-1",
+        "base": "base-1",
+        "artifact": "artifact-1",
+        "environment": "example:staging"
+      },
+      "producer": "example:observer",
+      "verifier": "example:reviewer",
+      "contributors": [
+        "example:author",
+        "example:fix-author"
+      ],
+      "result": "passed",
+      "observedAt": "2026-01-01T00:00:00Z",
+      "provenance": "urn:example:receipt:4",
+      "trust": "verified",
+      "auditOnly": false,
+      "policyRevision": "example-policy/1",
+      "metadata": {}
+    }
+  ],
+  "evaluations": [
+    {
+      "id": "example:plan:J2",
+      "requirementId": "example:plan:R2",
+      "taskId": "example:plan:T2",
+      "attemptId": "example:plan:A2",
+      "planRevision": "r1",
+      "planDigest": "sha256:6acd6eb83e2ee7706bbc87dc6da1aa7e41459457c108ac38b9f64759e9550700",
+      "evidenceIds": [
+        "example:plan:EV2"
+      ],
+      "policyRevision": "example-policy/1",
+      "outcome": "satisfied",
+      "evaluatedAt": "2026-01-01T00:00:00Z",
+      "authority": "example:policy-owner",
+      "qualification": "verified",
+      "metadata": {}
+    },
+    {
+      "id": "example:plan:J3",
+      "requirementId": "example:plan:R3",
+      "taskId": "example:plan:T3",
+      "attemptId": "example:plan:A3",
+      "planRevision": "r1",
+      "planDigest": "sha256:6acd6eb83e2ee7706bbc87dc6da1aa7e41459457c108ac38b9f64759e9550700",
+      "evidenceIds": [
+        "example:plan:EV3"
+      ],
+      "policyRevision": "example-policy/1",
+      "outcome": "satisfied",
+      "evaluatedAt": "2026-01-01T00:00:00Z",
+      "authority": "example:policy-owner",
+      "qualification": "verified",
+      "metadata": {}
+    },
+    {
+      "id": "example:plan:J4",
+      "requirementId": "example:plan:R4",
+      "taskId": "example:plan:T4",
+      "attemptId": "example:plan:A4",
+      "planRevision": "r1",
+      "planDigest": "sha256:6acd6eb83e2ee7706bbc87dc6da1aa7e41459457c108ac38b9f64759e9550700",
+      "evidenceIds": [
+        "example:plan:EV4"
+      ],
+      "policyRevision": "example-policy/1",
+      "outcome": "satisfied",
+      "evaluatedAt": "2026-01-01T00:00:00Z",
+      "authority": "example:policy-owner",
+      "qualification": "verified",
+      "metadata": {}
+    }
+  ],
+  "snapshot": {
+    "planId": "example:plan",
+    "planRevision": "r1",
+    "planDigest": "sha256:6acd6eb83e2ee7706bbc87dc6da1aa7e41459457c108ac38b9f64759e9550700",
+    "observedAt": "2026-01-01T00:00:00Z",
+    "subject": {
+      "head": "head-1",
+      "base": "base-1",
+      "artifact": "artifact-1",
+      "environment": "example:staging"
+    },
+    "executions": [
+      {
+        "taskId": "example:plan:T1",
+        "attemptId": "example:plan:A1",
+        "state": "complete"
+      },
+      {
+        "taskId": "example:plan:T2",
+        "attemptId": "example:plan:A2",
+        "state": "active"
+      },
+      {
+        "taskId": "example:plan:T3",
+        "attemptId": "example:plan:A3",
+        "state": "active"
+      },
+      {
+        "taskId": "example:plan:T4",
+        "attemptId": "example:plan:A4",
+        "state": "active"
+      },
+      {
+        "taskId": "example:plan:T5",
+        "attemptId": "example:plan:A5",
+        "state": "active"
+      },
+      {
+        "taskId": "example:plan:T6",
+        "attemptId": "example:plan:A6",
+        "state": "active"
+      }
+    ],
+    "metadata": {}
+  }
+}
