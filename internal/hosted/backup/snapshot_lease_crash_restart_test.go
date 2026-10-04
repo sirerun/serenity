@@ -290,3 +290,85 @@ func TestSnapshotLeaseSameInodeReceiptMutationDuringTerminalAckIsRejected(t *tes
 		t.Fatalf("receipt marker removed after failed exact acknowledgment: %v", statErr)
 	}
 }
+
+func TestSnapshotLeaseReleasePeakReservationIncludesTerminalReceiptBeforeEffects(t *testing.T) {
+	_, snapshot, _ := freshPrivateSnapshot(t, 1)
+	options, digest := inspectionOptions(t, snapshot)
+	root := filepath.Join(privateTempDir(t), "snapshot-lease-release-peak-budget")
+	a := newLeaseTestAuthority()
+	s := testLeaseStoreOptions(t, SnapshotLeaseStoreOptions{LeaseRoot: root, MaxArtifactBytesPerLease: 1 << 30, MaxMetadataBytesPerLease: 1 << 20, MaxRestoreScratchBytes: 1 << 30, MaxRetainedArtifactBytes: 2 << 30, MaxRetainedMetadataBytes: 2 << 20, MaxLeases: 8}, a)
+	options.ExpectedManifestSHA256 = digest
+	lease, err := s.Stage(context.Background(), snapshot, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin, err := lease.Pin(context.Background(), strings.Repeat("e", 64), 5, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, lease.LeaseID())
+	current, err := readLeaseRecord(path, s.options.MaxMetadataBytesPerLease)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := PinReleaseAuthorization{PinID: pin.ID(), PlanRef: pin.PlanRef(), ManifestSHA256: digest, Disposition: PinAbandonedBeforeEffects, RecordVersion: 23}
+	candidate := current
+	candidate.State = "RELEASING"
+	candidate.Disposition = auth.Disposition
+	candidate.RecordVersion = auth.RecordVersion
+	candidateRaw, err := encodeLeaseRecord(&candidate, s.options.MaxMetadataBytesPerLease)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, tombstoneRaw, err := encodeReleaseTombstone(candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	usage, err := s.usageLocked()
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := usage.metadata - current.MetadataBytes
+	if base < 0 || candidate.MetadataBytes == 0 || len(tombstoneRaw) == 0 {
+		t.Fatalf("invalid release budget fixture: usage=%+v current=%d candidate=%d tomb=%d", usage, current.MetadataBytes, candidate.MetadataBytes, len(tombstoneRaw))
+	}
+	limit := base + 2*candidate.MetadataBytes + int64(len(tombstoneRaw)) - 1
+	if limit < base+2*candidate.MetadataBytes || limit >= s.options.MaxRetainedMetadataBytes {
+		t.Fatalf("fixture does not isolate terminal peak: base=%d record=%d tombstone=%d limit=%d configured=%d", base, candidate.MetadataBytes, len(tombstoneRaw), limit, s.options.MaxRetainedMetadataBytes)
+	}
+	boundedOptions := s.options
+	boundedOptions.MaxMetadataBytesPerLease = candidate.MetadataBytes
+	boundedOptions.MaxRetainedMetadataBytes = limit
+	if err = validateSnapshotLeaseOptions(boundedOptions); err != nil {
+		t.Fatalf("bounded policy is not constructor-valid: %v", err)
+	}
+	identity, err := PreflightSnapshotStoreIdentity(context.Background(), boundedOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundedStore, err := NewSnapshotLeaseStore(context.Background(), boundedOptions, a, identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforeRecord, err := os.ReadFile(filepath.Join(path, leaseRecordName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.decisions[pin.ID()] = PinReconcileDecision{Action: PinRelease, Authorization: auth}
+	if err = boundedStore.Reconcile(context.Background()); !errors.Is(err, ErrSnapshotLeaseLimit) {
+		t.Fatalf("release peak outside budget was not refused: %v", err)
+	}
+	afterRecord, readErr := os.ReadFile(filepath.Join(path, leaseRecordName))
+	if readErr != nil || !bytes.Equal(beforeRecord, afterRecord) {
+		t.Fatalf("failed peak reservation changed live lease record: read=%v", readErr)
+	}
+	if _, err = os.Lstat(filepath.Join(root, ".releases", lease.LeaseID())); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed peak reservation published marker: %v", err)
+	}
+	if a.completes != 0 {
+		t.Fatalf("failed peak reservation completed owner release %d times", a.completes)
+	}
+	if int64(len(candidateRaw)) >= candidate.MetadataBytes {
+		t.Fatalf("fixture did not carry a separately-accounted manifest: wire=%d metadata=%d", len(candidateRaw), candidate.MetadataBytes)
+	}
+}

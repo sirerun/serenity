@@ -3,6 +3,7 @@ package backup
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -29,6 +30,27 @@ type leaseTestAuthority struct {
 	savedProof      VerifiedPinAbsence
 	beforeReconcile func(SnapshotPinRef) error
 	beforeComplete  func(PinReleaseAuthorization) error
+}
+
+type leaseTestAuthorityState struct {
+	Event         string
+	Attempt       PinAttemptRef
+	Authorization PinReleaseAuthorization
+	HasRelease    bool
+}
+
+func reportLeaseTestAuthorityState(state leaseTestAuthorityState) {
+	if os.Getenv("SERENITY_TEST_AUTHORITY_STATE_FD") != "5" {
+		return
+	}
+	f := os.NewFile(5, "authority-state")
+	if f == nil {
+		return
+	}
+	raw, err := json.Marshal(state)
+	if err == nil {
+		_, _ = f.Write(append(raw, '\n'))
+	}
 }
 
 func newLeaseTestAuthority() *leaseTestAuthority {
@@ -63,6 +85,7 @@ func (a *leaseTestAuthority) BeginPinAttempt(_ context.Context, ref string, vers
 	}
 	v := PinAttemptRef{PlanRef: ref, LeaseID: lease, ManifestSHA256: digest, ReservationVersion: version, AttemptVersion: n, State: PinAttemptPending}
 	a.attempts[key] = v
+	reportLeaseTestAuthorityState(leaseTestAuthorityState{Event: "attempt", Attempt: v})
 	return v, nil
 }
 func (a *leaseTestAuthority) CommitPinAttempt(_ context.Context, v PinAttemptRef, p SnapshotPinRef) error {
@@ -75,6 +98,7 @@ func (a *leaseTestAuthority) CommitPinAttempt(_ context.Context, v PinAttemptRef
 	}
 	cur.State = PinAttemptCommitted
 	a.attempts[key] = cur
+	reportLeaseTestAuthorityState(leaseTestAuthorityState{Event: "attempt", Attempt: cur})
 	return nil
 }
 func (a *leaseTestAuthority) CancelPinAttempt(_ context.Context, v PinAttemptRef, proof VerifiedPinAbsence) error {

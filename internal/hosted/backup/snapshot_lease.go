@@ -1717,6 +1717,9 @@ func (s *SnapshotLeaseStore) Reconcile(ctx context.Context) (retErr error) {
 			if authErr == nil {
 				authErr = recordIdentityErr
 			}
+			if authErr == nil {
+				authErr = s.ensureReleasePeakBeforeOwner(ctx, r)
+			}
 			var authorization PinReleaseAuthorization
 			if authErr == nil {
 				authorization, authErr = s.authorizeReleaseResume(ctx, r, attempts)
@@ -1812,6 +1815,10 @@ func (s *SnapshotLeaseStore) Reconcile(ctx context.Context) (retErr error) {
 			leaseRecordInfo, recordIdentityErr := captureLeaseRecordIdentity(path, r, s.options.MaxMetadataBytesPerLease)
 			if recordIdentityErr != nil {
 				errs = append(errs, errors.Join(recordIdentityErr, unlockFile(leaseLock), leaseLock.Close()))
+				continue
+			}
+			if e := s.ensureReleasePeakBeforeOwner(ctx, r); e != nil {
+				errs = append(errs, errors.Join(e, unlockFile(leaseLock), leaseLock.Close()))
 				continue
 			}
 			decision, reconcileErr := s.authority.ReconcilePin(ctx, pinRef(r))
@@ -3474,26 +3481,41 @@ func (s *SnapshotLeaseStore) ensureInitialReleasePeak(current, candidate leaseDi
 	if base < 0 {
 		return ErrSnapshotLeaseInvalid
 	}
-	m := int64(len(candidateRaw))
+	rawBytes := int64(len(candidateRaw))
+	m := candidate.MetadataBytes
 	old := current.MetadataBytes
 	tomb := int64(len(tombstoneRaw))
-	if base > math.MaxInt64-old || base+old > math.MaxInt64-m || base+old+m > math.MaxInt64-m || base+m > math.MaxInt64-tomb {
+	if base > math.MaxInt64-old || old > math.MaxInt64-rawBytes || base+old > math.MaxInt64-rawBytes || m > math.MaxInt64-rawBytes || base > math.MaxInt64-m || base+m > math.MaxInt64-m || base+2*m > math.MaxInt64-tomb {
 		return ErrSnapshotLeaseLimit
 	}
-	peak1 := base + old + m
-	peak2 := base + 2*m
-	peak3 := base + m + tomb
-	peak := peak1
-	if peak2 > peak {
-		peak = peak2
+	peak := base + old + rawBytes
+	if markerTempPeak := base + m + rawBytes; markerTempPeak > peak {
+		peak = markerTempPeak
 	}
-	if peak3 > peak {
-		peak = peak3
+	if twoRecordsPeak := base + 2*m; twoRecordsPeak > peak {
+		peak = twoRecordsPeak
+	}
+	if deletionPeak := base + 2*m + tomb; deletionPeak > peak {
+		peak = deletionPeak
 	}
 	if peak > s.options.MaxRetainedMetadataBytes {
 		return ErrSnapshotLeaseLimit
 	}
 	return nil
+}
+
+func (s *SnapshotLeaseStore) ensureReleasePeakBeforeOwner(ctx context.Context, current leaseDiskRecord) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	candidate := current
+	candidate.State = "RELEASING"
+	// Both currently valid dispositions have one-digit wire encodings. Use the
+	// larger valid value and the largest possible record version to reserve a
+	// conservative encoded peak without treating this value as authority.
+	candidate.Disposition = PinCommittedRestoreComplete
+	candidate.RecordVersion = math.MaxUint64
+	return s.ensureInitialReleasePeak(current, candidate)
 }
 
 func (s *SnapshotLeaseStore) releaseLease(ctx context.Context, path string, r leaseDiskRecord, a PinReleaseAuthorization) error {
