@@ -634,13 +634,23 @@ func writeSnapshotLeaseCrashTempPrefix(root string, state leaseTestAuthorityStat
 	if err != nil || storeDev != capture.StoreDevice || storeIno != capture.StoreInode {
 		return errors.Join(ErrSnapshotLeaseInvalid, err)
 	}
-	if _, liveErr := os.Lstat(filepath.Join(root, state.Attempt.LeaseID)); liveErr == nil {
-		rootDev, rootIno, identityErr := pathIdentity(filepath.Join(root, state.Attempt.LeaseID))
+	livePath := filepath.Join(root, state.Attempt.LeaseID)
+	_, liveErr := os.Lstat(livePath)
+	if kind == "release-tombstone" {
+		if liveErr == nil {
+			return ErrSnapshotLeaseConflict
+		}
+		if !errors.Is(liveErr, os.ErrNotExist) {
+			return errors.Join(ErrSnapshotLeaseInvalid, liveErr)
+		}
+	} else {
+		if liveErr != nil {
+			return errors.Join(ErrSnapshotLeaseInvalid, liveErr)
+		}
+		rootDev, rootIno, identityErr := pathIdentity(livePath)
 		if identityErr != nil || rootDev != capture.Record.RootDevice || rootIno != capture.Record.RootInode {
 			return errors.Join(ErrSnapshotLeaseInvalid, identityErr)
 		}
-	} else if !errors.Is(liveErr, os.ErrNotExist) || kind != "release-tombstone" {
-		return errors.Join(ErrSnapshotLeaseInvalid, liveErr)
 	}
 	dirInfo, err := os.Lstat(expectedDir)
 	if err != nil || !dirInfo.IsDir() || dirInfo.Mode()&os.ModeSymlink != 0 {
