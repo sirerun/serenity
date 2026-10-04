@@ -159,7 +159,7 @@ No implementation change or fictitious regression claim was made for it.
 ## Explicit headless-review and merge resumption — 2026-10-04 09:30 UTC
 
 User explicitly requested headless review and merge of PR360. Lane reclaimed
-R-portable-plan-conformance token `67c69c62fd9114335071524135ba8267029c33e0`;
+R-portable-plan-conformance token `a58ca7c737dc8645967343f867e40ea9406a6d2a`;
 shared foreign lease preserved. Current load/build ownership is checked before
 Go commands; wait deadline10:00UTC.
 
@@ -204,8 +204,15 @@ or approval has arrived, and elapsed time is not consent.
 
 PR360 stays draft. T-PC-SERENITY.4-.7 remain open. The admission driver and
 headless processes have ended; no background merge/watch is promised.
-Release only the coordinator's resource token67c69c62fd9114335071524135ba8267029c33e0
+Release only the coordinator's resource tokena58ca7c737dc8645967343f867e40ea9406a6d2a
 on checkpoint; preserve the controller and independent review worktrees.
 Resume with a fresh claim when load<=10 or after the explicit one-core
 exception is granted. GOMAXPROCS1, -p1, lint concurrency1, SSD caches/temp,
 exact lease acquisition/release and final exact-head review remain required.
+
+Receipt correction: the resumption lane token was transcribed incorrectly.
+The original claim object is a58ca7c737dc8645967343f867e40ea9406a6d2a,
+with the exact purpose and09:22:39UTC creation time of this session's claim
+operation. It did not change ownership during this run. The rejected release
+used the incorrect copied value and changed no ref. Corrected token above;
+release remains a compare-and-swap through the canonical script.
