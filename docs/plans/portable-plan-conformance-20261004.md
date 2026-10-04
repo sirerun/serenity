@@ -53,8 +53,6 @@ The initial channel labels `PCS.0`–`PCS.7` are historical aliases for the
 parseable stable IDs `T-PC-SERENITY.0`–`T-PC-SERENITY.7` below. This correction
 precedes implementation and preserves the one-to-one stage/dependency mapping.
 
-### E-PCS — Conformance delivery
-
 #### Wave 1 — Source inventory, contract pin and bounded delivery
 
 Tasks: T-PC-SERENITY.0, T-PC-SERENITY.1, T-PC-SERENITY.2,
@@ -62,7 +60,7 @@ T-PC-SERENITY.3, T-PC-SERENITY.4, T-PC-SERENITY.5,
 T-PC-SERENITY.6, T-PC-SERENITY.7.
 
 - [x] T-PC-SERENITY.0 Reconcile scope, ownership, tools and source mapping  Owner: pc-serenity-coordinator kind: agent stage: preflight  delivers: [UC-PC1, UC-PC2]  acc: [external SSD writable; isolated clean candidate; existing owners/holds preserved; actual tools and resource gaps recorded]
-- [ ] T-PC-SERENITY.1 Inventory context/policy surfaces and send consumer fixture requirements  Owner: pc-serenity-inventory kind: agent stage: implement  blocked-by: [T-PC-SERENITY.0]  delivers: [source inventory and Wazi counterexample requirements]  acc: [provider-free versus provider-capable reads identified; ADR024 source-merge scope preserved; context is never execution evidence]
+- [x] T-PC-SERENITY.1 Inventory context/policy surfaces and send consumer fixture requirements  Owner: pc-serenity-inventory kind: agent stage: implement  blocked-by: [T-PC-SERENITY.0]  delivers: [source inventory and Wazi counterexample requirements]  acc: [provider-free versus provider-capable reads identified; ADR024 source-merge scope preserved; context is never execution evidence]
 - [ ] T-PC-SERENITY.2 Pin Wazi's frozen experimental contract  Owner: pc-serenity-coordinator kind: agent stage: preflight  blocked-by: [T-PC-SERENITY.1]  delivers: [contract manifest]  acc: [owner-confirmed exact revision/digest, schemas, semantic validator and fixture instructions available; no schema fork]
 - [ ] T-PC-SERENITY.3 Implement contextual and policy conformance examples  Owner: pc-serenity-coordinator kind: agent stage: implement  blocked-by: [T-PC-SERENITY.2]  verifies: [UC-PC1, UC-PC2]  acc: [fixtures preserve context provenance/unavailable states and separate hosted observations from authorized local evaluation; necessary projection is read-only only]
 - [ ] T-PC-SERENITY.4 Verify behavior and required checks  Owner: pc-serenity-coordinator kind: agent stage: verify  blocked-by: [T-PC-SERENITY.3]  verifies: [UC-PC1, UC-PC2]  acc: [pinned validator accepts valid fixtures and rejects invalid trust/mapping cases; targeted tests and formatting/lint pass on exact candidate; hosted CI outcome recorded honestly]
@@ -87,7 +85,14 @@ Production deployment and release publication are outside the dispatch.
 
 ## Status and handoff
 
-Source/doc preflight passed; builds remain resource-held. First runnable task is T-PC-SERENITY.1. T-PC-SERENITY.2 and
+Source/doc preflight and inventory passed; builds remain resource-held. Next task is T-PC-SERENITY.2. T-PC-SERENITY.2 and
 descendants require Wazi's published frozen contract; no such revision has yet
 been supplied in the inspected dispatch/channel. Coordination messages are
 handoffs, not authenticated execution receipts.
+
+Inventory evidence: [source inventory](portable-plan-source-inventory-20261004.md),
+worker commit `48029dbfe863b8837d464eb02a093f32bfc7e08a`, integrated by the
+coordinator, and [fixture requirements](portable-plan-fixture-requirements-20261004.md).
+Shared channel message `PC-SERENITY-FIXTURE-REQUIREMENTS-20261004-01` sent the
+semantic counterexamples to the steward. Shared parser qualification verified
+all eight task IDs, explicit stages, wave membership and dependency references.

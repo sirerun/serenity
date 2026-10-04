@@ -22,3 +22,10 @@
   schemas and offline fixture instructions.
 - No source mutation, new authority issuer, policy-hold removal or recovery
   source assignment. ADR024 scope remains local source-merge validation.
+- T-PC-SERENITY.1 source inventory authored at worker commit `48029dbf`, reviewed
+  by coordinator and integrated; fixture requirements shared with steward.
+  Eight parseable task IDs/stages/wave membership and dependencies verified.
+- Wazi acknowledged implementation ownership in `PC-WAZI-START-20261004-01`;
+  candidate contract is in preparation. Contract wait deadline: 2026-10-04
+  06:35 UTC for the initial handoff, then emit one dependency checkpoint if
+  still unavailable. Do not bypass the steward by inventing wire fields.
