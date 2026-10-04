@@ -348,7 +348,7 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 			if tc.prefix != "" {
 				captureCh := make(chan error, 1)
 				go func() {
-					decoder := json.NewDecoder(io.LimitReader(captureR, 2<<20))
+					decoder := json.NewDecoder(io.LimitReader(captureR, 4<<20))
 					captureCh <- decoder.Decode(&prefixCapture)
 				}()
 				stateCh := make(chan result, 1)
