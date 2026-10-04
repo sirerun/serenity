@@ -1,36 +1,51 @@
 {
-  "status": "draft",
-  "baseline": "e2b5dd17",
+  "status": "refined-draft",
+  "baseline": "b778e058da18796d38b6c12a436defc80430c962",
   "use_cases": [
     {
       "id": "UC-INS-01",
       "name": "Owner memory graph",
       "priority": "P0",
-      "wiring_status": "PLANNED"
+      "wiring_status": "PLANNED",
+      "source_status": "API_LANDED_UI_PLANNED",
+      "live_acceptance": "UNVERIFIED"
     },
     {
       "id": "UC-INS-02",
       "name": "Search filters and added-year navigation",
       "priority": "P0",
-      "wiring_status": "PLANNED"
+      "wiring_status": "PLANNED",
+      "source_status": "API_LANDED_UI_PLANNED",
+      "live_acceptance": "UNVERIFIED"
     },
     {
       "id": "UC-INS-03",
       "name": "Provenance inspection",
       "priority": "P0",
-      "wiring_status": "PLANNED"
+      "wiring_status": "PLANNED",
+      "source_status": "API_LANDED_UI_PLANNED",
+      "live_acceptance": "UNVERIFIED"
     },
     {
       "id": "UC-INS-04",
       "name": "Public brand and synthetic demo",
       "priority": "P0",
-      "wiring_status": "PLANNED"
+      "wiring_status": "PLANNED",
+      "source_status": "BRAND_LANDED_DEMO_PLANNED",
+      "live_acceptance": "UNVERIFIED"
     },
     {
       "id": "UC-INS-05",
       "name": "Verified release and rollback",
       "priority": "P0",
-      "wiring_status": "PLANNED"
+      "wiring_status": "PLANNED",
+      "source_status": "RELEASE_BLOCKED",
+      "live_acceptance": "UNVERIFIED"
     }
-  ]
+  ],
+  "source_delivery": {
+    "pr": 361,
+    "landed_commit": "b778e058da18796d38b6c12a436defc80430c962",
+    "live_qualification": "OPEN"
+  }
 }
