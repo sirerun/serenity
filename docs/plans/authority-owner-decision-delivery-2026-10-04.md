@@ -10,7 +10,7 @@
   acc: Four repository copies preserve their source bytes and hashes. They ask for founder owner decisions only; all choices remain proposed and confer no owner assignment, source freeze, implementation, provider, deployment, or runtime authority.
 - [x] T-AOD.3 — Verify the five-file docs-only change and plan structure. kind: agent stage: verify deps: [T-AOD.2]
   acc: Exact source/destination hashes, privacy scan, whitespace check, base/HEAD/tree, and six-stage dependency structure are recorded in the external delivery receipt. Only these four copied documents and this delivery plan are owned by this task; source code and existing authored files are unchanged.
-- [ ] T-AOD.4 — Independently review the exact five-file head and receipts. kind: agent stage: review deps: [T-AOD.3]
+- [x] T-AOD.4 — Independently review the exact five-file head and receipts. kind: agent stage: review deps: [T-AOD.3]
   acc: Reviewer checks exact-head equality, packet/review hashes, proposal-only status, privacy, and plan parse. Resolve findings on a new reviewed head if required.
 - [ ] T-AOD.5 — Integrate after PR358 and fresh coordination checks. kind: agent stage: merge deps: [T-AOD.4]
   acc: Root performs normal expected-head integration only after PR358 landed verification and current trusted holds/base/head checks. This worker does not push, create a PR, or merge.
@@ -24,3 +24,5 @@ The four copied artifacts are the approval decision packet v2 and its v2 review,
 Both packets remain proposed founder decision requests. No founder choice, accountable-owner assignment, owner contract, source freeze, production factory, READY state, trust root, key, credential source, provider operation, deployment, or spend is asserted or authorized by this delivery. The historical `c916bcd7ed30592efb065c876455d1bb51509523` source snapshot is not replaced by the docs-only base and must not be read as current implementation acceptance.
 
 Integration checkpoint: proposed files were carried unchanged from worker1847 onto landed PR358 main bc4689434e7c25ab8e5674be8fd7df250c20b45b. Packet/review content hashes remain exact; Go/module source is unchanged. This documentation delivery also banks PR358 final review/landed proof and completes its four merge/landed checklist rows. Authority-owner assignments and source implementation freezes remain held.
+
+Independent eight-file documentation review CLEAR at PR359 headc8085e36002f6909de04edfbe7bcc3b2f455e97e/tree daa46aa9b47c8e281b8fcb13b5a5179e32e9d2a5, basebc4689434e7c25ab8e5674be8fd7df250c20b45b. Report SHA-256 8ef54f795f0500fc656d90874a8d2164595c07df6028293c7eb58c90c408df74 is copied exactly in docs/reviews/pr359-source-unchanged-docs-review.md. Banking that report adds a ninth Markdown path without changing source or assigning authority. Final integrated documentation review, normal expected-head merge and landed equality follow.
