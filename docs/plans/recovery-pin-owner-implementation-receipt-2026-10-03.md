@@ -31,3 +31,9 @@ Both RED stages exited nonzero as intended and each exact lease release returned
 - Root integration, independent source review, and full-module qualification remain outstanding. This receipt does not claim full contract acceptance or production readiness.
 
 Root integrated WIP source `3dce044f2f69d9b9ebfb6924e59fcf670c44c362` onto landed envelope main. Exact six owned Go file bytes match the author commit. All parent frozen producer crash requirements remain held; this is not full source/contract acceptance.
+
+## Current combined checkpoint
+
+The earlier owner-only receipt above is historical. Current producer author `a6cfbbf9ec21f49f79468333a42c83d743933ede` attempted the tagged backup/recovery race stage and failed compilation: the release-peak helper expected three return values from the two-value encoder, and a phase reference used a name absent from the catalog. This was not a behavioral negative control or passing qualification. The actual lease `fe46c1e8d67f061e9f5074f76f2cf2f42d5b18fb` was released with exit 0 and the source fingerprint was unchanged during the command.
+
+Author correction `246d03c962868e42d4d24d5cebd5e7f991e1d736` is integrated as `12c0fef0c6c38940d716115a9713325b4342608b`. Current owner controls, producer runtime matrix, combined full checks and final exact-head independent review remain pending. PR #358 retains the coordinator merge hold.
