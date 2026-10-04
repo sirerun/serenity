@@ -83,3 +83,14 @@
   a raw hosted failure, not a passed check.
 - Go compilation/tagged tests/vet and final independent exact-head review
   remain required. Mac load still exceeds 10; no Go command has bypassed it.
+
+## Steward qualification hold — 2026-10-04 07:04 UTC
+
+Owner message PC-WAZI-GO-G2-HOLD-01 withdraws final qualification of
+`b45c705`/CI artifact `37184251198`: an audit-only previous-attempt review can
+incorrectly supply current-review independence. Frozen semantics/digest stay
+unchanged; the steward owns the evidence-binding fix, regression and review.
+All observed 75-case passes above remain true but preliminary/incomplete.
+T-PC-SERENITY.4 requires a corrected exact source/artifact handoff and rerun,
+as well as admitted Go tests/vet. No final conformance or merge is authorized
+by the obsolete artifact. Existing resource/deadline checkpoint remains.
