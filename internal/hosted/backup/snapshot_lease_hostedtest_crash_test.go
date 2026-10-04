@@ -4,6 +4,7 @@ package backup
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,11 +15,39 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/testhooks"
 )
+
+const maxCrashChildOutput = 64 << 10
+
+type boundedCrashOutput struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (o *boundedCrashOutput) Write(p []byte) (int, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	n := len(p)
+	remaining := maxCrashChildOutput - o.buf.Len()
+	if remaining > 0 {
+		if len(p) > remaining {
+			p = p[:remaining]
+		}
+		_, _ = o.buf.Write(p)
+	}
+	return n, nil
+}
+
+func (o *boundedCrashOutput) String() string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.buf.String()
+}
 
 func TestSnapshotLeaseCrashRestartAfterCapturedPartialRelease(t *testing.T) {
 	if os.Getenv("SERENITY_TEST_SNAPSHOT_RELEASE_CHILD") == "1" {
@@ -307,6 +336,9 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestSnapshotLeaseCrashBarrierMatrix$")
+			var stdout, stderr boundedCrashOutput
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
 			captureR, captureW, err := os.Pipe()
 			if err != nil {
 				t.Fatal(err)
@@ -339,11 +371,11 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 			case got := <-statusCh:
 				if got.err != nil || got.line != "paused "+tc.name+"\n" {
 					stop()
-					t.Fatalf("barrier status=%q err=%v", got.line, got.err)
+					t.Fatalf("barrier status=%q err=%v stdout=%q stderr=%q", got.line, got.err, stdout.String(), stderr.String())
 				}
 			case <-ctx.Done():
 				stop()
-				t.Fatalf("timed out waiting for %s barrier", tc.name)
+				t.Fatalf("timed out waiting for %s barrier: stdout=%q stderr=%q", tc.name, stdout.String(), stderr.String())
 			}
 			var prefixState leaseTestAuthorityState
 			var prefixCapture snapshotLeaseTempCapture
@@ -466,8 +498,15 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 					t.Fatalf("pending pin was not preserved after restart: current=%+v err=%v", current, findErr)
 				}
 				record, readErr := readLeaseRecord(filepath.Join(root, state.Attempt.LeaseID), options.MaxMetadataBytesPerLease)
-				if readErr != nil || record.State != "PIN_PENDING" {
-					t.Fatalf("pending pin has no corresponding local PIN_PENDING record: state=%s err=%v", record.State, readErr)
+				if readErr != nil || record.State != "STAGED" {
+					t.Fatalf("pre-publication pending pin did not retain local STAGED record: state=%s err=%v", record.State, readErr)
+				}
+				afterRestart, snapshotErr := snapshotLeaseCrashTree(root)
+				if snapshotErr != nil || !reflect.DeepEqual(beforeRestart, afterRestart) {
+					t.Fatalf("pre-publication pending pin changed retained crash state: snapshot=%v", snapshotErr)
+				}
+				if restartAuthority.completes != 0 {
+					t.Fatalf("pre-publication pending pin performed owner completion %d times", restartAuthority.completes)
 				}
 				return
 			}
@@ -494,6 +533,15 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 
 func snapshotLeaseCrashTree(root string) (map[string]string, error) {
 	state := make(map[string]string)
+	rootInfo, err := os.Lstat(root)
+	if err != nil {
+		return nil, err
+	}
+	rootDevice, rootInode, err := fileIdentity(rootInfo)
+	if err != nil {
+		return nil, err
+	}
+	state["."] = fmt.Sprintf("root:%o:%d:%d", rootInfo.Mode(), rootDevice, rootInode)
 	var visit func(string, string) error
 	visit = func(path, rel string) error {
 		entries, err := os.ReadDir(path)
@@ -507,26 +555,30 @@ func snapshotLeaseCrashTree(root string) (map[string]string, error) {
 			if err != nil {
 				return err
 			}
+			device, inode, err := fileIdentity(info)
+			if err != nil {
+				return err
+			}
 			if info.Mode()&os.ModeSymlink != 0 {
-				state[childRel] = fmt.Sprintf("symlink:%o", info.Mode())
+				state[childRel] = fmt.Sprintf("symlink:%o:%d:%d", info.Mode(), device, inode)
 				continue
 			}
 			if info.IsDir() {
-				state[childRel] = fmt.Sprintf("dir:%o", info.Mode())
+				state[childRel] = fmt.Sprintf("dir:%o:%d:%d", info.Mode(), device, inode)
 				if err = visit(child, childRel); err != nil {
 					return err
 				}
 				continue
 			}
 			if !info.Mode().IsRegular() {
-				state[childRel] = fmt.Sprintf("other:%o", info.Mode())
+				state[childRel] = fmt.Sprintf("other:%o:%d:%d", info.Mode(), device, inode)
 				continue
 			}
 			data, readErr := os.ReadFile(child)
 			if readErr != nil {
 				return readErr
 			}
-			state[childRel] = fmt.Sprintf("file:%o:%x", info.Mode(), data)
+			state[childRel] = fmt.Sprintf("file:%o:%d:%d:%x", info.Mode(), device, inode, data)
 		}
 		return nil
 	}
@@ -554,7 +606,7 @@ func writeSnapshotLeaseCrashTempPrefix(root string, state leaseTestAuthorityStat
 		expectedCaptureKind = "tombstone"
 	}
 	if capture.Kind != expectedCaptureKind || capture.Path != expectedDir || !strings.HasPrefix(capture.Name, tempPrefix) || len(capture.Raw) < 2 || capture.Record.ID != state.Attempt.LeaseID || capture.Record.ManifestSHA256 != state.Attempt.ManifestSHA256 || capture.Record.PlanRef != state.Attempt.PlanRef || capture.Record.ReservationVersion != state.Attempt.ReservationVersion || capture.Record.AttemptVersion != state.Attempt.AttemptVersion {
-		return ErrSnapshotLeaseConflict
+		return fmt.Errorf("%w: capture tuple mismatch kind=%s path=%s record=%+v attempt=%+v", ErrSnapshotLeaseConflict, kind, capture.Path, capture.Record, state.Attempt)
 	}
 	if strings.HasPrefix(kind, "release-") && (capture.Record.PinID != state.Authorization.PinID || capture.Record.RecordVersion != state.Authorization.RecordVersion || capture.Record.Disposition != state.Authorization.Disposition) {
 		return ErrSnapshotLeaseConflict
@@ -562,9 +614,19 @@ func writeSnapshotLeaseCrashTempPrefix(root string, state leaseTestAuthorityStat
 	if kind == "pin-pending" && (capture.Record.State != "PIN_PENDING" || capture.Record.PinID == "") || kind == "pin-pinned" && capture.Record.State != "PINNED" || kind == "release-live" && capture.Record.State != "RELEASING" || kind == "release-marker" && capture.Record.State != "RELEASING" || kind == "release-tombstone" && capture.Record.State != "RELEASING" {
 		return ErrSnapshotLeaseConflict
 	}
-	rootDev, rootIno, err := pathIdentity(root)
-	if err != nil || rootDev != capture.Record.RootDevice || rootIno != capture.Record.RootInode {
+	// RootDevice/RootInode bind the lease directory, not the store root or
+	// the separate release-marker directory used by marker/tombstone temps.
+	storeDev, storeIno, err := pathIdentity(root)
+	if err != nil || storeDev != capture.StoreDevice || storeIno != capture.StoreInode {
 		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	if _, liveErr := os.Lstat(filepath.Join(root, state.Attempt.LeaseID)); liveErr == nil {
+		rootDev, rootIno, identityErr := pathIdentity(filepath.Join(root, state.Attempt.LeaseID))
+		if identityErr != nil || rootDev != capture.Record.RootDevice || rootIno != capture.Record.RootInode {
+			return errors.Join(ErrSnapshotLeaseInvalid, identityErr)
+		}
+	} else if !errors.Is(liveErr, os.ErrNotExist) || kind != "release-tombstone" {
+		return errors.Join(ErrSnapshotLeaseInvalid, liveErr)
 	}
 	dirInfo, err := os.Lstat(expectedDir)
 	if err != nil || !dirInfo.IsDir() || dirInfo.Mode()&os.ModeSymlink != 0 {
@@ -623,7 +685,7 @@ func writeSnapshotLeaseCrashTempPrefix(root string, state leaseTestAuthorityStat
 	}
 	finalRootDev, finalRootIno, rootErr := pathIdentity(root)
 	finalDir, dirErr := os.Lstat(expectedDir)
-	if rootErr != nil || dirErr != nil || finalRootDev != rootDev || finalRootIno != rootIno || !os.SameFile(dirInfo, finalDir) {
+	if rootErr != nil || dirErr != nil || finalRootDev != storeDev || finalRootIno != storeIno || !os.SameFile(dirInfo, finalDir) {
 		writeErr = errors.Join(writeErr, ErrSnapshotLeaseInvalid, rootErr, dirErr)
 	}
 	return errors.Join(writeErr, anchored.Close())
