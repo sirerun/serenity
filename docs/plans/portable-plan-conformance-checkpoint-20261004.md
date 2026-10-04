@@ -41,3 +41,24 @@
   source-reviewed against consumer requirements. Reported duplicate catalog
   path in manifest to the steward before freeze. No candidate pin or adapter
   implementation inferred from this preliminary review.
+
+## Source implementation checkpoint — 2026-10-04 06:56 UTC
+
+- Wazi source freeze `16b66e5eedf20d52e72928bb56a0c19e391e8ce9`, experimental
+  0.0.1, digest `sha256:7582512f122d2f2a9c4461facc7541c9887053f137260d6ebe9c6dea611d039d`,
+  resolves the initial pin deadline. Its public mirror `f04497a3fcde3c1b78d09b683405d4d9f7645efc`
+  was independently verified byte-identical across all 66 manifest paths.
+- Consumer corpus: 15 cases (8 valid, 7 invalid), synthetic assertions only.
+  Offline Python Draft 2020-12 structural precheck passed all 21 valid neutral
+  cases and all 8 valid Serenity cases. This is not Go/semantic acceptance.
+- Go tagged harness verifies pinned bytes, three tamper controls, structural
+  validity and the owner's offline CLI for all 75 cases. A missing binary,
+  mismatched digest, authority claim or infrastructure rejection fails closed.
+  No production source, authority or memory mutation changed.
+- Wazi validator source appeared at `427f0cf` but CI run `37183983768` failed
+  compilation on an unused `reference` in semantics.go. No usable binary or
+  semantic pass is claimed. The steward owns fixes and runtime qualification.
+- Mac one-minute load remains above 10; no Go builds/tests/lint have run.
+  The foreign shared build lease remains untouched. Runtime/artifact wait
+  deadline is 07:10 UTC; if still unavailable, retain a draft PR checkpoint
+  with T-PC-SERENITY.4-.7 open and do not merge unverified code.
