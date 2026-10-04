@@ -22,7 +22,6 @@ import (
 	"github.com/sirerun/serenity/internal/domain"
 	hostgateway "github.com/sirerun/serenity/internal/hosted/gateway"
 	"github.com/sirerun/serenity/internal/hosted/identity"
-	"github.com/sirerun/serenity/internal/hosted/pool"
 	"github.com/sirerun/serenity/internal/hosted/store"
 	brainstore "github.com/sirerun/serenity/internal/store"
 	"gopkg.in/yaml.v3"
