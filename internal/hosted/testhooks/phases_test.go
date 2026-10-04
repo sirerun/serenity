@@ -36,7 +36,6 @@ func TestPhaseNamesAreDistinctAndWireSafe(t *testing.T) {
 		testhooks.PhaseSnapshotReleaseTombstonePublished, testhooks.PhaseSnapshotReleaseTombstoneDirectorySynced,
 		testhooks.PhaseSnapshotReleaseMarkerRecordRemoved, testhooks.PhaseSnapshotReleaseMarkerDirectorySynced,
 		testhooks.PhaseSnapshotReleaseOwnerCompleted,
-		testhooks.PhaseSnapshotReleaseMarkerJournalSynced,
 	}
 	seen := map[string]bool{}
 	for _, p := range phases {
