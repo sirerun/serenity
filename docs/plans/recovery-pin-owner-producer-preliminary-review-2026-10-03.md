@@ -4,7 +4,7 @@ Verdict: **narrow static CLEAR for the corrected release-capacity and crash-fixt
 
 - Commit: `38f08ae6cf0c2dc3858a2b6a798733dda8cd9c60`
 - Tree: `cbc0f135588839b87b6a663a76d53a6a722faf37`
-- Detached review clone: `/Volumes/BuildOffload/worktrees/serenity-pin-owner-combined-static-review-38f08ae-20261003`
+- Detached review clone: `serenity-pin-owner-combined-static-review-38f08ae-20261003` (isolated external worktree)
 - Working tree: clean
 - Delta from the reviewed `9527b38eed8f621b9e633d245584874cdc909947`: one test-only change, capture JSON reader limit 2 MiB → 4 MiB in `internal/hosted/backup/snapshot_lease_hostedtest_crash_test.go`.
 
