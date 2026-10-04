@@ -62,3 +62,24 @@
   The foreign shared build lease remains untouched. Runtime/artifact wait
   deadline is 07:10 UTC; if still unavailable, retain a draft PR checkpoint
   with T-PC-SERENITY.4-.7 open and do not merge unverified code.
+
+## Offline semantic qualification — 2026-10-04 07:00 UTC
+
+- Corrected Wazi source `e7ed7b86be5c6279885bbf4a02dba84aa24374c8`,
+  successful CI run `37184251198`, contract job `111383357449`. Read-only
+  downloaded artifact `11296481702` (`offline-verifier-darwin-arm64`),
+  archive digest `sha256:7a71e1a1b52d833b5e7e96745045801ae3f3f8c210c662d6cd27883a1cd09305`,
+  binary SHA256 `caa915df2bc1f08f495ec7b452bf7bbe9e67edd2e1c2f350c71ac043c5688100`.
+  Workflow builds the artifact from the checked-out exact run head.
+- Version handshake matched pinned 0.0.1/digest and authorityAuthenticated=false.
+  Serial offline CLI validation passed all 75 cases: 29 acceptances exited 0;
+  46 intended rejections exited 2 with structured findings. All 7 Serenity
+  negative cases additionally matched intended finding code/path assertions.
+- Initial harness assumption of exit 1 and combined JSON/diagnostic output was
+  disproved by runtime evidence. Corrected to JSON stdout, captured stderr and
+  exit 2. The first inspection result was not a fixture-validity failure.
+- Exact Serenity head `6ed51ddef5a26f8e651c64dea4ee98b87d6de1be` test check
+  `111382604264` failed without starting: billing-lock annotation. This remains
+  a raw hosted failure, not a passed check.
+- Go compilation/tagged tests/vet and final independent exact-head review
+  remain required. Mac load still exceeds 10; no Go command has bypassed it.
