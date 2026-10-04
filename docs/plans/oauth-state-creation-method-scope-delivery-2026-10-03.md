@@ -12,11 +12,13 @@
   acc: Focused behavioral controls plus root full race, vet, lint and Linux build with real leases.
 - [x] T-OMS.4 — Independently review exact integrated source and receipts. kind: agent stage: review deps: T-OMS.3
   acc: Compiled mutant controls and restored passes; no unresolved findings or trusted holds.
-- [ ] T-OMS.5 — Merge through normal expected-head operation. kind: agent stage: merge deps: T-OMS.4
+- [x] T-OMS.5 — Merge through normal expected-head operation. kind: agent stage: merge deps: T-OMS.4
   acc: Fresh head/base/check annotations and coordination checked under ADR024.
-- [ ] T-OMS.6 — Verify landed tree, release claim and preserve authored work. kind: agent stage: verify-landed deps: T-OMS.5
+- [x] T-OMS.6 — Verify landed tree, release claim and preserve authored work. kind: agent stage: verify-landed deps: T-OMS.5
   acc: Exact reviewed/landed tree equality, original authored hashes unchanged.
 
 Source correction only; SEC-H02 capacity/founder policy, live prefix/refresh/consent acceptance and full E24 hosted gates remain open.
 
-Current qualified source `9948c633a95d7af93e1451656e0cfc21e104241a` passes full local race3,084 results/84packages, full vet/lint/Linux ARM64, plus author compiled method/HEAD behavioral controls and restored passes. Independent exact integrated source review is CLEAR after two compiled assertion REDs and restored race passes; normal merge/landed gates remain pending. No5000/minute policy or live acceptance is inferred.
+Current qualified source `9948c633a95d7af93e1451656e0cfc21e104241a` passes full local race3,084 results/84packages, full vet/lint/Linux ARM64, plus author compiled method/HEAD behavioral controls and restored passes. Independent exact integrated source review is CLEAR after two compiled assertion REDs and restored race passes; normal merge and landed proof are complete as recorded below. No5000/minute policy or live acceptance is inferred.
+
+PR357 normally merged reviewed head `87f3581d8458f1923d6bd3906ed2bf29aacfe766` as `bee4790cf9e53e858802b059f3e6f0af38153e41`; exact full-tree equality `8279a7451b79322d1edf2be9347e0fd6a754adff`. Narrow claim exactly released after proof and all14 original authored file hashes preserved. All six component stages complete; capacity and live hosted acceptance remain open.

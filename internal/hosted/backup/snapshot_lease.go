@@ -23,6 +23,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/hosted/privatefs"
+	"github.com/sirerun/serenity/internal/hosted/testhooks"
 )
 
 var (
@@ -35,18 +36,19 @@ var (
 )
 
 const (
-	leaseRecordName        = "lease.json"
-	releaseRecordName      = "release.json"
-	stageIntentName        = "stage-intent.json"
-	maxReleaseRecordBytes  = 4096
-	leaseMetadataVersion   = 1
-	maxLeaseMetadataBytes  = 1 << 20
-	maxLeaseBytes          = int64(1 << 40)
-	maxCandidateTextBytes  = 256
-	maxCandidateRows       = 64
-	maxIntentMetadataBytes = int64(4096)
-	maxSnapshotPinAttempts = 4096
-	stageOrphanGrace       = 24 * time.Hour
+	leaseRecordName          = "lease.json"
+	releaseRecordName        = "release.json"
+	stageIntentName          = "stage-intent.json"
+	maxReleaseRecordBytes    = 4096
+	leaseMetadataVersion     = 1
+	maxLeaseMetadataBytes    = 1 << 20
+	maxLeaseBytes            = int64(1 << 40)
+	maxCandidateTextBytes    = 256
+	maxCandidateRows         = 64
+	maxIntentMetadataBytes   = int64(4096)
+	maxSnapshotPinAttempts   = 4096
+	maxReleaseJournalEntries = 4096
+	stageOrphanGrace         = 24 * time.Hour
 )
 
 type SnapshotLeaseStoreOptions struct {
@@ -370,7 +372,10 @@ func writeStageIntent(storeRoot, name string, intent stageIntentRecord) (retErr 
 	if err != nil {
 		return err
 	}
-	_, writeErr := f.Write(raw)
+	n, writeErr := f.Write(raw)
+	if writeErr == nil && n != len(raw) {
+		writeErr = io.ErrShortWrite
+	}
 	writeErr = errors.Join(writeErr, f.Sync(), f.Close())
 	if writeErr != nil {
 		return writeErr
@@ -522,39 +527,12 @@ func readReleaseTombstone(path string) (t releaseTombstone, retErr error) {
 }
 
 func writeReleaseTombstone(path string, r leaseDiskRecord) (retErr error) {
-	t := releaseTombstone{Version: 1, ID: r.ID, PinID: r.PinID, PlanRef: r.PlanRef, ManifestSHA256: r.ManifestSHA256, ReservationVersion: r.ReservationVersion, AttemptVersion: r.AttemptVersion, Disposition: r.Disposition, RecordVersion: r.RecordVersion, State: "RELEASED"}
-	var raw []byte
-	stable := false
-	for i := 0; i < 8; i++ {
-		t.Checksum = ""
-		base, err := json.Marshal(t)
-		if err != nil {
-			return err
-		}
-		t.Checksum = digestBytes(base)
-		raw, err = json.Marshal(t)
-		if err != nil {
-			return err
-		}
-		if t.MetadataBytes == int64(len(raw)) {
-			stable = true
-			break
-		}
-		t.MetadataBytes = int64(len(raw))
-	}
-	if !stable || len(raw) > maxReleaseRecordBytes {
-		return ErrSnapshotLeaseLimit
-	}
-	if !validReleaseTombstone(t) {
-		return ErrSnapshotLeaseInvalid
-	}
-	if existing, err := readReleaseTombstone(path); err == nil {
-		if existing.ID != t.ID || existing.PinID != t.PinID || existing.PlanRef != t.PlanRef || existing.ManifestSHA256 != t.ManifestSHA256 || existing.Disposition != t.Disposition || existing.RecordVersion != t.RecordVersion {
-			return ErrSnapshotLeaseConflict
-		}
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
+	t, raw, err := encodeReleaseTombstone(r)
+	if err != nil {
 		return err
+	}
+	if t.MetadataBytes != int64(len(raw)) {
+		return ErrSnapshotLeaseInvalid
 	}
 	before, err := os.Lstat(path)
 	if err != nil || !before.IsDir() || before.Mode()&os.ModeSymlink != 0 {
@@ -565,44 +543,58 @@ func writeReleaseTombstone(path string, r leaseDiskRecord) (retErr error) {
 		return err
 	}
 	defer func() { retErr = errors.Join(retErr, root.Close()) }()
-	rootInfo, err := root.Stat(".")
-	if err != nil || !os.SameFile(before, rootInfo) {
+	opened, err := root.Stat(".")
+	if err != nil || !os.SameFile(before, opened) {
 		return errors.Join(ErrSnapshotLeaseInvalid, err)
 	}
 	current, err := os.Lstat(path)
-	if err != nil || !os.SameFile(current, rootInfo) {
+	if err != nil || !os.SameFile(current, opened) {
 		return errors.Join(ErrSnapshotLeaseInvalid, err)
 	}
-	tempID, err := randomID()
+	tmpID, err := randomID()
 	if err != nil {
 		return err
 	}
-	temp := ".release.tmp-" + tempID
+	temp := ".release.tmp-" + tmpID
 	f, err := root.OpenFile(temp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
-	_, writeErr := f.Write(raw)
+	snapshotLeaseCaptureTemp(path, temp, r, raw, root, f)
+	testhooks.At(testhooks.PhaseSnapshotReleaseTombstoneTempCreated)
+	n, writeErr := f.Write(raw)
+	if writeErr == nil && n != len(raw) {
+		writeErr = io.ErrShortWrite
+	}
 	if writeErr == nil {
+		testhooks.At(testhooks.PhaseSnapshotReleaseTombstoneTempWritten)
 		writeErr = f.Sync()
+	}
+	if writeErr == nil {
+		testhooks.At(testhooks.PhaseSnapshotReleaseTombstoneTempSynced)
 	}
 	closeErr := f.Close()
 	if writeErr != nil || closeErr != nil {
 		return errors.Join(writeErr, closeErr, root.Remove(temp))
 	}
 	current, err = os.Lstat(path)
-	if err != nil || !os.SameFile(current, rootInfo) {
+	if err != nil || !os.SameFile(current, opened) {
 		return errors.Join(ErrSnapshotLeaseInvalid, err, root.Remove(temp))
 	}
 	if err = root.Rename(temp, releaseRecordName); err != nil {
 		return errors.Join(err, root.Remove(temp))
 	}
+	testhooks.At(testhooks.PhaseSnapshotReleaseTombstonePublished)
 	dir, err := root.Open(".")
 	if err != nil {
 		return err
 	}
 	err = dir.Sync()
-	return errors.Join(err, dir.Close())
+	closeErr = dir.Close()
+	if err == nil && closeErr == nil {
+		testhooks.At(testhooks.PhaseSnapshotReleaseTombstoneDirectorySynced)
+	}
+	return errors.Join(err, closeErr)
 }
 
 type VerifiedSnapshotLease struct {
@@ -850,7 +842,7 @@ func (s *SnapshotLeaseStore) Stage(ctx context.Context, sourcePath string, optio
 	if err != nil {
 		return nil, err
 	}
-	if usage.leases >= s.options.MaxLeases {
+	if usage.leases >= s.options.MaxLeases || usage.releaseEntries >= maxReleaseJournalEntries {
 		return nil, ErrSnapshotLeaseLimit
 	}
 	if s.options.MaxMetadataBytesPerLease > s.options.MaxRetainedMetadataBytes-usage.metadata {
@@ -1454,10 +1446,13 @@ func (s *SnapshotLeaseStore) finishPinLocked(ctx context.Context, record leaseDi
 	if err = fsyncDir(s.root); err != nil {
 		return SnapshotPinRef{}, fmt.Errorf("sync PIN_PENDING store root: %w", err)
 	}
+	testhooks.At(testhooks.PhaseSnapshotPinPendingRootSynced)
+	testhooks.At(testhooks.PhaseSnapshotPinPendingDurable)
 	pin := pinRef(record)
 	if err = s.authority.CommitPinAttempt(ctx, attempt, pin); err != nil {
 		return SnapshotPinRef{}, err
 	}
+	testhooks.At(testhooks.PhaseSnapshotPinOwnerCommitted)
 	if err = ctx.Err(); err != nil {
 		return SnapshotPinRef{}, err
 	}
@@ -1474,6 +1469,8 @@ func (s *SnapshotLeaseStore) finishPinLocked(ctx context.Context, record leaseDi
 	if err = fsyncDir(s.root); err != nil {
 		return SnapshotPinRef{}, err
 	}
+	testhooks.At(testhooks.PhaseSnapshotPinPinnedRootSynced)
+	testhooks.At(testhooks.PhaseSnapshotPinPromoted)
 	return pin, nil
 }
 
@@ -1555,7 +1552,7 @@ func (s *SnapshotLeaseStore) Reconcile(ctx context.Context) (retErr error) {
 	if err = validateLocalPinAttemptPairs(s.root, s.options.MaxMetadataBytesPerLease, attempts); err != nil {
 		return err
 	}
-	if err = s.finishReleaseJournal(ctx); err != nil {
+	if err = s.finishReleaseJournal(ctx, attempts); err != nil {
 		return err
 	}
 	protected := map[string]bool{}
@@ -1685,54 +1682,226 @@ func (s *SnapshotLeaseStore) Reconcile(ctx context.Context) (retErr error) {
 				errs = append(errs, e2)
 				continue
 			}
+			testhooks.At(testhooks.PhaseSnapshotPinPromoted)
 		}
 		if r.State == "RELEASING" {
-			authorization := PinReleaseAuthorization{PinID: r.PinID, PlanRef: r.PlanRef, ManifestSHA256: r.ManifestSHA256, Disposition: r.Disposition, RecordVersion: r.RecordVersion}
-			leaseLock, e3 := lockLeaseContext(ctx, path, false)
-			if e3 != nil {
-				errs = append(errs, e3)
+			marker := filepath.Join(s.root, ".releases", r.ID)
+			if _, markerErr := os.Lstat(marker); markerErr == nil {
+				continue
+			} else if !errors.Is(markerErr, os.ErrNotExist) {
+				errs = append(errs, markerErr)
 				continue
 			}
-			e2 = s.releaseLease(ctx, path, r, authorization)
-			e2 = errors.Join(e2, unlockFile(leaseLock), leaseLock.Close())
-			if e2 != nil {
-				errs = append(errs, e2)
+			rootInfo, authErr := os.Lstat(s.root)
+			var rootDev, rootIno uint64
+			if authErr == nil {
+				rootDev, rootIno, authErr = fileIdentity(rootInfo)
+			}
+			if authErr == nil && (!rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 || rootDev != s.rootDevice || rootIno != s.rootInode) {
+				authErr = ErrSnapshotLeaseInvalid
+			}
+			leaseInfo, leaseErr := os.Lstat(path)
+			if authErr == nil && (leaseErr != nil || !leaseInfo.IsDir() || leaseInfo.Mode()&os.ModeSymlink != 0) {
+				authErr = errors.Join(ErrSnapshotLeaseInvalid, leaseErr)
+			}
+			if authErr == nil {
+				authErr = s.validateLiveLeaseIdentity(path, r)
+			}
+			var leaseLock *os.File
+			if authErr == nil {
+				leaseLock, authErr = lockExistingLease(ctx, path)
+			}
+			if authErr == nil {
+				authErr = validateHeldLeaseLock(path, leaseLock)
+			}
+			leaseRecordInfo, recordIdentityErr := captureLeaseRecordIdentity(path, r, s.options.MaxMetadataBytesPerLease)
+			if authErr == nil {
+				authErr = recordIdentityErr
+			}
+			if authErr == nil {
+				authErr = s.ensureReleasePeakBeforeOwner(ctx, r)
+			}
+			var authorization PinReleaseAuthorization
+			if authErr == nil {
+				authorization, authErr = s.authorizeReleaseResume(ctx, r, attempts)
+			}
+			if authErr == nil {
+				authErr = verifyRootIdentity(s, rootDev, rootIno)
+			}
+			if authErr == nil {
+				authErr = verifyLeaseDirectoryIdentity(path, leaseInfo)
+			}
+			if authErr == nil {
+				authErr = validateHeldLeaseLock(path, leaseLock)
+			}
+			if authErr == nil {
+				authErr = verifyLeaseRecordUnchanged(path, leaseRecordInfo, r, s.options.MaxMetadataBytesPerLease)
+			}
+			if authErr == nil {
+				authErr = verifyRecordFiles(ctx, path, r)
+			}
+			if authErr == nil {
+				authErr = s.releaseLease(ctx, path, r, authorization)
+			}
+			if leaseLock != nil {
+				authErr = errors.Join(authErr, unlockFile(leaseLock), leaseLock.Close())
+			}
+			var releaseMarkerInfo os.FileInfo
+			var releaseMarkerDev, releaseMarkerIno uint64
+			if authErr == nil {
+				releaseMarkerInfo, authErr = os.Lstat(filepath.Join(s.root, ".releases", r.ID))
+			}
+			if authErr == nil {
+				releaseMarkerDev, releaseMarkerIno, authErr = fileIdentity(releaseMarkerInfo)
+			}
+			if authErr == nil {
+				testhooks.At(testhooks.PhaseSnapshotReleaseOwnerCompletionStarting)
+				authErr = s.authority.CompletePinRelease(ctx, authorization)
+				if authErr == nil {
+					authErr = verifyMarkerIdentity(filepath.Join(s.root, ".releases", r.ID), releaseMarkerDev, releaseMarkerIno)
+				}
+				if authErr == nil {
+					authErr = verifyRootIdentity(s, rootDev, rootIno)
+				}
+				if authErr == nil {
+					authErr = validateJournalIdentity(s, filepath.Join(s.root, ".releases"))
+				}
+				if authErr == nil {
+					authErr = verifyLeaseAbsent(path)
+				}
+				if authErr == nil {
+					testhooks.At(testhooks.PhaseSnapshotReleaseOwnerCompleted)
+				}
+			}
+			if authErr != nil {
+				errs = append(errs, authErr)
 			}
 			continue
 		}
 		if r.State == "PINNED" {
-			decision, e2 := s.authority.ReconcilePin(ctx, pinRef(r))
-			if e2 != nil {
-				errs = append(errs, e2)
+			rootInfo, identityErr := os.Lstat(s.root)
+			var rootDev, rootIno uint64
+			if identityErr == nil {
+				rootDev, rootIno, identityErr = fileIdentity(rootInfo)
+			}
+			if identityErr == nil && (!rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 || rootDev != s.rootDevice || rootIno != s.rootInode) {
+				identityErr = ErrSnapshotLeaseInvalid
+			}
+			leaseInfo, leaseErr := os.Lstat(path)
+			if identityErr == nil && (leaseErr != nil || !leaseInfo.IsDir() || leaseInfo.Mode()&os.ModeSymlink != 0) {
+				identityErr = errors.Join(ErrSnapshotLeaseInvalid, leaseErr)
+			}
+			var leaseLock *os.File
+			if identityErr == nil {
+				leaseLock, identityErr = lockExistingLease(ctx, path)
+			}
+			if identityErr == nil {
+				identityErr = validateHeldLeaseLock(path, leaseLock)
+			}
+			marker := filepath.Join(s.root, ".releases", r.ID)
+			if identityErr == nil {
+				if _, e := os.Lstat(marker); e == nil {
+					identityErr = ErrSnapshotLeaseConflict
+				} else if !errors.Is(e, os.ErrNotExist) {
+					identityErr = e
+				}
+			}
+			if identityErr != nil {
+				if leaseLock != nil {
+					identityErr = errors.Join(identityErr, unlockFile(leaseLock), leaseLock.Close())
+				}
+				errs = append(errs, identityErr)
+				continue
+			}
+			leaseRecordInfo, recordIdentityErr := captureLeaseRecordIdentity(path, r, s.options.MaxMetadataBytesPerLease)
+			if recordIdentityErr != nil {
+				errs = append(errs, errors.Join(recordIdentityErr, unlockFile(leaseLock), leaseLock.Close()))
+				continue
+			}
+			if e := s.ensureReleasePeakBeforeOwner(ctx, r); e != nil {
+				errs = append(errs, errors.Join(e, unlockFile(leaseLock), leaseLock.Close()))
+				continue
+			}
+			decision, reconcileErr := s.authority.ReconcilePin(ctx, pinRef(r))
+			if reconcileErr == nil {
+				reconcileErr = verifyRootIdentity(s, rootDev, rootIno)
+			}
+			if reconcileErr == nil {
+				reconcileErr = verifyLeaseDirectoryIdentity(path, leaseInfo)
+			}
+			if reconcileErr == nil {
+				reconcileErr = validateHeldLeaseLock(path, leaseLock)
+			}
+			if reconcileErr == nil {
+				reconcileErr = verifyLeaseRecordUnchanged(path, leaseRecordInfo, r, s.options.MaxMetadataBytesPerLease)
+			}
+			if reconcileErr == nil {
+				if _, e := os.Lstat(marker); e == nil {
+					reconcileErr = ErrSnapshotLeaseConflict
+				} else if !errors.Is(e, os.ErrNotExist) {
+					reconcileErr = e
+				}
+			}
+			if reconcileErr != nil {
+				errs = append(errs, errors.Join(reconcileErr, unlockFile(leaseLock), leaseLock.Close()))
 				continue
 			}
 			switch decision.Action {
 			case PinKeep:
+				if e := errors.Join(unlockFile(leaseLock), leaseLock.Close()); e != nil {
+					errs = append(errs, e)
+				}
 				continue
 			case PinRelease:
 				if !validRelease(decision.Authorization, r) {
-					errs = append(errs, ErrSnapshotLeaseConflict)
+					errs = append(errs, errors.Join(ErrSnapshotLeaseConflict, unlockFile(leaseLock), leaseLock.Close()))
 					continue
 				}
-				leaseLock, e3 := lockLeaseContext(ctx, path, false)
-				if e3 != nil {
-					errs = append(errs, e3)
-					continue
-				}
-				if e2 = s.validateRoot(); e2 == nil {
+				testhooks.At(testhooks.PhaseSnapshotReleaseOwnerAuthorized)
+				e2 := verifyRecordFiles(ctx, path, r)
+				if e2 == nil {
 					e2 = s.releaseLease(ctx, path, r, decision.Authorization)
+				}
+				markerInfo, markerErr := os.Lstat(marker)
+				if e2 == nil && markerErr != nil {
+					e2 = errors.Join(ErrSnapshotLeaseInvalid, markerErr)
+				}
+				var markerDev, markerIno uint64
+				if e2 == nil {
+					markerDev, markerIno, e2 = fileIdentity(markerInfo)
+				}
+				if e2 == nil {
+					e2 = verifyMarkerIdentity(marker, markerDev, markerIno)
 				}
 				unlockErr := errors.Join(unlockFile(leaseLock), leaseLock.Close())
 				if e2 = errors.Join(e2, unlockErr); e2 != nil {
 					errs = append(errs, e2)
 					continue
 				}
-				if e2 = s.authority.CompletePinRelease(ctx, decision.Authorization); e2 != nil {
+				md, mi := markerDev, markerIno
+				testhooks.At(testhooks.PhaseSnapshotReleaseOwnerCompletionStarting)
+				e2 = s.authority.CompletePinRelease(ctx, decision.Authorization)
+				if e2 == nil {
+					e2 = verifyMarkerIdentity(marker, md, mi)
+				}
+				if e2 == nil {
+					e2 = verifyRootIdentity(s, rootDev, rootIno)
+				}
+				if e2 == nil {
+					e2 = validateJournalIdentity(s, filepath.Join(s.root, ".releases"))
+				}
+				if e2 == nil {
+					e2 = verifyLeaseAbsent(path)
+				}
+				if e2 != nil {
 					errs = append(errs, e2)
+				} else {
+					testhooks.At(testhooks.PhaseSnapshotReleaseOwnerCompleted)
 				}
 			default:
-				errs = append(errs, ErrSnapshotLeaseConflict)
+				errs = append(errs, errors.Join(ErrSnapshotLeaseConflict, unlockFile(leaseLock), leaseLock.Close()))
 			}
+			continue
 		} else if r.State == "STAGED" && !protected[r.ID] && time.Since(time.Unix(r.CreatedUnix, 0)) >= stageOrphanGrace {
 			leaseLock, e3 := lockLeaseContext(ctx, path, false)
 			if e3 != nil {
@@ -2028,7 +2197,260 @@ func (s *SnapshotLeaseStore) checkContext(ctx context.Context) error {
 
 type leaseUsage struct {
 	leases              int
+	releaseEntries      int
 	artifacts, metadata int64
+}
+
+func (s *SnapshotLeaseStore) readReleaseJournalEntries() (entries []os.DirEntry, retErr error) {
+	if err := s.validateReleaseRoot(); err != nil {
+		return nil, err
+	}
+	root, err := os.OpenRoot(s.root)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { retErr = errors.Join(retErr, root.Close()) }()
+	rootInfo, err := root.Stat(".")
+	if err != nil {
+		return nil, err
+	}
+	rootDev, rootIno, err := fileIdentity(rootInfo)
+	if err != nil || rootDev != s.rootDevice || rootIno != s.rootInode {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	pathRoot, err := os.Lstat(s.root)
+	if err != nil || !os.SameFile(rootInfo, pathRoot) {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	journal, err := root.OpenRoot(".releases")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { retErr = errors.Join(retErr, journal.Close()) }()
+	journalInfo, err := journal.Stat(".")
+	if err != nil {
+		return nil, err
+	}
+	journalDev, journalIno, err := fileIdentity(journalInfo)
+	if err != nil || journalDev != s.releaseDevice || journalIno != s.releaseInode {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	pathJournal, err := os.Lstat(filepath.Join(s.root, ".releases"))
+	if err != nil || !os.SameFile(journalInfo, pathJournal) || !pathJournal.IsDir() || pathJournal.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	dir, err := journal.Open(".")
+	if err != nil {
+		return nil, err
+	}
+	entries, readErr := dir.ReadDir(maxReleaseJournalEntries + 1)
+	closeErr := dir.Close()
+	if closeErr != nil {
+		return nil, errors.Join(readErr, closeErr)
+	}
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return nil, readErr
+	}
+	if len(entries) > maxReleaseJournalEntries {
+		return nil, ErrSnapshotLeaseLimit
+	}
+	// Snapshot and validate every direct entry before callers process any of
+	// them. Hidden, noncanonical, symlinked, and non-directory entries count
+	// toward the cap and fail closed rather than escaping the scan.
+	for _, entry := range entries {
+		if !isCanonicalID(entry.Name()) {
+			return nil, ErrSnapshotLeaseInvalid
+		}
+		info, statErr := journal.Lstat(entry.Name())
+		if statErr != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 {
+			return nil, errors.Join(ErrSnapshotLeaseInvalid, statErr)
+		}
+	}
+	if err = s.validateReleaseRoot(); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+func readReleaseMarkerEntries(path string) (entries []os.DirEntry, retErr error) {
+	before, err := os.Lstat(path)
+	if err != nil || !before.IsDir() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0077 != 0 {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { retErr = errors.Join(retErr, root.Close()) }()
+	opened, err := root.Stat(".")
+	if err != nil || !os.SameFile(before, opened) {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	dir, err := root.Open(".")
+	if err != nil {
+		return nil, err
+	}
+	entries, readErr := dir.ReadDir(maxReleaseJournalEntries + 1)
+	closeErr := dir.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return nil, errors.Join(readErr, closeErr)
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	if len(entries) > maxReleaseJournalEntries {
+		return nil, ErrSnapshotLeaseLimit
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		allowed := name == leaseRecordName || name == releaseRecordName
+		if strings.HasPrefix(name, ".lease.tmp-") {
+			allowed = isCanonicalID(strings.TrimPrefix(name, ".lease.tmp-"))
+		} else if strings.HasPrefix(name, ".release.tmp-") {
+			allowed = isCanonicalID(strings.TrimPrefix(name, ".release.tmp-"))
+		}
+		if !allowed {
+			return nil, ErrSnapshotLeaseInvalid
+		}
+		info, statErr := root.Lstat(name)
+		if statErr != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 {
+			return nil, errors.Join(ErrSnapshotLeaseInvalid, statErr)
+		}
+		if strings.HasPrefix(name, ".release.tmp-") || strings.HasPrefix(name, ".lease.tmp-") {
+			if info.Size() < 0 || info.Size() > maxReleaseRecordBytes {
+				return nil, ErrSnapshotLeaseLimit
+			}
+		}
+	}
+	current, err := os.Lstat(path)
+	if err != nil || !os.SameFile(opened, current) {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	return entries, nil
+}
+
+func tombstoneMatchesReleaseRecord(t releaseTombstone, r leaseDiskRecord) bool {
+	return r.State == "RELEASING" && t.ID == r.ID && t.PinID == r.PinID && t.PlanRef == r.PlanRef && t.ManifestSHA256 == r.ManifestSHA256 && t.ReservationVersion == r.ReservationVersion && t.AttemptVersion == r.AttemptVersion && t.Disposition == r.Disposition && t.RecordVersion == r.RecordVersion && t.State == "RELEASED"
+}
+
+func releaseAttemptMatchesRecord(attempts []PinAttemptRef, r leaseDiskRecord) error {
+	count := 0
+	for _, attempt := range attempts {
+		if attempt.LeaseID != r.ID {
+			continue
+		}
+		count++
+		if attempt.State != PinAttemptCommitted || attempt.PlanRef != r.PlanRef || attempt.ManifestSHA256 != r.ManifestSHA256 || attempt.ReservationVersion != r.ReservationVersion || attempt.AttemptVersion != r.AttemptVersion {
+			return ErrSnapshotLeaseConflict
+		}
+	}
+	if count != 1 || r.PinID == "" || r.ReservationVersion == 0 || r.AttemptVersion == 0 || r.Disposition == 0 || r.RecordVersion == 0 {
+		return ErrSnapshotLeaseConflict
+	}
+	return nil
+}
+
+func exactReleaseAuthorization(a PinReleaseAuthorization, r leaseDiskRecord) bool {
+	return validRelease(a, r) && a.Disposition == r.Disposition && a.RecordVersion == r.RecordVersion
+}
+
+func (s *SnapshotLeaseStore) authorizeReleaseResume(ctx context.Context, r leaseDiskRecord, attempts []PinAttemptRef) (PinReleaseAuthorization, error) {
+	if err := ctx.Err(); err != nil {
+		return PinReleaseAuthorization{}, err
+	}
+	if r.State != "RELEASING" || !validPlanRef(r.PlanRef) || !isCanonicalID(r.PinID) || !isSHA256(r.ManifestSHA256) || r.ReservationVersion == 0 || r.AttemptVersion == 0 || r.Disposition == 0 || r.RecordVersion == 0 {
+		return PinReleaseAuthorization{}, ErrSnapshotLeaseInvalid
+	}
+	if err := releaseAttemptMatchesRecord(attempts, r); err != nil {
+		return PinReleaseAuthorization{}, err
+	}
+	decision, err := s.authority.ReconcilePin(ctx, pinRef(r))
+	if err != nil {
+		return PinReleaseAuthorization{}, err
+	}
+	if err = ctx.Err(); err != nil {
+		return PinReleaseAuthorization{}, err
+	}
+	if decision.Action != PinRelease || !exactReleaseAuthorization(decision.Authorization, r) {
+		return PinReleaseAuthorization{}, ErrSnapshotLeaseConflict
+	}
+	testhooks.At(testhooks.PhaseSnapshotReleaseOwnerAuthorized)
+	return decision.Authorization, nil
+}
+
+func liveLeaseTempBytes(path string, expected os.FileInfo, record leaseDiskRecord) (int64, error) {
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = root.Close() }()
+	opened, err := root.Stat(".")
+	if err != nil || !os.SameFile(expected, opened) {
+		return 0, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	dir, err := root.Open(".")
+	if err != nil {
+		return 0, err
+	}
+	entries, readErr := dir.ReadDir(maxReleaseJournalEntries + 1)
+	closeErr := dir.Close()
+	if closeErr != nil {
+		return 0, errors.Join(readErr, closeErr)
+	}
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return 0, readErr
+	}
+	if len(entries) > maxReleaseJournalEntries {
+		return 0, ErrSnapshotLeaseLimit
+	}
+	allowed := map[string]bool{".lease.lock": true, leaseRecordName: true}
+	for _, file := range record.Files {
+		allowed[file.Name] = true
+	}
+	var total int64
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".lease.tmp-") {
+			if !isCanonicalID(strings.TrimPrefix(name, ".lease.tmp-")) {
+				return 0, ErrSnapshotLeaseInvalid
+			}
+			info, e := root.Lstat(name)
+			if e != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 || info.Size() < 0 || info.Size() > maxReleaseRecordBytes || total > math.MaxInt64-info.Size() {
+				return 0, errors.Join(ErrSnapshotLeaseInvalid, e)
+			}
+			total += info.Size()
+			continue
+		}
+		if !allowed[name] {
+			return 0, ErrSnapshotLeaseInvalid
+		}
+		info, e := root.Lstat(name)
+		if e != nil {
+			if record.State == "RELEASING" && name != ".lease.lock" && name != leaseRecordName && errors.Is(e, os.ErrNotExist) {
+				continue
+			}
+			return 0, errors.Join(ErrSnapshotLeaseInvalid, e)
+		}
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 {
+			return 0, ErrSnapshotLeaseInvalid
+		}
+		if name != ".lease.lock" && name != leaseRecordName {
+			for _, file := range record.Files {
+				if file.Name == name {
+					d, i, idErr := fileIdentity(info)
+					if idErr != nil || d != file.Device || i != file.Inode || info.Size() != file.Size {
+						return 0, errors.Join(ErrSnapshotLeaseInvalid, idErr)
+					}
+					break
+				}
+			}
+		}
+	}
+	current, err := os.Lstat(path)
+	if err != nil || !os.SameFile(expected, current) {
+		return 0, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	return total, nil
 }
 
 func (s *SnapshotLeaseStore) usageLocked() (leaseUsage, error) {
@@ -2053,6 +2475,15 @@ func (s *SnapshotLeaseStore) usageLocked() (leaseUsage, error) {
 			u.leases++
 			u.artifacts += r.ArtifactBytes
 			u.metadata += r.MetadataBytes
+			info, statErr := os.Lstat(filepath.Join(s.root, e.Name()))
+			if statErr != nil {
+				return u, statErr
+			}
+			tempBytes, tempErr := liveLeaseTempBytes(filepath.Join(s.root, e.Name()), info, r)
+			if tempErr != nil || u.metadata > math.MaxInt64-tempBytes {
+				return u, errors.Join(ErrSnapshotLeaseInvalid, tempErr)
+			}
+			u.metadata += tempBytes
 			counted[r.ID] = true
 		}
 	}
@@ -2098,47 +2529,69 @@ func (s *SnapshotLeaseStore) usageLocked() (leaseUsage, error) {
 		u.artifacts += intent.ArtifactBytes
 		u.metadata += intent.MetadataBytes
 	}
-	journal := filepath.Join(s.root, ".releases")
-	journalInfo, err := os.Lstat(journal)
-	if err != nil || !journalInfo.IsDir() || journalInfo.Mode()&os.ModeSymlink != 0 {
-		return u, errors.Join(ErrSnapshotLeaseInvalid, err)
-	}
-	journalDevice, journalInode, err := fileIdentity(journalInfo)
-	if err != nil || journalDevice != s.releaseDevice || journalInode != s.releaseInode {
-		return u, errors.Join(ErrSnapshotLeaseInvalid, err)
-	}
-	entries, err := os.ReadDir(journal)
+	entries, err := s.readReleaseJournalEntries()
 	if err != nil {
 		return u, err
 	}
+	u.releaseEntries = len(entries)
 	for _, entry := range entries {
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
-			continue
+		marker := filepath.Join(s.root, ".releases", entry.Name())
+		markerEntries, markerErr := readReleaseMarkerEntries(marker)
+		if markerErr != nil {
+			return u, markerErr
 		}
-		marker := filepath.Join(journal, entry.Name())
 		tombstone, e := readReleaseTombstone(marker)
 		var metadataBytes int64
 		if e == nil {
 			metadataBytes = tombstone.MetadataBytes
+			if _, statErr := os.Lstat(filepath.Join(marker, leaseRecordName)); statErr == nil {
+				record, readErr := readLeaseRecord(marker, maxLeaseMetadataBytes)
+				if readErr != nil || !tombstoneMatchesReleaseRecord(tombstone, record) {
+					return u, errors.Join(ErrSnapshotLeaseInvalid, readErr)
+				}
+				if metadataBytes > math.MaxInt64-record.MetadataBytes {
+					return u, ErrSnapshotLeaseLimit
+				}
+				metadataBytes += record.MetadataBytes
+			} else if !errors.Is(statErr, os.ErrNotExist) {
+				return u, statErr
+			}
 		} else if errors.Is(e, os.ErrNotExist) {
 			r, readErr := readLeaseRecord(marker, maxLeaseMetadataBytes)
-			if readErr != nil {
-				return u, readErr
+			if readErr != nil || r.State != "RELEASING" || r.ID != entry.Name() {
+				return u, errors.Join(ErrSnapshotLeaseInvalid, readErr)
 			}
-			if r.State == "RELEASING" {
-				if _, statErr := os.Lstat(filepath.Join(s.root, r.ID)); errors.Is(statErr, os.ErrNotExist) {
-					metadataBytes = r.MetadataBytes
-				} else if statErr != nil {
-					return u, statErr
+			metadataBytes = r.MetadataBytes
+			if _, statErr := os.Lstat(filepath.Join(s.root, r.ID)); statErr == nil {
+				live, liveErr := readLeaseRecord(filepath.Join(s.root, r.ID), s.options.MaxMetadataBytesPerLease)
+				liveRaw, liveEncodeErr := encodeLeaseRecord(&live, s.options.MaxMetadataBytesPerLease)
+				markerRaw, markerEncodeErr := encodeLeaseRecord(&r, maxLeaseMetadataBytes)
+				if liveErr != nil || liveEncodeErr != nil || markerEncodeErr != nil || !bytes.Equal(liveRaw, markerRaw) {
+					return u, errors.Join(ErrSnapshotLeaseConflict, liveErr, liveEncodeErr, markerEncodeErr)
 				}
+			} else if !errors.Is(statErr, os.ErrNotExist) {
+				return u, statErr
 			}
 		} else {
 			return u, e
 		}
-		if metadataBytes > s.options.MaxMetadataBytesPerLease || u.metadata > math.MaxInt64-metadataBytes {
+		for _, markerEntry := range markerEntries {
+			if !strings.HasPrefix(markerEntry.Name(), ".release.tmp-") && !strings.HasPrefix(markerEntry.Name(), ".lease.tmp-") {
+				continue
+			}
+			info, statErr := os.Lstat(filepath.Join(marker, markerEntry.Name()))
+			if statErr != nil || info.Size() < 0 || metadataBytes > math.MaxInt64-info.Size() {
+				return u, errors.Join(ErrSnapshotLeaseInvalid, statErr)
+			}
+			metadataBytes += info.Size()
+		}
+		if u.metadata > math.MaxInt64-metadataBytes {
 			return u, ErrSnapshotLeaseLimit
 		}
 		u.metadata += metadataBytes
+	}
+	if u.metadata > s.options.MaxRetainedMetadataBytes {
+		return u, ErrSnapshotLeaseLimit
 	}
 	return u, nil
 }
@@ -2293,6 +2746,174 @@ func lockLeaseContext(ctx context.Context, dir string, shared bool) (*os.File, e
 	return f, nil
 }
 
+func (s *SnapshotLeaseStore) validateLiveLeaseIdentity(path string, record leaseDiskRecord) error {
+	if err := s.validateRoot(); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	dev, ino, err := fileIdentity(info)
+	if err != nil || dev != record.RootDevice || ino != record.RootInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	return nil
+}
+
+func lockExistingLease(ctx context.Context, path string) (*os.File, error) {
+	info, err := os.Lstat(filepath.Join(path, ".lease.lock"))
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	return lockLeaseContext(ctx, path, false)
+}
+
+func validateHeldLeaseLock(path string, lock *os.File) error {
+	if lock == nil {
+		return ErrSnapshotLeaseInvalid
+	}
+	opened, err := lock.Stat()
+	if err != nil || !opened.Mode().IsRegular() || opened.Mode().Perm()&0077 != 0 {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	current, err := os.Lstat(filepath.Join(path, ".lease.lock"))
+	if err != nil || !current.Mode().IsRegular() || current.Mode()&os.ModeSymlink != 0 || !os.SameFile(opened, current) {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	return nil
+}
+
+func sameLeaseRecord(a, b leaseDiskRecord) bool {
+	aRaw, aErr := encodeLeaseRecord(&a, maxLeaseMetadataBytes)
+	bRaw, bErr := encodeLeaseRecord(&b, maxLeaseMetadataBytes)
+	return aErr == nil && bErr == nil && bytes.Equal(aRaw, bRaw)
+}
+
+func verifyReleasingLease(ctx context.Context, path string, record leaseDiskRecord, lock *os.File, allowMissingArtifacts bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := validateLeaseRecord(record); err != nil {
+		return err
+	}
+	if record.State != "RELEASING" {
+		return ErrSnapshotLeaseConflict
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	dev, ino, err := fileIdentity(info)
+	if err != nil || dev != record.RootDevice || ino != record.RootInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	root, err := os.OpenRoot(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+	opened, err := root.Stat(".")
+	if err != nil || !os.SameFile(info, opened) {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	if err = validateHeldLeaseLock(path, lock); err != nil {
+		return err
+	}
+	leaseLockInfo, err := root.Lstat(".lease.lock")
+	if err != nil || !leaseLockInfo.Mode().IsRegular() || leaseLockInfo.Mode().Perm()&0077 != 0 {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	live, err := readLeaseRecord(path, maxLeaseMetadataBytes)
+	if err != nil || !sameLeaseRecord(live, record) {
+		return errors.Join(ErrSnapshotLeaseConflict, err)
+	}
+	entriesFile, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	entries, readErr := entriesFile.ReadDir(maxReleaseJournalEntries + 1)
+	closeErr := entriesFile.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return errors.Join(readErr, closeErr)
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if len(entries) > maxReleaseJournalEntries {
+		return ErrSnapshotLeaseLimit
+	}
+	expected := make(map[string]struct{}, len(record.Files)+2)
+	expected[".lease.lock"] = struct{}{}
+	expected[leaseRecordName] = struct{}{}
+	for _, file := range record.Files {
+		expected[file.Name] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if _, ok := expected[name]; !ok && !strings.HasPrefix(name, ".lease.tmp-") {
+			return ErrSnapshotLeaseInvalid
+		}
+		if strings.HasPrefix(name, ".lease.tmp-") && !isCanonicalID(strings.TrimPrefix(name, ".lease.tmp-")) {
+			return ErrSnapshotLeaseInvalid
+		}
+		if _, ok := seen[name]; ok {
+			return ErrSnapshotLeaseInvalid
+		}
+		seen[name] = struct{}{}
+		child, statErr := root.Lstat(name)
+		if statErr != nil || !child.Mode().IsRegular() || child.Mode()&os.ModeSymlink != 0 {
+			return errors.Join(ErrSnapshotLeaseInvalid, statErr)
+		}
+		if strings.HasPrefix(name, ".lease.tmp-") && (child.Mode().Perm()&0077 != 0 || child.Size() < 0 || child.Size() > maxLeaseMetadataBytes) {
+			return ErrSnapshotLeaseInvalid
+		}
+	}
+	for name := range expected {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		if name != ".lease.lock" && name != leaseRecordName && allowMissingArtifacts {
+			continue
+		}
+		return ErrSnapshotLeaseInvalid
+	}
+	for _, file := range record.Files {
+		f, openErr := root.Open(file.Name)
+		if errors.Is(openErr, os.ErrNotExist) && allowMissingArtifacts {
+			continue
+		}
+		if openErr != nil {
+			return openErr
+		}
+		fileInfo, statErr := f.Stat()
+		if statErr != nil {
+			_ = f.Close()
+			return statErr
+		}
+		fileDev, fileIno, idErr := fileIdentity(fileInfo)
+		if idErr != nil || !fileInfo.Mode().IsRegular() || fileInfo.Size() != file.Size || fileDev != file.Device || fileIno != file.Inode {
+			_ = f.Close()
+			return errors.Join(ErrSnapshotLeaseInvalid, idErr)
+		}
+		hash := sha256.New()
+		count, readErr := copyContext(ctx, hash, f, file.Size)
+		closeErr := f.Close()
+		if readErr != nil || closeErr != nil || count != file.Size || hex.EncodeToString(hash.Sum(nil)) != file.SHA256 {
+			return errors.Join(ErrSnapshotLeaseInvalid, readErr, closeErr)
+		}
+	}
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	current, err := os.Lstat(path)
+	if err != nil || !os.SameFile(opened, current) {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	return nil
+}
+
 func validatePlanDigest(planRef, digest string) error {
 	if !validPlanRef(planRef) || !isSHA256(digest) {
 		return ErrSnapshotLeaseInvalid
@@ -2433,57 +3054,6 @@ func (s *SnapshotLeaseStore) removeLeaseDirectory(id string, device, inode uint6
 		return err
 	}
 	dir, err := root.Open(".")
-	if err != nil {
-		return err
-	}
-	err = dir.Sync()
-	return errors.Join(err, dir.Close())
-}
-
-func (s *SnapshotLeaseStore) removeReleaseMarker(id string) (retErr error) {
-	if !isCanonicalID(id) {
-		return ErrSnapshotLeaseInvalid
-	}
-	if err := s.validateRoot(); err != nil {
-		return err
-	}
-	root, err := os.OpenRoot(s.root)
-	if err != nil {
-		return err
-	}
-	defer func() { retErr = errors.Join(retErr, root.Close()) }()
-	rootInfo, err := root.Stat(".")
-	if err != nil {
-		return err
-	}
-	d, i, err := fileIdentity(rootInfo)
-	if err != nil || d != s.rootDevice || i != s.rootInode {
-		return errors.Join(ErrSnapshotLeaseInvalid, err)
-	}
-	journal, err := root.OpenRoot(".releases")
-	if err != nil {
-		return err
-	}
-	defer func() { retErr = errors.Join(retErr, journal.Close()) }()
-	journalInfo, err := journal.Stat(".")
-	if err != nil {
-		return err
-	}
-	journalDevice, journalInode, err := fileIdentity(journalInfo)
-	if err != nil || journalDevice != s.releaseDevice || journalInode != s.releaseInode {
-		return errors.Join(ErrSnapshotLeaseInvalid, err)
-	}
-	marker, err := journal.Lstat(id)
-	if err != nil {
-		return err
-	}
-	if !marker.IsDir() || marker.Mode()&os.ModeSymlink != 0 {
-		return ErrSnapshotLeaseInvalid
-	}
-	if err = journal.RemoveAll(id); err != nil {
-		return err
-	}
-	dir, err := journal.Open(".")
 	if err != nil {
 		return err
 	}
@@ -2670,9 +3240,68 @@ func writeLeaseRecord(path string, r *leaseDiskRecord, limit int64) (retErr erro
 	if e != nil {
 		return e
 	}
-	_, we := f.Write(raw)
+	releasePhase := ""
+	pinPhase := ""
+	if r.State == "PIN_PENDING" {
+		pinPhase = "pending"
+	}
+	if r.State == "PINNED" {
+		pinPhase = "pinned"
+	}
+	if r.State == "RELEASING" {
+		if parent == ".releases" {
+			releasePhase = "marker"
+		} else {
+			releasePhase = "live"
+		}
+	}
+	snapshotLeaseCaptureTemp(path, tmp, *r, raw, root, f)
+	if pinPhase == "pending" {
+		testhooks.At(testhooks.PhaseSnapshotPinPendingTempCreated)
+	}
+	if pinPhase == "pinned" {
+		testhooks.At(testhooks.PhaseSnapshotPinPinnedTempCreated)
+	}
+	switch releasePhase {
+	case "live":
+		testhooks.At(testhooks.PhaseSnapshotReleaseLiveRecordTempCreated)
+	case "marker":
+		testhooks.At(testhooks.PhaseSnapshotReleaseMarkerRecordTempCreated)
+	}
+	n, we := f.Write(raw)
+	if we == nil && n != len(raw) {
+		we = io.ErrShortWrite
+	}
+	if we == nil && pinPhase == "pending" {
+		testhooks.At(testhooks.PhaseSnapshotPinPendingTempWritten)
+	}
+	if we == nil && pinPhase == "pinned" {
+		testhooks.At(testhooks.PhaseSnapshotPinPinnedTempWritten)
+	}
+	if we == nil {
+		switch releasePhase {
+		case "live":
+			testhooks.At(testhooks.PhaseSnapshotReleaseLiveRecordTempWritten)
+		case "marker":
+			testhooks.At(testhooks.PhaseSnapshotReleaseMarkerRecordTempWritten)
+		}
+	}
 	if we == nil {
 		we = f.Sync()
+	}
+	if we == nil {
+		if pinPhase == "pending" {
+			testhooks.At(testhooks.PhaseSnapshotPinPendingTempSynced)
+		}
+		if pinPhase == "pinned" {
+			testhooks.At(testhooks.PhaseSnapshotPinPinnedTempSynced)
+		}
+		switch releasePhase {
+		case "live":
+			testhooks.At(testhooks.PhaseSnapshotReleaseLiveRecordTempSynced)
+		case "marker":
+			testhooks.At(testhooks.PhaseSnapshotReleaseMarkerRecordTempSynced)
+		}
 	}
 	ce := f.Close()
 	if we != nil || ce != nil {
@@ -2685,11 +3314,37 @@ func writeLeaseRecord(path string, r *leaseDiskRecord, limit int64) (retErr erro
 	if e = root.Rename(tmp, leaseRecordName); e != nil {
 		return errors.Join(e, root.Remove(tmp))
 	}
+	if pinPhase == "pending" {
+		testhooks.At(testhooks.PhaseSnapshotPinPendingPublished)
+	}
+	if pinPhase == "pinned" {
+		testhooks.At(testhooks.PhaseSnapshotPinPinnedPublished)
+	}
+	switch releasePhase {
+	case "live":
+		testhooks.At(testhooks.PhaseSnapshotReleaseLiveRecordPublished)
+	case "marker":
+		testhooks.At(testhooks.PhaseSnapshotReleaseMarkerRecordPublished)
+	}
 	dir, e := root.Open(".")
 	if e != nil {
 		return e
 	}
 	e = dir.Sync()
+	if e == nil {
+		if pinPhase == "pending" {
+			testhooks.At(testhooks.PhaseSnapshotPinPendingDirectorySynced)
+		}
+		if pinPhase == "pinned" {
+			testhooks.At(testhooks.PhaseSnapshotPinPinnedDirectorySynced)
+		}
+		switch releasePhase {
+		case "live":
+			testhooks.At(testhooks.PhaseSnapshotReleaseLiveRecordDirectorySynced)
+		case "marker":
+			testhooks.At(testhooks.PhaseSnapshotReleaseMarkerRecordDirectorySynced)
+		}
+	}
 	e = errors.Join(e, dir.Close())
 	current, statErr := os.Lstat(path)
 	if statErr != nil || !os.SameFile(current, rootInfo) {
@@ -2813,6 +3468,63 @@ func validateLeaseRecord(r leaseDiskRecord) error {
 	}
 	return nil
 }
+func (s *SnapshotLeaseStore) ensureInitialReleasePeak(current, candidate leaseDiskRecord) error {
+	usage, err := s.usageLocked()
+	if err != nil {
+		return err
+	}
+	if usage.releaseEntries >= maxReleaseJournalEntries {
+		return ErrSnapshotLeaseLimit
+	}
+	candidateRaw, err := encodeLeaseRecord(&candidate, s.options.MaxMetadataBytesPerLease)
+	if err != nil {
+		return err
+	}
+	_, tombstoneRaw, err := encodeReleaseTombstone(candidate)
+	if err != nil {
+		return err
+	}
+	base := usage.metadata - current.MetadataBytes
+	if base < 0 {
+		return ErrSnapshotLeaseInvalid
+	}
+	rawBytes := int64(len(candidateRaw))
+	m := candidate.MetadataBytes
+	old := current.MetadataBytes
+	tomb := int64(len(tombstoneRaw))
+	if base > math.MaxInt64-old || old > math.MaxInt64-rawBytes || base+old > math.MaxInt64-rawBytes || m > math.MaxInt64-rawBytes || base > math.MaxInt64-m || base+m > math.MaxInt64-m || base+2*m > math.MaxInt64-tomb {
+		return ErrSnapshotLeaseLimit
+	}
+	peak := base + old + rawBytes
+	if markerTempPeak := base + m + rawBytes; markerTempPeak > peak {
+		peak = markerTempPeak
+	}
+	if twoRecordsPeak := base + 2*m; twoRecordsPeak > peak {
+		peak = twoRecordsPeak
+	}
+	if deletionPeak := base + 2*m + tomb; deletionPeak > peak {
+		peak = deletionPeak
+	}
+	if peak > s.options.MaxRetainedMetadataBytes {
+		return ErrSnapshotLeaseLimit
+	}
+	return nil
+}
+
+func (s *SnapshotLeaseStore) ensureReleasePeakBeforeOwner(ctx context.Context, current leaseDiskRecord) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	candidate := current
+	candidate.State = "RELEASING"
+	// Both currently valid dispositions have one-digit wire encodings. Use the
+	// larger valid value and the largest possible record version to reserve a
+	// conservative encoded peak without treating this value as authority.
+	candidate.Disposition = PinCommittedRestoreComplete
+	candidate.RecordVersion = math.MaxUint64
+	return s.ensureInitialReleasePeak(current, candidate)
+}
+
 func (s *SnapshotLeaseStore) releaseLease(ctx context.Context, path string, r leaseDiskRecord, a PinReleaseAuthorization) error {
 	if !validRelease(a, r) {
 		return ErrSnapshotLeaseConflict
@@ -2823,7 +3535,6 @@ func (s *SnapshotLeaseStore) releaseLease(ctx context.Context, path string, r le
 	if err := verifyRecordFiles(ctx, path, r); err != nil {
 		return err
 	}
-	previousMetadata := r.MetadataBytes
 	r.State = "RELEASING"
 	r.Disposition = a.Disposition
 	r.RecordVersion = a.RecordVersion
@@ -2831,13 +3542,8 @@ func (s *SnapshotLeaseStore) releaseLease(ctx context.Context, path string, r le
 	if _, err := encodeLeaseRecord(&candidate, s.options.MaxMetadataBytesPerLease); err != nil {
 		return err
 	}
-	usage, err := s.usageLocked()
-	if err != nil {
+	if err := s.ensureInitialReleasePeak(r, candidate); err != nil {
 		return err
-	}
-	growth := candidate.MetadataBytes - previousMetadata
-	if growth < 0 || usage.metadata > s.options.MaxRetainedMetadataBytes || growth > s.options.MaxRetainedMetadataBytes-usage.metadata {
-		return ErrSnapshotLeaseLimit
 	}
 	if err := s.validateRoot(); err != nil {
 		return err
@@ -2850,8 +3556,13 @@ func (s *SnapshotLeaseStore) releaseLease(ctx context.Context, path string, r le
 	}
 	journal := filepath.Join(s.root, ".releases")
 	marker := filepath.Join(journal, r.ID)
-	if err := os.Mkdir(marker, 0700); err != nil && !errors.Is(err, os.ErrExist) {
+	if err := os.Mkdir(marker, 0700); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return ErrSnapshotLeaseConflict
+		}
 		return err
+	} else {
+		testhooks.At(testhooks.PhaseSnapshotReleaseMarkerCreated)
 	}
 	if existing, err := readLeaseRecord(marker, maxLeaseMetadataBytes); err == nil {
 		if existing.ID != r.ID || existing.PinID != r.PinID || existing.PlanRef != r.PlanRef || existing.ManifestSHA256 != r.ManifestSHA256 || existing.ReservationVersion != r.ReservationVersion || existing.AttemptVersion != r.AttemptVersion || existing.Disposition != r.Disposition || existing.RecordVersion != r.RecordVersion || (existing.State != "RELEASING" && existing.State != "RELEASED") {
@@ -2869,62 +3580,260 @@ func (s *SnapshotLeaseStore) releaseLease(ctx context.Context, path string, r le
 	if err := fsyncDir(journal); err != nil {
 		return err
 	}
+	testhooks.At(testhooks.PhaseSnapshotReleaseMarkerJournalSynced)
 	if err := s.validateReleaseRoot(); err != nil {
+		return err
+	}
+	if err := s.ensureReleasePeakCapacity(r); err != nil {
 		return err
 	}
 	if err := s.removeLeaseDirectory(r.ID, r.RootDevice, r.RootInode); err != nil {
 		return err
 	}
+	testhooks.At(testhooks.PhaseSnapshotReleaseLiveTreeRemoved)
+	if err := fsyncDir(s.root); err != nil {
+		return err
+	}
+	testhooks.At(testhooks.PhaseSnapshotReleaseLiveTreeRootSynced)
 	r.State = "RELEASED"
-	if err := writeReleaseTombstone(marker, r); err != nil {
+	if err := s.writeReleaseTombstoneWithCapacity(marker, r); err != nil {
 		return err
 	}
 	if err := os.Remove(filepath.Join(marker, leaseRecordName)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	testhooks.At(testhooks.PhaseSnapshotReleaseMarkerRecordRemoved)
 	if err := fsyncDir(marker); err != nil {
 		return err
 	}
-	return fsyncDir(journal)
-}
-
-func (s *SnapshotLeaseStore) finishReleaseJournal(ctx context.Context) error {
-	journal := filepath.Join(s.root, ".releases")
-	if err := privatefs.ValidateDirectory(ctx, journal); err != nil {
+	testhooks.At(testhooks.PhaseSnapshotReleaseMarkerDirectorySynced)
+	if err := fsyncDir(journal); err != nil {
 		return err
 	}
-	journalInfo, err := os.Lstat(journal)
-	if err != nil || !journalInfo.IsDir() || journalInfo.Mode()&os.ModeSymlink != 0 {
+	testhooks.At(testhooks.PhaseSnapshotReleaseTombstoneJournalSynced)
+	return nil
+}
+
+func validateJournalIdentity(s *SnapshotLeaseStore, journal string) error {
+	info, err := os.Lstat(journal)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return errors.Join(ErrSnapshotLeaseInvalid, err)
 	}
-	journalDevice, journalInode, err := fileIdentity(journalInfo)
-	if err != nil || journalDevice != s.releaseDevice || journalInode != s.releaseInode {
+	dev, ino, err := fileIdentity(info)
+	if err != nil || dev != s.releaseDevice || ino != s.releaseInode {
 		return errors.Join(ErrSnapshotLeaseInvalid, err)
 	}
-	entries, err := os.ReadDir(journal)
+	return nil
+}
+func verifyRootIdentity(s *SnapshotLeaseStore, dev, ino uint64) error {
+	info, err := os.Lstat(s.root)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	d, i, err := fileIdentity(info)
+	if err != nil || d != dev || i != ino || d != s.rootDevice || i != s.rootInode {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	return nil
+}
+func verifyMarkerIdentity(path string, dev, ino uint64) error {
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	d, i, err := fileIdentity(info)
+	if err != nil || d != dev || i != ino {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	return nil
+}
+func captureLeaseRecordIdentity(path string, record leaseDiskRecord, limit int64) (os.FileInfo, error) {
+	info, err := os.Lstat(filepath.Join(path, leaseRecordName))
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 {
+		return nil, errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	current, err := readLeaseRecord(path, limit)
+	if err != nil || !sameLeaseRecord(current, record) {
+		return nil, errors.Join(ErrSnapshotLeaseConflict, err)
+	}
+	return info, nil
+}
+func verifyLeaseRecordUnchanged(path string, expected os.FileInfo, record leaseDiskRecord, limit int64) error {
+	currentInfo, err := os.Lstat(filepath.Join(path, leaseRecordName))
+	if err != nil || !os.SameFile(expected, currentInfo) || !currentInfo.Mode().IsRegular() || currentInfo.Mode()&os.ModeSymlink != 0 {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	current, err := readLeaseRecord(path, limit)
+	if err != nil || !sameLeaseRecord(current, record) {
+		return errors.Join(ErrSnapshotLeaseConflict, err)
+	}
+	return nil
+}
+func verifyReleaseReceiptUnchanged(path string, expected os.FileInfo, expectedTombstone releaseTombstone) error {
+	if err := verifyRetainedReleaseReceipt(path, expected); err != nil {
+		return err
+	}
+	current, err := readReleaseTombstone(path)
+	if err != nil || current != expectedTombstone {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	return nil
+}
+
+func verifyRetainedReleaseReceipt(path string, expected os.FileInfo) error {
+	current, err := os.Lstat(filepath.Join(path, releaseRecordName))
+	if err != nil || !current.Mode().IsRegular() || current.Mode()&os.ModeSymlink != 0 || !os.SameFile(expected, current) {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	return nil
+}
+func verifyLeaseAbsent(path string) error {
+	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return ErrSnapshotLeaseConflict
+}
+
+func verifyLeaseDirectoryIdentity(path string, expected os.FileInfo) error {
+	current, err := os.Lstat(path)
+	if err != nil || !current.IsDir() || current.Mode()&os.ModeSymlink != 0 || !os.SameFile(expected, current) {
+		return errors.Join(ErrSnapshotLeaseInvalid, err)
+	}
+	return nil
+}
+
+func encodeReleaseTombstone(r leaseDiskRecord) (releaseTombstone, []byte, error) {
+	t := releaseTombstone{Version: 1, ID: r.ID, PinID: r.PinID, PlanRef: r.PlanRef, ManifestSHA256: r.ManifestSHA256, ReservationVersion: r.ReservationVersion, AttemptVersion: r.AttemptVersion, Disposition: r.Disposition, RecordVersion: r.RecordVersion, State: "RELEASED"}
+	for i := 0; i < 8; i++ {
+		t.Checksum = ""
+		base, err := json.Marshal(t)
+		if err != nil {
+			return t, nil, err
+		}
+		t.Checksum = digestBytes(base)
+		raw, err := json.Marshal(t)
+		if err != nil {
+			return t, nil, err
+		}
+		if t.MetadataBytes == int64(len(raw)) {
+			if !validReleaseTombstone(t) {
+				return t, nil, ErrSnapshotLeaseInvalid
+			}
+			return t, raw, nil
+		}
+		t.MetadataBytes = int64(len(raw))
+	}
+	return t, nil, ErrSnapshotLeaseLimit
+}
+func (s *SnapshotLeaseStore) ensureReleasePeakCapacity(r leaseDiskRecord) error {
+	u, err := s.usageLocked()
 	if err != nil {
 		return err
 	}
+	_, raw, err := encodeReleaseTombstone(r)
+	if err != nil {
+		return err
+	}
+	if u.metadata < 0 || int64(len(raw)) > math.MaxInt64-u.metadata || u.metadata+int64(len(raw)) > s.options.MaxRetainedMetadataBytes {
+		return ErrSnapshotLeaseLimit
+	}
+	return nil
+}
+func (s *SnapshotLeaseStore) writeReleaseTombstoneWithCapacity(path string, r leaseDiskRecord) error {
+	if err := s.ensureReleasePeakCapacity(r); err != nil {
+		return err
+	}
+	return writeReleaseTombstone(path, r)
+}
+
+func (s *SnapshotLeaseStore) finishReleaseJournal(ctx context.Context, attempts []PinAttemptRef) error {
+	entries, err := s.readReleaseJournalEntries()
+	if err != nil {
+		return err
+	}
+	journal := filepath.Join(s.root, ".releases")
 	var errs []error
 	for _, entry := range entries {
 		if err = ctx.Err(); err != nil {
 			return errors.Join(errors.Join(errs...), err)
 		}
-		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") || !isCanonicalID(entry.Name()) {
 			errs = append(errs, ErrSnapshotLeaseInvalid)
 			continue
 		}
 		marker := filepath.Join(journal, entry.Name())
+		markerInfo, e := os.Lstat(marker)
+		if e != nil || !markerInfo.IsDir() || markerInfo.Mode()&os.ModeSymlink != 0 {
+			errs = append(errs, errors.Join(ErrSnapshotLeaseInvalid, e))
+			continue
+		}
+		markerDev, markerIno, e := fileIdentity(markerInfo)
+		if e != nil {
+			errs = append(errs, e)
+			continue
+		}
+		rootInfo, e := os.Lstat(s.root)
+		if e != nil || !rootInfo.IsDir() || rootInfo.Mode()&os.ModeSymlink != 0 {
+			errs = append(errs, errors.Join(ErrSnapshotLeaseInvalid, e))
+			continue
+		}
+		rootDev, rootIno, e := fileIdentity(rootInfo)
+		if e != nil || rootDev != s.rootDevice || rootIno != s.rootInode {
+			errs = append(errs, errors.Join(ErrSnapshotLeaseInvalid, e))
+			continue
+		}
+		if e = validateJournalIdentity(s, journal); e != nil {
+			errs = append(errs, e)
+			continue
+		}
 		tombstone, tombstoneErr := readReleaseTombstone(marker)
 		if tombstoneErr == nil {
-			a := tombstone.authorization()
-			if err = s.authority.CompletePinRelease(ctx, a); err != nil {
-				errs = append(errs, err)
+			r := leaseDiskRecord{ID: tombstone.ID, PinID: tombstone.PinID, PlanRef: tombstone.PlanRef, ManifestSHA256: tombstone.ManifestSHA256, ReservationVersion: tombstone.ReservationVersion, AttemptVersion: tombstone.AttemptVersion, Disposition: tombstone.Disposition, RecordVersion: tombstone.RecordVersion, State: tombstone.State, MetadataBytes: tombstone.MetadataBytes}
+			if r.ID != entry.Name() || r.State != "RELEASED" || releaseAttemptMatchesRecord(attempts, r) != nil {
+				errs = append(errs, ErrSnapshotLeaseConflict)
 				continue
 			}
-			if err = s.removeReleaseMarker(entry.Name()); err != nil {
-				errs = append(errs, err)
+			if _, statErr := os.Lstat(filepath.Join(s.root, r.ID)); !errors.Is(statErr, os.ErrNotExist) {
+				errs = append(errs, errors.Join(ErrSnapshotLeaseConflict, statErr))
+				continue
 			}
+			receiptInfo, receiptErr := os.Lstat(filepath.Join(marker, releaseRecordName))
+			if receiptErr != nil || !receiptInfo.Mode().IsRegular() || receiptInfo.Mode()&os.ModeSymlink != 0 {
+				errs = append(errs, errors.Join(ErrSnapshotLeaseInvalid, receiptErr))
+				continue
+			}
+			if e = verifyMarkerIdentity(marker, markerDev, markerIno); e != nil {
+				errs = append(errs, e)
+				continue
+			}
+			if e = s.authority.CompletePinRelease(ctx, tombstone.authorization()); e != nil {
+				errs = append(errs, e)
+				continue
+			}
+			if e = ctx.Err(); e != nil {
+				errs = append(errs, e)
+				continue
+			}
+			if e = verifyMarkerIdentity(marker, markerDev, markerIno); e != nil {
+				errs = append(errs, e)
+				continue
+			}
+			if e = verifyRootIdentity(s, rootDev, rootIno); e == nil {
+				e = validateJournalIdentity(s, journal)
+			}
+			if e == nil {
+				e = verifyReleaseReceiptUnchanged(marker, receiptInfo, tombstone)
+			}
+			if e == nil {
+				e = verifyLeaseAbsent(filepath.Join(s.root, r.ID))
+			}
+			if e != nil {
+				errs = append(errs, e)
+				continue
+			}
+			// Keep the exact receipt directory: the owner retains the committed attempt.
 			continue
 		}
 		if !errors.Is(tombstoneErr, os.ErrNotExist) {
@@ -2932,87 +3841,142 @@ func (s *SnapshotLeaseStore) finishReleaseJournal(ctx context.Context) error {
 			continue
 		}
 		r, e := readLeaseRecord(marker, maxLeaseMetadataBytes)
-		if errors.Is(e, os.ErrNotExist) {
-			live := filepath.Join(s.root, entry.Name())
-			pending, readErr := readLeaseRecord(live, s.options.MaxMetadataBytesPerLease)
-			if readErr == nil && pending.ID == entry.Name() && pending.State == "RELEASING" {
-				lk, lockErr := lockLeaseContext(ctx, live, false)
-				if lockErr == nil {
-					auth := PinReleaseAuthorization{PinID: pending.PinID, PlanRef: pending.PlanRef, ManifestSHA256: pending.ManifestSHA256, Disposition: pending.Disposition, RecordVersion: pending.RecordVersion}
-					lockErr = s.releaseLease(ctx, live, pending, auth)
-					lockErr = errors.Join(lockErr, unlockFile(lk), lk.Close())
-				}
-				if lockErr != nil {
-					errs = append(errs, lockErr)
-				}
-				continue
-			}
-			errs = append(errs, errors.Join(ErrSnapshotLeaseInvalid, e, readErr))
+		if e != nil || r.ID != entry.Name() || r.State != "RELEASING" {
+			errs = append(errs, errors.Join(ErrSnapshotLeaseInvalid, e))
 			continue
 		}
+		if e = releaseAttemptMatchesRecord(attempts, r); e != nil {
+			errs = append(errs, e)
+			continue
+		}
+		markerRecordInfo, e := captureLeaseRecordIdentity(marker, r, maxLeaseMetadataBytes)
 		if e != nil {
 			errs = append(errs, e)
 			continue
 		}
-		if r.PinID == "" || !validPlanRef(r.PlanRef) || !isSHA256(r.ManifestSHA256) || r.Disposition == 0 || r.RecordVersion == 0 {
-			errs = append(errs, ErrSnapshotLeaseInvalid)
+		live := filepath.Join(s.root, r.ID)
+		liveInfo, liveErr := os.Lstat(live)
+		var lock *os.File
+		if liveErr == nil {
+			if !liveInfo.IsDir() || liveInfo.Mode()&os.ModeSymlink != 0 {
+				errs = append(errs, ErrSnapshotLeaseInvalid)
+				continue
+			}
+			lock, e = lockLeaseContext(ctx, live, false)
+			if e != nil {
+				errs = append(errs, e)
+				continue
+			}
+		} else if !errors.Is(liveErr, os.ErrNotExist) {
+			errs = append(errs, liveErr)
 			continue
 		}
-		a := PinReleaseAuthorization{PinID: r.PinID, PlanRef: r.PlanRef, ManifestSHA256: r.ManifestSHA256, Disposition: r.Disposition, RecordVersion: r.RecordVersion}
-		if r.State == "RELEASING" {
-			live := filepath.Join(s.root, r.ID)
-			if _, e = os.Lstat(live); e == nil {
-				lk, le := lockLeaseContext(ctx, live, false)
-				if le != nil {
-					errs = append(errs, le)
-					continue
-				}
-				le = verifyRecordFiles(ctx, live, r)
-				if le == nil {
-					le = s.validateRoot()
-				}
-				if le == nil {
-					le = s.removeLeaseDirectory(r.ID, r.RootDevice, r.RootInode)
-				}
-				le = errors.Join(le, unlockFile(lk), lk.Close())
-				if le != nil {
-					errs = append(errs, le)
-					continue
-				}
-				if le = fsyncDir(s.root); le != nil {
-					errs = append(errs, le)
-					continue
-				}
-			} else if !errors.Is(e, os.ErrNotExist) {
-				errs = append(errs, e)
-				continue
-			}
-			r.State = "RELEASED"
-			if e = writeReleaseTombstone(marker, r); e != nil {
-				errs = append(errs, e)
-				continue
-			}
-			if e = os.Remove(filepath.Join(marker, leaseRecordName)); e != nil && !errors.Is(e, os.ErrNotExist) {
-				errs = append(errs, e)
-				continue
-			}
-			if e = fsyncDir(marker); e != nil {
-				errs = append(errs, e)
-				continue
-			}
-			if e = fsyncDir(journal); e != nil {
-				errs = append(errs, e)
-				continue
-			}
-		} else if r.State != "RELEASED" {
-			errs = append(errs, ErrSnapshotLeaseInvalid)
-			continue
+		var liveRecordInfo os.FileInfo
+		if lock != nil {
+			liveRecordInfo, e = captureLeaseRecordIdentity(live, r, maxLeaseMetadataBytes)
 		}
-		if e = s.authority.CompletePinRelease(ctx, a); e != nil {
+		a, authErr := s.authorizeReleaseResume(ctx, r, attempts)
+		if e == nil {
+			e = authErr
+		}
+		if e == nil {
+			e = verifyLeaseRecordUnchanged(marker, markerRecordInfo, r, maxLeaseMetadataBytes)
+		}
+		if e == nil {
+			e = verifyMarkerIdentity(marker, markerDev, markerIno)
+		}
+		if e == nil {
+			e = verifyRootIdentity(s, rootDev, rootIno)
+		}
+		if e == nil && lock != nil {
+			e = verifyLeaseDirectoryIdentity(live, liveInfo)
+		}
+		if e == nil && lock != nil {
+			e = verifyLeaseRecordUnchanged(live, liveRecordInfo, r, maxLeaseMetadataBytes)
+		}
+		if e != nil {
+			if lock != nil {
+				_ = unlockFile(lock)
+				_ = lock.Close()
+			}
 			errs = append(errs, e)
 			continue
 		}
-		if e = s.removeReleaseMarker(entry.Name()); e != nil {
+		if lock != nil {
+			e = verifyReleasingLease(ctx, live, r, lock, true)
+			if e == nil {
+				e = s.ensureReleasePeakCapacity(r)
+			}
+			if e == nil {
+				e = s.removeLeaseDirectory(r.ID, r.RootDevice, r.RootInode)
+				testhooks.At(testhooks.PhaseSnapshotReleaseLiveTreeRemoved)
+			}
+			if e == nil {
+				e = fsyncDir(s.root)
+				if e == nil {
+					testhooks.At(testhooks.PhaseSnapshotReleaseLiveTreeRootSynced)
+				}
+			}
+			e = errors.Join(e, unlockFile(lock), lock.Close())
+		}
+		if e == nil {
+			e = s.writeReleaseTombstoneWithCapacity(marker, r)
+		}
+		if e == nil {
+			e = verifyMarkerIdentity(marker, markerDev, markerIno)
+		}
+		if e == nil {
+			e = os.Remove(filepath.Join(marker, leaseRecordName))
+			if e == nil {
+				testhooks.At(testhooks.PhaseSnapshotReleaseMarkerRecordRemoved)
+			}
+		}
+		if e == nil {
+			e = fsyncDir(marker)
+			if e == nil {
+				testhooks.At(testhooks.PhaseSnapshotReleaseMarkerDirectorySynced)
+			}
+		}
+		if e == nil {
+			e = fsyncDir(journal)
+			if e == nil {
+				testhooks.At(testhooks.PhaseSnapshotReleaseTombstoneJournalSynced)
+			}
+		}
+		var receiptInfo os.FileInfo
+		if e == nil {
+			receiptInfo, e = os.Lstat(filepath.Join(marker, releaseRecordName))
+		}
+		var expectedTombstone releaseTombstone
+		if e == nil && (!receiptInfo.Mode().IsRegular() || receiptInfo.Mode()&os.ModeSymlink != 0) {
+			e = ErrSnapshotLeaseInvalid
+		}
+		if e == nil {
+			expectedTombstone, e = readReleaseTombstone(marker)
+		}
+		if e == nil {
+			testhooks.At(testhooks.PhaseSnapshotReleaseOwnerCompletionStarting)
+			e = s.authority.CompletePinRelease(ctx, a)
+			if e == nil {
+				testhooks.At(testhooks.PhaseSnapshotReleaseOwnerCompleted)
+			}
+		}
+		if e == nil {
+			e = verifyReleaseReceiptUnchanged(marker, receiptInfo, expectedTombstone)
+		}
+		if e == nil {
+			e = verifyMarkerIdentity(marker, markerDev, markerIno)
+		}
+		if e == nil {
+			e = verifyRootIdentity(s, rootDev, rootIno)
+		}
+		if e == nil {
+			e = validateJournalIdentity(s, journal)
+		}
+		if e == nil {
+			e = verifyLeaseAbsent(live)
+		}
+		if e != nil {
 			errs = append(errs, e)
 		}
 	}

@@ -1,0 +1,13 @@
+# Recovery pin-owner source freeze
+
+Contract ID: `recovery-pin-owner-v1`. Exact proposed contract `6588d950610a9fca704d9afcd342f4079f64144e`, SHA-256 `d966f4d2ad7ce9575d226c4cc4e07981b84a3bfbe53c898c88829fc52b566001`, has independent CLEAR for this narrow component. Earlier c7 HOLD remains banked. Root holds narrow claim `R-recovery-pin-owner-core` at `8559348e04c74ec01f513f7157b483528143fbca`; logical T23.50 remains open.
+
+Own only new `internal/hosted/recovery/pin_owner*.go` and `docs/plans/recovery-pin-owner-implementation-receipt-2026-10-03.md`. No existing recovery, backup, contracts, schema/module, CLI, service or provider files may change. Implement the exact reviewed options, opaque reservation getters, immutable canonical event history, bounded replay, operation retry, exact CAS and tombstones, context-aware process locks, identity checks, proof consumption and pre-effect abandonment/release.
+
+Factory-only publication is mandatory: keep the owner private and unused until the backup four-argument constructor validates the exact retained token and the final root/lock identity tuple check passes. This source component must not claim to supply or enable a production factory. No default identity, fake options, permissive verification boolean or reflection into backup identity is allowed. Tests construct the real backup/owner pair and complete the prescribed gate before invoking lifecycle operations.
+
+This owner cannot authorize COMMITTED_RESTORE_COMPLETE release, persist READY, accept unknown future event schemas, approve effects or replace the eventual full store. The future full store must reuse the exact single owner history/binding and independently qualify all new transition/proof owners. Missing approval, ancestry, runtime, provider and quota dependencies remain open. Source delivery still requires current-byte checks, independent exact-head review, normal merge and landed proof.
+
+## Exact pin tuple clarification
+
+RESERVED and PIN_PENDING have no committed PinID in v1 owner history. ReconcilePin cannot authenticate an arbitrary nonzero producer SnapshotPinRef in those states and must return Conflict rather than treat plan/digest alone as an exact pin. The earlier proposed matrix's broad active-state PinKeep wording is narrowed accordingly. Actual pending producer recovery stays on exact FindPinAttempt/ResumePin; committed exact PINNED remains PinKeep. This grants no new authority or state and preserves mandatory exact-tuple validation. Independent read-only semantic review agrees; tested source correction and renewed exact-head review remain required.

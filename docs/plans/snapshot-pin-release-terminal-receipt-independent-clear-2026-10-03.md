@@ -1,0 +1,13 @@
+# Independent review — corrected terminal release receipt amendment
+
+**Verdict: CLEAR for this proposed contract amendment at `d1c62f31481c1aa096a2459e26ae93ec9a63d0e9`.** This authorizes only the coordinator's subsequent narrow producer implementation freeze. It does not qualify source, release behavior, or the wider recovery system.
+
+The previous HOLD is closed. The amendment now names a finite 4096-entry direct `.releases` protocol cap and requires replacing both unbounded source scans (`usageLocked` and `finishReleaseJournal`) with fresh identity-validated directory descriptors and bounded `ReadDir(4097)`. It counts all direct entries before semantic handling and explicitly rejects overflow, hidden/unknown, symlinked, and non-directory entries without processing or deleting them. The value is grounded in the existing producer `maxSnapshotPinAttempts = 4096` ceiling (`internal/hosted/backup/snapshot_lease.go:48`), not a new public option. Stage refuses before publication at capacity; a release at capacity can only retry its exact already-existing marker/receipt.
+
+The retained receipt preserves the exact tuple needed by the owner-list pair check. Subsequent reconciliation requires exact owner acknowledgement and an absent live lease; the local marker stays integrity/correspondence evidence and never becomes release authority. The rule correctly forbids omission from the owner list, skipped pair checks, guessed receipt creation, compaction, or automatic orphan repair.
+
+Metadata accounting now specifies the complete simultaneous transition footprint using canonical encoders: live `RELEASING` metadata, marker record, final `RELEASED` receipt, and temporary writes, in addition to unrelated retained metadata. It requires checked arithmetic, charge-until-replaced/removed, headroom checks before release begins and before deletion, and refuses before destructive work if the budget cannot fit. It makes no future deletion credit and allows conservative over-reservation. This closes the under-accounted peak from the prior draft.
+
+The required controls cover the source-level failure path: real owner/producer release followed by repeated reconcile, reopen and close, later Stage; terminal removal as a compiled behavioral RED; exact acknowledgement/crash boundaries; 4096/4097 and unknown-entry behavior; and peak-capacity refusal before mutation. No build was run in this review, and those controls remain required source-acceptance evidence.
+
+Source qualification remains open, including the prior pin-owner findings, producer primitive crash boundaries, exact-head review, and full-module checks. No source was edited and no build was run.
