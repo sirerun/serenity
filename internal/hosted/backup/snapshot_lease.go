@@ -3262,9 +3262,10 @@ func writeLeaseRecord(path string, r *leaseDiskRecord, limit int64) (retErr erro
 	if pinPhase == "pinned" {
 		testhooks.At(testhooks.PhaseSnapshotPinPinnedTempCreated)
 	}
-	if releasePhase == "live" {
+	switch releasePhase {
+	case "live":
 		testhooks.At(testhooks.PhaseSnapshotReleaseLiveRecordTempCreated)
-	} else if releasePhase == "marker" {
+	case "marker":
 		testhooks.At(testhooks.PhaseSnapshotReleaseMarkerRecordTempCreated)
 	}
 	n, we := f.Write(raw)
@@ -3278,9 +3279,10 @@ func writeLeaseRecord(path string, r *leaseDiskRecord, limit int64) (retErr erro
 		testhooks.At(testhooks.PhaseSnapshotPinPinnedTempWritten)
 	}
 	if we == nil {
-		if releasePhase == "live" {
+		switch releasePhase {
+		case "live":
 			testhooks.At(testhooks.PhaseSnapshotReleaseLiveRecordTempWritten)
-		} else if releasePhase == "marker" {
+		case "marker":
 			testhooks.At(testhooks.PhaseSnapshotReleaseMarkerRecordTempWritten)
 		}
 	}
@@ -3294,9 +3296,10 @@ func writeLeaseRecord(path string, r *leaseDiskRecord, limit int64) (retErr erro
 		if pinPhase == "pinned" {
 			testhooks.At(testhooks.PhaseSnapshotPinPinnedTempSynced)
 		}
-		if releasePhase == "live" {
+		switch releasePhase {
+		case "live":
 			testhooks.At(testhooks.PhaseSnapshotReleaseLiveRecordTempSynced)
-		} else if releasePhase == "marker" {
+		case "marker":
 			testhooks.At(testhooks.PhaseSnapshotReleaseMarkerRecordTempSynced)
 		}
 	}

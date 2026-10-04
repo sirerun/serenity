@@ -81,13 +81,13 @@ func TestSnapshotLeaseCrashRestartAfterCapturedPartialRelease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer armR.Close()
-	defer armW.Close()
+	defer func() { _ = armR.Close() }()
+	defer func() { _ = armW.Close() }()
 	statusR, statusW, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer statusR.Close()
+	defer func() { _ = statusR.Close() }()
 	if _, err = fmt.Fprintf(armW, "arm %s pause\nstart\n", testhooks.PhaseSnapshotReleaseMarkerJournalSynced); err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 			if captureFile == nil {
 				t.Fatal("missing inherited canonical temp capture pipe")
 			}
-			defer captureFile.Close()
+			defer func() { _ = captureFile.Close() }()
 			restoreCaptureObserver := setSnapshotLeaseTempCaptureObserverForTest(func(capture snapshotLeaseTempCapture) {
 				matches := false
 				switch target {
@@ -318,18 +318,18 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer armR.Close()
-			defer armW.Close()
+			defer func() { _ = armR.Close() }()
+			defer func() { _ = armW.Close() }()
 			statusR, statusW, err := os.Pipe()
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer statusR.Close()
+			defer func() { _ = statusR.Close() }()
 			stateR, stateW, err := os.Pipe()
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer stateR.Close()
+			defer func() { _ = stateR.Close() }()
 			if _, err = fmt.Fprintf(armW, "arm %s pause\nstart\n", tc.name); err != nil {
 				t.Fatal(err)
 			}
@@ -341,7 +341,7 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer captureR.Close()
+			defer func() { _ = captureR.Close() }()
 			cmd.ExtraFiles = []*os.File{armR, statusW, stateW, captureW}
 			cmd.Env = append(os.Environ(), "SERENITY_HOSTED_TESTHOOKS_ARM_FD=3", "SERENITY_HOSTED_TESTHOOKS_STATUS_FD=4", "SERENITY_TEST_AUTHORITY_STATE_FD=5", "SERENITY_TEST_SNAPSHOT_PREFIX_KIND="+tc.prefix, "SERENITY_TEST_SNAPSHOT_MATRIX_CHILD=1", "SERENITY_TEST_SNAPSHOT_MODE="+tc.mode, "SERENITY_TEST_LEASE_ROOT="+root, "SERENITY_TEST_SNAPSHOT="+snapshot, "SERENITY_TEST_MANIFEST_SHA="+digest)
 			if err = cmd.Start(); err != nil {
