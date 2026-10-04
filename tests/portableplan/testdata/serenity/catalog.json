@@ -41,43 +41,93 @@
       "id": "SPOL-04",
       "path": "invalid/missing-alternative-approval.json",
       "valid": false,
-      "rule": "alternative-approval-reference-missing"
+      "rule": "alternative-approval-reference-missing",
+      "expectedFindings": [
+        {
+          "code": "alternative_approval_invalid",
+          "path": "/evaluations/0/alternative/approvalEvidenceId"
+        }
+      ]
     },
     {
       "id": "SPOL-05",
       "path": "invalid/revoked-alternative-approval.json",
       "valid": false,
-      "rule": "revoked-approval-cannot-satisfy"
+      "rule": "revoked-approval-cannot-satisfy",
+      "expectedFindings": [
+        {
+          "code": "alternative_approval_invalid",
+          "path": "/evaluations/0/alternative/approvalEvidenceId"
+        }
+      ]
     },
     {
       "id": "SPOL-06",
       "path": "invalid/stale-source-head-success.json",
       "valid": false,
-      "rule": "stale-source-head-cannot-satisfy"
+      "rule": "stale-source-head-cannot-satisfy",
+      "expectedFindings": [
+        {
+          "code": "alternative_local_observation_missing",
+          "path": "/evaluations/0/alternative"
+        }
+      ]
     },
     {
       "id": "SPOL-07",
       "path": "invalid/stale-policy-revision-success.json",
       "valid": false,
-      "rule": "stale-policy-cannot-satisfy"
+      "rule": "stale-policy-cannot-satisfy",
+      "expectedFindings": [
+        {
+          "code": "alternative_local_observation_missing",
+          "path": "/evaluations/0/alternative"
+        }
+      ]
     },
     {
       "id": "SCTX-04",
       "path": "invalid/context-as-execution-success.json",
       "valid": false,
-      "rule": "context-kind-cannot-satisfy-execution"
+      "rule": "context-kind-cannot-satisfy-execution",
+      "expectedFindings": [
+        {
+          "code": "qualifying_evidence_missing",
+          "path": "/evaluations/0/evidenceIds"
+        }
+      ]
     },
     {
       "id": "SCTX-05",
       "path": "invalid/context-as-check-or-approval-success.json",
       "valid": false,
-      "rule": "context-kind-cannot-satisfy-check-or-approval"
+      "rule": "context-kind-cannot-satisfy-check-or-approval",
+      "expectedFindings": [
+        {
+          "code": "qualifying_evidence_missing",
+          "path": "/evaluations/0/evidenceIds"
+        },
+        {
+          "code": "qualifying_evidence_missing",
+          "path": "/evaluations/1/evidenceIds"
+        }
+      ]
     },
     {
       "id": "SPOL-08",
       "path": "invalid/source-merge-alternative-as-deployment.json",
       "valid": false,
-      "rule": "source-merge-alternative-cannot-satisfy-deployment"
+      "rule": "source-merge-alternative-cannot-satisfy-deployment",
+      "expectedFindings": [
+        {
+          "code": "unsupported_alternative",
+          "path": "/evaluations/0/alternative"
+        },
+        {
+          "code": "deployment_approval_missing",
+          "path": "/evaluations/0/approvalEvidenceId"
+        }
+      ]
     },
     {
       "id": "SAUD-01",

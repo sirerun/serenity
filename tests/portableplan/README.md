@@ -65,3 +65,9 @@ the binary digest; that digest must be bound separately to qualified source.
 
 Shared machine load/build admission and external-SSD cache/temp rules apply.
 No checks have passed merely because their command is documented here.
+
+The qualified CLI protocol writes JSON to stdout and diagnostics to stderr.
+Validation acceptance exits 0; validation rejection exits 2. A nonzero exit
+counts as an expected rejection only with the pinned structured report and
+validation findings. Serenity negative cases also require their intended
+rejection codes/paths, so unrelated failures cannot satisfy those cases.

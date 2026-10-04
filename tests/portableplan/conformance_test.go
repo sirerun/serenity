@@ -34,10 +34,16 @@ type manifestEntry struct {
 }
 
 type fixtureCase struct {
-	ID    string `json:"id"`
-	Path  string `json:"path"`
-	Valid bool   `json:"valid"`
-	Rule  string `json:"rule"`
+	ID               string             `json:"id"`
+	Path             string             `json:"path"`
+	Valid            bool               `json:"valid"`
+	Rule             string             `json:"rule"`
+	ExpectedFindings []validatorFinding `json:"expectedFindings,omitempty"`
+}
+
+type validatorFinding struct {
+	Code string `json:"code"`
+	Path string `json:"path"`
 }
 
 func readJSON(t *testing.T, path string, value any) {
@@ -290,22 +296,26 @@ func TestValidExamplesMatchPinnedStructuralSchema(t *testing.T) {
 }
 
 type validatorReport struct {
-	Version   string `json:"contractVersion"`
-	Digest    string `json:"contractDigest"`
-	Valid     *bool  `json:"valid"`
-	Authority *bool  `json:"authorityAuthenticated"`
-	Findings  []struct {
-		Code string `json:"code"`
-	} `json:"findings"`
+	Version   string             `json:"contractVersion"`
+	Digest    string             `json:"contractDigest"`
+	Valid     *bool              `json:"valid"`
+	Authority *bool              `json:"authorityAuthenticated"`
+	Findings  []validatorFinding `json:"findings"`
 }
 
 func runValidator(t *testing.T, binary string, args ...string) ([]byte, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	output, err := exec.CommandContext(ctx, binary, args...).CombinedOutput()
+	command := exec.CommandContext(ctx, binary, args...)
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	output, err := command.Output()
 	if ctx.Err() != nil {
 		t.Fatalf("validator timed out: %v", ctx.Err())
+	}
+	if stderr.Len() != 0 {
+		t.Logf("validator stderr: %s", stderr.String())
 	}
 	return output, err
 }
@@ -363,13 +373,25 @@ func TestOwningSemanticConformance(t *testing.T) {
 					return
 				}
 				var exitErr *exec.ExitError
-				if !errors.As(runErr, &exitErr) || exitErr.ExitCode() != 1 || len(report.Findings) == 0 {
+				if !errors.As(runErr, &exitErr) || exitErr.ExitCode() != 2 || len(report.Findings) == 0 {
 					t.Fatalf("invalid fixture lacked a validation rejection: %v: %s", runErr, output)
 				}
 				for _, finding := range report.Findings {
 					switch finding.Code {
 					case "", "schema_compile", "schema_init", "contract_digest_mismatch", "contract_unavailable", "duplicate_json_member", "invalid_json":
 						t.Fatalf("infrastructure/input failure is not conformance: %s", output)
+					}
+				}
+				for _, expected := range fixture.ExpectedFindings {
+					found := false
+					for _, actual := range report.Findings {
+						if actual == expected {
+							found = true
+							break
+						}
+					}
+					if !found {
+						t.Fatalf("missing expected rejection %s at %s: %s", expected.Code, expected.Path, output)
 					}
 				}
 			})
