@@ -29,3 +29,15 @@
   candidate contract is in preparation. Contract wait deadline: 2026-10-04
   06:35 UTC for the initial handoff, then emit one dependency checkpoint if
   still unavailable. Do not bypass the steward by inventing wire fields.
+- Draft PR: https://github.com/sirerun/serenity/pull/360. Body records Ajent MCP
+  unavailability and pending implementation/qualification explicitly.
+- Preliminary independent documentation/source review: reviewer
+  `/root/serenity_conformance_review`, exact head
+  `efe1d5eeb0b71a98f86bbcfd554909da6ff850da`, base as above, no blocking finding.
+  Historical GitHub non-start annotation independently checked; no Go builds,
+  final conformance acceptance or runtime qualification. T-PC-SERENITY.5 remains
+  pending the implemented exact-head candidate.
+- Candidate Wazi `0d23e9a0b7d659fe48120fa836116eb9885e193c`, experimental 0.0.1,
+  source-reviewed against consumer requirements. Reported duplicate catalog
+  path in manifest to the steward before freeze. No candidate pin or adapter
+  implementation inferred from this preliminary review.
