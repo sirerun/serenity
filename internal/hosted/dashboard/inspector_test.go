@@ -49,7 +49,7 @@ func TestInspectorYearFilterIncludesExplicitUnknownAndEntityEarliestDate(t *test
 		{ID: "source:four", Type: "source", ObservedAt: &known},
 		{ID: "claim:unknown", Type: "claim"},
 	}
-	if got := filterInspectorNodes(nodes, inspectorFilters{Year: "2024"}); len(got) != 2 || got[0].ID != "fact:one" || got[1].ID != "entity:three" {
+	if got := filterInspectorNodes(nodes, inspectorFilters{Year: "2024"}); len(got) != 2 || got[0].ID != "entity:three" || got[1].ID != "fact:one" {
 		t.Fatalf("known-year nodes = %#v", got)
 	}
 	if got := filterInspectorNodes(nodes, inspectorFilters{Year: "unknown"}); len(got) != 1 || got[0].ID != "claim:unknown" {
@@ -77,13 +77,24 @@ func TestInspectorUnauthenticatedAPIReturnsJSON401WithoutRedirect(t *testing.T) 
 func TestInspectorArrayFieldsEncodeAsEmptyArrays(t *testing.T) {
 	page := inspectorGraphPage{Nodes: []inspectorNode{}, ContextNodes: []inspectorNode{}, Edges: []inspectorEdge{}}
 	detail := inspectorNodeDetail{RelatedNodes: []inspectorNode{}, Edges: []inspectorEdge{}}
+	wantFields := map[string][]string{
+		"page":   {"nodes", "contextNodes", "edges"},
+		"detail": {"relatedNodes", "edges"},
+		"brains": {"brains"},
+	}
 	for name, value := range map[string]any{"page": page, "detail": detail, "brains": inspectorBrainList{Brains: []inspectorBrain{}}} {
 		data, err := json.Marshal(value)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(data), `:null`) {
-			t.Errorf("%s serialized an array as null: %s", name, data)
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(data, &fields); err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range wantFields[name] {
+			if raw := fields[key]; string(raw) != "[]" {
+				t.Errorf("%s.%s = %s, want empty array", name, key, raw)
+			}
 		}
 	}
 }
