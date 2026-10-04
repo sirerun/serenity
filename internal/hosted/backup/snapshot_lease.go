@@ -3471,7 +3471,7 @@ func (s *SnapshotLeaseStore) ensureInitialReleasePeak(current, candidate leaseDi
 	if usage.releaseEntries >= maxReleaseJournalEntries {
 		return ErrSnapshotLeaseLimit
 	}
-	_, candidateRaw, err := encodeLeaseRecord(&candidate, s.options.MaxMetadataBytesPerLease)
+	candidateRaw, err := encodeLeaseRecord(&candidate, s.options.MaxMetadataBytesPerLease)
 	if err != nil {
 		return err
 	}
@@ -3909,7 +3909,7 @@ func (s *SnapshotLeaseStore) finishReleaseJournal(ctx context.Context, attempts 
 			if e == nil {
 				e = fsyncDir(s.root)
 				if e == nil {
-					testhooks.At(testhooks.PhaseSnapshotReleaseRootSynced)
+					testhooks.At(testhooks.PhaseSnapshotReleaseLiveTreeRootSynced)
 				}
 			}
 			e = errors.Join(e, unlockFile(lock), lock.Close())
