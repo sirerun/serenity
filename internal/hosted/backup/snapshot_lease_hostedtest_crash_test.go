@@ -82,15 +82,13 @@ func TestSnapshotLeaseCrashRestartAfterCapturedPartialRelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer armR.Close()
+	defer armW.Close()
 	statusR, statusW, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer statusR.Close()
 	if _, err = fmt.Fprintf(armW, "arm %s pause\nstart\n", testhooks.PhaseSnapshotReleaseMarkerJournalSynced); err != nil {
-		t.Fatal(err)
-	}
-	if err = armW.Close(); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -112,6 +110,7 @@ func TestSnapshotLeaseCrashRestartAfterCapturedPartialRelease(t *testing.T) {
 			_ = cmd.Wait()
 			waited = true
 		}
+		_ = armW.Close()
 	}
 	t.Cleanup(stop)
 	statusCh := make(chan struct {
@@ -203,6 +202,7 @@ func TestSnapshotLeaseCrashRestartAfterCapturedPartialRelease(t *testing.T) {
 	if err = cmd.Process.Kill(); err != nil {
 		t.Fatal(err)
 	}
+	_ = armW.Close()
 	waitErr := cmd.Wait()
 	waited = true
 	if waitErr == nil {
@@ -319,6 +319,7 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer armR.Close()
+			defer armW.Close()
 			statusR, statusW, err := os.Pipe()
 			if err != nil {
 				t.Fatal(err)
@@ -330,9 +331,6 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 			}
 			defer stateR.Close()
 			if _, err = fmt.Fprintf(armW, "arm %s pause\nstart\n", tc.name); err != nil {
-				t.Fatal(err)
-			}
-			if err = armW.Close(); err != nil {
 				t.Fatal(err)
 			}
 			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestSnapshotLeaseCrashBarrierMatrix$")
@@ -359,6 +357,7 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 					_ = cmd.Wait()
 					waited = true
 				}
+				_ = armW.Close()
 			}
 			t.Cleanup(stop)
 			type result struct {
@@ -437,6 +436,7 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 			if err = cmd.Process.Kill(); err != nil {
 				t.Fatal(err)
 			}
+			_ = armW.Close()
 			waitErr := cmd.Wait()
 			waited = true
 			if waitErr == nil {
@@ -498,12 +498,21 @@ func TestSnapshotLeaseCrashBarrierMatrix(t *testing.T) {
 					t.Fatalf("pending pin was not preserved after restart: current=%+v err=%v", current, findErr)
 				}
 				record, readErr := readLeaseRecord(filepath.Join(root, state.Attempt.LeaseID), options.MaxMetadataBytesPerLease)
-				if readErr != nil || record.State != "STAGED" {
-					t.Fatalf("pre-publication pending pin did not retain local STAGED record: state=%s err=%v", record.State, readErr)
+				if readErr != nil {
+					t.Fatalf("read retained local pending pin record: %v", readErr)
 				}
-				afterRestart, snapshotErr := snapshotLeaseCrashTree(root)
-				if snapshotErr != nil || !reflect.DeepEqual(beforeRestart, afterRestart) {
-					t.Fatalf("pre-publication pending pin changed retained crash state: snapshot=%v", snapshotErr)
+				switch record.State {
+				case "STAGED":
+					afterRestart, snapshotErr := snapshotLeaseCrashTree(root)
+					if snapshotErr != nil || !reflect.DeepEqual(beforeRestart, afterRestart) {
+						t.Fatalf("pre-publication pending pin changed retained crash state: snapshot=%v", snapshotErr)
+					}
+				case "PIN_PENDING":
+					if record.PinID == "" || record.AttemptVersion != state.Attempt.AttemptVersion || record.ReservationVersion != state.Attempt.ReservationVersion {
+						t.Fatalf("published pending pin record does not match owner state: record=%+v attempt=%+v", record, state.Attempt)
+					}
+				default:
+					t.Fatalf("unexpected local state for authoritative pending pin: %s", record.State)
 				}
 				if restartAuthority.completes != 0 {
 					t.Fatalf("pre-publication pending pin performed owner completion %d times", restartAuthority.completes)
@@ -611,7 +620,12 @@ func writeSnapshotLeaseCrashTempPrefix(root string, state leaseTestAuthorityStat
 	if strings.HasPrefix(kind, "release-") && (capture.Record.PinID != state.Authorization.PinID || capture.Record.RecordVersion != state.Authorization.RecordVersion || capture.Record.Disposition != state.Authorization.Disposition) {
 		return ErrSnapshotLeaseConflict
 	}
-	if kind == "pin-pending" && (capture.Record.State != "PIN_PENDING" || capture.Record.PinID == "") || kind == "pin-pinned" && capture.Record.State != "PINNED" || kind == "release-live" && capture.Record.State != "RELEASING" || kind == "release-marker" && capture.Record.State != "RELEASING" || kind == "release-tombstone" && capture.Record.State != "RELEASING" {
+	wantState := map[string]string{
+		"pin-pending": "PIN_PENDING", "pin-pinned": "PINNED",
+		"release-live": "RELEASING", "release-marker": "RELEASING",
+		"release-tombstone": "RELEASED",
+	}[kind]
+	if capture.Record.State != wantState || kind == "pin-pending" && capture.Record.PinID == "" {
 		return ErrSnapshotLeaseConflict
 	}
 	// RootDevice/RootInode bind the lease directory, not the store root or

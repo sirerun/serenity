@@ -39,17 +39,28 @@ type leaseTestAuthorityState struct {
 	HasRelease    bool
 }
 
+var (
+	leaseTestAuthorityStateFileOnce sync.Once
+	leaseTestAuthorityStateFile     *os.File
+	leaseTestAuthorityStateFileMu   sync.Mutex
+)
+
 func reportLeaseTestAuthorityState(state leaseTestAuthorityState) {
 	if os.Getenv("SERENITY_TEST_AUTHORITY_STATE_FD") != "5" {
 		return
 	}
-	f := os.NewFile(5, "authority-state")
+	leaseTestAuthorityStateFileOnce.Do(func() {
+		leaseTestAuthorityStateFile = os.NewFile(5, "authority-state")
+	})
+	f := leaseTestAuthorityStateFile
 	if f == nil {
 		return
 	}
 	raw, err := json.Marshal(state)
 	if err == nil {
+		leaseTestAuthorityStateFileMu.Lock()
 		_, _ = f.Write(append(raw, '\n'))
+		leaseTestAuthorityStateFileMu.Unlock()
 	}
 }
 
