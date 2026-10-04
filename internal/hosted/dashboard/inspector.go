@@ -148,11 +148,6 @@ type inspectorExpiry struct {
 	Payload brainstore.MemoryExpiryPayload
 }
 
-type inspectorSnapshot struct {
-	Nodes []inspectorNode
-	Edges []inspectorEdge
-}
-
 func (d *Dashboard) inspectorBrains(w http.ResponseWriter, r *http.Request) {
 	s, ok := d.inspectorSession(w, r)
 	if !ok {
@@ -482,9 +477,10 @@ func validInspectorID(id string) bool {
 		return false
 	}
 	for _, r := range id {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')) {
-			return false
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			continue
 		}
+		return false
 	}
 	return true
 }
