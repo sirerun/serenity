@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -86,6 +87,28 @@ func verifiedBundle(root string) error {
 			return fmt.Errorf("contract file digest mismatch: %s", entry.Path)
 		}
 	}
+	if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if !seen[rel] && rel != "manifest.json" {
+			return fmt.Errorf("unlisted contract file %q", rel)
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlink in pinned contract %q", rel)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	sort.Slice(manifest.Files, func(i, j int) bool { return manifest.Files[i].Path < manifest.Files[j].Path })
 	var records []string
 	for _, entry := range manifest.Files {
@@ -110,6 +133,58 @@ func TestPinnedContractIdentity(t *testing.T) {
 	}
 	if err := verifiedBundle(filepath.Join("testdata", "upstream")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPinnedContractRejectsTampering(t *testing.T) {
+	for _, change := range []string{"altered-fixture", "extra-schema", "duplicate-path"} {
+		t.Run(change, func(t *testing.T) {
+			root := t.TempDir()
+			source := filepath.Join("testdata", "upstream")
+			err := filepath.WalkDir(source, func(path string, entry fs.DirEntry, walkErr error) error {
+				if walkErr != nil {
+					return walkErr
+				}
+				rel, err := filepath.Rel(source, path)
+				if err != nil {
+					return err
+				}
+				target := filepath.Join(root, rel)
+				if entry.IsDir() {
+					return os.MkdirAll(target, 0700)
+				}
+				data, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				return os.WriteFile(target, data, 0600)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch change {
+			case "altered-fixture":
+				err = os.WriteFile(filepath.Join(root, "fixtures", "valid", "approved-local-alternative.json"), []byte("{}\n"), 0600)
+			case "extra-schema":
+				err = os.WriteFile(filepath.Join(root, "unlisted.schema.json"), []byte("{}\n"), 0600)
+			case "duplicate-path":
+				var manifest map[string]any
+				readJSON(t, filepath.Join(root, "manifest.json"), &manifest)
+				files := manifest["files"].([]any)
+				files[1] = files[0]
+				data, marshalErr := json.Marshal(manifest)
+				if marshalErr != nil {
+					t.Fatal(marshalErr)
+				}
+				err = os.WriteFile(filepath.Join(root, "manifest.json"), data, 0600)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := verifiedBundle(root); err == nil {
+				t.Fatal("tampered contract unexpectedly accepted")
+			}
+		})
 	}
 }
 
