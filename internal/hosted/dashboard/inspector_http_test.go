@@ -346,7 +346,9 @@ func inspectorTreeDigest(t *testing.T, root string) string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Fprintf(h, "%s\x00", name)
+		if _, err := fmt.Fprintf(h, "%s\x00", name); err != nil {
+			t.Fatal(err)
+		}
 		digest := sha256.Sum256(data)
 		h.Write([]byte(hex.EncodeToString(digest[:])))
 	}
