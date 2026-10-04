@@ -155,3 +155,30 @@ is needed to resume routine verification once the resource gate clears.
 External F01 duplicate-ID finding was withdrawn: catalog() already records
 seen[fixture.ID]=true at the cited cdbecb09 head (line265, introduced e0f9ddb9c).
 No implementation change or fictitious regression claim was made for it.
+
+## Explicit headless-review and merge resumption — 2026-10-04 09:30 UTC
+
+User explicitly requested headless review and merge of PR360. Lane reclaimed
+R-portable-plan-conformance token `67c69c62fd9114335071524135ba8267029c33e0`;
+shared foreign lease preserved. Current load/build ownership is checked before
+Go commands; wait deadline10:00UTC.
+
+Fresh independent native Codex headless session
+`01a1063b-4d8e-7f71-aca9-0d5e7b4ec259` (GPT-6-Luna), isolated clean
+`pc-serenity/headless-review-20261004`, reviewed basee2b5dd17 against exact
+head185529d5111e8323d53fcd2d5ec11b776ace0891. CLEAR for source with no
+actionable finding; runtime evidence was explicitly absent, so final acceptance
+awaits scoped Go checks and review continuation at the final head.
+The selected-capability agent-task launcher lacks codex-exec routing; native
+Codex exec used the identical selected capability configuration as documented
+CLI fallback. No source edits, claims, PR mutations or builds by that reviewer.
+
+Wazi PR1 is now landed47b9d91bca0d30ac44337a6e5aa710efa89bfcfd, final
+CI37185594744 passes. Independently retrieved final Darwin CLI hash
+`ea086c07024c3cb384e3327fbc037659878d12805660650e4d61753e97ee5f70`
+and reran all75 expected outcomes with intended Serenity rejection paths.
+Source pin remains frozen0.0.1/digest7582512f unchanged.
+Gitleaks scanned the entire PR commit range:15commits, no leaks found.
+Hosted test check111385333191 still reports billing-lock non-start; never
+reported as passed. Current PR comments/reviews/review comments have no hold.
+No merge or final consumer acceptance yet.

@@ -6,5 +6,5 @@
   "package": "contracts/plan/v0",
   "contractDigest": "sha256:7582512f122d2f2a9c4461facc7541c9887053f137260d6ebe9c6dea611d039d",
   "freezeMessageId": "PC-WAZI-FROZEN-0.0.1",
-  "qualification": "experimental source freeze; validator runtime not yet qualified"
+  "qualification": "experimental source freeze; validator source/artifact qualification is recorded separately"
 }
