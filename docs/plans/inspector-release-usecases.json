@@ -1,0 +1,36 @@
+{
+  "status": "draft",
+  "baseline": "e2b5dd17",
+  "use_cases": [
+    {
+      "id": "UC-INS-01",
+      "name": "Owner memory graph",
+      "priority": "P0",
+      "wiring_status": "PLANNED"
+    },
+    {
+      "id": "UC-INS-02",
+      "name": "Search filters and added-year navigation",
+      "priority": "P0",
+      "wiring_status": "PLANNED"
+    },
+    {
+      "id": "UC-INS-03",
+      "name": "Provenance inspection",
+      "priority": "P0",
+      "wiring_status": "PLANNED"
+    },
+    {
+      "id": "UC-INS-04",
+      "name": "Public brand and synthetic demo",
+      "priority": "P0",
+      "wiring_status": "PLANNED"
+    },
+    {
+      "id": "UC-INS-05",
+      "name": "Verified release and rollback",
+      "priority": "P0",
+      "wiring_status": "PLANNED"
+    }
+  ]
+}
