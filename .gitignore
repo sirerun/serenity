@@ -42,3 +42,6 @@ __pycache__/
 node_modules/
 playwright-report/
 test-results/
+
+# Explorer build output is packaged into the embedded website.
+/web/inspector/dist/

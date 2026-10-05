@@ -77,8 +77,10 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("GET /login/consume", d.consume)
 	mux.Handle("GET /", website.Handler())
 	mux.HandleFunc("GET /dashboard", d.home)
+	mux.HandleFunc("GET /dashboard/explore", d.explore)
 	mux.HandleFunc("GET /api/inspector/v1/brains", d.inspectorBrains)
 	mux.HandleFunc("GET /api/inspector/v1/brains/{brainID}/graph", d.inspectorGraph)
+	mux.HandleFunc("GET /api/inspector/v1/brains/{brainID}/facets", d.inspectorFacets)
 	mux.HandleFunc("GET /api/inspector/v1/brains/{brainID}/nodes/{nodeID}", d.inspectorNode)
 	for _, path := range []string{"connections", "memories", "usage", "settings"} {
 		mux.HandleFunc("GET /dashboard/"+path, d.home)
@@ -103,6 +105,9 @@ func (d *Dashboard) Handler() http.Handler {
 		w.Header().Set("Referrer-Policy", "same-origin")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' https://d2ol7oe51mr4n9.cloudfront.net; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+		if r.URL.Path == "/dashboard/explore" {
+			w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 'none'; object-src 'none'")
+		}
 		if r.Method == http.MethodPost {
 			r.Body = http.MaxBytesReader(w, r.Body, 8192)
 			if r.Header.Get("Sec-Fetch-Site") == "cross-site" || (r.Header.Get("Origin") != "" && r.Header.Get("Origin") != d.Origin) {
@@ -175,6 +180,13 @@ func (d *Dashboard) consume(w http.ResponseWriter, r *http.Request) {
 	}
 	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
+func (d *Dashboard) explore(w http.ResponseWriter, r *http.Request) {
+	if _, ok := d.session(w, r, false); !ok {
+		return
+	}
+	website.ExplorerPage(w, r)
+}
+
 func (d *Dashboard) session(w http.ResponseWriter, r *http.Request, mutation bool) (identity.Session, bool) {
 	cookie, err := r.Cookie("serenity_session")
 	if err != nil {
