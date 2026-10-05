@@ -1,12 +1,13 @@
 export function creationDate(node) {
-  return node?.createdAt || node?.captureTime || node?.capturedAt || null;
+  if (node?.type === "entity" && node?.dateKind === "earliest-linked-memory") return node.createdAt || null;
+  return node?.capturedAt || null;
 }
 
 export function creationYear(node) {
   const date = creationDate(node);
-  if (typeof date !== "string") return "Unknown";
+  if (typeof date !== "string") return "unknown";
   const match = date.match(/^(\d{4})(?:-|$)/);
-  return match ? match[1] : "Unknown";
+  return match ? match[1] : "unknown";
 }
 
 export function sortedFacetYears(facets) {
@@ -14,12 +15,16 @@ export function sortedFacetYears(facets) {
   const values = Array.isArray(raw)
     ? raw.map((item) => typeof item === "string" ? item : item?.year).filter(Boolean)
     : Object.keys(raw || {});
-  return [...new Set(values.map(String).filter((year) => year !== "Unknown"))].sort((a, b) => a.localeCompare(b));
+  return [...new Set(values.map(String).filter((year) => year.toLowerCase() !== "unknown"))].sort((a, b) => a.localeCompare(b));
 }
 
 export function facetCount(facets, year) {
   const raw = facets?.years ?? facets?.yearCounts ?? facets ?? {};
-  if (year === "Unknown") {
+  if (String(year).toLowerCase() === "unknown") {
+    if (Array.isArray(raw)) {
+      const entry = raw.find((item) => String(typeof item === "string" ? item : item?.year).toLowerCase() === "unknown");
+      return typeof entry === "object" ? Number(entry.count) || 0 : 0;
+    }
     return Number(facets?.unknown ?? facets?.unknownCount ?? raw?.Unknown ?? raw?.unknown) || 0;
   }
   if (Array.isArray(raw)) {
@@ -31,9 +36,9 @@ export function facetCount(facets, year) {
 
 export function adjacentFacetYear(years, year, direction) {
   if (!years.length) return null;
-  if (year === "Unknown") return null;
+  if (String(year).toLowerCase() === "unknown") return null;
   const index = years.indexOf(year);
-  if (index === -1) return direction > 0 ? years[0] : years.at(-1);
+  if (index === -1) return direction > 0 ? years.at(-1) : years[0];
   return years[index + direction] ?? null;
 }
 
