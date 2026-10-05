@@ -110,6 +110,7 @@ type inspectorFilters struct {
 	Scope string
 	Year  string
 	Query string
+	Type  string
 	Limit int
 }
 
@@ -119,8 +120,23 @@ type inspectorCursor struct {
 	Scope   string `json:"s"`
 	Year    string `json:"y"`
 	Query   string `json:"q"`
+	Type    string `json:"t,omitempty"`
 	Limit   int    `json:"n"`
 	LastID  string `json:"l"`
+}
+
+type inspectorYearCount struct {
+	Year  string `json:"year"`
+	Count int    `json:"count"`
+}
+
+type inspectorFacetsResponse struct {
+	Version         int                  `json:"version"`
+	BrainID         string               `json:"brainId"`
+	PrivateExcluded bool                 `json:"privateExcluded"`
+	TotalMatching   int                  `json:"totalMatching"`
+	Years           []inspectorYearCount `json:"years"`
+	TypeCounts      map[string]int       `json:"typeCounts"`
 }
 
 type inspectorSourceMeta struct {
@@ -219,6 +235,63 @@ func (d *Dashboard) inspectorGraph(w http.ResponseWriter, r *http.Request) {
 	writeInspectorJSON(w, http.StatusOK, response)
 }
 
+// inspectorFacets computes counts over the full eligible projection after
+// scope, query, and type filters. The selected year is deliberately ignored:
+// it is a navigation selection, not a facet constraint. Years represent
+// captured time; observed-only claim/source dates remain in "unknown".
+func (d *Dashboard) inspectorFacets(w http.ResponseWriter, r *http.Request) {
+	s, ok := d.inspectorSession(w, r)
+	if !ok {
+		return
+	}
+	filters, err := parseInspectorFilters(r)
+	if err != nil {
+		writeInspectorError(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	brainID := r.PathValue("brainID")
+	var response inspectorFacetsResponse
+	err = d.Gateway.WithInspectorRead(r.Context(), s.AccountID, brainID, func(view hostgateway.InspectorReadView) error {
+		nodes, _, err := loadInspectorGraph(r.Context(), view)
+		if err != nil {
+			return err
+		}
+		filters.Year = ""
+		matched := filterInspectorNodes(nodes, filters)
+		yearCounts := make(map[string]int)
+		typeCounts := map[string]int{"fact": 0, "claim": 0, "entity": 0, "source": 0}
+		for _, node := range matched {
+			typeCounts[node.Type]++
+			date := inspectorCapturedDate(node)
+			year := "unknown"
+			if date != nil {
+				year = date.UTC().Format("2006")
+			}
+			yearCounts[year]++
+		}
+		years := make([]inspectorYearCount, 0, len(yearCounts))
+		for year, count := range yearCounts {
+			years = append(years, inspectorYearCount{Year: year, Count: count})
+		}
+		sort.Slice(years, func(i, j int) bool {
+			if years[i].Year == "unknown" {
+				return false
+			}
+			if years[j].Year == "unknown" {
+				return true
+			}
+			return years[i].Year < years[j].Year
+		})
+		response = inspectorFacetsResponse{Version: 1, BrainID: brainID, PrivateExcluded: true, TotalMatching: len(matched), Years: years, TypeCounts: typeCounts}
+		return nil
+	})
+	if err != nil {
+		writeInspectorFailure(w, err)
+		return
+	}
+	writeInspectorJSON(w, http.StatusOK, response)
+}
+
 func (d *Dashboard) inspectorNode(w http.ResponseWriter, r *http.Request) {
 	s, ok := d.inspectorSession(w, r)
 	if !ok {
@@ -297,14 +370,20 @@ func (d *Dashboard) inspectorSession(w http.ResponseWriter, r *http.Request) (id
 func parseInspectorFilters(r *http.Request) (inspectorFilters, error) {
 	values := r.URL.Query()
 	for key := range values {
-		if key != "scope" && key != "year" && key != "q" && key != "limit" && key != "cursor" {
+		if key != "scope" && key != "year" && key != "q" && key != "type" && key != "limit" && key != "cursor" {
 			return inspectorFilters{}, fmt.Errorf("unsupported query parameter %q", key)
 		}
 		if len(values[key]) != 1 {
 			return inspectorFilters{}, fmt.Errorf("query parameter %q must appear once", key)
 		}
 	}
-	filters := inspectorFilters{Scope: values.Get("scope"), Year: values.Get("year"), Query: strings.ToLower(strings.TrimSpace(values.Get("q"))), Limit: inspectorDefaultLimit}
+	filters := inspectorFilters{Scope: values.Get("scope"), Year: values.Get("year"), Query: strings.ToLower(strings.TrimSpace(values.Get("q"))), Type: values.Get("type"), Limit: inspectorDefaultLimit}
+	if filters.Type == "" {
+		filters.Type = "all"
+	}
+	if filters.Type != "all" && filters.Type != "fact" && filters.Type != "claim" && filters.Type != "entity" && filters.Type != "source" {
+		return inspectorFilters{}, errors.New("type must be all, fact, claim, entity, or source")
+	}
 	if filters.Scope == "" {
 		filters.Scope = "all"
 	}
@@ -346,7 +425,7 @@ var errInspectorNodeNotFound = errors.New("inspector node not found")
 var errInspectorDatasetTooLarge = errors.New("inspector dataset exceeds the bounded read limit")
 
 func encodeInspectorCursor(brainID string, filters inspectorFilters, lastID string) string {
-	data, _ := json.Marshal(inspectorCursor{Version: 1, BrainID: brainID, Scope: filters.Scope, Year: filters.Year, Query: filters.Query, Limit: filters.Limit, LastID: lastID})
+	data, _ := json.Marshal(inspectorCursor{Version: 1, BrainID: brainID, Scope: filters.Scope, Year: filters.Year, Query: filters.Query, Type: filters.Type, Limit: filters.Limit, LastID: lastID})
 	return base64.RawURLEncoding.EncodeToString(data)
 }
 
@@ -361,7 +440,7 @@ func decodeInspectorCursor(raw, brainID string, filters inspectorFilters) (inspe
 	}
 	decoder := json.NewDecoder(strings.NewReader(string(data)))
 	decoder.DisallowUnknownFields()
-	if decoder.Decode(&cursor) != nil || decoder.Decode(new(any)) != io.EOF || cursor.Version != 1 || cursor.BrainID != brainID || cursor.Scope != filters.Scope || cursor.Year != filters.Year || cursor.Query != filters.Query || cursor.Limit != filters.Limit || cursor.LastID == "" {
+	if decoder.Decode(&cursor) != nil || decoder.Decode(new(any)) != io.EOF || cursor.Version != 1 || cursor.BrainID != brainID || cursor.Scope != filters.Scope || cursor.Year != filters.Year || cursor.Query != filters.Query || (cursor.Type == "" && filters.Type != "all") || (cursor.Type != "" && cursor.Type != filters.Type) || cursor.Limit != filters.Limit || cursor.LastID == "" {
 		return inspectorCursor{}, errInspectorCursor
 	}
 	return cursor, nil
@@ -419,14 +498,14 @@ func inspectorGraphNeighborhood(nodes []inspectorNode, edges []inspectorEdge, co
 func filterInspectorNodes(nodes []inspectorNode, filters inspectorFilters) []inspectorNode {
 	out := make([]inspectorNode, 0, len(nodes))
 	for _, node := range nodes {
+		if filters.Type != "" && filters.Type != "all" && node.Type != filters.Type {
+			continue
+		}
 		if filters.Scope == "private" || filters.Scope == "world" && node.Scope != "world" {
 			continue
 		}
 		if filters.Year != "" {
-			date := node.CapturedAt
-			if date == nil && node.Type == "entity" && node.DateKind == "earliest-linked-memory" {
-				date = node.CreatedAt
-			}
+			date := inspectorCapturedDate(node)
 			if date == nil {
 				if filters.Year != "unknown" {
 					continue
@@ -445,6 +524,16 @@ func filterInspectorNodes(nodes []inspectorNode, filters inspectorFilters) []ins
 	}
 	sort.Slice(out, func(i, j int) bool { return inspectorOrderKey(out[i]) < inspectorOrderKey(out[j]) })
 	return out
+}
+
+func inspectorCapturedDate(node inspectorNode) *time.Time {
+	if node.CapturedAt != nil {
+		return node.CapturedAt
+	}
+	if node.Type == "entity" && node.DateKind == "earliest-linked-memory" {
+		return node.CreatedAt
+	}
+	return nil
 }
 
 func writeInspectorJSON(w http.ResponseWriter, status int, value any) {
