@@ -63,7 +63,7 @@ T-PC-SERENITY.6, T-PC-SERENITY.7.
 - [x] T-PC-SERENITY.1 Inventory context/policy surfaces and send consumer fixture requirements  Owner: pc-serenity-inventory kind: agent stage: implement  blocked-by: [T-PC-SERENITY.0]  delivers: [source inventory and Wazi counterexample requirements]  acc: [provider-free versus provider-capable reads identified; ADR024 source-merge scope preserved; context is never execution evidence]
 - [x] T-PC-SERENITY.2 Pin Wazi's frozen experimental contract  Owner: pc-serenity-coordinator kind: agent stage: preflight  blocked-by: [T-PC-SERENITY.1]  delivers: [contract manifest]  acc: [owner-confirmed exact revision/digest, schemas and fixtures pinned unchanged; steward validator contract remains an explicit verification prerequisite; no schema fork]
 - [x] T-PC-SERENITY.3 Implement contextual and policy conformance examples  Owner: pc-serenity-coordinator kind: agent stage: implement  blocked-by: [T-PC-SERENITY.2]  verifies: [UC-PC1, UC-PC2]  acc: [fixtures preserve context provenance/unavailable states and separate hosted observations from authorized local evaluation; necessary projection is read-only only]
-- [ ] T-PC-SERENITY.4 Verify behavior and required checks  Owner: pc-serenity-coordinator kind: agent stage: verify  blocked-by: [T-PC-SERENITY.3]  verifies: [UC-PC1, UC-PC2]  acc: [pinned validator accepts valid fixtures and rejects invalid trust/mapping cases; targeted tests and formatting/lint pass on exact candidate; hosted CI outcome recorded honestly]
+- [x] T-PC-SERENITY.4 Verify behavior and required checks  Owner: pc-serenity-coordinator kind: agent stage: verify  blocked-by: [T-PC-SERENITY.3]  verifies: [UC-PC1, UC-PC2]  acc: [pinned validator accepts valid fixtures and rejects invalid trust/mapping cases; targeted tests and formatting/lint pass on exact candidate; hosted CI outcome recorded honestly]
 - [ ] T-PC-SERENITY.5 Independent exact-head review of T-PC-SERENITY.3 and T-PC-SERENITY.4  Owner: independent-reviewer kind: agent stage: review  blocked-by: [T-PC-SERENITY.4]  verifies: [UC-PC1, UC-PC2]  acc: [reviewer distinct from authors; base/head and stable findings recorded; meaningful negative controls reproduced; all blocking findings resolved]
 - [ ] T-PC-SERENITY.6 Evaluate checks/holds and GitHub rebase merge  Owner: pc-serenity-coordinator kind: agent stage: merge  blocked-by: [T-PC-SERENITY.5]  verifies: [UC-PC1, UC-PC2]  acc: [exact approved head, current policy/required checks and named holds reconciled; rebase merged without protections changes]
 - [ ] T-PC-SERENITY.7 Verify landed revision and hand off  Owner: pc-serenity-coordinator kind: agent stage: verify-landed  blocked-by: [T-PC-SERENITY.6]  verifies: [UC-PC1, UC-PC2]  acc: [landed artifacts match reviewed candidate and pass scoped conformance; PR/review/check/landed evidence shared; claims released exactly]
@@ -102,3 +102,16 @@ semantic counterexamples to the steward. Shared parser qualification verified
 all eight task IDs, explicit stages, wave membership and dependency references.
 
 Implementation checkpoint: 15 synthetic Serenity cases, unchanged 66-path upstream bundle/60 neutral cases, offline structural/pin tests and explicit owner-CLI semantic harness. No production projection is required. T-PC-SERENITY.4 remains pending runtime verification.
+
+## Verification continuation — 2026-10-05
+
+The user explicitly approved the one-core exception for PR #360 scoped Go
+checks. On candidate `09d5aa7b6d8ff964cee9d41cf1b48af486222bfe`, tagged tests
+passed (111 test/subtest pass events, zero failures or skips, including all
+75 semantic cases); scoped vet passed and scoped lint reported zero issues.
+GOMAXPROCS=1, build parallelism 1, lint concurrency 1, external-SSD caches/temp
+and an owned shared lease were used. The lease was released after checks.
+T-PC-SERENITY.4 is complete. Final exact-head review, merge and landed evidence
+remain the dependent gates. Hosted Actions run 37194320206 did not start jobs
+because of the billing lock; ADR024 qualifies a separate local source-merge
+alternative only. No hosted success, provider or deployment is claimed.

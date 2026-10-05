@@ -216,3 +216,28 @@ with the exact purpose and09:22:39UTC creation time of this session's claim
 operation. It did not change ownership during this run. The rejected release
 used the incorrect copied value and changed no ref. Corrected token above;
 release remains a compare-and-swap through the canonical script.
+
+## Approved one-core verification continuation — 2026-10-05
+
+User explicitly answered “Allow the one-core exception” for PR #360
+single-package test, vet and lint with one CPU core and an owned build lease.
+The load-only waiting driver was stopped before it ran checks.
+
+Verified source `09d5aa7b6d8ff964cee9d41cf1b48af486222bfe` with
+`go test -tags portableplan -count=1 -json ./tests/portableplan`,
+`go vet -tags portableplan ./tests/portableplan` and
+`golangci-lint run --concurrency 1 --build-tags portableplan ./tests/portableplan`.
+All passed: 111 test/subtest pass events, zero skips/failures; lint zero issues.
+Go 1.27.1 and golangci-lint 2.13.2; GOMAXPROCS=1 and GOFLAGS=-p=1;
+external-SSD caches/temp. An owned shared lease was verified before use and
+canonically released after checks. Tagged test binary for independent runtime
+controls has SHA256 `f60c8335c92282b8c36b3e938ea425daf4db8cbe085efef2074bbfc189ce576b`.
+
+Landed Wazi validator SHA256 remains
+`ea086c07024c3cb384e3327fbc037659878d12805660650e4d61753e97ee5f70`,
+qualified source 47b9d91bca0d30ac44337a6e5aa710efa89bfcfd, frozen schema
+digest unchanged. Current target b778e058 has no scope or dependency overlap.
+Raw hosted run 37194320206 remains billing-blocked before job startup.
+T4 is verified; final independent exact-head acceptance, guarded rebase merge
+and landed acceptance remain pending. Later receipt comments on PR #360 close
+observed delivery stages without retrospectively rewriting this premerge record.
