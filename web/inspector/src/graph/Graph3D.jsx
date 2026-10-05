@@ -9,25 +9,26 @@ const titleFor = (node) => node?.type === "entity" ? node.label : node?.text || 
 function labelSprite(value) {
   const label = String(value || "Memory").slice(0, 34);
   const canvas = document.createElement("canvas");
-  canvas.width = 480;
-  canvas.height = 72;
+  canvas.width = Math.max(190, Math.ceil(label.length * 31 + 40));
+  canvas.height = 76;
   const context = canvas.getContext("2d");
-  context.fillStyle = "rgba(255,251,248,.96)";
-  context.strokeStyle = "rgba(198,154,166,.72)";
+  context.fillStyle = "rgba(91,54,67,.97)";
+  context.strokeStyle = "rgba(247,213,222,.9)";
   context.lineWidth = 2;
   context.beginPath();
-  context.roundRect(2, 2, 476, 68, 15);
+  context.roundRect(2, 2, canvas.width - 4, 72, 15);
   context.fill();
   context.stroke();
-  context.fillStyle = "#73545e";
-  context.font = "500 30px Georgia, serif";
+  context.fillStyle = "#fff8f4";
+  context.font = "600 31px Georgia, serif";
   context.textBaseline = "middle";
-  context.fillText(label, 18, 37, 440);
+  context.fillText(label, 19, 39, canvas.width - 38);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, sizeAttenuation: true });
   const sprite = new THREE.Sprite(material);
-  sprite.scale.set(Math.max(.95, Math.min(3.2, label.length * .085)), .34, 1);
+  const height = .82;
+  sprite.scale.set(Math.max(1.4, Math.min(6.5, (canvas.width / canvas.height) * height)), height, 1);
   return sprite;
 }
 
@@ -66,9 +67,15 @@ export default function Graph3D({ nodes, edges, positions, selectedId, onSelect,
     let pointerUp = () => {};
     let keydown = () => {};
     const scene = new THREE.Scene();
+    const dimensions = host.getBoundingClientRect();
+    const rawPoints = nodes.map((node) => positions.get(node.id)).filter(Boolean);
+    const rawXHalf = Math.max(.15, ...rawPoints.map((p) => Math.abs(p[0] * 9)));
+    const rawYHalf = Math.max(.15, ...rawPoints.map((p) => Math.abs(p[1] * 9)));
+    const aspect = dimensions.width / Math.max(1, dimensions.height);
+    const horizontalSpread = Math.max(.5, rawYHalf * aspect / rawXHalf);
     const nodePositions = new Map(nodes.map((node) => {
       const p = positions.get(node.id);
-      return [node.id, p ? new THREE.Vector3(p[0] * 9, p[1] * 9, (p[2] || 0) * 9) : null];
+      return [node.id, p ? new THREE.Vector3(p[0] * 9 * horizontalSpread, p[1] * 9, (p[2] || 0) * 9) : null];
     }));
     const pickMeshes = [];
     const geometries = new Set();
@@ -146,8 +153,9 @@ export default function Graph3D({ nodes, edges, positions, selectedId, onSelect,
       const pointValues = [...nodePositions.values()].filter(Boolean);
       const bounds = new THREE.Box3().setFromPoints(pointValues);
       const center = bounds.isEmpty() ? new THREE.Vector3() : bounds.getCenter(new THREE.Vector3());
-      const sphere = bounds.getBoundingSphere(new THREE.Sphere());
-      camera.position.set(center.x, center.y, center.z + Math.max(12, sphere.radius / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.2));
+      const verticalHalf = Math.max(1.2, (bounds.max.y - bounds.min.y) / 2);
+      const verticalTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      camera.position.set(center.x, center.y, center.z + Math.max(8, verticalHalf / (verticalTan * .75)));
       controls.target.copy(center);
       controls.update();
       controls.saveState();
@@ -333,7 +341,7 @@ export default function Graph3D({ nodes, edges, positions, selectedId, onSelect,
     if (scene && point) {
       const node = nodesRef.current.find((item) => item.id === selectedId);
       const label = labelSprite(titleFor(node));
-      label.position.set(point.x + .45, point.y + .25, point.z + .15);
+      label.position.set(point.x + .55, point.y + .3, point.z + .15);
       scene.add(label);
       selectedLabelRef.current = label;
     }
