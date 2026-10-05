@@ -18,7 +18,7 @@ async function noOverflow(page) {
 
 test('landing makes hosted signup primary and retains secondary DIY navigation', async ({ page }) => {
   const events = await observe(page);
-  await page.goto('/?private_query=NEVER-IN-EVENT');
+  await page.goto('/?private_query=NEVER-IN-EVENT', { waitUntil: 'domcontentloaded' });
   const primary = page.locator('.intro-actions .pill');
   await expect(primary).toHaveText('Start free ↗');
   await expect(primary).toHaveAttribute('href', '/login');
@@ -111,7 +111,7 @@ test('event API drops arbitrary names and payloads and sends no analytics reques
 });
 
 test('responsive layout preserves navigation, long answers and reduced motion', async ({ page }, testInfo) => {
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await noOverflow(page);
   await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('link', { name: /^Start free/ })).toBeVisible();
   expect(await page.locator('video').evaluateAll(videos => videos.every(v => v.paused))).toBe(true);
@@ -128,7 +128,7 @@ test('responsive layout preserves navigation, long answers and reduced motion', 
 
  test('plans distinguish free signup from unavailable paid purchase', async ({ page }) => {
   const events = await observe(page);
-  await page.goto('/');
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.getByRole('link', { name: 'See plans', exact: true }).click();
   await expect(page).toHaveURL(/\/pricing\/$/);
   await expect(page.getByText('Planned · Not available for purchase', { exact: true })).toBeVisible();
@@ -141,7 +141,7 @@ test('responsive layout preserves navigation, long answers and reduced motion', 
 test('hosted signup CTA emits no identifiers', async ({ page }) => {
  const events=await observe(page);
  await page.route('**/login', route=>route.fulfill({status:200,contentType:'text/html',body:'<h1>Sign in</h1>'}));
- await page.goto('/?secret=NEVER-COLLECT');
+ await page.goto('/?secret=NEVER-COLLECT', { waitUntil: 'domcontentloaded' });
  await page.locator('.intro-actions .pill').click();
  await expect.poll(()=>events).toEqual([{version:1,name:'hosted_signup_cta',page:'home'}]);
 });
