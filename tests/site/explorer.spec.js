@@ -2,12 +2,12 @@ const {test,expect}=require('@playwright/test');
 test('synthetic explorer supports time navigation and an accessible list',async({page})=>{
  await page.goto('/explore/');
  await expect(page.getByText(/SYNTHETIC DEMO/)).toBeVisible();
- await page.getByRole('tab',{name:'List'}).click();
+ await page.getByRole('button',{name:'List',exact:true}).click();
  await expect(page.getByRole('list',{name:'Loaded memories'})).toBeVisible();
  await page.getByRole('button',{name:/Unknown/}).click();
  await expect(page.getByRole('button',{name:/Unknown/})).toHaveAttribute('aria-pressed','true');
  await page.getByRole('button',{name:/All time/}).click();
- await page.getByRole('searchbox',{name:'Search memories'}).fill('nothing-matches-this-fixture');
+ await page.getByRole('textbox',{name:'Search memories'}).fill('nothing-matches-this-fixture');
  await expect(page.getByRole('heading',{name:'No matching memories'})).toBeVisible();
  await page.getByRole('button',{name:'Clear filters'}).click();
  await expect(page.getByRole('list',{name:'Loaded memories'})).toBeVisible();
@@ -28,11 +28,11 @@ test('changing filters aborts pending detail and clears its loading state',async
  let finishDetail;
  await page.route('**/nodes/**',async route=>{await new Promise(resolve=>{finishDetail=resolve;});await route.fulfill({json:{node,relatedNodes:[],edges:[]}}).catch(()=>{});});
  await page.goto('/dashboard/explore');
- await page.getByRole('tab',{name:'List'}).click();
+ await page.getByRole('button',{name:'List',exact:true}).click();
  await page.getByRole('button',{name:/Synthetic owner record/}).click();
  await expect(page.getByText('Opening note…')).toBeVisible();
  await page.getByRole('combobox',{name:'Memory type'}).selectOption('fact');
  await expect(page.getByText('Opening note…')).not.toBeVisible();
  finishDetail();
- await expect(page.getByRole('heading',{name:'Your library, connected.'})).toBeVisible();
+ await expect(page.getByRole('heading',{name:'Memory, in its place.'})).toBeVisible();
 });
