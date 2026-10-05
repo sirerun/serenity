@@ -9,7 +9,7 @@ const titleFor = (node) => node?.type === "entity" ? node.label : node?.text || 
 function labelSprite(value) {
   const label = String(value || "Memory").slice(0, 34);
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(190, Math.ceil(label.length * 31 + 40));
+  canvas.width = Math.min(640, Math.max(190, Math.ceil(label.length * 31 + 40)));
   canvas.height = 76;
   const context = canvas.getContext("2d");
   context.fillStyle = "rgba(91,54,67,.97)";
@@ -27,8 +27,8 @@ function labelSprite(value) {
   texture.colorSpace = THREE.SRGBColorSpace;
   const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false, sizeAttenuation: true });
   const sprite = new THREE.Sprite(material);
-  const height = .82;
-  sprite.scale.set(Math.max(1.4, Math.min(6.5, (canvas.width / canvas.height) * height)), height, 1);
+  const height = .52;
+  sprite.scale.set(Math.max(1.4, Math.min(3.5, (canvas.width / canvas.height) * height)), height, 1);
   return sprite;
 }
 
@@ -138,7 +138,9 @@ export default function Graph3D({ nodes, edges, positions, selectedId, onSelect,
       const fillLight = new THREE.PointLight(0xffeadf, 62, 35, 1.8);
       fillLight.position.set(7, -5, 5);
       scene.add(fillLight);
-      camera = new THREE.PerspectiveCamera(39, 1, .1, 150);
+      const initialWidth = host.clientWidth || 1;
+      const initialHeight = host.clientHeight || 1;
+      camera = new THREE.PerspectiveCamera(39, initialWidth / initialHeight, .1, 150);
       controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = !reducedMotion;
       controls.dampingFactor = reducedMotion ? 0 : .075;
@@ -149,16 +151,28 @@ export default function Graph3D({ nodes, edges, positions, selectedId, onSelect,
       controls.rotateSpeed = .78;
       controls.zoomSpeed = .86;
       controls.panSpeed = .72;
+      let userMovedView = false;
+      controls.addEventListener("start", () => { userMovedView = true; });
 
       const pointValues = [...nodePositions.values()].filter(Boolean);
       const bounds = new THREE.Box3().setFromPoints(pointValues);
       const center = bounds.isEmpty() ? new THREE.Vector3() : bounds.getCenter(new THREE.Vector3());
-      const verticalHalf = Math.max(1.2, (bounds.max.y - bounds.min.y) / 2);
-      const verticalTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-      camera.position.set(center.x, center.y, center.z + Math.max(8, verticalHalf / (verticalTan * .75)));
-      controls.target.copy(center);
-      controls.update();
-      controls.saveState();
+      const frameBounds = (bounds.isEmpty() ? new THREE.Box3().setFromCenterAndSize(center, new THREE.Vector3(2, 2, 1)) : bounds.clone())
+        .expandByVector(new THREE.Vector3(3.1, .72, 0));
+      const fitInitialCamera = (width, height) => {
+        camera.aspect = width / Math.max(1, height);
+        camera.updateProjectionMatrix();
+        const frameCenter = frameBounds.getCenter(new THREE.Vector3());
+        const size = frameBounds.getSize(new THREE.Vector3());
+        const verticalTan = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+        const horizontalTan = verticalTan * camera.aspect;
+        const fitDistance = Math.max(size.y / (2 * verticalTan), size.x / (2 * horizontalTan)) / .84 + size.z / 2;
+        camera.position.set(frameCenter.x, frameCenter.y, frameCenter.z + Math.max(8, fitDistance));
+        controls.target.copy(frameCenter);
+        controls.update();
+        controls.saveState();
+      };
+      fitInitialCamera(initialWidth, initialHeight);
 
       const linePositions = [];
       const lineColors = [];
@@ -257,8 +271,11 @@ export default function Graph3D({ nodes, edges, positions, selectedId, onSelect,
         const { width, height } = host.getBoundingClientRect();
         if (!width || !height) return;
         renderer.setSize(width, height, false);
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
+        if (!userMovedView) fitInitialCamera(width, height);
+        else {
+          camera.aspect = width / height;
+          camera.updateProjectionMatrix();
+        }
         renderOnce();
       };
       observer = new ResizeObserver(resize);
