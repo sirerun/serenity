@@ -1,13 +1,19 @@
 package dashboard
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/sirerun/serenity/internal/hosted/identity"
+	brainstore "github.com/sirerun/serenity/internal/store"
 )
 
 func TestExplorerRouteRequiresSessionAndPrivateShell(t *testing.T) {
@@ -47,6 +53,26 @@ func TestExplorerBrowserFixture(t *testing.T) {
 		t.Skip("opt-in local browser fixture")
 	}
 	f := newInspectorHTTPFixture(t)
+	sources := brainstore.NewSourceStore(f.brains["owner"])
+	for i := 0; i < 220; i++ {
+		_, err := sources.WriteMemoryFact(brainstore.MemoryFactPayload{FormatVersion: brainstore.MemoryFactFormatVersion, LegacyID: int64(100 + i), Fact: fmt.Sprintf("Synthetic browser memory %03d <svg onload=alert(1)>", i), Provenance: "non-customer browser qualification", Kind: brainstore.MemoryFactKindFact, Visibility: brainstore.MemoryVisibilityWorld, CreatedAt: time.Date(2020+i%6, time.January, 1, 0, 0, 0, 0, time.UTC)})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	owner, err := (&identity.Service{Store: f.store}).Session(context.Background(), f.tokens["owner"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	const emptyBrain = "BrainEmptyABCDEFGHIJKLMNOP"
+	if _, err := f.store.InsertBrain(context.Background(), owner.AccountID, emptyBrain, emptyBrain, "ready", time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{"brain/sources", "brain/entities", "brain/claims"} {
+		if err := os.MkdirAll(filepath.Join(filepath.Dir(f.brains["owner"]), emptyBrain, dir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/__fixture/owner", "/__fixture/other":

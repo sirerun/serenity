@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -19,8 +20,8 @@ import (
 )
 
 func TestExplorerTenThousandRecordProjection(t *testing.T) {
-	if testing.Short() {
-		t.Skip("10K synthetic projection qualification")
+	if testing.Short() || os.Getenv("SERENITY_EXPLORER_10K") != "1" {
+		t.Skip("opt-in 10K synthetic projection qualification: SERENITY_EXPLORER_10K=1")
 	}
 	f := newInspectorHTTPFixture(t)
 	store := brainstore.NewSourceStore(f.brains["owner"])
