@@ -57,6 +57,7 @@ func TestExplorerBrowserFixture(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	stop := make(chan struct{}, 1)
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/__fixture/owner", "/__fixture/other":
@@ -66,6 +67,12 @@ func TestExplorerBrowserFixture(t *testing.T) {
 		case "/__fixture/expire":
 			http.SetCookie(w, &http.Cookie{Name: "serenity_session", Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
 			w.WriteHeader(http.StatusNoContent)
+		case "/__fixture/stop":
+			select {
+			case stop <- struct{}{}:
+			default:
+			}
+			w.WriteHeader(http.StatusOK)
 		default:
 			f.handler.ServeHTTP(w, r)
 		}
@@ -77,5 +84,9 @@ func TestExplorerBrowserFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log("Local synthetic browser fixture ready")
-	time.Sleep(45 * time.Minute)
+	select {
+	case <-stop:
+	case <-time.After(45 * time.Minute):
+		t.Fatal("local browser fixture exceeded its bounded lifetime")
+	}
 }
