@@ -19,6 +19,10 @@ test('explorer works without WebGL and keeps synthetic data out of browser persi
  expect(await page.evaluate(()=>({local:localStorage.length,session:sessionStorage.length}))).toEqual({local:0,session:0});
 });
 test('repeated presentation switches retain one usable map',async({page})=>{
+ // Twenty software-rendered map reconstructions on the leased one-worker
+ // mobile profile need a separate bounded harness deadline. This does not
+ // change the release latency/frame-time targets.
+ test.setTimeout(90000);
  const warnings=[];
  page.on('console',message=>{if(/too many active WebGL contexts/i.test(message.text()))warnings.push(message.text());});
  await page.goto('/explore/');
