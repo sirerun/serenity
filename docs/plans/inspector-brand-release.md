@@ -128,4 +128,4 @@ Release topology verified: the hosted binary embeds site/ and serves the public 
 
 INS-R0 is the single dependency-triggered planning task for this later wave; no deployment tasks are prematurely dispatchable. Existing production release is authorized, but billing changes/new spend/signature bypass are not. Final success requires public HTTPS on the existing service at a verified artifact identity, working signed-in graph/time/list/privacy flows, matching Book Binder website assets and recorded rollback target—not main, local tests or Pages publication alone.
 
-Next /ship starts at INS-F1 after refreshing main and claims, then partitions F2/F3. It must close residual B2/B3 during integrated verification before R0, retain private operator receipts outside the public repository, and persist exact review/landed evidence.
+Next /ship starts at INS-F1 after refreshing main and claims, then partitions F2/F3. It must close residual B6/B7 during integrated verification before R0, retain private operator receipts outside the public repository, and persist exact review/landed evidence.
