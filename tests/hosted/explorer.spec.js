@@ -37,6 +37,7 @@ test('owned read-only explorer pages, facets, inert text and provenance work wit
   page.on('request', request => requests.push(request.url()));
   page.on('dialog', async dialog => { dialogs.push(dialog.message()); await dialog.dismiss(); });
   await page.goto(`${origin}/__fixture/owner`);
+  await expect(page.getByRole('link', { name: 'Serenity memory explorer' })).toHaveAttribute('href', '/dashboard');
   await expect(page.getByText('Private to you', { exact: true })).toBeVisible();
   await page.getByRole('combobox', { name: 'Memory type' }).selectOption('fact');
   await expect(page.locator('.workspace-count strong')).toHaveText('223');
