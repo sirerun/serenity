@@ -18,6 +18,19 @@ test('explorer works without WebGL and keeps synthetic data out of browser persi
  await expect(page.getByRole('list',{name:'Loaded memories'})).toBeVisible();
  expect(await page.evaluate(()=>({local:localStorage.length,session:sessionStorage.length}))).toEqual({local:0,session:0});
 });
+test('repeated presentation switches retain one usable map',async({page})=>{
+ const warnings=[];
+ page.on('console',message=>{if(/too many active WebGL contexts/i.test(message.text()))warnings.push(message.text());});
+ await page.goto('/explore/');
+ for(let i=0;i<20;i++){
+  await expect(page.locator('canvas.graph-canvas')).toHaveCount(1);
+  await page.getByRole('button',{name:'List',exact:true}).click();
+  await expect(page.locator('canvas.graph-canvas')).toHaveCount(0);
+  await page.getByRole('button',{name:'Map',exact:true}).click();
+ }
+ await expect(page.locator('canvas.graph-canvas')).toHaveCount(1);
+ expect(warnings).toEqual([]);
+});
 test('changing filters aborts pending detail and clears its loading state',async({page})=>{
  const node={id:'fact:one',type:'fact',text:'Synthetic owner record',scope:'world',capturedAt:'2025-01-01T00:00:00Z'};
  const shell=await (await page.request.get('/explore/')).text();
