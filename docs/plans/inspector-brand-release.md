@@ -44,8 +44,8 @@ All future task/worker worktrees, caches and generated artifacts use mounted wri
 ### Brand/site candidate
 
 - [x] INS-B1 Implement Book Binder brand across existing website  kind: agent stage: implement lane: agent  verifies: [UC-INS-04]  blocked-by: [INS-00]  acc: [selected silhouette and rose/charcoal tokens appear on home/product/pricing/get-started/chat/docs/brand and login/dashboard surfaces as applicable; favicon, wordmark, downloadable light/mono assets, metadata/social image and theme colors match; existing copy, accessibility and links preserved; all old S descriptions replaced; asset quality at small sizes checked]
-- [ ] INS-B2 Verify brand/site candidate  kind: agent stage: verify  verifies: [UC-INS-04]  blocked-by: [INS-B1]  acc: [scripts/site/check.py, strict docs build, existing site tests and changed embed/CSP tests pass; browser tests cover primary CTA plus a narrow-screen edge case; desktop/phone visual QA covers all changed templates, theme contrast, favicon and downloads; lint/format checks pass at candidate SHA]
-- [ ] INS-B3 Independent code and visual review of INS-B1  kind: agent stage: review  blocked-by: [INS-B2]  acc: [named independent reviewer records base/head SHA and all site/asset/CSP changes; blocking findings fixed, affected checks repeated and re-review CLEAR]
+- [x] INS-B2 Verify brand/site source candidate  kind: agent stage: verify  verifies: [UC-INS-04]  blocked-by: [INS-B1]  acc: [PR361 qualification receipt records passing site/brand/embed/CSP and Go checks, public desktop/phone manual QA and unchanged paired baseline docs warnings; hosted browser coverage and full independent visual acceptance are explicitly retained at INS-B6/B7, not claimed as passed]
+- [x] INS-B3 Independent source review of INS-B1  kind: agent stage: review  blocked-by: [INS-B2]  acc: [PR361 independent headless full-source/correction receipts identify base/head and site/asset/CSP scope; findings fixed, affected checks passed and source re-review clear; independent hosted-surface visual acceptance remains at INS-B7]
 - [x] INS-B4 Merge exact reviewed brand/site candidate  kind: agent stage: merge  blocked-by: [INS-B3]  acc: [trusted holds checked; reviewed head merged normally by authorized coordinator; landed SHA and tree proof recorded; automatic site deployment behavior accounted for]
 - [x] INS-B5 Verify landed brand/site revision  kind: agent stage: verify-landed  blocked-by: [INS-B4]  acc: [landed site/assets and relevant tests match reviewed tree; any automatic production update checked and reported honestly; no live proof inferred from a merge]
 
@@ -59,7 +59,10 @@ All future task/worker worktrees, caches and generated artifacts use mounted wri
 
 ### Completion and remaining acceptance notes
 
-INS-A2–A5 and INS-B4–B5 are complete for the bounded source delivery recorded above; they do not establish live qualification. Keep INS-B2 and INS-B3 open: B2 has passing source/static/manual-public evidence but unexecuted hosted browser coverage and unchanged strict docs warnings; B3 has independent source review but no claimed independent visual review of every hosted surface. Close the residual checks on the integrated frontend candidate, documenting exact baseline-warning disposition instead of changing historical results. They gate release planning alongside frontend landing. Existing task IDs and original criteria are preserved.
+INS-A2–A5 and INS-B2–B5 are complete for the bounded PR361 source delivery recorded above, not live qualification. To correct dependency finding P2 from independent review of a9095c97, INS-B2/B3 now describe their actually completed source verification/review; outstanding original acceptance is retained as separately identified INS-B6/B7. Original B2 required strict docs success and browser tests across hosted templates; original B3 included full independent visual review. Those broader results were not obtained at PR361, are not retroactively claimed, and remain release prerequisites below.
+
+- [ ] INS-B6 Complete residual brand acceptance on integrated candidate  kind: agent stage: verify  blocked-by: [INS-B5, INS-F4]  acc: [hosted desktop/phone browser golden-path and edge-case checks cover login/dashboard/explorer and existing public templates, favicon/downloads/contrast; strict docs warnings are fixed or explicitly dispositioned with paired non-regression evidence by independent review, without recording a failing strict build as passed]
+- [ ] INS-B7 Independent visual and residual-evidence review  kind: agent stage: review  blocked-by: [INS-B6]  acc: [named reviewer independent of authored visual scope records candidate SHA and screenshots of changed public/hosted surfaces; resolves blocking visual/accessibility findings and explicitly assesses unchanged baseline docs warnings; no production acceptance inferred]
 
 ## Reachable frontend wave
 
@@ -91,7 +94,7 @@ For every accepted finding, record an INS-F-FIX-n implementation item, matching 
 
 Outcome: inspector and matching brand live at https://serenity.sire.run with authenticated owner data and public synthetic demo, at verified deployed revision. Package the actual serving path: Pages assets when applicable, embedded hosted binary/API when applicable; retain prior artifacts and rollback procedure. Use existing deployment tooling; no new hosting migration, pricing or spend is implied. Release contract must resolve current hosted security/recovery prerequisites with the trusted lead rather than claim their broad completion. If Pages Actions is billing-blocked, use only an established authorized alternative or record a real release blocker. Canary with dedicated non-customer test account/brain; verify cross-account denials, source privacy, session expiry, static asset/CSP behavior and browser flows over public HTTPS. Verify health before/after rollout, exact artifact SHA/build identity, live website/brand links and rollback evidence. Public release notes contain no private memory data.
 
-- [ ] INS-R0 PLAN expand production release after inspector landed verification  kind: agent stage: preflight  blocked-by: [INS-F8, INS-B2, INS-B3]  acc: [only after frontend landing and residual brand acceptance, revalidate current service/artifact/runtime authority and expand separate preflight, measured qualification, independent release review, guarded deployment, public-HTTPS acceptance and rollback tasks; name owners/evidence/unblock conditions for every release blocker]
+- [ ] INS-R0 PLAN expand production release after inspector landed verification  kind: agent stage: preflight  blocked-by: [INS-F8, INS-B6, INS-B7]  acc: [only after frontend landing and residual brand acceptance, revalidate current service/artifact/runtime authority and expand separate preflight, measured qualification, independent release review, guarded deployment, public-HTTPS acceptance and rollback tasks; name owners/evidence/unblock conditions for every release blocker]
 
 ## Open decisions and risks
 
@@ -117,7 +120,7 @@ Release topology verified: the hosted binary embeds site/ and serves the public 
 
 | Gate | Evidence now | Owner at execution | Required unblock proof |
 |---|---|---|---|
-| Frontend | Prototype synthetic; brand/API landed | Frontend coordinator | INS-F8 and residual INS-B2/B3 acceptance |
+| Frontend | Prototype synthetic; brand/API landed | Frontend coordinator | INS-F8 and residual INS-B6/B7 acceptance |
 | Actions/artifact signing | Billing blocks jobs; inspected candidate lacks qualifying Sigstore bundle | Release coordinator with account owner | Exact authorized tagged archive, checksum, bundle/workflow identity and functioning runtime verifier; no unsigned promotion |
 | Current runtime/startup/recovery | Narrow source qualification is not production READY; trusted holds remain | Trusted repository lead and runtime owners | Named release clearance plus exact current-runtime acceptance; no feature-driven hold waiver |
 | Capacity/performance | Configured limits are not peak-heap evidence | Frontend/API verifier and release coordinator | F1/F5 measured10K/high-water/concurrent-read budgets against target headroom |
