@@ -47,6 +47,12 @@ test('owned read-only explorer pages, facets, inert text and provenance work wit
   await expect(page.locator('.collection-footer')).toContainText('200 matching loaded');
   await page.getByRole('button', { name: 'Load more memories' }).click();
   await expect(page.locator('.collection-footer')).toContainText('223 matching loaded');
+  const list = page.getByRole('list', { name: 'Loaded memories' });
+  const listSize = await list.evaluate(el => ({ height: el.getBoundingClientRect().height, scroll: el.scrollHeight, client: el.clientHeight }));
+  expect(listSize.height).toBeLessThanOrEqual(480);
+  expect(listSize.scroll).toBeGreaterThan(listSize.client);
+  await list.getByRole('button').last().scrollIntoViewIfNeeded();
+  await expect(list.getByRole('button').last()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Load more memories' })).toHaveCount(0);
   await page.getByRole('button', { name: /Synthetic browser memory/ }).first().click();
   const note = page.getByRole('complementary', { name: 'Selected memory' });
