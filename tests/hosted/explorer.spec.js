@@ -37,15 +37,15 @@ test('owned read-only explorer pages, facets, inert text and provenance work wit
   page.on('request', request => requests.push(request.url()));
   page.on('dialog', async dialog => { dialogs.push(dialog.message()); await dialog.dismiss(); });
   await page.goto(`${origin}/__fixture/owner`);
-  await expect(page.getByText('PRIVATE SPACE', { exact: true })).toBeVisible();
+  await expect(page.getByText('Private to you', { exact: true })).toBeVisible();
   await page.getByRole('combobox', { name: 'Memory type' }).selectOption('fact');
   await expect(page.locator('.workspace-count strong')).toHaveText('223');
   await page.getByRole('button', { name: 'List', exact: true }).click();
-  await expect(page.locator('.memory-list-item')).toHaveCount(100);
+  await expect(page.locator('.collection-footer')).toContainText('100 matching loaded');
   await page.getByRole('button', { name: 'Load more memories' }).click();
-  await expect(page.locator('.memory-list-item')).toHaveCount(200);
+  await expect(page.locator('.collection-footer')).toContainText('200 matching loaded');
   await page.getByRole('button', { name: 'Load more memories' }).click();
-  await expect(page.locator('.memory-list-item')).toHaveCount(223);
+  await expect(page.locator('.collection-footer')).toContainText('223 matching loaded');
   await expect(page.getByRole('button', { name: 'Load more memories' })).toHaveCount(0);
   await page.getByRole('button', { name: /Synthetic browser memory/ }).first().click();
   const note = page.getByRole('complementary', { name: 'Selected memory' });
@@ -57,7 +57,7 @@ test('owned read-only explorer pages, facets, inert text and provenance work wit
   await expect(note.locator('.detail-kind')).toContainText('source');
   await page.getByRole('button', { name: '2025', exact: false }).click();
   await expect(page.getByRole('heading', { name: 'The 2025 collection' })).toBeVisible();
-  await expect(page.locator('.workspace-count strong')).toHaveText('36');
+  await expect(page.locator('.workspace-count strong')).toHaveText('39');
   await page.goBack();
   await expect(page.getByRole('heading', { name: 'A connected library' })).toBeVisible();
   await page.getByRole('combobox', { name: 'Memory type' }).selectOption('source');
@@ -83,6 +83,6 @@ test('foreign brains stay fenced and expired sessions clear the rendered account
   await expect(page.locator('canvas')).toHaveCount(0);
   await page.goto(`${origin}/__fixture/other`);
   await page.getByRole('button', { name: 'List', exact: true }).click();
-  await expect(page.getByRole('list', { name: 'Loaded memories' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No matching memories' })).toBeVisible();
   await expect(page.getByText(/Synthetic browser memory/)).toHaveCount(0);
 });
