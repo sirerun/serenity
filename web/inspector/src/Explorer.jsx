@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { adjacentFacetYear, creationYear, dedupeNodes, facetCount, sortedFacetYears } from "./time.js";
-import { layoutGraph } from "./graph/layout.js";
+import { adjacentFacetYear, creationDate, dedupeNodes, facetCount, sortedFacetYears } from "./time.js";
+import { layoutGraph, normalizeEdge } from "./graph/layout.js";
 import Graph3D from "./graph/Graph3D.jsx";
 import "./styles.css";
 
+/** onSelect emits a stable node ID; the app adapter owns data loading and auth. */
 const TYPES = ["entity", "fact", "claim", "source"];
 const labelFor = (node) => node?.type === "entity" ? node.label || node.text : node?.text || node?.label;
 const selectedKey = (selected) => typeof selected === "string" ? selected : selected?.id;
@@ -16,6 +17,8 @@ export function Explorer({
   brainName = "Your memory", onBrainChange, brains = [], onRetry,
 }) {
   const [presentation, setPresentation] = useState("graph");
+  const [graph3DReady, setGraph3DReady] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
   const searchRef = useRef(null);
   useEffect(() => {
     const focusSearch = (event) => {
@@ -27,28 +30,29 @@ export function Explorer({
     document.addEventListener("keydown", focusSearch);
     return () => document.removeEventListener("keydown", focusSearch);
   }, []);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(media.matches);
+    update();
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
   const safeNodes = useMemo(() => dedupeNodes(nodes, coreIds), [nodes, coreIds]);
   const coreSet = useMemo(() => new Set(coreIds), [coreIds]);
   const years = useMemo(() => sortedFacetYears(facets), [facets]);
-  const year = filters.year || "all";
+  const rawYear = filters.year;
+  const year = !rawYear || String(rawYear).toLowerCase() === "all" ? "" : String(rawYear).toLowerCase() === "unknown" ? "unknown" : String(rawYear);
   const selectedId = selectedKey(selected);
-  const visibleNodes = useMemo(() => safeNodes.filter((node) => {
-    if (filters.scope && filters.scope !== "all" && node.scope !== filters.scope) return false;
-    if (filters.type && filters.type !== "all" && node.type !== filters.type) return false;
-    if (year !== "all" && creationYear(node) !== year) return false;
-    const query = (filters.q || "").trim().toLocaleLowerCase();
-    if (query && ![node.label, node.text, node.kind, node.scope, node.status].some((v) => text(v).toLocaleLowerCase().includes(query))) return false;
-    return true;
-  }), [safeNodes, filters, year]);
+  const visibleNodes = safeNodes;
   const visibleIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
-  const visibleEdges = useMemo(() => edges.filter((edge) => visibleIds.has(edge.from) && visibleIds.has(edge.to)), [edges, visibleIds]);
+  const visibleEdges = useMemo(() => edges.map(normalizeEdge).filter((edge) => visibleIds.has(edge.from) && visibleIds.has(edge.to)), [edges, visibleIds]);
   const { positions } = useMemo(() => layoutGraph(visibleNodes, visibleEdges), [visibleNodes, visibleEdges]);
   const coreVisible = visibleNodes.filter((node) => coreSet.has(node.id));
   const contextVisible = visibleNodes.length - coreVisible.length;
-  const selectedNode = safeNodes.find((node) => node.id === selectedId);
+  const selectedNode = safeNodes.find((node) => node.id === selectedId) || (selected && typeof selected === "object" ? selected : null);
   const change = (patch) => onFilter({ ...filters, ...patch });
   const moveYear = (direction) => {
-    const next = adjacentFacetYear(years, year, direction);
+    const next = adjacentFacetYear(years, year || null, direction);
     if (next) change({ year: next });
   };
   const yearsWithCounts = years.map((value) => ({ year: value, count: facetCount(facets, value) }));
@@ -56,14 +60,15 @@ export function Explorer({
   const selectedDetailNode = detail?.node || detail || null;
   const relatedSources = (detail?.relatedNodes || []).filter((node) => node.type === "source");
   const sourceEntries = (selectedDetailNode?.sourceIds || selectedDetailNode?.sources || []).map((source) => {
-    const id = typeof source === "string" ? source : source.id;
-    return relatedSources.find((node) => node.id === id) || source;
+    const sourceNode = typeof source === "object" && source?.node ? source.node : source;
+    const id = typeof sourceNode === "string" ? sourceNode : sourceNode?.id;
+    return relatedSources.find((node) => node.id === id) || sourceNode;
   });
 
   return <main className={`explorer ${mode === "demo" ? "explorer-demo" : "explorer-private"}`}>
     <header className="explorer-topbar">
       <a className="explorer-brand" href="#explore" aria-label="Serenity memory explorer">
-        <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
+        <img className="brand-mark" src="/assets/brand.svg" alt="" />
         <span><strong>Serenity</strong><small>MEMORY EXPLORER</small></span>
       </a>
       <div className="topbar-center">{mode === "demo" ? <span className="demo-label">SYNTHETIC DEMO</span> : <><span className="private-dot" aria-hidden="true" /> PRIVATE SPACE</>}</div>
@@ -88,30 +93,31 @@ export function Explorer({
       <label className="search-box"><span aria-hidden="true" className="search-icon" /><span className="sr-only">Search memories</span><input ref={searchRef} value={filters.q || ""} onChange={(event) => change({ q: event.target.value })} placeholder="Search your memories…" />{filters.q ? <button type="button" className="clear-search" onClick={() => change({ q: "" })} aria-label="Clear search">×</button> : <kbd>⌘ K</kbd>}</label>
       <label className="filter-select"><span className="sr-only">Memory scope</span><select aria-label="Memory scope" value={filters.scope || "all"} onChange={(event) => change({ scope: event.target.value })}><option value="all">All scopes</option><option value="private">Private</option><option value="world">World</option></select></label>
       <label className="filter-select type-select"><span className="sr-only">Memory type</span><select aria-label="Memory type" value={filters.type || "all"} onChange={(event) => change({ type: event.target.value })}><option value="all">All types</option>{TYPES.map((type) => <option value={type} key={type}>{type[0].toUpperCase() + type.slice(1)}s</option>)}</select></label>
-      <div className="view-switch" role="group" aria-label="Presentation"><button type="button" aria-pressed={presentation === "graph"} onClick={() => setPresentation("graph")}><span aria-hidden="true">◌</span> Map</button><button type="button" aria-pressed={presentation === "list"} onClick={() => setPresentation("list")}><span aria-hidden="true">☷</span> List</button></div>
+      <div className="view-switch" role="group" aria-label="Presentation"><button type="button" aria-pressed={presentation === "graph"} onClick={() => setPresentation("graph")}><span aria-hidden="true">◌</span> Map</button><button type="button" aria-pressed={presentation === "list"} onClick={() => { setGraph3DReady(false); setPresentation("list"); }}><span aria-hidden="true">☷</span> List</button></div>
     </section>
 
     <section className="year-rail" aria-label="Browse by year">
       <div className="rail-heading"><div><span className="rail-overline">TIME ATLAS</span><strong>Added to memory</strong></div><span className="rail-total">{formatCount(allFacetCount)} RECORDS</span></div>
       <div className="rail-track">
-        <button className={`year-all ${year === "all" ? "active" : ""}`} aria-pressed={year === "all"} type="button" onClick={() => change({ year: "all" })}>All time <small>{formatCount(allFacetCount)}</small></button>
-        <button className="year-arrow" aria-label="Previous year" type="button" onClick={() => moveYear(-1)} disabled={!years.length || year === years[0] || year === "Unknown"}>‹</button>
+        <button className={`year-all ${year === "" ? "active" : ""}`} aria-pressed={year === ""} type="button" onClick={() => change({ year: "" })}>All time <small>{formatCount(allFacetCount)}</small></button>
+        <button className="year-arrow" aria-label="Previous year" type="button" onClick={() => moveYear(-1)} disabled={!years.length || year === years[0] || year === "unknown"}>‹</button>
         <div className="year-items">{yearsWithCounts.map(({ year: value, count }) => <button className={`year-item ${year === value ? "active" : ""}`} type="button" aria-pressed={year === value} key={value} onClick={() => change({ year: value })}><span className="year-dot" />{value}<small>{formatCount(count)}</small></button>)}</div>
-        <button className="year-arrow" aria-label="Next year" type="button" onClick={() => moveYear(1)} disabled={!years.length || year === years.at(-1) || year === "Unknown"}>›</button>
-        <button className={`year-item unknown-year ${year === "Unknown" ? "active" : ""}`} type="button" aria-pressed={year === "Unknown"} onClick={() => change({ year: "Unknown" })}><span className="year-dot" />Unknown<small>{formatCount(facetCount(facets, "Unknown"))}</small></button>
+        <button className="year-arrow" aria-label="Next year" type="button" onClick={() => moveYear(1)} disabled={!years.length || year === years.at(-1) || year === "unknown"}>›</button>
+        <button className={`year-item unknown-year ${year === "unknown" ? "active" : ""}`} type="button" aria-pressed={year === "unknown"} onClick={() => change({ year: "unknown" })}><span className="year-dot" />Unknown<small>{formatCount(facetCount(facets, "unknown"))}</small></button>
       </div>
     </section>
 
-    <div className="workspace-heading"><div><span className="workspace-kicker">YOUR COLLECTION</span><h2>{year === "all" ? "A connected library" : year === "Unknown" ? "Without a date" : `The ${year collection}`}</h2></div><div className="workspace-count"><strong>{formatCount(totalMatching)}</strong><span>matching memories</span></div></div>
+    <div className="workspace-heading"><div><span className="workspace-kicker">YOUR COLLECTION</span><h2>{year === "" ? "A connected library" : year === "unknown" ? "Without a date" : `The ${year} collection`}</h2></div><div className="workspace-count"><strong>{formatCount(totalMatching)}</strong><span>matching memories</span></div></div>
     {error ? <div className="explorer-state error-state" role="alert"><span className="state-seal">!</span><h3>We couldn’t open this collection</h3><p>{text(error?.message || error) || "Your memories are still private. Try again when the connection is ready."}</p>{onRetry && <button type="button" className="rose-button" onClick={onRetry}>Try again</button>}</div>
       : loading && !safeNodes.length ? <div className="explorer-state" role="status"><span className="loader-orbit" /><p>Opening your library…</p></div>
-      : !totalMatching ? <div className="explorer-state empty-state"><span className="state-seal">✧</span><h3>No matching memories</h3><p>Try another year or clear a filter to explore more of your library.</p><button type="button" className="quiet-button" onClick={() => onFilter({ ...filters, scope: "all", type: "all", q: "", year: "all" })}>Clear filters</button></div>
+      : !totalMatching ? <div className="explorer-state empty-state"><span className="state-seal">✧</span><h3>No matching memories</h3><p>Try another year or clear a filter to explore more of your library.{mode === "private" ? " Remote-private memories remain excluded from this view." : ""}</p><button type="button" className="quiet-button" onClick={() => onFilter({ ...filters, scope: "all", type: "all", q: "", year: "" })}>Clear filters</button></div>
       : <section className={`collection ${presentation === "list" ? "list-mode" : "graph-mode"}`} aria-label="Memory collection">
         <div className="collection-main">
           {presentation === "graph" ? <div className="map-stage">
             <div className="map-caption"><span className="caption-pip" /> INTERCONNECTED IDEAS <span className="caption-divider">·</span> SELECT A NODE TO INSPECT</div>
-            <Graph3D nodes={visibleNodes} edges={visibleEdges} positions={positions} onFailure={() => setPresentation("list")} />
-            <svg className="constellation" viewBox="0 0 1000 580" role="group" aria-label={`Memory constellation with ${visibleNodes.length} loaded records`}>
+            <span id="map-keyboard-help" className="sr-only">Drag to rotate the map; scroll or pinch to zoom. Use the arrow keys to move the selection, Enter to inspect a memory, and Home to reset the view.</span>
+            <Graph3D nodes={visibleNodes} edges={visibleEdges} positions={positions} selectedId={selectedId} onSelect={onSelect} reducedMotion={reducedMotion} onReady={setGraph3DReady} onFailure={() => { setGraph3DReady(false); setPresentation("list"); }} />
+            {!graph3DReady && <svg className="constellation" viewBox="0 0 1000 580" role="group" aria-label={`Memory constellation with ${visibleNodes.length} loaded records`}>
               <defs><radialGradient id="rose-halo"><stop offset="0" stopColor="#f1c4cf" stopOpacity=".19"/><stop offset="1" stopColor="#f1c4cf" stopOpacity="0"/></radialGradient><filter id="soft-shadow" x="-80%" y="-80%" width="260%" height="260%"><feDropShadow dx="0" dy="7" stdDeviation="7" floodColor="#442630" floodOpacity=".14"/></filter></defs>
               <ellipse cx="505" cy="300" rx="485" ry="255" fill="url(#rose-halo)" />
               {[0,1,2].map((ring) => <ellipse key={ring} className="atlas-ring" cx="500" cy="296" rx={145 + ring * 112} ry={79 + ring * 61} transform={`rotate(${-13 + ring * 8} 500 296)`} />)}
@@ -121,7 +127,8 @@ export function Explorer({
                 {index < 14 && <text className="node-label" x={radius + 9} y="4">{shortLabel(label, 28)}</text>}
                 {context && <title>Related context: {label}</title>}
               </g>; })}
-            </svg>
+            </svg>}
+            {graph3DReady && <div className="orbit-hint" aria-hidden="true">DRAG TO ORBIT <span>·</span> PINCH TO ZOOM</div>}
             <div className="map-legend"><span><i className="legend-core" /> Matching memory</span><span><i className="legend-context" /> Related context</span><span><i className="legend-link" /> Source connection</span></div>
           </div> : <ul className="memory-list" aria-label="Loaded memories">{visibleNodes.map((node) => <li className="memory-list-item" key={node.id}><button type="button" className={`memory-row ${node.id === selectedId ? "selected" : ""}`} aria-pressed={node.id === selectedId} onClick={() => onSelect(node.id)}><span className={`type-mark type-${safeClass(node.type)}`} aria-hidden="true">{typeGlyph(node.type)}</span><span className="row-copy"><span className="row-title">{labelFor(node) || "Untitled memory"}</span><span className="row-meta">{node.kind || node.type} · {node.scope || "scope unavailable"} · {formatDate(node)}</span></span><span className={`context-tag ${coreSet.has(node.id) ? "" : "visible"}`}>{coreSet.has(node.id) ? "MATCH" : "RELATED"}</span><span className="row-chevron" aria-hidden="true">›</span></button></li>)}</ul>}
           <div className="collection-footer"><span>{formatCount(coreVisible.length)} matching loaded <span className="footer-sep">·</span> {contextVisible} related context</span>{hasMore && <button type="button" className="load-more" onClick={onMore} disabled={loading}>{loading ? "Loading…" : "Load more memories"}<span aria-hidden="true"> ↓</span></button>}</div>
@@ -129,7 +136,7 @@ export function Explorer({
         <aside className="detail-card" aria-label="Selected memory" aria-live="polite">
           <div className="detail-topline"><span>MEMORY NOTE</span><span className="detail-index">{selectedNode ? String(Math.max(1, safeNodes.findIndex((node) => node.id === selectedId) + 1)).padStart(2, "0") : "—"}</span></div>
           {detailLoading ? <div className="detail-placeholder"><span className="loader-orbit small" /><span>Opening note…</span></div>
-            : selectedNode && selectedDetailNode ? <><div className="detail-kind"><span className={`type-mark type-${safeClass(selectedNode.type)}`}>{typeGlyph(selectedNode.type)}</span>{selectedNode.type} <span className="detail-status">{text(selectedDetailNode.status || selectedNode.status || "available")}</span></div><h3>{labelFor(selectedDetailNode) || labelFor(selectedNode) || "Untitled memory"}</h3><p className="detail-body">{text(selectedDetailNode.text) || "This memory has no additional text."}</p><div className="detail-rule"/><dl className="detail-meta"><div><dt>ADDED</dt><dd>{formatDate(selectedDetailNode)}</dd></div><div><dt>SCOPE</dt><dd>{text(selectedDetailNode.scope || selectedNode.scope) || "Unknown"}</dd></div>{selectedDetailNode.confidence != null && <div><dt>CONFIDENCE</dt><dd>{Math.round(Number(selectedDetailNode.confidence) * 100)}%</dd></div>}</dl>{sourceEntries.length > 0 && <div className="source-block"><span className="source-heading">SOURCES <span>{sourceEntries.length}</span></span>{sourceEntries.slice(0, 4).map((source, index) => <div className="source-item" key={typeof source === "string" ? source : source.id || index}><span className="source-icon">↗</span>{text(typeof source === "string" ? source : source.label || source.text || source.id)}</div>)}</div>}{selectedDetailNode.supersedes && <div className="source-block"><span className="source-heading">SUPERSEDES</span><div className="source-item">{text(selectedDetailNode.supersedes)}</div></div>}{selectedDetailNode.supersededBy && <div className="source-block"><span className="source-heading">SUPERSEDED BY</span><div className="source-item">{text(selectedDetailNode.supersededBy)}</div></div>}{!coreSet.has(selectedId) && <span className="related-note">RELATED CONTEXT · OUTSIDE MATCH COUNT</span>}</>
+            : selectedNode && selectedDetailNode ? <><div className="detail-kind"><span className={`type-mark type-${safeClass(selectedNode.type)}`}>{typeGlyph(selectedNode.type)}</span>{selectedNode.type} <span className="detail-status">{text(selectedDetailNode.status || selectedNode.status || "available")}</span></div><h3>{labelFor(selectedDetailNode) || labelFor(selectedNode) || "Untitled memory"}</h3><p className="detail-body">{text(selectedDetailNode.text) || "No text is available for this memory."}</p><div className="detail-rule"/><dl className="detail-meta"><div><dt>ADDED</dt><dd>{formatDate(selectedDetailNode)}</dd></div><div><dt>SCOPE</dt><dd>{text(selectedDetailNode.scope || selectedNode.scope) || "Unknown"}</dd></div>{selectedDetailNode.confidence != null && <div><dt>CONFIDENCE</dt><dd>{Math.round(Number(selectedDetailNode.confidence) * 100)}%</dd></div>}</dl>{sourceEntries.length > 0 && <div className="source-block"><span className="source-heading">SOURCES <span>{sourceEntries.length}</span></span>{sourceEntries.slice(0, 4).map((source, index) => { const sourceNode = typeof source === "object" && source?.node ? source.node : source; const key = typeof sourceNode === "string" ? sourceNode : sourceNode?.id || index; const label = typeof sourceNode === "string" ? sourceNode : sourceNode?.label || sourceNode?.text || sourceNode?.id; return <button type="button" className="source-item" key={key} onClick={() => onSelect(sourceNode)}><span className="source-icon">↗</span>{text(label)}</button>; })}</div>}{selectedDetailNode.supersedes && <div className="source-block"><span className="source-heading">SUPERSEDES</span><div className="source-item">{text(selectedDetailNode.supersedes)}</div></div>}{selectedDetailNode.supersededBy && <div className="source-block"><span className="source-heading">SUPERSEDED BY</span><div className="source-item">{text(selectedDetailNode.supersededBy)}</div></div>}{!coreSet.has(selectedId) && <span className="related-note">RELATED CONTEXT · OUTSIDE MATCH COUNT</span>}</>
               : <div className="detail-empty"><span className="detail-book">⌑</span><h3>Select a memory</h3><p>Choose a point in the map or a note in the list to see its details and sources.</p></div>}
         </aside>
       </section>}
@@ -143,5 +150,5 @@ function selectedBrainValue(brains, name) { const brain = brains.find((item) => 
 function formatCount(value) { return new Intl.NumberFormat().format(Number(value) || 0); }
 function safeClass(value) { return String(value || "memory").toLowerCase().replace(/[^a-z0-9_-]/g, "-"); }
 function shortLabel(value, limit) { const label = String(value); return label.length > limit ? `${label.slice(0, limit - 1)}…` : label; }
-function formatDate(node) { const date = node?.createdAt || node?.captureTime || node?.capturedAt; return date ? String(date).slice(0, 10) : "Unknown date"; }
+function formatDate(node) { const date = creationDate(node); return date ? String(date).slice(0, 10) : "Unknown date"; }
 function typeGlyph(type) { return ({ entity: "✧", fact: "•", claim: "◇", source: "▧" })[type] || "•"; }

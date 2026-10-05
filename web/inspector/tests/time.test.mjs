@@ -1,23 +1,37 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { adjacentFacetYear, creationDate, creationYear, dedupeNodes, facetCount, sortedFacetYears } from "../src/time.js";
+import { normalizeEdge } from "../src/graph/layout.js";
+import { demoEdges, demoFacets, demoNodes } from "../src/demo.js";
 
-test("capture time derives a year without treating observed time as capture time", () => {
-  assert.equal(creationDate({ createdAt: "2024-08-09", captureTime: "2025-01-02" }), "2024-08-09");
-  assert.equal(creationYear({ captureTime: "2025-01-02T00:00:00Z" }), "2025");
-  assert.equal(creationYear({ observedAt: "2026-03-04" }), "Unknown");
-  assert.equal(creationYear({ createdAt: "invalid" }), "Unknown");
+test("capture year preserves the API date semantics", () => {
+  assert.equal(creationDate({ type: "entity", dateKind: "earliest-linked-memory", createdAt: "2024-08-09" }), "2024-08-09");
+  assert.equal(creationDate({ type: "fact", createdAt: "2024-08-09", capturedAt: "2025-01-02" }), "2025-01-02");
+  assert.equal(creationYear({ type: "claim", observedAt: "2026-03-04" }), "unknown");
+  assert.equal(creationYear({ type: "source", observedAt: "2026-03-04" }), "unknown");
+  assert.equal(creationYear({ type: "fact", createdAt: "invalid" }), "unknown");
 });
 
 test("full-dataset facets remain chronological and keep unknown explicit", () => {
-  const facets = { years: { "2025": 3, "2023": 2, "2024": 4 }, unknown: 1 };
+  const facets = { years: [{ year: "2025", count: 3 }, { year: "unknown", count: 1 }, { year: "2023", count: 2 }, { year: "2024", count: 4 }] };
   const years = sortedFacetYears(facets);
   assert.deepEqual(years, ["2023", "2024", "2025"]);
   assert.equal(facetCount(facets, "2024"), 4);
-  assert.equal(facetCount(facets, "Unknown"), 1);
+  assert.equal(facetCount(facets, "unknown"), 1);
   assert.equal(adjacentFacetYear(years, "2024", -1), "2023");
   assert.equal(adjacentFacetYear(years, "2024", 1), "2025");
   assert.equal(adjacentFacetYear(years, "2025", 1), null);
+});
+
+test("graph normalizes the read API edge names", () => {
+  assert.deepEqual(normalizeEdge({ id: "e1", source: "a", target: "b", type: "source" }), { id: "e1", source: "a", target: "b", type: "source", from: "a", to: "b", kind: "source" });
+});
+
+test("public fixture retains the accepted 39 synthetic nodes", () => {
+  assert.equal(demoNodes.length, 39);
+  assert.ok(demoEdges.length >= 39);
+  assert.ok(demoEdges.every((edge) => edge.source && edge.target && edge.type));
+  assert.ok(Array.isArray(demoFacets.years));
 });
 
 test("node merge deduplicates by stable ID, prioritizes core nodes and caps context", () => {
