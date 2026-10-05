@@ -53,5 +53,5 @@ test('changing filters aborts pending detail and clears its loading state',async
  await page.getByRole('combobox',{name:'Memory type'}).selectOption('fact');
  await expect(page.getByText('Opening note…')).not.toBeVisible();
  finishDetail();
- await expect(page.getByRole('heading',{name:'Memory, in its place.'})).toBeVisible();
+ await expect(page.getByRole('complementary',{name:'Selected memory'}).getByRole('heading',{name:'Select a memory'})).toBeVisible();
 });
