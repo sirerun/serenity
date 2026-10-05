@@ -1,5 +1,13 @@
 # Explorer integration checkpoint
 
+Session close: latest source/assets are committed at
+`c5e4cd3e1262cfb80654f7e9d0c9f155dae4f005` and pushed to the integration
+branch. The WebGL lifecycle fix and stable graph-prop identities are rebuilt;
+affected dashboard/site race checks and binary compilation pass. The 52-case
+browser rerun, final integrated10K check and final independent exact-head
+code/visual approval remain open. No merge or deployment occurred. This
+session's integration claim is released and it holds no shared build lease.
+
 Source delivery remains unmerged. Integration branch: `ship/explorer-20261005`;
 base: `aebf7f5a5680b8ef704cefc20338a29707012326`. Planning PR362 and brand/API
 PR361 are merged. Source review is provisional, not final approval.
