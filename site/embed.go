@@ -14,8 +14,20 @@ import (
 	"strings"
 )
 
-//go:embed *.html assets brand chat docs get-started product pricing content.json llms.txt robots.txt sitemap.xml
+//go:embed *.html assets brand chat docs explore get-started product pricing content.json llms.txt robots.txt sitemap.xml
 var files embed.FS
+
+// ExplorerPage serves the application shell; its caller owns the session
+// gate, caching and CSP. No account data is embedded in the HTML.
+func ExplorerPage(w http.ResponseWriter, r *http.Request) {
+	data, err := files.ReadFile("explore/index.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(data)
+}
 
 // Handler serves only public files. Directory listings and Go sources are never exposed.
 func Handler() http.Handler {
