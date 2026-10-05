@@ -55,7 +55,7 @@ test('owned read-only explorer pages, facets, inert text and provenance work wit
   await page.screenshot({ path: testInfo.outputPath('private-explorer-note.png'), fullPage: true });
   await note.locator('.source-item').click();
   await expect(note.locator('.detail-kind')).toContainText('source');
-  await page.getByRole('button', { name: '2025', exact: false }).click();
+  await page.getByRole('region', { name: 'Browse by year' }).getByRole('button', { name: /^2025(?:\s|$)/ }).click();
   await expect(page.getByRole('heading', { name: 'The 2025 collection' })).toBeVisible();
   await expect(page.locator('.workspace-count strong')).toHaveText('39');
   await page.goBack();
