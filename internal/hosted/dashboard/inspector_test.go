@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -18,11 +19,13 @@ func TestInspectorFilterContract(t *testing.T) {
 		want  inspectorFilters
 		bad   bool
 	}{
-		{query: "", want: inspectorFilters{Scope: "all", Limit: inspectorDefaultLimit}},
-		{query: "scope=private&year=unknown&q=%20%20tea%20%20", want: inspectorFilters{Scope: "private", Year: "unknown", Query: "tea", Limit: inspectorDefaultLimit}},
-		{query: "limit=100&year=2024", want: inspectorFilters{Scope: "all", Year: "2024", Limit: 100}},
+		{query: "", want: inspectorFilters{Scope: "all", Type: "all", Limit: inspectorDefaultLimit}},
+		{query: "scope=private&year=unknown&q=%20%20tea%20%20", want: inspectorFilters{Scope: "private", Year: "unknown", Query: "tea", Type: "all", Limit: inspectorDefaultLimit}},
+		{query: "limit=100&year=2024", want: inspectorFilters{Scope: "all", Year: "2024", Type: "all", Limit: 100}},
+		{query: "type=claim", want: inspectorFilters{Scope: "all", Type: "claim", Limit: inspectorDefaultLimit}},
 		{query: "limit=101", bad: true},
 		{query: "year=20x4", bad: true},
+		{query: "type=other", bad: true},
 		{query: "extra=value", bad: true},
 		{query: "scope=all&scope=world", bad: true},
 	}
@@ -37,6 +40,28 @@ func TestInspectorFilterContract(t *testing.T) {
 				t.Fatalf("filters = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestInspectorCursorTypeBindingAndLegacyDefaultAll(t *testing.T) {
+	all, err := parseInspectorFilters(httptest.NewRequest(http.MethodGet, "/?limit=2", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := base64.RawURLEncoding.EncodeToString([]byte(`{"v":1,"b":"BrainOwnerABCDEFGHIJKLMNOP","s":"all","y":"","q":"","n":2,"l":"fact:abc"}`))
+	if _, err := decodeInspectorCursor(legacy, "BrainOwnerABCDEFGHIJKLMNOP", all); err != nil {
+		t.Fatalf("legacy default-all cursor rejected: %v", err)
+	}
+	claimFilters, err := parseInspectorFilters(httptest.NewRequest(http.MethodGet, "/?type=claim&limit=2", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := decodeInspectorCursor(legacy, "BrainOwnerABCDEFGHIJKLMNOP", claimFilters); err == nil {
+		t.Fatal("legacy cursor without a type was accepted for a non-default type filter")
+	}
+	cursor := encodeInspectorCursor("BrainOwnerABCDEFGHIJKLMNOP", all, "fact:abc")
+	if _, err := decodeInspectorCursor(cursor, "BrainOwnerABCDEFGHIJKLMNOP", claimFilters); err == nil {
+		t.Fatal("cursor was accepted after the type filter changed")
 	}
 }
 
