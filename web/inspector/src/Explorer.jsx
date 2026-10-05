@@ -67,7 +67,7 @@ export function Explorer({
 
   return <main className={`explorer ${mode === "demo" ? "explorer-demo" : "explorer-private"}`}>
     <header className="explorer-topbar">
-      <a className="explorer-brand" href="#explore" aria-label="Serenity memory explorer">
+      <a className="explorer-brand" href={mode === "demo" ? "/" : "/dashboard"} aria-label="Serenity memory explorer">
         <img className="brand-mark" src="/assets/brand.svg" alt="" />
         <span><strong>Serenity</strong><small>MEMORY EXPLORER</small></span>
       </a>

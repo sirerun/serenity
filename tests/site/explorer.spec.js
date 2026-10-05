@@ -8,6 +8,7 @@ async function renderedMap(page,canvas){
 }
 test('synthetic explorer supports time navigation and an accessible list',async({page},testInfo)=>{
  await page.goto('/explore/');
+ await expect(page.getByRole('link',{name:'Serenity memory explorer'})).toHaveAttribute('href','/');
  await expect(page.getByText('Synthetic demo',{exact:true})).toBeVisible();
  await expect(page.locator('canvas.graph-canvas')).toHaveCount(1);
  await page.screenshot({path:testInfo.outputPath('explorer-map.png'),fullPage:true});
