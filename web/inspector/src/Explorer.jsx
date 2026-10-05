@@ -14,7 +14,7 @@ export function Explorer({
   nodes = [], edges = [], coreIds = [], facets = {}, filters = { scope: "all", year: "all", q: "", type: "all" },
   onFilter = () => {}, onMore = () => {}, hasMore = false, loading = false, totalMatching = 0,
   selected, onSelect = () => {}, detail, detailLoading = false, error, mode = "private",
-  brainName = "Your memory", onBrainChange, brains = [], onRetry,
+  brainName = "Your memory", brainId, onBrainChange, brains = [], onRetry,
 }) {
   const [presentation, setPresentation] = useState("graph");
   const [graph3DReady, setGraph3DReady] = useState(false);
@@ -75,7 +75,7 @@ export function Explorer({
       <div className="brain-picker">
         {onBrainChange && brains.length > 1 ? <label className="sr-only" htmlFor="explorer-brain">Choose memory space</label> : null}
         {onBrainChange && brains.length > 1
-          ? <select id="explorer-brain" value={selectedBrainValue(brains, brainName)} onChange={(event) => onBrainChange(event.target.value)}>{brains.map((brain) => <option key={brain.id || brain.name} value={brain.id || brain.name}>{brain.name || brain.label || brain.id}</option>)}</select>
+          ? <select id="explorer-brain" value={brainId || selectedBrainValue(brains, brainName)} onChange={(event) => onBrainChange(event.target.value)}>{brains.map((brain) => <option key={brain.id || brain.name} value={brain.id || brain.name}>{brain.name || brain.label || brain.id}</option>)}</select>
           : <span>{brainName}</span>}
         <span className="avatar" aria-hidden="true">{(brainName || "M").slice(0, 1).toUpperCase()}</span>
       </div>
@@ -92,7 +92,7 @@ export function Explorer({
     <section className="filter-panel" aria-label="Memory filters">
       <label className="search-box"><span aria-hidden="true" className="search-icon" /><span className="sr-only">Search memories</span><input ref={searchRef} value={filters.q || ""} onChange={(event) => change({ q: event.target.value })} placeholder="Search your memories…" />{filters.q ? <button type="button" className="clear-search" onClick={() => change({ q: "" })} aria-label="Clear search">×</button> : <kbd>⌘ K</kbd>}</label>
       <label className="filter-select"><span className="sr-only">Memory scope</span><select aria-label="Memory scope" value={filters.scope || "all"} onChange={(event) => change({ scope: event.target.value })}><option value="all">All scopes</option><option value="private">Private</option><option value="world">World</option></select></label>
-      <label className="filter-select type-select"><span className="sr-only">Memory type</span><select aria-label="Memory type" value={filters.type || "all"} onChange={(event) => change({ type: event.target.value })}><option value="all">All types</option>{TYPES.map((type) => <option value={type} key={type}>{type[0].toUpperCase() + type.slice(1)}s</option>)}</select></label>
+      <label className="filter-select type-select"><span className="sr-only">Memory type</span><select aria-label="Memory type" value={filters.type || "all"} onChange={(event) => change({ type: event.target.value })}><option value="all">All types</option>{TYPES.map((type) => <option value={type} key={type}>{typeLabel(type)}</option>)}</select></label>
       <div className="view-switch" role="group" aria-label="Presentation"><button type="button" aria-pressed={presentation === "graph"} onClick={() => setPresentation("graph")}><span aria-hidden="true">◌</span> Map</button><button type="button" aria-pressed={presentation === "list"} onClick={() => { setGraph3DReady(false); setPresentation("list"); }}><span aria-hidden="true">☷</span> List</button></div>
     </section>
 
@@ -147,6 +147,7 @@ export function Explorer({
 export default Explorer;
 
 function selectedBrainValue(brains, name) { const brain = brains.find((item) => item.name === name || item.label === name || item.id === name); return brain?.id || brain?.name || brains[0]?.id || ""; }
+function typeLabel(type) { return ({ entity: "Entities", fact: "Facts", claim: "Claims", source: "Sources" })[type] || type; }
 function formatCount(value) { return new Intl.NumberFormat().format(Number(value) || 0); }
 function safeClass(value) { return String(value || "memory").toLowerCase().replace(/[^a-z0-9_-]/g, "-"); }
 function shortLabel(value, limit) { const label = String(value); return label.length > limit ? `${label.slice(0, limit - 1)}…` : label; }
