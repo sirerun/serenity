@@ -1,7 +1,7 @@
 const {test,expect}=require('@playwright/test');
 test('synthetic explorer supports time navigation and an accessible list',async({page})=>{
  await page.goto('/explore/');
- await expect(page.getByText(/SYNTHETIC DEMO/)).toBeVisible();
+ await expect(page.getByText('Synthetic demo',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'List',exact:true}).click();
  await expect(page.getByRole('list',{name:'Loaded memories'})).toBeVisible();
  await page.getByRole('button',{name:/Unknown/}).click();

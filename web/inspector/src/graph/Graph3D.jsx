@@ -315,6 +315,7 @@ export default function Graph3D({ nodes, edges, positions, selectedId, onSelect,
       selectedLabelRef.current?.material.dispose();
       controls?.dispose();
       renderer?.dispose();
+      renderer?.forceContextLoss();
       renderer?.domElement.remove();
       scene.clear();
       sceneRef.current = null;
