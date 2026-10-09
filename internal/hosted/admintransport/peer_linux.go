@@ -2,7 +2,6 @@ package admintransport
 
 import (
 	"net"
-	"syscall"
 
 	"golang.org/x/sys/unix"
 )

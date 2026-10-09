@@ -38,22 +38,33 @@ func New(db *store.Store, id *identity.Service, p *provision.Provisioner, origin
 	return &Hosted{Server: server, Store: st, Identity: id, Provision: p, Origin: origin, Dev: dev, limits: defaultRateLimits()}, nil
 }
 func (h *Hosted) Verify(ctx context.Context, raw string) (credential.Binding, error) {
+	ident, epoch, err := h.verifyIdentity(ctx, raw)
+	if err != nil {
+		return credential.Binding{}, err
+	}
+	brain, _, _ := strings.Cut(ident.Binding, ".")
+	return credential.Binding{AccountID: ident.Subject, BrainID: brain, CredentialID: "oauth:" + ident.GrantID, Generation: epoch + 1, Scopes: ident.Scopes}, nil
+}
+
+// verifyIdentity is shared by MCP authorization and binding introspection.
+func (h *Hosted) verifyIdentity(ctx context.Context, raw string) (mcpoauth.Identity, int, error) {
 	ident, err := h.Server.Verify(ctx, raw)
 	if err != nil {
-		return credential.Binding{}, credential.ErrInvalidCredential
+		return mcpoauth.Identity{}, 0, credential.ErrInvalidCredential
 	}
 	brain, generation, ok := strings.Cut(ident.Binding, ".")
 	if !ok {
-		return credential.Binding{}, credential.ErrInvalidCredential
+		return mcpoauth.Identity{}, 0, credential.ErrInvalidCredential
 	}
 	var status, state string
 	var epoch int
 	err = h.Store.DB.DB().QueryRowContext(ctx, `SELECT a.status,b.state,COALESCE(e.generation,0) FROM brains b JOIN accounts a ON a.id=b.account_id LEFT JOIN oauth_epochs e ON e.brain_id=b.id WHERE a.id=? AND b.id=?`, ident.Subject, brain).Scan(&status, &state, &epoch)
 	if err != nil || status != "active" || state != "ready" || generation != strconv.Itoa(epoch) {
-		return credential.Binding{}, credential.ErrRevoked
+		return mcpoauth.Identity{}, 0, credential.ErrRevoked
 	}
-	return credential.Binding{AccountID: ident.Subject, BrainID: brain, CredentialID: "oauth:" + ident.GrantID, Generation: epoch + 1, Scopes: ident.Scopes}, nil
+	return ident, epoch, nil
 }
+
 func (h *Hosted) Handler() http.Handler {
 	mux := http.NewServeMux()
 	authorize := h.Server.AuthorizeHandler(h.consent)
@@ -78,6 +89,7 @@ func (h *Hosted) Handler() http.Handler {
 	mux.Handle("/oauth/token", withRateLimit(newLimiter(h.limits.Token, 0, time.Minute), h.Server.TokenHandler()))
 	mux.Handle("/oauth/revoke", withRateLimit(newLimiter(h.limits.Token, 0, time.Minute), h.Server.RevokeHandler()))
 	mux.HandleFunc("GET /oauth/connections", h.connections)
+	mux.HandleFunc("/oauth/binding", h.binding)
 	mux.HandleFunc("POST /oauth/disconnect", h.disconnect)
 	return withRateLimit(newLimiter(h.limits.PerPrefix, 0, time.Minute), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

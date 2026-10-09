@@ -227,7 +227,13 @@ func TestPinOwnerLockReplacementAndHistoryTamperFailClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	lockPath := filepath.Join(owner.options.OwnerRoot, pinOwnerLockName)
-	if err := os.Remove(lockPath); err != nil {
+	// Retain the original inode so the filesystem cannot immediately reuse it.
+	// This fixture exercises replacement of the pinned device/inode identity.
+	oldInfo, err := os.Stat(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(lockPath, filepath.Join(root, "retained-original-lock")); err != nil {
 		t.Fatal(err)
 	}
 	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)
@@ -236,6 +242,13 @@ func TestPinOwnerLockReplacementAndHistoryTamperFailClosed(t *testing.T) {
 	}
 	if err = f.Close(); err != nil {
 		t.Fatal(err)
+	}
+	newInfo, err := os.Stat(lockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.SameFile(oldInfo, newInfo) {
+		t.Fatal("fixture did not replace lock identity")
 	}
 	if _, err = owner.ReservePinPlan(ctx, "op-must-not-publish"); !errors.Is(err, ErrPinOwnerUnavailable) {
 		t.Fatalf("replaced lock accepted: %v", err)
