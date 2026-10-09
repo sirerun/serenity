@@ -42,6 +42,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/kazi-org/dira/ledger"
@@ -327,6 +328,12 @@ func readContainedRoot(confined *os.Root, toplevel, rel string) (data []byte, re
 	}
 	real, err := filepath.EvalSymlinks(p)
 	if err != nil {
+		// A symlink can become a regular file between lstat and readlink.
+		// Refuse this raced snapshot without turning a safe skip into a poll failure.
+		var pathErr *os.PathError
+		if errors.As(err, &pathErr) && pathErr.Op == "readlink" && errors.Is(err, syscall.EINVAL) {
+			return nil, errNonRegular
+		}
 		return nil, err
 	}
 	root, err := filepath.EvalSymlinks(toplevel)

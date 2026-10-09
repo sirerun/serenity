@@ -166,6 +166,127 @@ func testOAuthBrowserConsentMCPAndRevocation(t *testing.T, callback string) {
 	if r.Header.Get("Cache-Control") != "no-store" {
 		t.Fatal("token response can be cached")
 	}
+	bindingRequest, err := http.NewRequest(http.MethodGet, origin+"/oauth/binding", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindingRequest.Header.Set("Authorization", "Bearer "+token.Raw)
+	bindingResponse, err := browser.Do(bindingRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindingBody := read(bindingResponse)
+	var binding struct {
+		Schema          string    `json:"schema"`
+		Issuer          string    `json:"issuer"`
+		Resource        string    `json:"resource"`
+		AccountID       string    `json:"account_id"`
+		AccountState    string    `json:"account_state"`
+		ProjectID       string    `json:"project_id"`
+		Scopes          []string  `json:"scopes"`
+		GrantID         string    `json:"grant_id"`
+		ProjectState    string    `json:"project_state"`
+		RevocationEpoch int       `json:"revocation_epoch"`
+		ObservedAt      time.Time `json:"observed_at"`
+	}
+	if bindingResponse.StatusCode != http.StatusOK || json.Unmarshal([]byte(bindingBody), &binding) != nil {
+		t.Fatalf("binding read: %d %s", bindingResponse.StatusCode, bindingBody)
+	}
+	if binding.Schema != "serenity.oauth-binding/v1" || binding.Issuer != origin || binding.Resource != origin+"/mcp" ||
+		binding.AccountID == "" || binding.AccountState != "active" || binding.ProjectID != brain || binding.GrantID == "" ||
+		binding.ProjectState != "ready" || binding.RevocationEpoch != 0 ||
+		len(binding.Scopes) != 1 || binding.Scopes[0] != "memory:read" || binding.ObservedAt.IsZero() {
+		t.Fatalf("binding is not the selected token authority: %+v", binding)
+	}
+	if bindingResponse.Header.Get("Cache-Control") != "no-store" {
+		t.Fatal("binding response can be cached")
+	}
+	foreignSelector, err := http.NewRequest(http.MethodGet, origin+"/oauth/binding?project_id=not-owned", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreignSelector.Header.Set("Authorization", "Bearer "+token.Raw)
+	foreignResponse, err := browser.Do(foreignSelector)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read(foreignResponse)
+	if foreignResponse.StatusCode != http.StatusBadRequest {
+		t.Fatalf("caller-selected project was not rejected: %d", foreignResponse.StatusCode)
+	}
+
+	for _, tc := range []struct {
+		name, method, suffix, auth string
+		want                       int
+	}{
+		{"missing token despite browser session", "GET", "", "", 401},
+		{"invalid token", "GET", "", "Bearer invalid", 401},
+		{"refresh token", "GET", "", "Bearer " + token.Refresh, 401},
+		{"post", "POST", "", "Bearer " + token.Raw, 405},
+		{"head", "HEAD", "", "Bearer " + token.Raw, 405},
+		{"empty query", "GET", "?", "Bearer " + token.Raw, 400},
+		{"account selector", "GET", "?account_id=foreign", "Bearer " + token.Raw, 400},
+	} {
+		t.Run("binding/"+tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, origin+"/oauth/binding"+tc.suffix, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Authorization", tc.auth)
+			res, err := browser.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := read(res)
+			if res.StatusCode != tc.want {
+				t.Fatalf("got %d, want %d: %s", res.StatusCode, tc.want, b)
+			}
+			if res.Header.Get("Cache-Control") != "no-store" {
+				t.Fatal("cacheable error")
+			}
+			if tc.want == 401 && res.Header.Get("WWW-Authenticate") == "" {
+				t.Fatal("missing challenge")
+			}
+			if tc.want == 405 && res.Header.Get("Allow") != "GET" {
+				t.Fatal("missing allowed method")
+			}
+			if strings.Contains(b, binding.AccountID) || strings.Contains(b, token.Raw) {
+				t.Fatal("error disclosed authority")
+			}
+		})
+	}
+	for _, tc := range []struct{ name, change, restore string }{
+		{"inactive account", "UPDATE accounts SET status='deleting' WHERE id=?", "UPDATE accounts SET status='active' WHERE id=?"},
+		{"unready project", "UPDATE brains SET state='allocating' WHERE account_id=?", "UPDATE brains SET state='ready' WHERE account_id=?"},
+		{"revoked epoch", "INSERT INTO oauth_epochs(brain_id,generation) SELECT id,1 FROM brains WHERE account_id=? ON CONFLICT(brain_id) DO UPDATE SET generation=1", "DELETE FROM oauth_epochs WHERE brain_id IN (SELECT id FROM brains WHERE account_id=?)"},
+	} {
+		t.Run("binding/"+tc.name, func(t *testing.T) {
+			if _, err := db.DB().ExecContext(context.Background(), tc.change, binding.AccountID); err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if _, err := db.DB().ExecContext(context.Background(), tc.restore, binding.AccountID); err != nil {
+					t.Error(err)
+				}
+			}()
+			req, err := http.NewRequest("GET", origin+"/oauth/binding", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Authorization", "Bearer "+token.Raw)
+			res, err := browser.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b := read(res)
+			if res.StatusCode != 401 || res.Header.Get("WWW-Authenticate") == "" {
+				t.Fatalf("invalid authority returned %d: %s", res.StatusCode, b)
+			}
+		})
+	}
+	if strings.Contains(bindingBody, token.Raw) || strings.Contains(bindingBody, token.Refresh) {
+		t.Fatal("binding disclosed credential")
+	}
 	r = post("/oauth/token", values, browser)
 	read(r)
 	if r.StatusCode == 200 {
@@ -253,6 +374,19 @@ func testOAuthBrowserConsentMCPAndRevocation(t *testing.T, callback string) {
 	status, _ = mcp(`{"jsonrpc":"2.0","id":3,"method":"tools/list"}`)
 	if status != 401 {
 		t.Fatalf("revoked OAuth access accepted: %d", status)
+	}
+	bindingRequest, err = http.NewRequest(http.MethodGet, origin+"/oauth/binding", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindingRequest.Header.Set("Authorization", "Bearer "+token.Raw)
+	bindingResponse, err = browser.Do(bindingRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read(bindingResponse)
+	if bindingResponse.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("revoked OAuth binding remained readable: %d", bindingResponse.StatusCode)
 	}
 	var epoch int
 	if err = db.DB().QueryRowContext(context.Background(), "SELECT generation FROM oauth_epochs WHERE brain_id=?", brain).Scan(&epoch); err != nil || epoch != 1 {

@@ -83,3 +83,11 @@ The Codex probe explicitly enabled and required its MCP server and enabled
 its recall tool; exit status alone was not counted as a successful tool call.
 Claude Code used its local loopback callback listener even in no-browser mode.
 Test registrations and credentials were logged out after each probe.
+
+## Token-bound identity snapshot
+
+`GET /oauth/binding` reports the account, project, grant and granted scopes for
+an OAuth access token after the same live checks used by MCP authorization.
+See [Hosted binding v1](../protocol/HOSTED_BINDING_v1.md). This read-only,
+non-cacheable snapshot does not attest operation status, spend ceilings,
+index freshness, immutable exports or future authorization.
