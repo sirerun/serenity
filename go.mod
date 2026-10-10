@@ -1,6 +1,6 @@
 module github.com/sirerun/serenity
 
-go 1.26.5
+go 1.26.9
 
 require (
 	github.com/ajent-social/go v0.0.0-20260924042100-b90bbb417d9d
