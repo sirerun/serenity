@@ -38,12 +38,13 @@ type Challenge struct {
 }
 
 type Prepared struct {
-	ReservationID string                    `json:"reservation_id"`
-	WriterID      string                    `json:"writer_id"`
-	Epoch         uint64                    `json:"epoch"`
-	Position      contracts.JournalPosition `json:"position"`
-	ExpiresAt     time.Time                 `json:"expires_at"`
-	BuildSHA      string                    `json:"build_sha"`
+	RequireEmptyData bool                      `json:"require_empty_data"`
+	ReservationID    string                    `json:"reservation_id"`
+	WriterID         string                    `json:"writer_id"`
+	Epoch            uint64                    `json:"epoch"`
+	Position         contracts.JournalPosition `json:"position"`
+	ExpiresAt        time.Time                 `json:"expires_at"`
+	BuildSHA         string                    `json:"build_sha"`
 }
 
 type Lease struct {
