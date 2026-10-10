@@ -166,7 +166,8 @@ install -m 0644 "$script_dir/Caddyfile" /etc/caddy/Caddyfile
 install -d -m 0755 /opt/serenity-hosted
 install -m 0755 "$script_dir/backup.sh" /opt/serenity-hosted/backup.sh
 printf 'SERENITY_BACKUP_BUCKET=%s\n' "$backup_bucket" > "$work/backup.env"
-install -m 0600 -o serenity -g serenity "$work/backup.env" /etc/serenity/backup.env
+install -d -m 0700 -o root -g root /etc/serenity-backup /var/lib/serenity-backup
+install -m 0600 -o root -g root "$work/backup.env" /etc/serenity-backup/backup.env
 install -m 0644 "$script_dir/serenity-backup.service" /etc/systemd/system/serenity-backup.service
 install -m 0644 "$script_dir/serenity-backup-failed.service" /etc/systemd/system/serenity-backup-failed.service
 install -m 0644 "$script_dir/serenity-backup.timer" /etc/systemd/system/serenity-backup.timer

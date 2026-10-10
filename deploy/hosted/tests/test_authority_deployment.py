@@ -23,9 +23,10 @@ class AuthorityDeploymentTests(unittest.TestCase):
         self.assertNotIn("${GatewayVersion}",json.dumps(a))
         self.assertIn("GatewayVersion",original["Resources"])
 
-    def test_only_iam_routes_can_invoke_version(self):
+    def test_generated_routes_require_iam_and_pin_version(self):
         template=json.loads((DEPLOY/"authority-stack.json").read_text())
         resources=template["Resources"]
+        self.assertEqual(resources["Gateway"]["Properties"]["ReservedConcurrentExecutions"],0)
         permissions=[v["Properties"] for v in resources.values() if v["Type"]=="AWS::Lambda::Permission"]
         self.assertEqual(len(permissions),2)
         for permission in permissions:
