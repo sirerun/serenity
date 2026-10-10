@@ -93,6 +93,24 @@ if [[ "$release_policy" == owner-kms-manifest-v1 ]]; then
     [[ ! -e "$binary_target" && ! -L "$binary_target" ]] || { echo 'Immutable candidate path already exists; reconcile before retry' >&2; exit 1; }
 fi
 id serenity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/serenity --shell /sbin/nologin serenity
+# The broker's root-owned enrollment is prepared in the reviewed activation
+# packet. Deployment cannot substitute caller identity or silently adopt data.
+python3 - "$work/serenity" <<'PYBROKER'
+import hashlib,json,os,pathlib,sys
+p=pathlib.Path("/etc/serenity-authority/broker.json")
+for parent in [p.parent,*p.parent.parents]:
+    st=parent.lstat()
+    if parent.is_symlink() or st.st_uid!=0 or st.st_mode&0o022:
+        raise SystemExit("Unsafe broker configuration parent")
+st=p.lstat()
+if p.is_symlink() or not p.is_file() or st.st_uid!=0 or st.st_mode&0o077:
+    raise SystemExit("Broker configuration must be private and root-owned")
+config=json.loads(p.read_bytes())
+with open(sys.argv[1],"rb") as source:
+    digest=hashlib.file_digest(source,"sha256").hexdigest()
+if config.get("executable_sha256")!=digest or config.get("data_dir")!="/var/lib/serenity" or config.get("socket_path")!="/run/serenity-broker/runtime.sock":
+    raise SystemExit("Broker enrollment does not match candidate executable and host paths")
+PYBROKER
 install -d -m 0700 -o serenity -g serenity /etc/serenity /etc/serenity/secrets
 for name in RESEND_API_KEY EMBEDDINGS_API_KEY; do
     aws --region us-west-2 secretsmanager get-secret-value --secret-id "serenity/hosted/$name" --query SecretString --output text > "$work/$name"
@@ -132,6 +150,7 @@ fi
 install -m 0755 "$work/serenity" "$binary_target"
 chown serenity:serenity /var/lib/serenity
 install -m 0644 "$script_dir/serenity-hosted.service" /etc/systemd/system/serenity-hosted.service
+install -m 0644 "$script_dir/serenity-broker.service" /etc/systemd/system/serenity-broker.service
 # Migrate the old default origin and sender; preserve custom operator settings.
 python3 - <<'PYCONFIG'
 import json, os
@@ -176,7 +195,12 @@ systemctl daemon-reload
 systemctl enable --now caddy
 # Select the new binary only after Caddy and all deployment files are ready;
 # failures above this line leave the previously selected binary untouched.
+systemctl stop serenity-hosted
 ln -sfn "$binary_target" /usr/local/bin/serenity
+if ! systemctl enable --now serenity-broker || ! systemctl restart serenity-broker; then
+    activation_failed
+    exit 1
+fi
 if ! systemctl enable --now serenity-hosted || ! systemctl restart serenity-hosted; then
     activation_failed
     exit 1

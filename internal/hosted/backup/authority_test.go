@@ -1,10 +1,14 @@
 package backup
 
 import (
+	"archive/tar"
 	"context"
 	"errors"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -158,5 +162,72 @@ func TestCutSidecarRejectsDuplicateUnknownOversizeAndSymlink(t *testing.T) {
 	defer root.Close()
 	if _, err = readCutSidecar(root); err == nil {
 		t.Fatal("sidecar symlink accepted")
+	}
+}
+
+// TestAuthorizedArchiveRoundTrip crosses the real producer, tar transport,
+// unprivileged unpacker and authenticated restore, including a nonempty brain.
+func TestAuthorizedArchiveRoundTrip(t *testing.T) {
+	if runtime.GOOS != "linux" || os.Geteuid() == 0 {
+		t.Skip("Linux unprivileged transport")
+	}
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 unavailable")
+	}
+	ctx := context.Background()
+	a := newTestCutAuthority(t)
+	data, _ := newTestDataDir(t, 1)
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := filepath.Join(root, "snapshot")
+	if err := CreateAuthorized(ctx, data, snapshot, "test-build", a, authority.Lease{ID: "test-lease"}); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(root, "snapshot.tar")
+	f, err := os.Create(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tw := tar.NewWriter(f)
+	entries, err := os.ReadDir(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !info.Mode().IsRegular() {
+			t.Fatalf("unexpected producer entry %s", entry.Name())
+		}
+		header, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := tw.WriteHeader(header); err != nil {
+			t.Fatal(err)
+		}
+		input, err := os.Open(filepath.Join(snapshot, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, copyErr := io.Copy(tw, input)
+		if err := errors.Join(copyErr, input.Close()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := errors.Join(tw.Close(), f.Close()); err != nil {
+		t.Fatal(err)
+	}
+	unpacked := filepath.Join(root, "unpacked")
+	if out, err := exec.CommandContext(ctx, python, "../../../deploy/hosted/unpack_snapshot.py", archive, unpacked).CombinedOutput(); err != nil {
+		t.Fatalf("unpack: %v: %s", err, out)
+	}
+	if err := RestoreAuthorized(ctx, unpacked, filepath.Join(root, "restored"), a); err != nil {
+		t.Fatal(err)
 	}
 }
