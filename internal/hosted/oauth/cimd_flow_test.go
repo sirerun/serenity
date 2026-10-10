@@ -27,8 +27,10 @@ func TestCIMDAndDCRHTTPAuthorization(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			resolver := NewCIMDResolver([]string{"memory:read", "memory:write"})
-			resolver.http = &http.Client{Transport: metadataRoundTrip(func(*http.Request) (*http.Response, error) { return metadataResponse(metadataBody(t, nil)), nil })}
+			resolver := NewCIMDResolver()
+			resolver.http = &http.Client{Transport: metadataRoundTrip(func(*http.Request) (*http.Response, error) {
+				return metadataResponse(metadataBody(t, map[string]any{"scope": "openid memory:read memory:write"})), nil
+			})}
 			h.Store.Metadata = resolver
 			callback := "https://client.example/callback"
 			id := testMetadataID
@@ -48,7 +50,7 @@ func TestCIMDAndDCRHTTPAuthorization(t *testing.T) {
 				if e != nil {
 					t.Fatal(e)
 				}
-				defer resp.Body.Close()
+				defer func() { _ = resp.Body.Close() }()
 				var body map[string]any
 				if e = json.NewDecoder(resp.Body).Decode(&body); e != nil {
 					t.Fatal(e)
@@ -71,6 +73,16 @@ func TestCIMDAndDCRHTTPAuthorization(t *testing.T) {
 			verifier := strings.Repeat("v", 43)
 			digest := sha256.Sum256([]byte(verifier))
 			q := url.Values{"response_type": {"code"}, "client_id": {id}, "redirect_uri": {callback}, "state": {"fixture"}, "code_challenge": {base64.RawURLEncoding.EncodeToString(digest[:])}, "code_challenge_method": {"S256"}, "resource": {"https://memory.example/mcp"}, "scope": {"memory:read memory:write"}}
+			q.Set("scope", "admin")
+			badResponse, badErr := http.Get(ts.URL + "/oauth/authorize?" + q.Encode())
+			if badErr != nil {
+				t.Fatal(badErr)
+			}
+			_ = badResponse.Body.Close()
+			if badResponse.StatusCode != http.StatusBadRequest || handle != "" {
+				t.Fatal("unsupported requested scope reached consent")
+			}
+			q.Set("scope", "memory:read memory:write")
 			resp, e := http.Get(ts.URL + "/oauth/authorize?" + q.Encode())
 			if e != nil {
 				t.Fatal(e)

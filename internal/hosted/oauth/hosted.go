@@ -32,7 +32,7 @@ type Hosted struct {
 }
 
 func New(db *store.Store, id *identity.Service, p *provision.Provisioner, origin string, dev bool) (*Hosted, error) {
-	st := &SQLStore{DB: db, Metadata: NewCIMDResolver([]string{"memory:read", "memory:write"})}
+	st := &SQLStore{DB: db, Metadata: NewCIMDResolver()}
 	server, err := mcpoauth.New(mcpoauth.Config{Issuer: origin, Resource: origin + "/mcp", Scopes: []string{"memory:read", "memory:write"}, AllowLoopbackRedirects: true, AllowLocalhostRedirects: true, ConsentTTL: 20 * time.Minute}, st)
 	if err != nil {
 		return nil, err
@@ -140,12 +140,17 @@ func (h *Hosted) consent(w http.ResponseWriter, r *http.Request, handle string, 
 		return
 	}
 	w.Header().Set("Content-Security-Policy", strings.Replace(w.Header().Get("Content-Security-Policy"), "form-action 'self'", "form-action 'self' "+callback.Scheme+"://"+callback.Host, 1))
+	metadataHost := ""
+	if validClientMetadataURL(request.ClientID) {
+		metadataURL, _ := url.Parse(request.ClientID)
+		metadataHost = metadataURL.Host
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = consentPage.Execute(w, struct {
-		Handle, CSRF, Client, Destinations string
-		Brains                             []store.Brain
-		Read, Write                        bool
-	}{handle, session.CSRF, request.ClientName, callback.Host, brains, slices.Contains(request.Scopes, "memory:read"), slices.Contains(request.Scopes, "memory:write")})
+		Handle, CSRF, Client, Destinations, MetadataHost string
+		Brains                                           []store.Brain
+		Read, Write                                      bool
+	}{handle, session.CSRF, request.ClientName, callback.Host, metadataHost, brains, slices.Contains(request.Scopes, "memory:read"), slices.Contains(request.Scopes, "memory:write")})
 }
 func (h *Hosted) mutation(w http.ResponseWriter, r *http.Request) (identity.Session, bool) {
 	s, err := h.session(r)
@@ -274,7 +279,7 @@ func (h *Hosted) Challenge(next http.Handler) http.Handler {
 	})
 }
 
-var consentPage = template.Must(template.New("consent").Parse(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect your agent · Serenity</title><link rel="icon" href="/assets/brand.svg"><link rel="stylesheet" href="/assets/site.css?v=bac4cf1e79"><link rel="stylesheet" href="/assets/hosted.css?v=7635e0d0e2"></head><body><header class="site-nav"><a class="brand" href="/"><img src="/assets/brand.svg" alt="">Serenity</a></header><main class="hosted-main login"><p class="eyebrow">Your memory, on your terms</p><h1>Connect your agent.</h1><p><strong>{{.Client}}</strong> is requesting access. This name is supplied by the connecting app; it is not a verified identity.</p><p>Callback destination: <strong>{{.Destinations}}</strong></p><form method="post" action="/oauth/consent"><input type="hidden" name="handle" value="{{.Handle}}"><input type="hidden" name="csrf" value="{{.CSRF}}"><label for="brain">Choose one project memory</label><select id="brain" name="brain">{{range .Brains}}<option value="{{.ID}}">{{.ID}}</option>{{end}}</select><fieldset><legend>Choose access</legend>{{if .Read}}<label><input type="radio" name="access" value="memory:read" checked> Read memories only</label>{{end}}{{if and .Read .Write}}<label><input type="radio" name="access" value="memory:read memory:write"> Read, save and forget memories</label>{{else}}{{if .Write}}<label><input type="radio" name="access" value="memory:write" checked> Save and forget memories</label>{{end}}{{end}}</fieldset><p>Access is limited to this project. You can disconnect the agent from your dashboard.</p><button name="decision" value="approve">Connect agent</button><button class="secondary" name="decision" value="deny">Cancel</button></form></main><footer class="site-footer">Serenity · Private project memory.</footer></body></html>`))
+var consentPage = template.Must(template.New("consent").Parse(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect your agent · Serenity</title><link rel="icon" href="/assets/brand.svg"><link rel="stylesheet" href="/assets/site.css?v=bac4cf1e79"><link rel="stylesheet" href="/assets/hosted.css?v=7635e0d0e2"></head><body><header class="site-nav"><a class="brand" href="/"><img src="/assets/brand.svg" alt="">Serenity</a></header><main class="hosted-main login"><p class="eyebrow">Your memory, on your terms</p><h1>Connect your agent.</h1><p><strong>{{.Client}}</strong> is requesting access. This name is supplied by the connecting app; it is not a verified identity.</p>{{if .MetadataHost}}<p>Client metadata publisher: <strong>{{.MetadataHost}}</strong></p>{{end}}<p>Callback destination: <strong>{{.Destinations}}</strong></p><form method="post" action="/oauth/consent"><input type="hidden" name="handle" value="{{.Handle}}"><input type="hidden" name="csrf" value="{{.CSRF}}"><label for="brain">Choose one project memory</label><select id="brain" name="brain">{{range .Brains}}<option value="{{.ID}}">{{.ID}}</option>{{end}}</select><fieldset><legend>Choose access</legend>{{if .Read}}<label><input type="radio" name="access" value="memory:read" checked> Read memories only</label>{{end}}{{if and .Read .Write}}<label><input type="radio" name="access" value="memory:read memory:write"> Read, save and forget memories</label>{{else}}{{if .Write}}<label><input type="radio" name="access" value="memory:write" checked> Save and forget memories</label>{{end}}{{end}}</fieldset><p>Access is limited to this project. You can disconnect the agent from your dashboard.</p><button name="decision" value="approve">Connect agent</button><button class="secondary" name="decision" value="deny">Cancel</button></form></main><footer class="site-footer">Serenity · Private project memory.</footer></body></html>`))
 
 // Active is for evicting closed MCP sessions, never for bearer authentication.
 func (h *Hosted) Active(ctx context.Context, id string) (bool, error) {
