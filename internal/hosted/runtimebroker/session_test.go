@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -20,13 +21,16 @@ import (
 // The protocol fixture is test-only; separate subprocess tests exercise real
 // Unix credentials/pidfd/executable measurement rather than this transport.
 func sessionProtocol(t *testing.T, requireEmpty, badBinding bool) (*localTransport, *atomic.Bool) {
+	return sessionProtocolWithAdoption(t, requireEmpty, badBinding, nil)
+}
+func sessionProtocolWithAdoption(t *testing.T, requireEmpty, badBinding bool, a *authority.Adoption) (*localTransport, *atomic.Bool) {
 	t.Helper()
 	client, server := net.Pipe()
 	tr := &localTransport{conn: client, reader: bufio.NewReaderSize(client, maxWireBytes+2)}
 	activated := &atomic.Bool{}
 	done := make(chan struct{})
 	t.Cleanup(func() { _ = tr.Close(); _ = server.Close(); <-done })
-	p := authority.Prepared{ReservationID: "reservation", WriterID: "writer", Epoch: 1, Position: contracts.JournalPosition{ActiveGeneration: 1, GenesisIssuanceID: "genesis"}, ExpiresAt: time.Now().Add(time.Hour), BuildSHA: strings.Repeat("a", 40), RequireEmptyData: requireEmpty}
+	p := authority.Prepared{Adoption: a, ReservationID: "reservation", WriterID: "writer", Epoch: 1, Position: contracts.JournalPosition{ActiveGeneration: 1, GenesisIssuanceID: "genesis"}, ExpiresAt: time.Now().Add(time.Hour), BuildSHA: strings.Repeat("a", 40), RequireEmptyData: requireEmpty}
 	go func() {
 		defer close(done)
 		reader := bufio.NewReader(server)
@@ -131,5 +135,44 @@ func TestRenewalFailureClosesTransportAndAdmission(t *testing.T) {
 	}
 	if _, err := server.Write([]byte("x")); err == nil {
 		t.Fatal("expired transport remained open")
+	}
+}
+
+func TestStartupAdmitsOnlyExactOwnerLegacyCheckpoint(t *testing.T) {
+	for _, mismatch := range []bool{false, true} {
+		t.Run(fmt.Sprintf("mismatch=%v", mismatch), func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "control.db"), []byte("legacy"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			inventory, err := InventorySHA256(context.Background(), dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mismatch {
+				inventory = strings.Repeat("f", 64)
+			}
+			a := authority.Adoption{Version: 1, HistoryOrigin: authority.LegacyHistoryOrigin, CheckpointSHA256: strings.Repeat("c", 64), InventorySHA256: inventory, PriorBuildSHA: strings.Repeat("e", 40)}
+			tr, activated := sessionProtocolWithAdoption(t, true, false, &a)
+			s, err := openSession(context.Background(), tr, dir)
+			if mismatch {
+				if err == nil {
+					t.Fatal("different checkpoint admitted")
+				}
+				if activated.Load() {
+					t.Fatal("mismatched data reached activation")
+				}
+			} else {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !activated.Load() {
+					t.Fatal("bound data did not activate")
+				}
+				if err := s.Close(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
 	}
 }

@@ -49,6 +49,7 @@ func NewServer(k *Kernel, c ServerConfig) (*Server, error) {
 }
 
 type protocolState struct {
+	Adoption       *Adoption                 `json:"adoption,omitempty"`
 	Initialized    bool                      `json:"initialized"`
 	Phase          string                    `json:"phase"`
 	Epoch          uint64                    `json:"epoch"`
@@ -151,7 +152,7 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 	}
 	switch q.Action {
 	case "inspect":
-		out := Response{Prepared: state.Prepared, Lease: state.Lease}
+		out := Response{Adoption: state.Adoption, Prepared: state.Prepared, Lease: state.Lease}
 		out.Current = &Current{Position: state.Position, Epoch: state.Epoch}
 		if state.Lease != nil {
 			out.Current.ExpiresAt = state.Lease.ExpiresAt
@@ -229,6 +230,9 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 			}
 			items = append(items, ImmutableItem{Key: "GENESIS-CONSUMED#" + state.GenesisID, Body: []byte(requestHash)})
 		}
+		if !state.Initialized {
+			p.Adoption = state.Adoption
+		}
 		state.Phase = "PREPARING"
 		return apply(state, items, Response{Prepared: &p})
 	case "activate":
@@ -237,6 +241,13 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 		}
 		if !now.Before(state.Prepared.ExpiresAt) {
 			return Response{}, ErrExpired
+		}
+		if !state.Initialized && state.Adoption != nil {
+			if q.DataInventorySHA256 != state.Adoption.InventorySHA256 {
+				return Response{}, ErrForbidden
+			}
+		} else if q.DataInventorySHA256 != "" {
+			return Response{}, ErrInvalid
 		}
 		reader, e := deletion.NewJournalReader(&boundedReader{store: s.kernel.Store, position: state.Position, strict: true}, state.Position)
 		if e != nil {
@@ -399,7 +410,7 @@ func (s *Server) enroll(ctx context.Context, principal string, q Request, hash s
 	if err != nil {
 		return Response{}, err
 	}
-	state := protocolState{Phase: "ENROLLED", GenesisID: id, GenesisExpires: s.config.Now().UTC().Add(s.config.GenesisLifetime), Position: contracts.JournalPosition{ActiveGeneration: 1, GenesisIssuanceID: id}}
+	state := protocolState{Adoption: q.Adoption, Phase: "ENROLLED", GenesisID: id, GenesisExpires: s.config.Now().UTC().Add(s.config.GenesisLifetime), Position: contracts.JournalPosition{ActiveGeneration: 1, GenesisIssuanceID: id}}
 	b, err := json.Marshal(state)
 	if err != nil {
 		return Response{}, err
@@ -411,7 +422,15 @@ func (s *Server) enroll(ctx context.Context, principal string, q Request, hash s
 	if err != nil {
 		return Response{}, err
 	}
-	return s.kernel.Apply(ctx, Record{}, b, []ImmutableItem{{Key: "GENESIS#" + id, Body: permit}}, Receipt{OperationID: q.OperationID, RequestSHA256: hash, Principal: principal}, true)
+	items := []ImmutableItem{{Key: "GENESIS#" + id, Body: permit}}
+	if q.Adoption != nil {
+		adoption, e := json.Marshal(q.Adoption)
+		if e != nil {
+			return Response{}, e
+		}
+		items = append(items, ImmutableItem{Key: "ADOPTION#" + digest(adoption), Body: adoption})
+	}
+	return s.kernel.Apply(ctx, Record{}, b, items, Receipt{OperationID: q.OperationID, RequestSHA256: hash, Principal: principal}, true)
 }
 func (s *Server) checkLease(st protocolState, id string, now time.Time) error {
 	if st.Phase != "ACTIVE" || st.Lease == nil || st.Lease.ID != id || st.Lease.Epoch != st.Epoch {
@@ -524,7 +543,7 @@ func validateAppend(st protocolState, q Request, owner bool, now time.Time) (pro
 }
 
 func validateRequest(q Request) error {
-	allowed := map[string]string{"inspect": "", "enroll": "operation_id", "restore": "operation_id", "challenge": "operation_id", "prepare": "operation_id challenge_id nonce measurement", "activate": "operation_id reservation_id history_sha256", "current": "lease_id", "renew": "operation_id lease_id measurement", "close": "operation_id lease_id reservation_id", "append": "operation_id lease_id key body", "seal": "operation_id lease_id key body", "get": "lease_id reservation_id cut_id key", "list": "lease_id reservation_id cut_id prefix start_after limit", "cut": "operation_id lease_id snapshot_attempt_id", "finalize_cut": "operation_id cut_id manifest_sha256", "read_finalized_cut": "cut_id"}
+	allowed := map[string]string{"inspect": "", "enroll": "operation_id adoption", "restore": "operation_id", "challenge": "operation_id", "prepare": "operation_id challenge_id nonce measurement", "activate": "operation_id reservation_id history_sha256 data_inventory_sha256", "current": "lease_id", "renew": "operation_id lease_id measurement", "close": "operation_id lease_id reservation_id", "append": "operation_id lease_id key body", "seal": "operation_id lease_id key body", "get": "lease_id reservation_id cut_id key", "list": "lease_id reservation_id cut_id prefix start_after limit", "cut": "operation_id lease_id snapshot_attempt_id", "finalize_cut": "operation_id cut_id manifest_sha256", "read_finalized_cut": "cut_id"}
 	fields, ok := allowed[q.Action]
 	if !ok {
 		return ErrInvalid
@@ -542,9 +561,14 @@ func validateRequest(q Request) error {
 			return ErrInvalid
 		}
 	}
-	for _, id := range []string{q.OperationID, q.ChallengeID, q.Nonce, q.ReservationID, q.LeaseID, q.CutID, q.HistorySHA256, q.ManifestSHA256, q.SnapshotAttemptID} {
+	for _, id := range []string{q.OperationID, q.ChallengeID, q.Nonce, q.ReservationID, q.LeaseID, q.CutID, q.HistorySHA256, q.ManifestSHA256, q.SnapshotAttemptID, q.DataInventorySHA256} {
 		if id != "" && !validID(id) {
 			return ErrInvalid
+		}
+	}
+	if q.Adoption != nil {
+		if err := q.Adoption.Validate(); err != nil {
+			return err
 		}
 	}
 	if strings.Contains(fields, "operation_id") && q.OperationID == "" {
