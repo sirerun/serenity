@@ -2,9 +2,11 @@ package oauth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -30,7 +32,7 @@ type Hosted struct {
 }
 
 func New(db *store.Store, id *identity.Service, p *provision.Provisioner, origin string, dev bool) (*Hosted, error) {
-	st := &SQLStore{DB: db}
+	st := &SQLStore{DB: db, Metadata: NewCIMDResolver([]string{"memory:read", "memory:write"})}
 	server, err := mcpoauth.New(mcpoauth.Config{Issuer: origin, Resource: origin + "/mcp", Scopes: []string{"memory:read", "memory:write"}, AllowLoopbackRedirects: true, AllowLocalhostRedirects: true, ConsentTTL: 20 * time.Minute}, st)
 	if err != nil {
 		return nil, err
@@ -205,10 +207,54 @@ func (h *Hosted) approve(w http.ResponseWriter, r *http.Request) {
 	}
 	target, err := h.Server.Approve(r.Context(), handle, mcpoauth.Approval{Subject: s.AccountID, Binding: brain + "." + strconv.Itoa(epoch), Scopes: scopes})
 	if err != nil {
-		http.Error(w, "Connection request expired or access was not requested. Start again in your agent.", 400)
+		writeApprovalError(w, err)
 		return
 	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+// writeApprovalError keeps authentication failures separate from service failures.
+// Never log handles, callback parameters, account IDs or the underlying error.
+func writeApprovalError(w http.ResponseWriter, err error) {
+	status, reason, message := http.StatusServiceUnavailable, "unavailable", "Connection temporarily unavailable. Start a new connection from your agent and try again."
+	switch {
+	case errors.Is(err, mcpoauth.ErrExpired):
+		status, reason, message = http.StatusBadRequest, "expired", "This connection request expired. Start a new connection from your agent."
+	case errors.Is(err, mcpoauth.ErrNotFound):
+		status, reason, message = http.StatusBadRequest, "missing_or_used", "This connection request was already used or is no longer available. Start a new connection from your agent."
+	case errors.Is(err, mcpoauth.ErrDenied), errors.Is(err, mcpoauth.ErrInvalid):
+		status, reason, message = http.StatusBadRequest, "invalid_approval", "The selected access was not requested or the connection details changed. Start a new connection from your agent."
+	}
+	slog.Warn("OAuth consent approval failed", "reason", reason)
+	http.Error(w, message, status)
+}
+
+// MetadataHandler advertises the two supported client registration mechanisms.
+// Keep the base fields aligned with the mcpoauth server (verified by tests).
+func (h *Hosted) MetadataHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issuer":                                     h.Origin,
+			"authorization_endpoint":                     h.Origin + "/oauth/authorize",
+			"token_endpoint":                             h.Origin + "/oauth/token",
+			"registration_endpoint":                      h.Origin + "/oauth/register",
+			"revocation_endpoint":                        h.Origin + "/oauth/revoke",
+			"response_types_supported":                   []string{"code"},
+			"grant_types_supported":                      []string{"authorization_code", "refresh_token"},
+			"code_challenge_methods_supported":           []string{"S256"},
+			"token_endpoint_auth_methods_supported":      []string{"none"},
+			"revocation_endpoint_auth_methods_supported": []string{"none"},
+			"scopes_supported":                           []string{"memory:read", "memory:write"},
+			"client_id_metadata_document_supported":      h.Store.Metadata != nil,
+		})
+	})
 }
 
 type challengeWriter struct {

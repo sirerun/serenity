@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/ajent-social/go/mcpoauth"
@@ -15,7 +16,11 @@ import (
 // SQLStore keeps OAuth records in the same backed-up control database as accounts.
 // One-time consumption uses DELETE RETURNING, so independent processes cannot
 // both redeem a consent handle or authorization code.
-type SQLStore struct{ DB *store.Store }
+type SQLStore struct {
+	DB *store.Store
+	// Metadata resolves URL client IDs without persisting self-asserted registrations.
+	Metadata ClientMetadataResolver
+}
 
 // maxLiveConsentsPerClient bounds pending authorization requests per
 // registered client (SEC-H02). Together with the state-creating global
@@ -117,6 +122,9 @@ func (s *SQLStore) CreateClient(ctx context.Context, c mcpoauth.Client) error {
 }
 func (s *SQLStore) Client(ctx context.Context, id string) (v mcpoauth.Client, err error) {
 	err = s.read(ctx, "oauth_clients", id, &v, false)
+	if errors.Is(err, mcpoauth.ErrNotFound) && s.Metadata != nil && strings.HasPrefix(id, "https://") {
+		return s.Metadata.Resolve(ctx, id)
+	}
 	return
 }
 func (s *SQLStore) CreateConsent(ctx context.Context, c mcpoauth.ConsentRecord) error {

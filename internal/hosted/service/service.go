@@ -411,7 +411,7 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	issuer.OAuthActive = auth.Active
 	mux.Handle("/mcp", auth.Challenge(g))
 	mux.Handle("/oauth/", auth.Handler())
-	mux.Handle("/.well-known/oauth-authorization-server", auth.Server.MetadataHandler())
+	mux.Handle("/.well-known/oauth-authorization-server", auth.MetadataHandler())
 	mux.Handle("/.well-known/oauth-protected-resource", auth.Server.ProtectedResourceHandler())
 	mux.Handle("/.well-known/oauth-protected-resource/mcp", auth.Server.ProtectedResourceHandler())
 	if dash.BillingService != nil {
