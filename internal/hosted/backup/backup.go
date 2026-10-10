@@ -143,6 +143,14 @@ func requireRealDir(path string) error {
 // silently claims emptiness without checking a real journal is a caller
 // error this package has no way to detect.
 func Create(ctx context.Context, dataDir, destination, buildSHA string, journal contracts.DeletionJournal) (err error) {
+	return createWithFinalizer(ctx, dataDir, destination, buildSHA, journal, nil)
+}
+
+type watermarkReader interface {
+	ReadThrough(context.Context, contracts.DeletionWatermark) (contracts.DeletionRead, error)
+}
+
+func createWithFinalizer(ctx context.Context, dataDir, destination, buildSHA string, journal watermarkReader, finalize func(context.Context, string, []byte) error) (err error) {
 	if isNilInterface(ctx) {
 		return ErrNilContext
 	}
@@ -245,6 +253,11 @@ func Create(ctx context.Context, dataDir, destination, buildSHA string, journal 
 	}
 	if err = writeFileSynced(filepath.Join(staging, manifestFile), append(data, '\n'), 0600); err != nil {
 		return err
+	}
+	if finalize != nil {
+		if err = finalize(ctx, staging, append(data, '\n')); err != nil {
+			return fmt.Errorf("hosted/backup: finalize authority cut: %w", err)
+		}
 	}
 	// Sync the complete staging tree, including intermediate directories such
 	// as brains: syncing each repository and staging alone misses their parent.
@@ -641,6 +654,10 @@ func restoreCore(ctx context.Context, snapshot, destination, scratchRoot string)
 }
 
 func restoreCoreWithScratch(ctx context.Context, snapshot, destination, scratchRoot string, onScratch func(string, os.FileInfo) error) (err error) {
+	return restoreWithManifestReader(ctx, snapshot, destination, scratchRoot, onScratch, readManifest)
+}
+
+func restoreWithManifestReader(ctx context.Context, snapshot, destination, scratchRoot string, onScratch func(string, os.FileInfo) error, readBoundManifest func(context.Context, *os.Root) (contracts.ManifestV2, error)) (err error) {
 	if isNilInterface(ctx) {
 		return ErrNilContext
 	}
@@ -659,7 +676,7 @@ func restoreCoreWithScratch(ctx context.Context, snapshot, destination, scratchR
 	}
 	defer func() { err = errors.Join(err, root.Close()) }()
 
-	manifest, err := readManifest(ctx, root)
+	manifest, err := readBoundManifest(ctx, root)
 	if err != nil {
 		return err
 	}
