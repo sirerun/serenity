@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -25,16 +27,9 @@ func NewKMSSigner(region, credentialsFile, profile string) (*kms.Client, error) 
 	if region == "" || profile == "" || strings.ContainsAny(profile, "\r\n[]") {
 		return nil, fmt.Errorf("explicit region and profile required")
 	}
-	raw, err := ReadBounded(credentialsFile, MaxDocument)
+	raw, err := readCredentials(credentialsFile)
 	if err != nil {
 		return nil, err
-	}
-	info, err := os.Lstat(credentialsFile)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
-		return nil, fmt.Errorf("credentials must be a private regular file")
 	}
 	selected := false
 	found := false
@@ -114,4 +109,58 @@ func Sign(ctx context.Context, client KMSSigner, canonical []byte, p Policy, now
 		return nil, fmt.Errorf("verifying KMS response: %w", err)
 	}
 	return response.Signature, nil
+}
+
+// readCredentials binds explicit static credentials to one private descriptor.
+// Parent ownership excludes a writable path allowing credential substitution.
+func readCredentials(path string) ([]byte, error) {
+	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
+		return nil, fmt.Errorf("credentials path must be clean and absolute")
+	}
+	safeOwner := func(info os.FileInfo, directory bool) error {
+		st, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || (st.Uid != 0 && st.Uid != uint32(os.Geteuid())) || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("credentials path has unsafe owner or symlink")
+		}
+		if directory {
+			if !info.IsDir() || info.Mode().Perm()&0022 != 0 {
+				return fmt.Errorf("credentials parent is not protected")
+			}
+		} else if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {
+			return fmt.Errorf("credentials must be a private regular file")
+		}
+		return nil
+	}
+	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+		info, err := os.Lstat(dir)
+		if err != nil {
+			return nil, err
+		}
+		if err = safeOwner(info, true); err != nil {
+			return nil, err
+		}
+		if dir == "/" {
+			break
+		}
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, fmt.Errorf("opening explicit credentials: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if err = safeOwner(info, false); err != nil {
+		return nil, err
+	}
+	current, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !os.SameFile(info, current) || current.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("credentials path changed during open")
+	}
+	return boundedRead(f, MaxDocument)
 }
