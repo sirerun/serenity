@@ -22,7 +22,7 @@ import (
 )
 
 func TestOAuthBrowserConsentMCPAndRevocation(t *testing.T) {
-	for _, callback := range []string{"http://127.0.0.1:49871/callback", "https://claude.ai/api/mcp/auth_callback"} {
+	for _, callback := range []string{"http://127.0.0.1:49871/callback", "https://claude.ai/api/mcp/auth_callback", "https://api.gumstack.com/auth/callback"} {
 		t.Run(callback, func(t *testing.T) { testOAuthBrowserConsentMCPAndRevocation(t, callback) })
 	}
 }
@@ -92,6 +92,12 @@ func testOAuthBrowserConsentMCPAndRevocation(t *testing.T, callback string) {
 		}
 		return v[1]
 	}
+	metadataResponse := get("/.well-known/oauth-authorization-server")
+	metadataBody := read(metadataResponse)
+	var metadata map[string]any
+	if metadataResponse.StatusCode != 200 || json.Unmarshal([]byte(metadataBody), &metadata) != nil || metadata["client_id_metadata_document_supported"] != true || metadata["registration_endpoint"] != origin+"/oauth/register" {
+		t.Fatalf("missing dual registration discovery: %d %s", metadataResponse.StatusCode, metadataBody)
+	}
 	r, e := http.Post(origin+"/oauth/register", "application/json", strings.NewReader(`{"client_name":"Synthetic test agent","redirect_uris":["`+callback+`"],"grant_types":["authorization_code"],"token_endpoint_auth_method":"none"}`))
 	if e != nil {
 		t.Fatal(e)
@@ -149,6 +155,11 @@ func testOAuthBrowserConsentMCPAndRevocation(t *testing.T, callback string) {
 	}
 	target, _ := url.Parse(r.Header.Get("Location"))
 	code := target.Query().Get("code")
+	replayResponse := post("/oauth/consent", consent, noRedirect)
+	replayBody := read(replayResponse)
+	if replayResponse.StatusCode != http.StatusBadRequest || !strings.Contains(replayBody, "already used") {
+		t.Fatalf("consumed request: %d %s", replayResponse.StatusCode, replayBody)
+	}
 	if code == "" || target.Query().Get("state") != "synthetic-state" {
 		t.Fatal("missing bound authorization code")
 	}
