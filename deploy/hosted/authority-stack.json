@@ -96,8 +96,8 @@
           "SSEEnabled": true
         },
         "OnDemandThroughput": {
-          "MaxReadRequestUnits": 100,
-          "MaxWriteRequestUnits": 100
+          "MaxReadRequestUnits": 1000,
+          "MaxWriteRequestUnits": 1000
         }
       }
     },
@@ -570,8 +570,8 @@
           {
             "ResourcePath": "/*",
             "HttpMethod": "*",
-            "ThrottlingBurstLimit": 5,
-            "ThrottlingRateLimit": 2,
+            "ThrottlingBurstLimit": 200,
+            "ThrottlingRateLimit": 100,
             "DataTraceEnabled": false
           }
         ]

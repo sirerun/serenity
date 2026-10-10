@@ -37,7 +37,7 @@ def extract(archive,destination):
                     continue
                 if not member.isfile() or name in seen:
                     raise ValueError("archive contains a link, special file or duplicate")
-                if name not in ("manifest.json","authority-cut.json","control.db") and not re.fullmatch(r"brains/[A-Za-z0-9]{16,64}\.bundle",name):
+                if name not in ("manifest.json","authority-cut.json","control.db") and not re.fullmatch(r"[A-Za-z0-9]{16,64}\.bundle",name):
                     raise ValueError("unexpected snapshot path")
                 seen.add(name)
                 total+=member.size

@@ -41,3 +41,26 @@ No new spend is authorized by this document. The KMS key has a published one-dol
 Use actual region-specific AWS Pricing API rates and measured call counts for the approval estimate. Do not multiply logical deletions by one request: transactions contain several item writes, witness publication uses multiple S3 operations, and bounded history traversal reads many objects. History has explicit cumulative limits and cannot be silently truncated; future compaction requires its own reviewed protocol. A low-traffic forecast is not a spend cap. Initial provider qualification must have a call-count/deadline limit and an owner-approved dollar reservation before activation.
 
 Pricing references: https://aws.amazon.com/kms/pricing/ ; https://aws.amazon.com/apigateway/pricing/ ; https://aws.amazon.com/lambda/pricing/ ; https://aws.amazon.com/dynamodb/pricing/ ; https://aws.amazon.com/s3/pricing/
+
+
+### Region-specific price evidence and bounded forecast
+
+Read-only AWS Pricing API queries on 2026-10-10 returned these first-tier Oregon
+rates, excluding free-tier offsets: KMS key $1/month and P256-class asymmetric
+requests $0.15/10,000; REST API $3.50/million calls; ARM Lambda $0.20/million
+requests and $0.0000133334/GB-second; DynamoDB $0.625/million write request units
+and $0.125/million read request units, $0.25/GB-month standard storage and
+$0.20/GB-month PITR; S3 standard $0.023/GB-month, $0.005/1,000 PUT/LIST and
+$0.004/10,000 GET. Transactional item size multiplies request units.
+
+A planning scenario of 100,000 API/Lambda calls at 200ms and 256MiB, one million
+each DynamoDB write/read units, 1GB table+PITR, 20,000 S3 writes, 500,000 S3 reads,
+10GB S3 storage and 100 signatures totals approximately $3.17/month before logs,
+transfer, taxes and the existing host. Reserve an additional allowance for those
+items; this is a workload assumption, not measured demand or a hard budget.
+
+Proposed approval envelope: up to $10 for a bounded initial qualification window,
+then an explicitly approved ongoing budget after measured request/duration/storage
+receipts. Do not activate merely because the estimate is small. Provider tests
+must count backend calls and stop at their assigned deadline. No reservation has
+yet been charged or assumed approved.
