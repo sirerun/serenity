@@ -8,8 +8,8 @@ It does not turn an OAuth client identity into account authority.
 ## Connecting
 
 An OAuth-capable Streamable HTTP MCP client connects to
-`https://serenity.sire.run/mcp`. Discovery leads to registration and browser
-sign-in. The user explicitly selects a project and read-only or read/write
+`https://serenity.sire.run/mcp`. Discovery supports dynamic registration or HTTPS Client ID Metadata Documents
+(CIMD), followed by browser sign-in. The user explicitly selects a project and read-only or read/write
 access. Approval never exceeds the client's requested scopes. Manual scoped
 bearer credentials remain available for clients without OAuth support.
 
@@ -18,7 +18,51 @@ actual callback host. Only HTTPS callbacks are admitted except explicitly
 supported numeric loopback and exact `localhost:<port>` HTTP callbacks for
 native clients. Localhost is a compatibility choice for Claude Code; numeric
 loopback remains preferred. Every callback must exactly match registration,
-and S256 PKCE is mandatory. No client metadata URLs are fetched.
+and S256 PKCE is mandatory. For CIMD, the HTTPS metadata URL is the client ID;
+the consent page also displays its publisher host. Client names remain unverified.
+
+### Client ID Metadata Documents
+
+The candidate advertises `client_id_metadata_document_supported: true` alongside
+`registration_endpoint`. Existing dynamically registered clients keep their IDs.
+A public PKCE client may instead publish an HTTPS JSON document such as:
+
+```json
+{
+  "client_id": "https://client.example/oauth.json",
+  "client_name": "Example client",
+  "redirect_uris": ["https://client.example/callback"],
+  "token_endpoint_auth_method": "none",
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"]
+}
+```
+
+The document's exact `client_id` must match the requested URL. Metadata scope
+claims never grant access: the authorization request and consent remain bounded
+to `memory:read` and `memory:write`. Secret-based client authentication is not
+supported. The resolver blocks redirects and non-public network targets, pins
+connections to checked DNS results, limits responses to 64 KiB and fetches to
+five seconds, and caps its cache at 128 entries for at most five minutes. Expired
+cache entries are not used when a fetch fails. URL clients do not create DCR rows.
+This implements the public-client subset of the [CIMD draft](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-02).
+
+### Consent troubleshooting
+
+Each consent request expires after 20 minutes and can be used once. Restart
+connection from the client after expiry, reuse or changed connection details.
+Do not reload or resubmit a completed approval form. A permission mismatch is
+reported separately from an expired/used request; storage or service failures
+return a temporary-unavailability response. Logs contain only a bounded reason
+category, never consent handles, tokens or account identifiers.
+
+The 2026-10-10 Gumloop investigation verified a fresh request containing both
+memory scopes, S256 PKCE, the correct MCP resource and its registered callback.
+Read-only service inspection found a prior successful grant, an expired pending
+request and another unexpired request. Those observations do not identify the
+reported failed attempt. An approved, correlated live reproduction remains
+required before claiming that Gumloop's failure is fixed. Candidate source tests
+and discovery support do not establish production deployment.
 
 ## Security and lifecycle
 

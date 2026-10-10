@@ -7,8 +7,8 @@ fidelity: executable
 Acceptance: Both registration mechanisms complete authorization securely and consent failures have verified causes.
 
 - [x] T1.0 Inspect source, live discovery and isolated DGX environment Owner: oauth-coordinator kind: agent stage: preflight acc: [source baseline and live DCR metadata recorded; isolated DGX work and scope confirmed]
-- [ ] T1.1 Add bounded secure CIMD resolution and discovery Owner: cimd-author kind: agent stage: implement blocked-by: [T1.0] acc: [HTTPS metadata clients authorize and refresh while existing DCR clients retain behavior; SSRF and invalid metadata fail closed]
-- [ ] T1.2 Diagnose and correct connector consent Owner: oauth-coordinator kind: agent stage: implement blocked-by: [T1.0] acc: [reported approval error paths are reproduced and corrected with scope, expiry and replay boundaries preserved]
+- [x] T1.1 Add bounded secure CIMD resolution and discovery Owner: cimd-author kind: agent stage: implement blocked-by: [T1.0] acc: [HTTPS metadata clients authorize and refresh while existing DCR clients retain behavior; SSRF and invalid metadata fail closed]
+- [x] T1.2 Distinguish connector consent failures and record diagnosis Owner: oauth-coordinator kind: agent stage: implement blocked-by: [T1.0] acc: [known scope, expiry, replay and service-failure paths are reproduced and distinguished; live Gumloop evidence and unresolved cause are recorded]
 - [ ] T1.3 Verify OAuth compatibility and regressions Owner: oauth-coordinator kind: agent stage: verify blocked-by: [T1.1, T1.2] acc: [real HTTP authorization and token tests cover CIMD and DCR, consent failures and hostile metadata; affected race, build, vet and lint pass]
 - [ ] T1.4 Independently review final candidate Owner: oauth-reviewer kind: agent stage: review blocked-by: [T1.3] acc: [exact base and head independently reviewed with no unresolved blocking findings]
 - [ ] T1.5 Merge approved candidate Owner: oauth-coordinator kind: agent stage: merge blocked-by: [T1.4] acc: [guarded rebase merge preserves branch protections and coordinator holds]
@@ -21,3 +21,9 @@ One coherent PR covers T1.0 through T1.6. Worker selection inherits the session.
 CIMD documents are untrusted client declarations, not elevated authority. HTTPS-only identifiers, exact client ID match, bounded fetch/cache, public-address-only dialing with DNS rebinding defense and no redirects are required. Preserve DCR and memory scope boundaries. Do not advertise CIMD before the working resolver is wired.
 
 Live Gumloop acceptance requires the actual connector request and user session; a reproduced generic failure is not proof of Gumloop's specific cause. Deployment still requires a runnable admitted hosted factory and verified release signature.
+
+## Investigation status
+
+CIMD and DCR real HTTP authorization/token/refresh tests pass at the initial candidate; affected OAuth race checks also pass. Independent review requested exact JSON-key validation and support for reusable metadata declaring other servers' scopes; both are corrected in the follow-up candidate, with regressions. Full checks and exact-head re-review remain gates.
+
+Live Gumloop reproduction is pending permission to submit the displayed third-party consent grant. Existing successful grant metadata does not contradict the user's report of a fresh failure. No Gumloop fix or production deployment is claimed. This source batch improves error classification; the live incident remains open until a correlated attempt identifies its cause.
