@@ -3,7 +3,7 @@
 ## Scope
 
 Baseline: dc7a7629f9bc289aeb420b34120384e4e072b460 (including PR368 and PR369).
-Implementation source: b4510adb947f8e0cc5a69101f9fdb8c32d72c937, plus documentation-only qualification closeout.
+Implementation source: b4510adb947f8e0cc5a69101f9fdb8c32d72c937; security toolchain amendment ce1d409 raises the minimum to Go 1.26.9. Documentation-only closeout follows.
 This receipt qualifies source integration only. No new AWS resources, trust
 policies, release signatures, installed binaries or production data changed.
 
@@ -83,3 +83,36 @@ See hosted-aws-activation.md for the unexecuted infrastructure/policy sequence,
 cost scenario and migration boundary, and hosted-release-recovery-amendment.md
 for the narrowly scoped release recovery contract. T-HU.6 through T-HU.9 remain
 open; source-only landing does not claim the deployment objective is complete.
+
+## Final security and browser qualification supplement
+
+The pinned govulncheck v1.1.4 found reachable standard-library vulnerabilities
+with Go 1.26.5. The minimum is now Go 1.26.9; the same scanner reports zero
+reachable vulnerabilities and zero affected imported packages. It still reports
+two vulnerabilities in required modules whose affected packages are not called.
+Gitleaks v8.30.0 scanned the implementation commit range with redaction and found
+no leaks. Immutable workflow action-pin validation passed.
+
+All six dedicated explorer browser tests passed against the real HTTP
+non-customer `_test.go` fixture in desktop, mobile and dark configurations.
+They exercise paging/facets/provenance, inert untrusted text, foreign-brain
+isolation and expired-session cleanup. This fixture is not production startup.
+
+The separate full hosted browser invocation did NOT pass: three signup cases
+failed before readiness, six explorer cases were skipped without their optional
+fixture binary, and three cases did not run. The unchanged signup harness
+invokes ordinary hosted serve without the now-required broker socket. Baseline
+dc7a762 also unconditionally refused hosted startup without admitted authority.
+No development bypass or production fake was added to make that harness pass.
+Full broker-backed signup/runtime browser acceptance remains open under T-HU.6;
+the separate successful explorer fixture does not close it.
+
+Root-executed release filesystem/locking/recovery race tests also passed with
+Go 1.26.9. Linux AMD64 and Darwin ARM64 application cross-builds passed on that
+toolchain; cross-compilation does not establish native runtime acceptance.
+
+Final Go 1.26.9 verification completed on the ce1d409 source: full repository
+`go test -race -p 1 ./...` and `go vet -p 1 ./...` passed; full golangci-lint
+reported zero issues. Linux ARM64 static builds of the application, authority
+Lambda and release verifier passed. These supersede the earlier toolchain's
+source checks without changing the open provider/runtime acceptance gates.
