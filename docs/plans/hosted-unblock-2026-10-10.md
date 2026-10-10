@@ -14,7 +14,7 @@ Latest reviewed code starts with authentic journal authority, survives restart a
 - [x] T-HU.2 Prepare concrete AWS authority and signing proposal  Owner: coordinator  stage: design  deps: [T-HU.1]  acc: [proposal maps each owner obligation to a concrete authority and identifies costs and policy decisions without inventing runtime evidence]
 - [x] T-HU.10 Bound journal object transport  Owner: coordinator  stage: implement  deps: [T-HU.1]  acc: [S3 reads and writes enforce the existing observation size ceiling with hostile length and allocation regression checks and independent review]
 - [x] T-HU.3 Review authority proposal independently  Owner: independent-reviewer  stage: review  deps: [T-HU.2]  acc: [review names reachable correctness or authority blockers and every accepted finding has a disposition]
-- [ ] T-HU.4 Record owner and policy decisions  Owner: founder  stage: approve  deps: [T-HU.3]  acc: [accountable owner and reviewed identity journal fencing and release trust policy are explicitly accepted]
+- [x] T-HU.4 Record owner and policy decisions  Owner: founder  stage: approve  deps: [T-HU.3]  acc: [accountable owner and reviewed identity journal fencing and release trust policy are explicitly accepted]
 - [x] T-HU.5 Implement admitted startup and operator integration  Owner: startup-worker  stage: implement  deps: [T-HU.12, T-HU.13, T-HU.14, T-HU.15, T-HU.16]  acc: [real authority adapters and CLI lifecycle support ordinary restart and backup restore while invalid authority fails closed]
 - [ ] T-HU.6 Qualify candidate and provider boundaries  Owner: coordinator  stage: verify  deps: [T-HU.5, T-HU.4, T-HU.17, T-HU.19]  acc: [source pinned tests race vet lint synthetic browser and performance checks plus bounded provider fence backup and rollback receipts pass]
 - [ ] T-HU.7 Review and land candidate  Owner: independent-reviewer  stage: review  deps: [T-HU.6]  acc: [independent exact head approval and guarded merge preserve holds and landed tree matches reviewed tree]
@@ -31,6 +31,8 @@ Latest reviewed code starts with authentic journal authority, survives restart a
 
 - [x] T-HU.18 Review source implementation for landing without activation  Owner: coordinator-and-independent-reviewer  stage: review  deps: [T-HU.5, T-HU.13, T-HU.14, T-HU.15, T-HU.16]  acc: [source build tests race vet lint and independent scoped exact-head reviews pass with no outstanding source finding while provider qualification remains open]
 - [ ] T-HU.19 Design preserved legacy-data migration  Owner: coordinator-and-founder  stage: design  deps: [T-HU.17]  acc: [existing data and deletion history have a reviewed quiescence backup and adoption or separate-environment decision before any fresh enrollment or production replacement]
+
+- [ ] T-HU.20 Implement and review preserved legacy admission  Owner: coordinator-and-independent-reviewer  stage: implement  deps: [T-HU.19]  acc: [immutable truthful checkpoint provenance complete custody inventory measured first admission strict owner transport and matching deployment data paths pass local checks and exact-head review before provider use]
 
 ## Batches and scheduling
 
@@ -83,3 +85,9 @@ source-only review; guarded merge and landed-tree verification are recorded in
 the delivery receipt. T-HU.4, T-HU.6-9, T-HU.17 and T-HU.19 remain open. The
 activation dossier is an unexecuted reviewed proposal, not live policy approval
 or a completed bounded provider qualification script.
+
+## Owner-authorized live activation continuation
+
+On 2026-10-10 the founder stated: ‘I approve. Deploy.’ This accepts live activation of the reviewed DynamoDB journal and KMS signing direction, necessary preserved-data migration and deployment. Initial qualification spending remains bounded by the proposed $10 allowance; no unrelated resources are authorized. Activation is limited to the existing host, one authority stack, owner-only signing and independently verified artifacts. Provider qualification, immutable prewrite checkpoint, truthful legacy-history provenance and tested recovery remain mandatory acceptance gates.
+
+T-HU.19 implementation assignment: legacy-migration worker owns witnessed adoption receipt, deterministic complete data inventory and first-admission checks. Coordinator owns CLI and preserved checkpoint. Owner-activation worker owns current-user owner transport with strict private-file checks; restore operator remains root-only. Source changes require independent exact-head review before landing.

@@ -104,7 +104,14 @@ if p.is_symlink() or not p.is_file() or st.st_uid!=0 or st.st_mode&0o077:
 config=json.loads(p.read_bytes())
 with open(sys.argv[1],"rb") as source:
     digest=hashlib.file_digest(source,"sha256").hexdigest()
-if config.get("executable_sha256")!=digest or config.get("data_dir")!="/var/lib/serenity" or config.get("socket_path")!="/run/serenity-broker/runtime.sock":
+data_dir=config.get("data_dir")
+if data_dir not in ("/var/lib/serenity", "/var/lib/serenity/hosted"):
+    raise SystemExit("Unsupported private data directory")
+with open("/etc/serenity/hosted.json", "rb") as hosted_source:
+    hosted_config=json.load(hosted_source)
+if hosted_config.get("data_dir")!=data_dir:
+    raise SystemExit("Broker and hosted service data directories differ")
+if config.get("executable_sha256")!=digest or config.get("socket")!="/run/serenity-broker/runtime.sock":
     raise SystemExit("Broker enrollment does not match candidate executable and host paths")
 PYBROKER
 install -d -m 0700 -o serenity -g serenity /etc/serenity /etc/serenity/secrets
