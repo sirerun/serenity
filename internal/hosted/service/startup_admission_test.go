@@ -78,8 +78,8 @@ func TestStartupUnsealedObservationDoesNotWeakenRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.checks != 2 {
-		t.Fatalf("wanted pre/post admission checks, got %d", p.checks)
+	if p.checks != 3 {
+		t.Fatalf("wanted pre/post and startup sweep admission checks, got %d", p.checks)
 	}
 	if s.Handler == nil {
 		t.Fatal("handlers absent after verified ordinary startup")
