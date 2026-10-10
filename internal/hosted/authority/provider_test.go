@@ -47,15 +47,20 @@ func TestDynamoAtomicTransactionShape(t *testing.T) {
 	if e = s.Commit(context.Background(), 7, rec, []ImmutableItem{{Key: "OBJ#key", Body: []byte("canonical")}}, op); e != nil {
 		t.Fatal(e)
 	}
+	for _, tx := range d.tx.TransactItems {
+		if tx.Put == nil || len(tx.Put.ExpressionAttributeNames) == 0 {
+			t.Fatal("expression attribute names are not aliased")
+		}
+	}
 	if len(d.tx.TransactItems) != 3 {
 		t.Fatal("state/object/receipt not atomic")
 	}
 	first := d.tx.TransactItems[0].Put
-	if first == nil || !strings.Contains(aws.ToString(first.ConditionExpression), "revision = :revision") || !strings.Contains(aws.ToString(first.ConditionExpression), "attribute_not_exists(pending)") {
+	if first == nil || !strings.Contains(aws.ToString(first.ConditionExpression), "#revision = :revision") || !strings.Contains(aws.ToString(first.ConditionExpression), "attribute_not_exists(#pending)") {
 		t.Fatal("head epoch revision/pending fence missing")
 	}
 	for _, tx := range d.tx.TransactItems[1:] {
-		if aws.ToString(tx.Put.ConditionExpression) != "attribute_not_exists(pk)" {
+		if aws.ToString(tx.Put.ConditionExpression) != "attribute_not_exists(#pk)" {
 			t.Fatal("immutable creation unconditional")
 		}
 	}
