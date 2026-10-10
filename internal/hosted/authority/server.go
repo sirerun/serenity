@@ -81,10 +81,10 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 		return Response{}, err
 	}
 	owner := principal == s.config.OwnerPrincipal
-	if (q.Action == "enroll" || q.Action == "restore") && !owner || q.Action == "seal" && !owner {
+	if (q.Action == "enroll" || q.Action == "restore" || q.Action == "inspect") && !owner || q.Action == "seal" && !owner {
 		return Response{}, ErrForbidden
 	}
-	if owner && q.Action != "enroll" && q.Action != "restore" && q.Action != "seal" && q.Action != "read_finalized_cut" && q.Action != "get" && q.Action != "list" && q.Action != "current" && q.Action != "close" {
+	if owner && q.Action != "inspect" && q.Action != "enroll" && q.Action != "restore" && q.Action != "seal" && q.Action != "read_finalized_cut" && q.Action != "get" && q.Action != "list" && q.Action != "current" && q.Action != "close" {
 		return Response{}, ErrForbidden
 	}
 	raw, err := json.Marshal(q)
@@ -150,6 +150,15 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 		return result, nil
 	}
 	switch q.Action {
+	case "inspect":
+		out := Response{Prepared: state.Prepared, Lease: state.Lease}
+		out.Current = &Current{Position: state.Position, Epoch: state.Epoch}
+		if state.Lease != nil {
+			out.Current.ExpiresAt = state.Lease.ExpiresAt
+		} else if state.Prepared != nil {
+			out.Current.ExpiresAt = state.Prepared.ExpiresAt
+		}
+		return out, nil
 	case "challenge":
 		if state.Phase == "PREPARING" {
 			return Response{}, ErrConflict
@@ -516,7 +525,7 @@ func validateAppend(st protocolState, q Request, owner bool, now time.Time) (pro
 }
 
 func validateRequest(q Request) error {
-	allowed := map[string]string{"enroll": "operation_id", "restore": "operation_id", "challenge": "operation_id", "prepare": "operation_id challenge_id nonce measurement", "activate": "operation_id reservation_id history_sha256", "current": "lease_id", "renew": "operation_id lease_id measurement", "close": "operation_id lease_id reservation_id", "append": "operation_id lease_id key body", "seal": "operation_id lease_id key body", "get": "lease_id reservation_id cut_id key", "list": "lease_id reservation_id cut_id prefix start_after limit", "cut": "operation_id lease_id snapshot_attempt_id", "finalize_cut": "operation_id cut_id manifest_sha256", "read_finalized_cut": "cut_id"}
+	allowed := map[string]string{"inspect": "", "enroll": "operation_id", "restore": "operation_id", "challenge": "operation_id", "prepare": "operation_id challenge_id nonce measurement", "activate": "operation_id reservation_id history_sha256", "current": "lease_id", "renew": "operation_id lease_id measurement", "close": "operation_id lease_id reservation_id", "append": "operation_id lease_id key body", "seal": "operation_id lease_id key body", "get": "lease_id reservation_id cut_id key", "list": "lease_id reservation_id cut_id prefix start_after limit", "cut": "operation_id lease_id snapshot_attempt_id", "finalize_cut": "operation_id cut_id manifest_sha256", "read_finalized_cut": "cut_id"}
 	fields, ok := allowed[q.Action]
 	if !ok {
 		return ErrInvalid

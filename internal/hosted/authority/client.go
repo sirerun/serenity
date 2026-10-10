@@ -197,3 +197,9 @@ func (c *Client) Seal(ctx context.Context, l Lease, key string, body []byte, op 
 	_, err := c.invoke(ctx, Request{Action: "seal", OperationID: op, LeaseID: l.ID, Key: key, Body: body})
 	return err
 }
+
+// Inspect discovers the exact durable capability for owner reconciliation of
+// an ambiguous startup response. Runtime credentials cannot use this route.
+func (c *Client) Inspect(ctx context.Context) (Response, error) {
+	return c.invoke(ctx, Request{Action: "inspect"})
+}
