@@ -12,8 +12,8 @@ Latest reviewed code starts with authentic journal authority, survives restart a
 
 - [x] T-HU.1 Refresh source and release prerequisites  Owner: coordinator  stage: discover  acc: [remote main includes PR368 and current hosted startup and signing blockers are identified]
 - [x] T-HU.2 Prepare concrete AWS authority and signing proposal  Owner: coordinator  stage: design  deps: [T-HU.1]  acc: [proposal maps each owner obligation to a concrete authority and identifies costs and policy decisions without inventing runtime evidence]
-- [ ] T-HU.10 Bound journal object transport  Owner: coordinator  stage: implement  deps: [T-HU.1]  acc: [S3 reads and writes enforce the existing observation size ceiling with hostile length and allocation regression checks and independent review]
-- [ ] T-HU.3 Review authority proposal independently  Owner: independent-reviewer  stage: review  deps: [T-HU.2]  acc: [review names reachable correctness or authority blockers and every accepted finding has a disposition]
+- [x] T-HU.10 Bound journal object transport  Owner: coordinator  stage: implement  deps: [T-HU.1]  acc: [S3 reads and writes enforce the existing observation size ceiling with hostile length and allocation regression checks and independent review]
+- [x] T-HU.3 Review authority proposal independently  Owner: independent-reviewer  stage: review  deps: [T-HU.2]  acc: [review names reachable correctness or authority blockers and every accepted finding has a disposition]
 - [ ] T-HU.4 Record owner and policy decisions  Owner: founder  stage: approve  deps: [T-HU.3]  acc: [accountable owner and reviewed identity journal fencing and release trust policy are explicitly accepted]
 - [ ] T-HU.5 Implement admitted startup and operator integration  Owner: startup-worker  stage: implement  deps: [T-HU.4]  acc: [real authority adapters and CLI lifecycle support ordinary restart and backup restore while invalid authority fails closed]
 - [ ] T-HU.6 Qualify candidate and provider boundaries  Owner: coordinator  stage: verify  deps: [T-HU.5]  acc: [source pinned tests race vet lint synthetic browser and performance checks plus bounded provider fence backup and rollback receipts pass]
@@ -39,4 +39,6 @@ GitHub main and PR368 were refreshed live. Current CLI returns startup-unavailab
 
 Owner response: "Me as owner; prepare the AWS design." This assigns accountability; it does not approve the proposed AWS trust policies or new spend. T-HU.10 is an independent existing-contract hardening prerequisite; it does not activate startup.
 
-Design artifact: `hosted-aws-authority-proposal-2026-10-10.md`. T-HU.10 candidate passes focused race/vet/lint after regression tests failed on the unchanged baseline; review remains pending. No production runtime gate is closed by that patch.
+Design artifact: `hosted-aws-authority-proposal-2026-10-10.md`. T-HU.10 candidate passes focused race/vet/lint after regression tests failed on the unchanged baseline; independent source review is clear. No production runtime gate is closed by that patch.
+
+Independent review at f89f404 is CLEAR for source-only landing; see `hosted-unblock-review-2026-10-10.md`. T-HU.3 closes direction-only review, not implementation freeze. T-HU.4 remains open for the proposed journal-backend and trust-policy decisions; T-HU.5-9 remain dependent and incomplete.
