@@ -45,7 +45,7 @@ func (s *S3Witness) get(ctx context.Context, key string, max int64) ([]byte, str
 	if out == nil || out.Body == nil {
 		return nil, "", false, ErrUnavailable
 	}
-	defer out.Body.Close()
+	defer func() { _ = out.Body.Close() }()
 	if out.DeleteMarker != nil && *out.DeleteMarker {
 		return nil, "", false, ErrConflict
 	}

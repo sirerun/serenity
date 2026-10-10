@@ -249,9 +249,10 @@ class ReadinessRollbackTests(unittest.TestCase):
         self.assertIn("serenity-hosted", deploy)
         self.assertIn("serenity.prev", deploy)
         failure = deploy[deploy.index("activation_failed()"):deploy.index("printf '%s  %s")]
-        self.assertIn('if [[ "$release_policy" == owner-kms-manifest-v1 ]]', failure)
         self.assertIn("systemctl stop serenity-hosted", failure)
-        self.assertIn("serenity_restore_previous_binary", failure)
+        self.assertNotIn("serenity_restore_previous_binary", failure)
+        self.assertIn("serenity-broker", failure)
+        self.assertIn("compatible binary, units and broker configuration", failure)
         self.assertLess(deploy.index("systemctl enable --now caddy"), deploy.index('ln -sfn "$binary_target" /usr/local/bin/serenity'))
         self.assertRegex(deploy, r"if ! systemctl enable --now serenity-hosted \|\| ! systemctl restart serenity-hosted; then\n\s+activation_failed")
 

@@ -53,7 +53,7 @@ pending_install=0
 cleanup_deploy() {
     status=$?
     if (( status != 0 && pending_install == 1 )); then
-        systemctl stop serenity-hosted || true
+        systemctl stop serenity-hosted serenity-broker || true
         echo 'Uncommitted installation retained for exact owner recovery' >&2
     fi
     rm -rf -- "$work"
@@ -77,12 +77,8 @@ else
     "$release_verifier" verify "${release_args[@]}"
 fi
 activation_failed() {
-    if [[ "$release_policy" == owner-kms-manifest-v1 ]]; then
-        systemctl stop serenity-hosted || true
-        echo 'Activation failed; pending release requires exact owner recovery before another deployment' >&2
-    else
-        serenity_restore_previous_binary /usr/local/bin/serenity /usr/local/bin/serenity.prev serenity-hosted || true
-    fi
+    systemctl stop serenity-hosted serenity-broker || true
+    echo 'Activation failed; recover an approved compatible binary, units and broker configuration before restart' >&2
 }
 printf '%s  %s\n' "$checksum" "$work/release.tar.gz" | sha256sum --check --status
 tar -xzf "$work/release.tar.gz" -C "$work" serenity
@@ -145,8 +141,8 @@ if [[ -x /usr/local/bin/serenity ]]; then
 fi
 if [[ "$release_policy" == owner-kms-manifest-v1 ]]; then
     "$release_verifier" prepare "${release_args[@]}"
-    pending_install=1
 fi
+pending_install=1
 install -m 0755 "$work/serenity" "$binary_target"
 chown serenity:serenity /var/lib/serenity
 install -m 0644 "$script_dir/serenity-hosted.service" /etc/systemd/system/serenity-hosted.service
@@ -227,8 +223,8 @@ if ! serenity_wait_ready http://127.0.0.1:8090/readyz; then
 fi
 if [[ "$release_policy" == owner-kms-manifest-v1 ]]; then
     "$release_verifier" commit "${release_args[@]}"
-    pending_install=0
 fi
+pending_install=0
 systemctl start serenity-backup.service
 systemctl enable --now serenity-backup.timer
 echo "Hosted Serenity ${number} is locally ready. Public smoke and release acceptance are separate."
