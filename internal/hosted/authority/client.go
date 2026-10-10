@@ -190,3 +190,10 @@ func (c *Client) Renew(ctx context.Context, l Lease, op string) (Lease, error) {
 	}
 	return *r.Lease, nil
 }
+
+// Seal is privileged recovery work. Runtime credentials cannot invoke it;
+// the same transaction closes the exact active lease and advances generation.
+func (c *Client) Seal(ctx context.Context, l Lease, key string, body []byte, op string) error {
+	_, err := c.invoke(ctx, Request{Action: "seal", OperationID: op, LeaseID: l.ID, Key: key, Body: body})
+	return err
+}

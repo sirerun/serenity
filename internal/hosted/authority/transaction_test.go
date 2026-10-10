@@ -249,7 +249,27 @@ func TestServerGenesisReplayAndLeaseFence(t *testing.T) {
 		t.Fatal(e)
 	}
 	now = now.Add(2 * time.Hour)
-	if _, e = s.execute(ctx, "runtime", Request{Action: "renew", OperationID: opID(t), LeaseID: active.Lease.ID}); !errors.Is(e, ErrExpired) {
+	if _, e = s.execute(ctx, "runtime", Request{Action: "renew", OperationID: opID(t), LeaseID: active.Lease.ID, Measurement: q.Measurement}); !errors.Is(e, ErrExpired) {
 		t.Fatalf("expired lease resurrected: %v", e)
 	}
+}
+
+func (m *memoryAtomic) Import(_ context.Context, items []ImmutableItem) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, it := range items {
+		if old, ok := m.items[it.Key]; ok && string(old) != string(it.Body) {
+			return ErrConflict
+		}
+		if strings.HasPrefix(it.Key, "OP#") {
+			var receipt Receipt
+			if err := json.Unmarshal(it.Body, &receipt); err != nil {
+				return err
+			}
+			m.ops[receipt.OperationID] = receipt
+		} else {
+			m.items[it.Key] = append([]byte(nil), it.Body...)
+		}
+	}
+	return nil
 }
