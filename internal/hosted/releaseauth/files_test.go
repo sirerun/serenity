@@ -273,7 +273,7 @@ func TestRootCanonicalPolicyAndApproval(t *testing.T) {
 }
 func TestSignerCredentialIsolation(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	dir := credentialDirectory(t)
 	file := filepath.Join(dir, "credentials")
 	writeTest(t, file, []byte("[selected]\naws_access_key_id = synthetic\naws_secret_access_key = synthetic\n"))
 	client, err := NewKMSSigner("us-east-1", file, "selected")
@@ -286,5 +286,61 @@ func TestSignerCredentialIsolation(t *testing.T) {
 	}
 	if _, err = NewKMSSigner("us-east-1", file, ""); err == nil {
 		t.Fatal("accepted ambient profile")
+	}
+}
+
+func credentialDirectory(t *testing.T) string {
+	t.Helper()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := os.MkdirTemp(home, "serenity-release-credential-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Error(err)
+		}
+	})
+	return dir
+}
+
+func TestSignerCredentialFileSafety(t *testing.T) {
+	for _, name := range []string{"symlink", "writable-parent", "foreign-owner", "writable-file"} {
+		t.Run(name, func(t *testing.T) {
+			if name == "foreign-owner" && os.Geteuid() != 0 {
+				t.Skip("foreign owner requires root")
+			}
+			dir := credentialDirectory(t)
+			file := filepath.Join(dir, "credentials")
+			writeTest(t, file, []byte("[selected]\naws_access_key_id = synthetic\naws_secret_access_key = synthetic\n"))
+			switch name {
+			case "symlink":
+				target := file + ".target"
+				if err := os.Rename(file, target); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(target, file); err != nil {
+					t.Fatal(err)
+				}
+			case "writable-parent":
+				if err := os.Chmod(dir, 0777); err != nil {
+					t.Fatal(err)
+				}
+			case "foreign-owner":
+				if err := os.Chown(file, 65534, 65534); err != nil {
+					t.Fatal(err)
+				}
+			case "writable-file":
+				if err := os.Chmod(file, 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := NewKMSSigner("us-east-1", file, "selected"); err == nil {
+				t.Fatal("unsafe credentials accepted")
+			}
+		})
 	}
 }
