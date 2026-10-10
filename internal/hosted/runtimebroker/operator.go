@@ -29,12 +29,17 @@ func OpenOperator(ctx context.Context, path string) (*authority.Client, func(), 
 }
 
 // OpenOwner selects the separately authenticated authority owner endpoint.
-// Its client cannot impersonate runtime measurements or ordinary appends.
+// Config and credentials must be private to the current effective UID. Owner
+// authority is authenticated by IAM, not local root; the client cannot
+// impersonate runtime measurements or ordinary appends.
 func OpenOwner(ctx context.Context, path string) (*authority.Client, func(), error) {
 	return openOperator(ctx, path, true)
 }
 func openOperator(ctx context.Context, path string, owner bool) (*authority.Client, func(), error) {
-	if ctx == nil || os.Geteuid() != 0 {
+	if ctx == nil {
+		return nil, nil, errors.New("broker: context required")
+	}
+	if !owner && os.Geteuid() != 0 {
 		return nil, nil, errors.New("broker: root operator required")
 	}
 	b, err := privatefs.ReadFile(ctx, filepath.Dir(path), filepath.Base(path), 16*1024)
