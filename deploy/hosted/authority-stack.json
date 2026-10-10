@@ -357,7 +357,7 @@
         ],
         "MemorySize": 256,
         "Timeout": 25,
-        "ReservedConcurrentExecutions": 2,
+        "ReservedConcurrentExecutions": 0,
         "Role": {
           "Fn::GetAtt": [
             "GatewayRole",
@@ -691,6 +691,16 @@
                   "Fn::Sub": "${Gateway.Arn}:*"
                 }
               ]
+            },
+            {
+              "Effect": "Deny",
+              "Action": "kms:Sign",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "ReleaseKey",
+                  "Arn"
+                ]
+              }
             }
           ]
         }
@@ -732,6 +742,19 @@
     "RuntimeInvokeARN": {
       "Value": {
         "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${API}/prod/POST/runtime"
+      }
+    },
+    "GatewayARN": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Gateway",
+          "Arn"
+        ]
+      }
+    },
+    "GatewayVersionARN": {
+      "Value": {
+        "Ref": "GatewayVersion"
       }
     }
   }

@@ -6,9 +6,11 @@ OnFailure=serenity-backup-failed.service
 
 [Service]
 Type=oneshot
-User=serenity
-Group=serenity
-EnvironmentFile=/etc/serenity/backup.env
+User=root
+Group=root
+EnvironmentFile=/etc/serenity-backup/backup.env
 ExecStart=/opt/serenity-hosted/backup.sh
 UMask=0077
 TimeoutStartSec=900
+
+TimeoutStartSec=300
