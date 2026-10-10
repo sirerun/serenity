@@ -330,8 +330,7 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 			b, found, e := reader.Get(ctx, q.Key)
 			return Response{Body: b, Found: found}, e
 		}
-		keys, more, e := reader.ListAfter(ctx, q.Prefix, q.StartAfter, q.Limit)
-		return Response{Keys: keys, More: more}, e
+		return reader.listPage(ctx, q.Prefix, q.StartAfter, q.Limit)
 	case "cut":
 		if e := s.checkLease(state, q.LeaseID, now); e != nil {
 			return Response{}, e

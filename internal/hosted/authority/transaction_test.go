@@ -273,3 +273,24 @@ func (m *memoryAtomic) Import(_ context.Context, items []ImmutableItem) error {
 	}
 	return nil
 }
+
+func (m *memoryAtomic) ListObjects(_ context.Context, prefix, after string, n int) ([]ImmutableItem, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var keys []string
+	for k := range m.items {
+		if strings.HasPrefix(k, prefix) && k > after {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	more := len(keys) > n
+	if more {
+		keys = keys[:n]
+	}
+	out := make([]ImmutableItem, len(keys))
+	for i, key := range keys {
+		out[i] = ImmutableItem{Key: key, Body: append([]byte(nil), m.items[key]...)}
+	}
+	return out, more, nil
+}

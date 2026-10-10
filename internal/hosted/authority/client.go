@@ -1,10 +1,13 @@
 package authority
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
+	"sync"
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 )
@@ -124,6 +127,8 @@ func (c *Client) CutReader(cut Cut) contracts.JournalObjectReader {
 func (c *Client) Store(l Lease) contracts.JournalObjectStore { return &objectClient{c: c, lease: l.ID} }
 
 type objectClient struct {
+	mu                      sync.Mutex
+	cache                   map[string][]byte
 	c                       *Client
 	reservation, lease, cut string
 }
@@ -132,6 +137,16 @@ func (o *objectClient) request(action string) Request {
 	return Request{Action: action, ReservationID: o.reservation, LeaseID: o.lease, CutID: o.cut}
 }
 func (o *objectClient) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	o.mu.Lock()
+	cached, found := o.cache[key]
+	cached = bytes.Clone(cached)
+	o.mu.Unlock()
+	if found {
+		return cached, true, nil
+	}
 	q := o.request("get")
 	q.Key = key
 	r, err := o.c.invoke(ctx, q)
@@ -155,9 +170,27 @@ func (o *objectClient) ListAfter(ctx context.Context, prefix, after string, limi
 	if err != nil {
 		return nil, false, err
 	}
-	if len(r.Keys) > limit {
+
+	if len(r.Keys) > limit || len(r.Objects) != len(r.Keys) || r.More && len(r.Keys) == 0 {
 		return nil, false, ErrInvalid
 	}
+	encoded, e := json.Marshal(r)
+	if e != nil || len(encoded) > MaxPageBytes {
+		return nil, false, ErrInvalid
+	}
+	cache := make(map[string][]byte, len(r.Keys))
+	last := after
+	for i, key := range r.Keys {
+		if _, _, ok := journalCoordinates(key); !ok || key <= last || !strings.HasPrefix(key, prefix) || r.Objects[i].Key != key || len(r.Objects[i].Body) > MaxObjectBytes {
+			return nil, false, ErrInvalid
+		}
+		last = key
+		cache[key] = bytes.Clone(r.Objects[i].Body)
+	}
+	o.mu.Lock()
+	o.cache = cache
+	o.mu.Unlock()
+
 	return r.Keys, r.More, nil
 }
 func (o *objectClient) PutIfAbsent(ctx context.Context, key string, body []byte) (bool, error) {
