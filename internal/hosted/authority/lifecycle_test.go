@@ -319,3 +319,43 @@ func TestFailedPreparationCannotConsumeFreshDataGuard(t *testing.T) {
 		t.Fatal("initialized empty journal incorrectly treated as fresh namespace")
 	}
 }
+
+func TestOwnerInspectAndExactCloseAfterLostResponse(t *testing.T) {
+	s, c, lease, _, _, _ := activeFixture(t)
+	ctx := context.Background()
+	if _, e := c.Inspect(ctx); !errors.Is(e, ErrForbidden) {
+		t.Fatalf("runtime inspected owner state: %v", e)
+	}
+	owner, _ := NewClient(localTransport{s: s, principal: "owner"})
+	status, e := owner.Inspect(ctx)
+	if e != nil || status.Lease == nil || status.Lease.ID != lease.ID {
+		t.Fatalf("owner could not discover exact lease: %v", e)
+	}
+	wrong := lease
+	wrong.ID = opID(t)
+	if e = owner.Close(ctx, wrong, opID(t)); !errors.Is(e, ErrConflict) {
+		t.Fatalf("wrong lease closed active epoch: %v", e)
+	}
+	if e = owner.Close(ctx, *status.Lease, opID(t)); e != nil {
+		t.Fatal(e)
+	}
+	status, e = owner.Inspect(ctx)
+	if e != nil || status.Lease != nil || status.Prepared != nil {
+		t.Fatalf("owner close not durably visible: %v", e)
+	}
+	ch, e := c.Challenge(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	p, e := c.Prepare(ctx, ch)
+	if e != nil {
+		t.Fatal(e)
+	}
+	status, e = owner.Inspect(ctx)
+	if e != nil || status.Prepared == nil || status.Prepared.ReservationID != p.ReservationID {
+		t.Fatalf("owner could not discover prepared reservation: %v", e)
+	}
+	if e = owner.ClosePrepared(ctx, *status.Prepared, opID(t)); e != nil {
+		t.Fatal(e)
+	}
+}
