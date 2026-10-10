@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -203,7 +204,12 @@ func (t *Transaction) hasPending() error {
 	return nil
 }
 
-func (t *Transaction) load(now time.Time, previous []byte) (verified, error) {
+type recoveryContext struct {
+	pendingSHA256           string
+	installedManifestSHA256 string
+}
+
+func (t *Transaction) load(now time.Time, previous []byte, recovery *recoveryContext) (verified, error) {
 	var v verified
 	policyBytes, err := ReadTrusted(t.paths.Policy)
 	if err != nil {
@@ -217,8 +223,27 @@ func (t *Transaction) load(now time.Time, previous []byte) (verified, error) {
 	if err != nil {
 		return v, err
 	}
+	explicitRecovery := false
 	if err = DecodeCanonical(approvalBytes, &v.approval); err != nil {
-		return v, err
+		if recovery == nil {
+			return v, err
+		}
+		var authorization RecoveryApproval
+		if err = DecodeCanonical(approvalBytes, &authorization); err != nil {
+			return v, err
+		}
+		if (authorization.Mode != "recover-promote" && authorization.Mode != "recover-rollback") ||
+			authorization.PendingSHA256 != recovery.pendingSHA256 ||
+			authorization.InstalledManifestSHA256 != recovery.installedManifestSHA256 ||
+			authorization.InstalledManifestSHA256 != authorization.ManifestSHA256 {
+			return v, fmt.Errorf("recovery approval does not bind exact pending and installed artifact")
+		}
+		if err = validWindow(authorization.IssuedAt, authorization.ExpiresAt, now); err != nil {
+			return v, err
+		}
+		v.approval = authorization.Approval
+		v.approval.Mode = strings.TrimPrefix(v.approval.Mode, "recover-")
+		explicitRecovery = true
 	}
 	v.canonical, err = ReadBounded(t.paths.Manifest, MaxDocument)
 	if err != nil {
@@ -231,7 +256,17 @@ func (t *Transaction) load(now time.Time, previous []byte) (verified, error) {
 	if err != nil {
 		return v, err
 	}
-	if err = VerifySignature(v.manifest, v.canonical, signature, p, now); err != nil {
+	manifestTime := now
+	if explicitRecovery {
+		// Only elapsed expiry is waived: the original manifest must have had a
+		// valid bounded window at issuance and must never have been future-issued.
+		issued, e := time.Parse(time.RFC3339, v.manifest.IssuedAt)
+		if e != nil || issued.After(now) {
+			return v, fmt.Errorf("invalid recovery manifest issuance")
+		}
+		manifestTime = issued
+	}
+	if err = VerifySignature(v.manifest, v.canonical, signature, p, manifestTime); err != nil {
 		return v, err
 	}
 	archive, err := os.OpenFile(t.paths.Archive, os.O_RDONLY|syscall.O_NONBLOCK, 0)
@@ -259,7 +294,7 @@ func (t *Transaction) load(now time.Time, previous []byte) (verified, error) {
 	if err = DecodeCanonical(v.stateBytes, &v.state); err != nil {
 		return v, err
 	}
-	v.next, err = NextState(v.manifest, v.canonical, v.approval, v.state, v.stateBytes, t.paths.Tag, now)
+	v.next, err = nextStateAt(v.manifest, v.canonical, v.approval, v.state, v.stateBytes, t.paths.Tag, now, manifestTime)
 	return v, err
 }
 
@@ -267,7 +302,7 @@ func (t *Transaction) Verify(now time.Time) (Result, error) {
 	if err := t.hasPending(); err != nil {
 		return Result{}, err
 	}
-	v, err := t.load(now, nil)
+	v, err := t.load(now, nil, nil)
 	if err != nil {
 		return Result{}, err
 	}
@@ -342,7 +377,7 @@ func (t *Transaction) Prepare(now time.Time) (Result, error) {
 	if err := t.hasPending(); err != nil {
 		return Result{}, err
 	}
-	v, err := t.load(now, nil)
+	v, err := t.load(now, nil, nil)
 	if err != nil {
 		return Result{}, err
 	}
@@ -376,7 +411,11 @@ func (t *Transaction) finish(now time.Time, installedPin string, recovery bool) 
 	if recovery && installedPin != pending.ManifestSHA256 {
 		return Result{}, fmt.Errorf("recovery requires exact installed manifest pin")
 	}
-	v, err := t.load(now, previous)
+	var authorization *recoveryContext
+	if recovery {
+		authorization = &recoveryContext{pendingSHA256: Digest(pendingBytes), installedManifestSHA256: installedPin}
+	}
+	v, err := t.load(now, previous, authorization)
 	if err != nil {
 		return Result{}, err
 	}
