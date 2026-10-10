@@ -36,7 +36,7 @@ def extract(archive,destination):
                 if member_count>MAX_FILES+2:raise ValueError("too many archive headers")
                 name=member.name
                 if name.startswith("./"):name=name[2:]
-                if member.isdir() and name in ("","brains"):
+                if member.isdir() and name in ("",".","brains"):
                     continue
                 if not member.isfile() or name in seen:
                     raise ValueError("archive contains a link, special file or duplicate")
