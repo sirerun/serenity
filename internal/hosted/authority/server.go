@@ -49,6 +49,7 @@ func NewServer(k *Kernel, c ServerConfig) (*Server, error) {
 }
 
 type protocolState struct {
+	Initialized    bool                      `json:"initialized"`
 	Phase          string                    `json:"phase"`
 	Epoch          uint64                    `json:"epoch"`
 	Position       contracts.JournalPosition `json:"position"`
@@ -208,7 +209,7 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 			return Response{}, e
 		}
 		state.Epoch++
-		p := Prepared{ReservationID: reservation, WriterID: writer, Epoch: state.Epoch, Position: state.Position, ExpiresAt: now.Add(s.config.LeaseLifetime), BuildSHA: build}
+		p := Prepared{RequireEmptyData: !state.Initialized, ReservationID: reservation, WriterID: writer, Epoch: state.Epoch, Position: state.Position, ExpiresAt: now.Add(s.config.LeaseLifetime), BuildSHA: build}
 		state.Prepared = &p
 		state.Lease = nil
 		state.Measurement = *q.Measurement
@@ -261,6 +262,7 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 		}
 		p := state.Prepared
 		l := Lease{ID: id, ReservationID: p.ReservationID, WriterID: p.WriterID, Epoch: p.Epoch, Position: p.Position, ExpiresAt: p.ExpiresAt, BuildSHA: p.BuildSHA}
+		state.Initialized = true
 		state.Phase = "ACTIVE"
 		state.Lease = &l
 		b, e := json.Marshal(issuance{WriterID: p.WriterID, Epoch: p.Epoch, Generation: p.Position.ActiveGeneration, BuildSHA: p.BuildSHA, Principal: principal, ReservationID: p.ReservationID})

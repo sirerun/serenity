@@ -253,3 +253,69 @@ func TestConcurrentDifferentAppendOneCanonicalWinner(t *testing.T) {
 		t.Fatal("head advanced twice")
 	}
 }
+
+func TestFailedPreparationCannotConsumeFreshDataGuard(t *testing.T) {
+	k, _, _ := fixture(t)
+	now := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
+	m := Measurement{ExecutableSHA256: digest([]byte("fresh")), ProcessLifetime: "process"}
+	s, e := NewServer(k, ServerConfig{RuntimePrincipal: "runtime", OwnerPrincipal: "owner", ApprovedBuilds: map[string]string{m.ExecutableSHA256: strings.Repeat("a", 40)}, LeaseLifetime: time.Hour, ChallengeLifetime: time.Minute, GenesisLifetime: time.Hour, Now: func() time.Time { return now }})
+	if e != nil {
+		t.Fatal(e)
+	}
+	ctx := context.Background()
+	owner, _ := NewClient(localTransport{s: s, principal: "owner"})
+	if e = owner.Enroll(ctx, opID(t)); e != nil {
+		t.Fatal(e)
+	}
+	c, _ := NewClient(localTransport{s: s, principal: "runtime", measurement: m})
+	for range 2 {
+		ch, e := c.Challenge(ctx)
+		if e != nil {
+			t.Fatal(e)
+		}
+		p, e := c.Prepare(ctx, ch)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if !p.RequireEmptyData {
+			t.Fatal("failed prepare consumed initial empty-data requirement")
+		}
+		if e = c.ClosePrepared(ctx, p, opID(t)); e != nil {
+			t.Fatal(e)
+		}
+	}
+	ch, e := c.Challenge(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	p, e := c.Prepare(ctx, ch)
+	if e != nil {
+		t.Fatal(e)
+	}
+	reader, e := deletion.NewJournalReader(c.Reader(p), p.Position)
+	if e != nil {
+		t.Fatal(e)
+	}
+	ob, e := reader.Observe(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	lease, e := c.Activate(ctx, p, ob.HistorySHA256, opID(t))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = c.Close(ctx, lease, opID(t)); e != nil {
+		t.Fatal(e)
+	}
+	ch, e = c.Challenge(ctx)
+	if e != nil {
+		t.Fatal(e)
+	}
+	p, e = c.Prepare(ctx, ch)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if p.RequireEmptyData {
+		t.Fatal("initialized empty journal incorrectly treated as fresh namespace")
+	}
+}
