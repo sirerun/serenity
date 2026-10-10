@@ -15,6 +15,9 @@ const MaxBodyBytes = 96 * 1024
 const MaxObjectBytes = 64 * 1024
 const MaxPageKeys = 256
 
+// MaxPageBytes reserves room for broker framing around an authority Response.
+const MaxPageBytes = MaxBodyBytes - 2048
+
 var (
 	ErrInvalid     = errors.New("authority: invalid request")
 	ErrForbidden   = errors.New("authority: forbidden")
@@ -100,17 +103,18 @@ type Request struct {
 }
 
 type Response struct {
-	Challenge    *Challenge    `json:"challenge,omitempty"`
-	Prepared     *Prepared     `json:"prepared,omitempty"`
-	Lease        *Lease        `json:"lease,omitempty"`
-	Current      *Current      `json:"current,omitempty"`
-	Cut          *Cut          `json:"cut,omitempty"`
-	FinalizedCut *FinalizedCut `json:"finalized_cut,omitempty"`
-	Body         []byte        `json:"body,omitempty"`
-	Keys         []string      `json:"keys,omitempty"`
-	Found        bool          `json:"found,omitempty"`
-	More         bool          `json:"more,omitempty"`
-	Created      bool          `json:"created,omitempty"`
+	Objects      []ImmutableItem `json:"objects,omitempty"`
+	Challenge    *Challenge      `json:"challenge,omitempty"`
+	Prepared     *Prepared       `json:"prepared,omitempty"`
+	Lease        *Lease          `json:"lease,omitempty"`
+	Current      *Current        `json:"current,omitempty"`
+	Cut          *Cut            `json:"cut,omitempty"`
+	FinalizedCut *FinalizedCut   `json:"finalized_cut,omitempty"`
+	Body         []byte          `json:"body,omitempty"`
+	Keys         []string        `json:"keys,omitempty"`
+	Found        bool            `json:"found,omitempty"`
+	More         bool            `json:"more,omitempty"`
+	Created      bool            `json:"created,omitempty"`
 }
 
 // Transport must authenticate the caller independently of Request. The

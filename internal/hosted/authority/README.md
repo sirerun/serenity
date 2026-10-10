@@ -70,3 +70,14 @@ Disposable AWS qualification must still test actual transactions, API Gateway
 identity values, IAM exclusions, immutable bucket policies, exact Lambda version
 invocation permissions, concurrent stale clients, interrupted restore and
 capacity before production activation.
+
+Journal observation uses up to 256 keys per page. Each authority list response
+includes exactly one immutable body for each returned key, with a conservative
+encoded byte budget and truthful continuation when bytes limit the page first.
+DynamoDB projects key and payload together; server and runtime readers cache
+only that bounded immutable page. Missing, duplicate, reordered, mismatched or
+oversized bodies fail closed. Cache hits do not grant write authority; activation
+and publication still check the exact live reservation/lease independently.
+The synthetic 10000-object prepare/observe/activate/reobserve regression performs
+234 gateway calls and zero individual object GETs on its fixture. This is source
+protocol evidence, not AWS latency, throughput, cost or production acceptance.

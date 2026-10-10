@@ -20,7 +20,7 @@ const (
 	maxObservedTotalBytes  = 64 * 1024 * 1024
 	maxWriterIDBytes       = 256
 	maxJournalSequence     = int64(9_999_999_999)
-	observationPageSize    = 50
+	observationPageSize    = 256
 )
 
 // ReadOnlyJournal is a read-only view over an object reader and a

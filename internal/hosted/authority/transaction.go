@@ -57,6 +57,7 @@ type Receipt struct {
 // AtomicStore must atomically CAS the state and create all immutable items and
 // the operation receipt. A provider timeout is never a negative existence proof.
 type AtomicStore interface {
+	ListObjects(context.Context, string, string, int) ([]ImmutableItem, bool, error)
 	Import(context.Context, []ImmutableItem) error
 	Load(context.Context) (Record, bool, error)
 	Receipt(context.Context, string) (Receipt, bool, error)

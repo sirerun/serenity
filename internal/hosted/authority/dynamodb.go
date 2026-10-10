@@ -150,10 +150,25 @@ func (d *DynamoStore) Complete(ctx context.Context, r Record) error {
 	return err
 }
 func (d *DynamoStore) List(ctx context.Context, prefix, after string, limit int) ([]string, bool, error) {
+	objects, more, err := d.ListObjects(ctx, prefix, after, limit)
+	if err != nil {
+		return nil, false, err
+	}
+	keys := make([]string, len(objects))
+	for i, o := range objects {
+		keys[i] = o.Key
+	}
+	return keys, more, nil
+}
+
+// ListObjects projects canonical payloads in the same strongly consistent
+// Query page. AWS bounds a Query page at1MiB; the outer protocol further bounds
+// the encoded response before sending any bytes to the runtime.
+func (d *DynamoStore) ListObjects(ctx context.Context, prefix, after string, limit int) ([]ImmutableItem, bool, error) {
 	if limit < 1 || limit > MaxPageKeys || len(prefix) > 512 || len(after) > 512 {
 		return nil, false, ErrInvalid
 	}
-	in := &dynamodb.QueryInput{TableName: aws.String(d.table), ConsistentRead: aws.Bool(true), KeyConditionExpression: aws.String("#pk = :pk AND begins_with(#sk, :prefix)"), ExpressionAttributeNames: map[string]string{"#pk": "pk", "#sk": "sk"}, ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: d.namespace}, ":prefix": &types.AttributeValueMemberS{Value: prefix}}, ProjectionExpression: aws.String("#sk"), ScanIndexForward: aws.Bool(true), Limit: aws.Int32(int32(limit + 1))}
+	in := &dynamodb.QueryInput{TableName: aws.String(d.table), ConsistentRead: aws.Bool(true), KeyConditionExpression: aws.String("#pk = :pk AND begins_with(#sk, :prefix)"), ExpressionAttributeNames: map[string]string{"#pk": "pk", "#sk": "sk", "#payload": "payload"}, ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: d.namespace}, ":prefix": &types.AttributeValueMemberS{Value: prefix}}, ProjectionExpression: aws.String("#sk, #payload"), ScanIndexForward: aws.Bool(true), Limit: aws.Int32(int32(limit + 1))}
 	if after != "" {
 		if !strings.HasPrefix(after, prefix) {
 			return nil, false, ErrInvalid
@@ -167,21 +182,25 @@ func (d *DynamoStore) List(ctx context.Context, prefix, after string, limit int)
 	if r == nil {
 		return nil, false, ErrUnavailable
 	}
-	keys := make([]string, 0, len(r.Items))
+	objects := make([]ImmutableItem, 0, len(r.Items))
 	last := after
 	for _, item := range r.Items {
-		v, ok := item["sk"].(*types.AttributeValueMemberS)
-		if !ok || !strings.HasPrefix(v.Value, prefix) || v.Value <= last {
+		key, ok := item["sk"].(*types.AttributeValueMemberS)
+		if !ok || !strings.HasPrefix(key.Value, prefix) || key.Value <= last {
 			return nil, false, fmt.Errorf("query order: %w", ErrInvalid)
 		}
-		keys = append(keys, v.Value)
-		last = v.Value
+		body, ok := item["payload"].(*types.AttributeValueMemberB)
+		if !ok || len(body.Value) > MaxObjectBytes {
+			return nil, false, ErrInvalid
+		}
+		objects = append(objects, ImmutableItem{Key: key.Value, Body: append([]byte(nil), body.Value...)})
+		last = key.Value
 	}
-	more := len(r.LastEvaluatedKey) > 0 || len(keys) > limit
-	if len(keys) > limit {
-		keys = keys[:limit]
+	more := len(r.LastEvaluatedKey) > 0 || len(objects) > limit
+	if len(objects) > limit {
+		objects = objects[:limit]
 	}
-	return keys, more, nil
+	return objects, more, nil
 }
 
 // Import is used only while owner recovery has not published META. It never
