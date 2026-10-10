@@ -24,4 +24,4 @@ The package race test is a local synthetic source check, not AWS integration or 
 | `internal/hosted/deletion/store.go` | `7f62e0e066bcc1d2aab9a10dded665b6b3cf7350556b5a969e41c9b8c7c44010` |
 | `internal/hosted/deletion/store_bounds_test.go` | `a243b7c1c511fc2410a22bcda1a7c29e3daef04b5c7c55d7ce395a87a24f23c0` |
 
-Independent exact-head review and landed provenance remain separate delivery gates.
+Independent exact-head source review is recorded in `hosted-unblock-review-2026-10-10.md`; final-head and landed provenance remain separate delivery gates.
