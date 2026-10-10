@@ -84,3 +84,41 @@ do not fabricate a clean journal or claim old privacy obligations are satisfied.
 The owner must choose a reviewed migration policy or retain the existing host
 while a separate fresh environment is qualified. No data deletion, automatic
 adoption, new production namespace, or downtime is authorized by this dossier.
+
+## Approved activation envelope and legacy checkpoint
+
+The founder approved deployment on 2026-10-10. Initial qualification is bounded
+by the proposed $10 incremental allowance, a 24-hour execution window, at most
+5,000 gateway requests and at most 200 direct provider qualification calls.
+These are coordinator stop conditions, not a provider-enforced billing cap.
+No paid runners or model fallback are authorized. Reserved concurrency remains
+zero until the exclusive policy is installed and read back; then one bounded
+qualification lane is enabled. On failed qualification, disable concurrency,
+keep the old service active and report retained-resource carrying costs.
+Production activation may retain the one stack for the existing service.
+
+Existing data has no predecessor deletion journal. A stopped raw checkpoint
+preserves all legacy bytes, prior binary, unit and configuration independently
+of new journal snapshots. It is uploaded as a versioned private object with
+verified digest before application writes. An isolated operational tree is
+staged under the existing data mount. The verified-empty ext4 lost+found
+maintenance directory alone is omitted from staging and retained in the root
+checkpoint. UID, GID, mode, path, type, size and file digests bind the complete
+staged inventory; symlinks and unexpected special/hardlinked files fail closed.
+The immutable owner adoption receipt identifies the checkpoint, staged
+inventory and prior build with origin owner-legacy-checkpoint-v1. It establishes
+history only from that checkpoint. The measured root broker recomputes the
+inventory and authority compares it before first activation. Failed prepare or
+close cannot consume that requirement. Old snapshots are never relabeled as
+new authorized cuts.
+
+Current schema migration prevents a binary-only rollback. Before any new
+acknowledged mutation, recovery can restore the coherent legacy checkpoint;
+after current writes or deletions, stop and fix forward or use a qualified new
+authority cut. A release receipt never authorizes application-data rollback.
+
+Owner AWS credentials remain on the owner machine. Current-user owner CLI
+requires private owned configuration and an explicit credential profile.
+Restore operator remains root-only. Canonical release signing uses owner AWS
+CLI KMS Sign and root-installed offline pinned verification; no credential
+transfer or root-policy relaxation is needed.

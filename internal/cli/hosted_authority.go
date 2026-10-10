@@ -5,19 +5,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/authority"
 	"github.com/sirerun/serenity/internal/hosted/contracts"
+	"github.com/sirerun/serenity/internal/hosted/privatefs"
 	"github.com/sirerun/serenity/internal/hosted/runtimebroker"
+	"github.com/sirerun/serenity/internal/writer"
 	"github.com/spf13/cobra"
 )
 
 func newHostedAuthorityCmd() *cobra.Command {
 	parent := &cobra.Command{Use: "authority", Short: "Explicit owner operations on hosted journal authority"}
 	var config string
-	parent.PersistentFlags().StringVar(&config, "operator-config", "", "root-only owner endpoint and selected credential profile")
+	parent.PersistentFlags().StringVar(&config, "operator-config", "", "private owner endpoint and explicit selected credential profile")
 	parent.AddCommand(&cobra.Command{Use: "new-operation-id", Short: "Create a retry-stable operation ID without contacting a provider", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		id, err := authority.NewOperationID()
 		if err != nil {
@@ -46,23 +49,38 @@ func newHostedAuthorityCmd() *cobra.Command {
 			Prepared *authority.Prepared `json:"prepared,omitempty"`
 			Lease    *authority.Lease    `json:"lease,omitempty"`
 			Current  *authority.Current  `json:"current,omitempty"`
-		}{state.Prepared, state.Lease, state.Current})
+			Adoption *authority.Adoption `json:"adoption,omitempty"`
+		}{state.Prepared, state.Lease, state.Current, state.Adoption})
 	}})
 	for _, name := range []string{"enroll", "restore-authority"} {
-		var operation string
+		var operation, adoptionFile string
 		action := name
-		cmd := &cobra.Command{Use: action, Short: map[string]string{"enroll": "Enroll a first-ever authority; does not adopt existing application data", "restore-authority": "Reconstruct a fresh authority table from the complete independent witness chain"}[action], Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		cmd := &cobra.Command{Use: action, Short: map[string]string{"enroll": "Enroll a first-ever authority with optional preserved legacy checkpoint provenance", "restore-authority": "Reconstruct a fresh authority table from the complete independent witness chain"}[action], Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 			c, closeClient, err := open(cmd)
 			if err != nil {
 				return err
 			}
 			defer closeClient()
 			if action == "enroll" {
+				if adoptionFile != "" {
+					data, err := privatefs.ReadFile(cmd.Context(), filepath.Dir(adoptionFile), filepath.Base(adoptionFile), 4096)
+					if err != nil {
+						return err
+					}
+					adoption, err := authority.ParseAdoption(data)
+					if err != nil {
+						return err
+					}
+					return c.EnrollWithAdoption(cmd.Context(), adoption, operation)
+				}
 				return c.Enroll(cmd.Context(), operation)
 			}
 			return c.RestoreAuthority(cmd.Context(), operation)
 		}}
 		cmd.Flags().StringVar(&operation, "operation-id", "", "exact retry-stable ID from new-operation-id")
+		if action == "enroll" {
+			cmd.Flags().StringVar(&adoptionFile, "adoption-file", "", "private immutable legacy checkpoint receipt; never asserts earlier journal history")
+		}
 		mustRequired(cmd, "operation-id")
 		parent.AddCommand(cmd)
 	}
@@ -113,6 +131,23 @@ func newHostedAuthorityCmd() *cobra.Command {
 	seal.Flags().Int64Var(&sealSequence, "sequence", 0, "exact next sequence after inspected head")
 	mustRequired(seal, "lease-id", "operation-id", "expected-head", "recorded-at", "writer-id", "generation", "sequence")
 	parent.AddCommand(seal)
+	var inventoryDir string
+	inventory := &cobra.Command{Use: "inventory", Short: "Hash the complete stopped data tree for a legacy adoption receipt", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) (err error) {
+		lock, err := writer.AcquireBrain(inventoryDir)
+		if err != nil {
+			return err
+		}
+		defer func() { err = errors.Join(err, lock.Close()) }()
+		digest, err := runtimebroker.InventorySHA256(cmd.Context(), inventoryDir)
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(cmd.OutOrStdout(), digest)
+		return err
+	}}
+	inventory.Flags().StringVar(&inventoryDir, "data-dir", "", "private stopped data directory")
+	mustRequired(inventory, "data-dir")
+	parent.AddCommand(inventory)
 	return parent
 }
 func approvedSeal(generation, sequence int64, writer, expected string, at time.Time) (string, []byte, error) {

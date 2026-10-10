@@ -2,6 +2,8 @@
 # Root owns AWS credentials; snapshot reads/serialization run as the service UID.
 set -euo pipefail
 : "${SERENITY_BACKUP_BUCKET:?backup bucket is required}"
+SERENITY_DATA_DIR="${SERENITY_DATA_DIR:-/var/lib/serenity}"
+case "$SERENITY_DATA_DIR" in /var/lib/serenity|/var/lib/serenity/hosted) ;; *) echo "Unsupported private data directory" >&2; exit 1;; esac
 [[ $(id -u) == 0 ]] || { echo 'Backup uploader must run as trusted root' >&2; exit 1; }
 [[ "$SERENITY_BACKUP_BUCKET" =~ ^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] || exit 1
 # Do not allow a caller environment to redirect credential or endpoint discovery.
@@ -30,7 +32,7 @@ cleanup() {
     rm -rf -- "$upload"
 }
 trap cleanup EXIT
-unprivileged /usr/local/bin/serenity hosted backup --data-dir /var/lib/serenity --snapshot "$work/snapshot"
+unprivileged /usr/local/bin/serenity hosted backup --data-dir "$SERENITY_DATA_DIR" --snapshot "$work/snapshot"
 # A root uploader must never walk application-writable source paths. Tar runs
 # unprivileged, does not dereference symlinks, and writes only through this pipe.
 # The 2GiB transport ceiling and 120s deadline fail the job before any upload.
