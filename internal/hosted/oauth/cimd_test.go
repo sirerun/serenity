@@ -37,7 +37,7 @@ func metadataResponse(body string) *http.Response {
 	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
 }
 func TestCIMDMetadataValidation(t *testing.T) {
-	r := NewCIMDResolver([]string{"memory:read"})
+	r := NewCIMDResolver()
 	for _, tc := range []struct {
 		name  string
 		extra map[string]any
@@ -50,7 +50,7 @@ func TestCIMDMetadataValidation(t *testing.T) {
 		{"native loopback", map[string]any{"redirect_uris": []string{"http://127.0.0.1:1234/callback"}}, true},
 		{"secret auth", map[string]any{"token_endpoint_auth_method": "client_secret_post"}, false},
 		{"secret material", map[string]any{"client_secret": ""}, false}, {"private keys", map[string]any{"jwks": map[string]any{}}, false},
-		{"privileged scope", map[string]any{"scope": "admin"}, false}, {"password grant", map[string]any{"grant_types": []string{"password"}}, false},
+		{"foreign declared scope", map[string]any{"scope": "openid memory:read"}, true}, {"password grant", map[string]any{"grant_types": []string{"password"}}, false},
 		{"implicit response", map[string]any{"response_types": []string{"token"}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -67,7 +67,7 @@ func TestCIMDMetadataValidation(t *testing.T) {
 	}
 }
 func TestCIMDURLValidation(t *testing.T) {
-	for _, id := range []string{"plain-id", "http://client.example/meta", "https://client.example", "https://client.example/", "https://user@client.example/meta", "https://client.example/meta#", "https://client.example/a/../meta", "https://client.example/%2e/meta", "https://client.example:65536/meta"} {
+	for _, id := range []string{"plain-id", "http://client.example/meta", "https://client.example", "https://user@client.example/meta", "https://client.example/meta#", "https://client.example/a/../meta", "https://client.example/%2e/meta", "https://client.example:65536/meta"} {
 		if validClientMetadataURL(id) {
 			t.Errorf("accepted %s", id)
 		}
@@ -77,7 +77,7 @@ func TestCIMDURLValidation(t *testing.T) {
 	}
 }
 func TestCIMDCacheAndFetchBounds(t *testing.T) {
-	r := NewCIMDResolver(nil)
+	r := NewCIMDResolver()
 	now := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
 	r.now = func() time.Time { return now }
 	calls := 0
@@ -111,7 +111,7 @@ func TestCIMDCacheAndFetchBounds(t *testing.T) {
 		{"redirect", 302, "application/json", metadataBody(t, nil)}, {"html", 200, "text/html", metadataBody(t, nil)}, {"large", 200, "application/json", strings.Repeat(" ", 65537)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			r := NewCIMDResolver(nil)
+			r := NewCIMDResolver()
 			r.http.Transport = metadataRoundTrip(func(*http.Request) (*http.Response, error) {
 				resp := metadataResponse(tc.body)
 				resp.StatusCode = tc.status
@@ -168,7 +168,7 @@ func TestCIMDPublicDialPinsValidatedIP(t *testing.T) {
 	}
 }
 func TestCIMDConcurrencyBound(t *testing.T) {
-	r := NewCIMDResolver(nil)
+	r := NewCIMDResolver()
 	entered := make(chan struct{}, 4)
 	release := make(chan struct{})
 	done := make(chan struct{}, 4)
@@ -195,7 +195,7 @@ func TestCIMDConcurrencyBound(t *testing.T) {
 	}
 }
 func TestCIMDProductionTransport(t *testing.T) {
-	r := NewCIMDResolver(nil)
+	r := NewCIMDResolver()
 	tr := r.http.Transport.(*http.Transport)
 	if tr.Proxy != nil || tr.TLSClientConfig != nil || !tr.DisableKeepAlives || r.http.Timeout != 5*time.Second {
 		t.Fatal("unsafe transport defaults")
@@ -209,7 +209,7 @@ func TestCIMDProductionTransport(t *testing.T) {
 }
 
 func TestCIMDCacheCapacityAndFailureDoesNotServeStale(t *testing.T) {
-	r := NewCIMDResolver(nil)
+	r := NewCIMDResolver()
 	now := time.Date(2026, 10, 10, 0, 0, 0, 0, time.UTC)
 	r.now = func() time.Time { return now }
 	fail := false
@@ -231,5 +231,21 @@ func TestCIMDCacheCapacityAndFailureDoesNotServeStale(t *testing.T) {
 	fail = true
 	if _, err := r.Resolve(context.Background(), testMetadataID+"?client=129"); err == nil {
 		t.Fatal("stale metadata served on failure")
+	}
+}
+
+func TestCIMDExactFieldNames(t *testing.T) {
+	r := NewCIMDResolver()
+	for _, body := range []string{
+		`{"CLIENT_ID":"` + testMetadataID + `","client_name":"Client","redirect_uris":["https://client.example/callback"]}`,
+		`{"client_id":"wrong","CLIENT_ID":"` + testMetadataID + `","client_name":"Client","redirect_uris":["https://client.example/callback"]}`,
+		`{"client_id":"` + testMetadataID + `","client_name":"Client","redirect_uris":["https://client.example/callback"],"REDIRECT_URIS":["https://evil.example/callback"]}`,
+	} {
+		if _, err := r.parseMetadata(testMetadataID, []byte(body)); err == nil {
+			t.Fatal("accepted ambiguous case variant")
+		}
+	}
+	if !validClientMetadataURL("https://client.example/") {
+		t.Fatal("root path is permitted by CIMD")
 	}
 }

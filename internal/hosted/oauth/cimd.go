@@ -35,16 +35,15 @@ type cachedMetadata struct {
 // CIMDResolver accepts public PKCE clients. Metadata never conveys authorization.
 // Its transport pins each connection to a validated public DNS result.
 type CIMDResolver struct {
-	http   *http.Client
-	scopes map[string]bool
-	slots  chan struct{}
-	mu     sync.Mutex
-	cache  map[string]cachedMetadata
-	now    func() time.Time
+	http  *http.Client
+	slots chan struct{}
+	mu    sync.Mutex
+	cache map[string]cachedMetadata
+	now   func() time.Time
 }
 
-// NewCIMDResolver constructs a resolver restricted to the server's allowed scopes.
-func NewCIMDResolver(scopes []string) *CIMDResolver {
+// NewCIMDResolver constructs a resolver for public OAuth client metadata.
+func NewCIMDResolver() *CIMDResolver {
 	transport := &http.Transport{
 		DialContext:         publicDialContext(net.DefaultResolver.LookupNetIP, (&net.Dialer{Timeout: 3 * time.Second}).DialContext),
 		TLSHandshakeTimeout: 3 * time.Second, ResponseHeaderTimeout: 3 * time.Second,
@@ -52,10 +51,7 @@ func NewCIMDResolver(scopes []string) *CIMDResolver {
 	}
 	r := &CIMDResolver{http: &http.Client{Transport: transport, Timeout: 5 * time.Second,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
-		scopes: make(map[string]bool), slots: make(chan struct{}, 4), cache: make(map[string]cachedMetadata), now: time.Now}
-	for _, scope := range scopes {
-		r.scopes[scope] = true
-	}
+		slots: make(chan struct{}, 4), cache: make(map[string]cachedMetadata), now: time.Now}
 	return r
 }
 
@@ -64,7 +60,7 @@ func validClientMetadataURL(id string) bool {
 		return false
 	}
 	u, err := url.Parse(id)
-	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || strings.Contains(id, "#") || u.Opaque != "" || u.Path == "" || u.Path == "/" {
+	if err != nil || u.Scheme != "https" || u.Hostname() == "" || u.User != nil || strings.Contains(id, "#") || u.Opaque != "" || u.Path == "" {
 		return false
 	}
 	for _, part := range strings.Split(u.Path, "/") {
@@ -109,7 +105,7 @@ func (r *CIMDResolver) Resolve(ctx context.Context, id string) (mcpoauth.Client,
 	if err != nil {
 		return mcpoauth.Client{}, fmt.Errorf("fetch client metadata: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return mcpoauth.Client{}, errInvalidClientMetadata
 	}
@@ -169,6 +165,13 @@ func (r *CIMDResolver) parseMetadata(id string, body []byte) (mcpoauth.Client, e
 		if !ok {
 			return mcpoauth.Client{}, errInvalidClientMetadata
 		}
+		// OAuth metadata field names are case-sensitive. Reject variants of
+		// known keys rather than letting encoding/json apply last-value wins.
+		for _, known := range []string{"client_id", "client_name", "redirect_uris", "token_endpoint_auth_method", "grant_types", "response_types", "scope", "client_secret", "client_secret_expires_at", "jwks", "jwks_uri"} {
+			if name != known && strings.EqualFold(name, known) {
+				return mcpoauth.Client{}, errInvalidClientMetadata
+			}
+		}
 		if _, exists := fields[name]; exists {
 			return mcpoauth.Client{}, errInvalidClientMetadata
 		}
@@ -221,9 +224,18 @@ func (r *CIMDResolver) parseMetadata(id string, body []byte) (mcpoauth.Client, e
 			return mcpoauth.Client{}, errInvalidClientMetadata
 		}
 	}
-	for _, scope := range strings.Fields(doc.Scope) {
-		if !r.scopes[scope] {
-			return mcpoauth.Client{}, errInvalidClientMetadata
+	// A reusable metadata document may declare scopes for other servers.
+	// Validate syntax only; the authorization server enforces its scope ceiling.
+	if doc.Scope != "" {
+		for _, scope := range strings.Split(doc.Scope, " ") {
+			if scope == "" {
+				return mcpoauth.Client{}, errInvalidClientMetadata
+			}
+			for _, c := range scope {
+				if c < 0x21 || c > 0x7e || c == '"' || c == '\\' {
+					return mcpoauth.Client{}, errInvalidClientMetadata
+				}
+			}
 		}
 	}
 	return mcpoauth.Client{ID: id, Name: doc.Name, RedirectURIs: doc.Redirects}, nil
