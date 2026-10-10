@@ -70,6 +70,9 @@ func openSession(ctx context.Context, t *localTransport, dataDir string) (result
 	if err != nil {
 		return nil, err
 	}
+	if prepared.Adoption != nil && !prepared.RequireEmptyData {
+		return nil, errors.New("broker: unexpected adoption after initialization")
+	}
 	reader, err := deletion.NewJournalReader(c.Reader(prepared), prepared.Position)
 	if err != nil {
 		return nil, err
@@ -79,7 +82,7 @@ func openSession(ctx context.Context, t *localTransport, dataDir string) (result
 		return nil, err
 	}
 	if prepared.RequireEmptyData {
-		if err := requireEmptyData(dataDir); err != nil {
+		if err := requireInitialData(ctx, dataDir, prepared.Adoption); err != nil {
 			return nil, err
 		}
 	}

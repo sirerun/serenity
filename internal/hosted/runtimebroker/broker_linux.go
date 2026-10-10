@@ -153,6 +153,7 @@ func servePeer(ctx context.Context, c Config, r *remote, conn *net.UnixConn) (re
 	defer func() { resultErr = errors.Join(resultErr, measured.Close()) }()
 	var reservation, lease, challenge string
 	var requireEmpty bool
+	var adoption *authority.Adoption
 	cuts := map[string]bool{}
 	defer func() {
 		if reservation == "" && lease == "" {
@@ -185,7 +186,7 @@ func servePeer(ctx context.Context, c Config, r *remote, conn *net.UnixConn) (re
 		if err = strictJSON(frame, &q); err != nil {
 			return nil
 		}
-		if q.Measurement != nil {
+		if err := rejectRuntimeIdentity(q); err != nil {
 			return nil
 		}
 		if q.ReservationID != "" && q.ReservationID != reservation {
@@ -211,9 +212,11 @@ func servePeer(ctx context.Context, c Config, r *remote, conn *net.UnixConn) (re
 			q.Measurement = &authority.Measurement{ExecutableSHA256: measured.digest, ProcessLifetime: measured.lifetime}
 		case "activate":
 			if requireEmpty {
-				if err := requireEmptyData(c.DataDir); err != nil {
+				inventory, err := brokerInitialInventory(ctx, c, adoption)
+				if err != nil {
 					return err
 				}
+				q.DataInventorySHA256 = inventory
 			}
 		case "get", "list", "append", "current", "close", "cut", "finalize_cut":
 		default:
@@ -235,8 +238,12 @@ func servePeer(ctx context.Context, c Config, r *remote, conn *net.UnixConn) (re
 				challenge = response.Challenge.ID
 			}
 			if response.Prepared != nil {
+				if response.Prepared.Adoption != nil && !response.Prepared.RequireEmptyData {
+					return errors.New("broker: unexpected adoption after initialization")
+				}
 				reservation = response.Prepared.ReservationID
 				requireEmpty = response.Prepared.RequireEmptyData
+				adoption = response.Prepared.Adoption
 				if response.Prepared.BuildSHA != c.BuildSHA {
 					return errors.New("broker: prepared release mismatch")
 				}

@@ -18,6 +18,7 @@ import (
 
 // Config is root-owned deployment configuration, never a service request.
 type Config struct {
+	AdoptionSHA256   string `json:"adoption_sha256,omitempty"`
 	DataDir          string `json:"data_dir"`
 	Socket           string `json:"socket"`
 	ServiceUID       uint32 `json:"service_uid"`
@@ -49,6 +50,12 @@ var regionPattern = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]+$`)
 var apiPattern = regexp.MustCompile(`^[a-z0-9]{10}$`)
 
 func (c Config) validate() error {
+	if c.AdoptionSHA256 != "" {
+		adoption, err := hex.DecodeString(c.AdoptionSHA256)
+		if err != nil || len(adoption) != 32 || strings.ToLower(c.AdoptionSHA256) != c.AdoptionSHA256 {
+			return errors.New("broker: exact adoption digest required")
+		}
+	}
 	digest, err := hex.DecodeString(c.ExecutableSHA256)
 	if err != nil || len(digest) != 32 || strings.ToLower(c.ExecutableSHA256) != c.ExecutableSHA256 {
 		return errors.New("broker: exact executable digest required")

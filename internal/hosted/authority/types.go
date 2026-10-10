@@ -41,6 +41,7 @@ type Challenge struct {
 }
 
 type Prepared struct {
+	Adoption         *Adoption                 `json:"adoption,omitempty"`
 	RequireEmptyData bool                      `json:"require_empty_data"`
 	ReservationID    string                    `json:"reservation_id"`
 	WriterID         string                    `json:"writer_id"`
@@ -84,25 +85,28 @@ type FinalizedCut struct {
 // Request has no authenticated principal, enrollment, account, or namespace.
 // The transport binds those independently to its owner-controlled endpoint.
 type Request struct {
-	Action            string       `json:"action"`
-	OperationID       string       `json:"operation_id,omitempty"`
-	ChallengeID       string       `json:"challenge_id,omitempty"`
-	Nonce             string       `json:"nonce,omitempty"`
-	Measurement       *Measurement `json:"measurement,omitempty"`
-	ReservationID     string       `json:"reservation_id,omitempty"`
-	LeaseID           string       `json:"lease_id,omitempty"`
-	CutID             string       `json:"cut_id,omitempty"`
-	HistorySHA256     string       `json:"history_sha256,omitempty"`
-	ManifestSHA256    string       `json:"manifest_sha256,omitempty"`
-	Key               string       `json:"key,omitempty"`
-	Body              []byte       `json:"body,omitempty"`
-	Prefix            string       `json:"prefix,omitempty"`
-	StartAfter        string       `json:"start_after,omitempty"`
-	Limit             int          `json:"limit,omitempty"`
-	SnapshotAttemptID string       `json:"snapshot_attempt_id,omitempty"`
+	Adoption            *Adoption    `json:"adoption,omitempty"`
+	DataInventorySHA256 string       `json:"data_inventory_sha256,omitempty"`
+	Action              string       `json:"action"`
+	OperationID         string       `json:"operation_id,omitempty"`
+	ChallengeID         string       `json:"challenge_id,omitempty"`
+	Nonce               string       `json:"nonce,omitempty"`
+	Measurement         *Measurement `json:"measurement,omitempty"`
+	ReservationID       string       `json:"reservation_id,omitempty"`
+	LeaseID             string       `json:"lease_id,omitempty"`
+	CutID               string       `json:"cut_id,omitempty"`
+	HistorySHA256       string       `json:"history_sha256,omitempty"`
+	ManifestSHA256      string       `json:"manifest_sha256,omitempty"`
+	Key                 string       `json:"key,omitempty"`
+	Body                []byte       `json:"body,omitempty"`
+	Prefix              string       `json:"prefix,omitempty"`
+	StartAfter          string       `json:"start_after,omitempty"`
+	Limit               int          `json:"limit,omitempty"`
+	SnapshotAttemptID   string       `json:"snapshot_attempt_id,omitempty"`
 }
 
 type Response struct {
+	Adoption     *Adoption       `json:"adoption,omitempty"`
 	Objects      []ImmutableItem `json:"objects,omitempty"`
 	Challenge    *Challenge      `json:"challenge,omitempty"`
 	Prepared     *Prepared       `json:"prepared,omitempty"`

@@ -74,6 +74,18 @@ func (s *Server) restore(ctx context.Context, principal string, q Request, reque
 	if err = strictDecode(latest.State, &st); err != nil {
 		return Response{}, err
 	}
+	if st.Adoption != nil {
+		if err = st.Adoption.Validate(); err != nil {
+			return Response{}, err
+		}
+		adoption, e := json.Marshal(st.Adoption)
+		if e != nil {
+			return Response{}, e
+		}
+		if string(imported["ADOPTION#"+digest(adoption)]) != string(adoption) {
+			return Response{}, ErrConflict
+		}
+	}
 	st.Phase = "CLOSED"
 	st.Epoch++
 	st.Prepared = nil
