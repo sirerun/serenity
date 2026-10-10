@@ -20,8 +20,9 @@ import (
 )
 
 func TestCIMDAndDCRHTTPAuthorization(t *testing.T) {
-	for _, mode := range []string{"cimd", "dcr"} {
-		t.Run(mode, func(t *testing.T) {
+	for _, tc := range []struct{ mode, scope string }{{"cimd", "memory:read"}, {"cimd", "memory:read memory:write"}, {"dcr", "memory:read"}, {"dcr", "memory:read memory:write"}} {
+		t.Run(tc.mode+"/"+tc.scope, func(t *testing.T) {
+			mode := tc.mode
 			adapter, account, brain := lifecycleStore(t)
 			h, err := New(adapter.DB, nil, nil, "https://memory.example", true)
 			if err != nil {
@@ -91,7 +92,7 @@ func TestCIMDAndDCRHTTPAuthorization(t *testing.T) {
 			if resp.StatusCode != 200 || handle == "" {
 				t.Fatalf("authorize=%d handle missing=%v", resp.StatusCode, handle == "")
 			}
-			target, e := h.Server.Approve(context.Background(), handle, mcpoauth.Approval{Subject: account.ID, Binding: brain + ".0", Scopes: []string{"memory:read"}})
+			target, e := h.Server.Approve(context.Background(), handle, mcpoauth.Approval{Subject: account.ID, Binding: brain + ".0", Scopes: strings.Fields(tc.scope)})
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -100,7 +101,7 @@ func TestCIMDAndDCRHTTPAuthorization(t *testing.T) {
 				t.Fatal(e)
 			}
 			code, body := post("/oauth/token", url.Values{"grant_type": {"authorization_code"}, "client_id": {id}, "redirect_uri": {callback}, "code": {u.Query().Get("code")}, "code_verifier": {verifier}, "resource": {"https://memory.example/mcp"}})
-			if code != 200 || body["scope"] != "memory:read" {
+			if code != 200 || body["scope"] != tc.scope {
 				t.Fatalf("exchange %d %v", code, body)
 			}
 			raw, _ := body["access_token"].(string)
@@ -112,7 +113,7 @@ func TestCIMDAndDCRHTTPAuthorization(t *testing.T) {
 				t.Fatal("missing refresh")
 			}
 			code, body = post("/oauth/token", url.Values{"grant_type": {"refresh_token"}, "client_id": {id}, "refresh_token": {refresh}, "resource": {"https://memory.example/mcp"}})
-			if code != 200 || body["scope"] != "memory:read" {
+			if code != 200 || body["scope"] != tc.scope {
 				t.Fatalf("refresh %d %v", code, body)
 			}
 			if mode == "cimd" {
