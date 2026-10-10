@@ -84,6 +84,14 @@ type Approval struct {
 	ExpiresAt           string `json:"expires_at"`
 }
 
+// RecoveryApproval is a fresh, independently installed authorization for the
+// exact durable pending transaction. Ordinary verification rejects this schema.
+type RecoveryApproval struct {
+	Approval
+	PendingSHA256           string `json:"pending_sha256"`
+	InstalledManifestSHA256 string `json:"installed_manifest_sha256"`
+}
+
 type State struct {
 	Version           int    `json:"version"`
 	HighestSequence   uint64 `json:"highest_sequence"`
@@ -282,7 +290,13 @@ func (s State) Validate() error {
 }
 
 func NextState(m Manifest, canonical []byte, a Approval, s State, stateBytes []byte, expectedTag string, now time.Time) (State, error) {
-	if err := m.Validate(now); err != nil {
+	return nextStateAt(m, canonical, a, s, stateBytes, expectedTag, now, now)
+}
+
+// nextStateAt separates the original signed artifact chronology from the fresh
+// approval time only after explicit pending-recovery authorization.
+func nextStateAt(m Manifest, canonical []byte, a Approval, s State, stateBytes []byte, expectedTag string, now, manifestTime time.Time) (State, error) {
+	if err := m.Validate(manifestTime); err != nil {
 		return State{}, err
 	}
 	var decodedManifest Manifest
