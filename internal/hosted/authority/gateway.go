@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -40,7 +41,11 @@ func (g *Gateway) Handle(ctx context.Context, event events.APIGatewayProxyReques
 	b := g.binding
 	rc := event.RequestContext
 	i := rc.Identity
-	if rc.APIID != b.APIID || rc.AccountID != b.AccountID || rc.Stage != b.Stage || rc.DomainName != b.DomainName || rc.HTTPMethod != "POST" || event.HTTPMethod != "POST" || rc.RequestID == "" || i.AccessKey == "" || len(rc.Authorizer) != 0 {
+	// REST API Gateway documents identity.caller and identity.userArn, not
+	// identity.accessKey. The pinned IAM principal/caller pair and invoke
+	// perimeter authenticate the request; accessKey may be absent.
+	if rc.APIID != b.APIID || rc.AccountID != b.AccountID || rc.Stage != b.Stage || rc.DomainName != b.DomainName || rc.HTTPMethod != "POST" || event.HTTPMethod != "POST" || rc.RequestID == "" || len(rc.Authorizer) != 0 {
+		g.logRejectedContext(event)
 		return errorResponse(ErrForbidden), nil
 	}
 	principal := ""
@@ -51,6 +56,7 @@ func (g *Gateway) Handle(ctx context.Context, event events.APIGatewayProxyReques
 		principal = b.OwnerARN
 	}
 	if principal == "" {
+		g.logRejectedContext(event)
 		return errorResponse(ErrForbidden), nil
 	}
 	if len(event.Body) > 2*MaxBodyBytes {
@@ -84,6 +90,21 @@ func (g *Gateway) Handle(ctx context.Context, event events.APIGatewayProxyReques
 	}
 	return events.APIGatewayProxyResponse{StatusCode: 200, Headers: map[string]string{"Content-Type": "application/json", "Cache-Control": "no-store"}, Body: string(encoded)}, nil
 }
+
+// logRejectedContext emits only fixed guard names and boolean mismatches.
+// Never log request bodies, identity values, headers, or credentials.
+func (g *Gateway) logRejectedContext(event events.APIGatewayProxyRequest) {
+	b, rc := g.binding, event.RequestContext
+	runtimeRoute := event.Path == b.RuntimePath && event.Resource == b.RuntimePath && rc.ResourcePath == b.RuntimePath
+	ownerRoute := event.Path == b.OwnerPath && event.Resource == b.OwnerPath && rc.ResourcePath == b.OwnerPath
+	principalMatch := (runtimeRoute && rc.Identity.UserArn == b.RuntimeARN) || (ownerRoute && rc.Identity.UserArn == b.OwnerARN)
+	callerMatch := (runtimeRoute && rc.Identity.Caller == b.RuntimeCallerID) || (ownerRoute && rc.Identity.Caller == b.OwnerCallerID)
+	log.Printf("authority gateway rejected context: api=%t account=%t stage=%t domain=%t method=%t request_id=%t authorizer=%t route=%t principal=%t caller=%t",
+		rc.APIID != b.APIID, rc.AccountID != b.AccountID, rc.Stage != b.Stage, rc.DomainName != b.DomainName,
+		rc.HTTPMethod != "POST" || event.HTTPMethod != "POST", rc.RequestID == "", len(rc.Authorizer) != 0,
+		!runtimeRoute && !ownerRoute, !principalMatch, !callerMatch)
+}
+
 func errorResponse(err error) events.APIGatewayProxyResponse {
 	code := "unavailable"
 	status := 503
