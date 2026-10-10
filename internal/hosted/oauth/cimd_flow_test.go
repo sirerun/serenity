@@ -82,8 +82,8 @@ func TestCIMDAndDCRHTTPAuthorization(t *testing.T) {
 			}
 			_ = badResponse.Body.Close()
 			badTarget, parseErr := url.Parse(badResponse.Header.Get("Location"))
-			if badResponse.StatusCode != http.StatusSeeOther || parseErr != nil || badTarget.Query().Get("error") != "invalid_scope" || handle != "" {
-				t.Fatal("unsupported requested scope reached consent")
+			if badResponse.StatusCode != http.StatusFound || parseErr != nil || badTarget.Query().Get("error") != "invalid_scope" || handle != "" {
+				t.Fatalf("unsupported scope response: status=%d parse=%v error=%q consent=%v", badResponse.StatusCode, parseErr, badTarget.Query().Get("error"), handle != "")
 			}
 			q.Set("scope", "memory:read memory:write")
 			resp, e := http.Get(ts.URL + "/oauth/authorize?" + q.Encode())
