@@ -55,6 +55,10 @@
       "Type": "String",
       "Default": "serenity-hosted-production",
       "AllowedPattern": "[a-z0-9-]{1,64}"
+    },
+    "RuntimeRoleName": {
+      "Type": "String",
+      "Description": "Exact existing instance role name; activation adds scoped invoke and explicit direct-authority denial"
     }
   },
   "Resources": {
@@ -187,12 +191,25 @@
                 },
                 {
                   "Effect": "Allow",
+                  "Action": "s3:ListBucket",
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Witness",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
                   "Action": [
                     "logs:CreateLogStream",
                     "logs:PutLogEvents"
                   ],
                   "Resource": {
-                    "Fn::Sub": "${GatewayLogs.Arn}:*"
+                    "Fn::GetAtt": [
+                      "GatewayLogs",
+                      "Arn"
+                    ]
                   }
                 }
               ]
@@ -611,6 +628,69 @@
                   "kms:SigningAlgorithm": "ECDSA_SHA_256"
                 }
               }
+            }
+          ]
+        }
+      }
+    },
+    "RuntimeAuthorityBoundary": {
+      "Type": "AWS::IAM::Policy",
+      "Properties": {
+        "PolicyName": "SerenityAuthorityBrokerOnly",
+        "Roles": [
+          {
+            "Ref": "RuntimeRoleName"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": "execute-api:Invoke",
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${API}/prod/POST/runtime"
+              }
+            },
+            {
+              "Effect": "Deny",
+              "Action": "dynamodb:*",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "Journal",
+                  "Arn"
+                ]
+              }
+            },
+            {
+              "Effect": "Deny",
+              "Action": "s3:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "Witness",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${Witness.Arn}/*"
+                }
+              ]
+            },
+            {
+              "Effect": "Deny",
+              "Action": "lambda:InvokeFunction",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "Gateway",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${Gateway.Arn}:*"
+                }
+              ]
             }
           ]
         }

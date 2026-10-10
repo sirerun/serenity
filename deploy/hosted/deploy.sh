@@ -22,10 +22,17 @@ command -v curl >/dev/null
 release_policy=${SERENITY_RELEASE_POLICY:-sigstore}
 case "$release_policy" in
     sigstore) command -v cosign >/dev/null || { echo 'Cosign is required to verify release signatures' >&2; exit 1; } ;;
-    kms-v1)
+    owner-kms-manifest-v1)
         # This verifier is bootstrapped from separately reviewed source, never
         # extracted from the candidate it is about to authenticate.
         release_verifier=/usr/local/libexec/serenity-release
+        trust_parent=$(dirname -- "$release_verifier")
+        while :; do
+            [[ -d "$trust_parent" && ! -L "$trust_parent" && $(stat -c %u "$trust_parent") == 0 ]] || { echo 'Unsafe verifier ancestor' >&2; exit 1; }
+            (( (8#$(stat -c %a "$trust_parent") & 8#022) == 0 )) || { echo 'Writable verifier ancestor' >&2; exit 1; }
+            [[ "$trust_parent" != / ]] || break
+            trust_parent=$(dirname -- "$trust_parent")
+        done
         [[ -x "$release_verifier" ]] || { echo 'Pinned release verifier is missing' >&2; exit 1; }
         for trust_file in "$release_verifier" /etc/serenity-release/policy.json /etc/serenity-release/approval.json; do
             [[ -f "$trust_file" && ! -L "$trust_file" && $(stat -c %u "$trust_file") == 0 ]] || { echo 'Release trust file is not root-owned and regular' >&2; exit 1; }
@@ -42,7 +49,17 @@ case "$release_policy" in
 esac
 mountpoint -q /var/lib/serenity || { echo 'Persistent data volume is not mounted' >&2; exit 1; }
 work=$(mktemp -d)
-trap 'rm -rf -- "$work"' EXIT
+pending_install=0
+cleanup_deploy() {
+    status=$?
+    if (( status != 0 && pending_install == 1 )); then
+        systemctl stop serenity-hosted || true
+        echo 'Uncommitted installation retained for exact owner recovery' >&2
+    fi
+    rm -rf -- "$work"
+    exit "$status"
+}
+trap cleanup_deploy EXIT
 number=${version#v}
 release_tag="v${number}"
 release_url="https://github.com/sirerun/serenity/releases/download/${release_tag}"
@@ -60,7 +77,7 @@ else
     "$release_verifier" verify "${release_args[@]}"
 fi
 activation_failed() {
-    if [[ "$release_policy" == kms-v1 ]]; then
+    if [[ "$release_policy" == owner-kms-manifest-v1 ]]; then
         systemctl stop serenity-hosted || true
         echo 'Activation failed; pending release requires exact owner recovery before another deployment' >&2
     else
@@ -69,6 +86,12 @@ activation_failed() {
 }
 printf '%s  %s\n' "$checksum" "$work/release.tar.gz" | sha256sum --check --status
 tar -xzf "$work/release.tar.gz" -C "$work" serenity
+[[ -f "$work/serenity" && ! -L "$work/serenity" ]] || { echo 'Archive executable is not a regular file' >&2; exit 1; }
+binary_target="/usr/local/lib/serenity/serenity-${number}"
+if [[ "$release_policy" == owner-kms-manifest-v1 ]]; then
+    binary_target="$binary_target-$checksum"
+    [[ ! -e "$binary_target" && ! -L "$binary_target" ]] || { echo 'Immutable candidate path already exists; reconcile before retry' >&2; exit 1; }
+fi
 id serenity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/serenity --shell /sbin/nologin serenity
 install -d -m 0700 -o serenity -g serenity /etc/serenity /etc/serenity/secrets
 for name in RESEND_API_KEY EMBEDDINGS_API_KEY; do
@@ -102,10 +125,11 @@ if [[ -x /usr/local/bin/serenity ]]; then
     previous_target=$(readlink -f -- /usr/local/bin/serenity)
     [[ -x "$previous_target" ]] && ln -sfn -- "$previous_target" /usr/local/bin/serenity.prev
 fi
-if [[ "$release_policy" == kms-v1 ]]; then
+if [[ "$release_policy" == owner-kms-manifest-v1 ]]; then
     "$release_verifier" prepare "${release_args[@]}"
+    pending_install=1
 fi
-install -m 0755 "$work/serenity" "/usr/local/lib/serenity/serenity-${number}"
+install -m 0755 "$work/serenity" "$binary_target"
 chown serenity:serenity /var/lib/serenity
 install -m 0644 "$script_dir/serenity-hosted.service" /etc/systemd/system/serenity-hosted.service
 # Migrate the old default origin and sender; preserve custom operator settings.
@@ -151,7 +175,7 @@ systemctl daemon-reload
 systemctl enable --now caddy
 # Select the new binary only after Caddy and all deployment files are ready;
 # failures above this line leave the previously selected binary untouched.
-ln -sfn "/usr/local/lib/serenity/serenity-${number}" /usr/local/bin/serenity
+ln -sfn "$binary_target" /usr/local/bin/serenity
 if ! systemctl enable --now serenity-hosted || ! systemctl restart serenity-hosted; then
     activation_failed
     exit 1
@@ -176,8 +200,9 @@ if ! serenity_wait_ready http://127.0.0.1:8090/readyz; then
     activation_failed
     exit 1
 fi
-if [[ "$release_policy" == kms-v1 ]]; then
+if [[ "$release_policy" == owner-kms-manifest-v1 ]]; then
     "$release_verifier" commit "${release_args[@]}"
+    pending_install=0
 fi
 systemctl start serenity-backup.service
 systemctl enable --now serenity-backup.timer
