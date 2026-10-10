@@ -1,0 +1,7 @@
+# Independent runtime contract review
+
+Reviewer: release-contract lane (not runtime author). Target runtime-contract.md SHA256 48f205efa72f02f0f5f35af6bb584f8e7196796e45072592d3d1f81962c9b9f9. Verdict CLEAR for source freeze of runtime identity, broker and startup seams, subject to shared authority freeze alignment already explicitly required by contract. No source implementation or provider validation claimed.
+
+Reviewed owner-approved proposal, 17-task unblock plan, runtime contract and startup trust boundaries. Finding corrected: UID and executable measurement alone admitted an unrelated same-UID launch; final contract requires exact systemd MainPID and kernel ControlGroup membership, retained pidfd/proc directory identity, and fresh measurement before each mutation. Unsupported process measurement fails closed. HTTPS/SigV4 fixed endpoint and authoritative gateway enrollment prevent caller identity assertions replacing authentication. BeginStartup is explicitly composition of frozen authority Challenge/Prepare/Observe/Activate and witness ordering.
+
+Remaining acceptance belongs to code review and hostile tests: process exit/PID reuse between measure and gateway call; service unit state transition; stale process writes after epoch preparation; failure before handler publication; complete backup cut reconciliation. Final source freeze does not establish live IAM policy, AWS context claims, instance IMDS isolation, root-systemd enforcement, release trust activation or production acceptance.
