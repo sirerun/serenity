@@ -80,10 +80,10 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 		return Response{}, err
 	}
 	owner := principal == s.config.OwnerPrincipal
-	if q.Action == "enroll" && !owner || q.Action == "seal" && !owner {
+	if (q.Action == "enroll" || q.Action == "restore") && !owner || q.Action == "seal" && !owner {
 		return Response{}, ErrForbidden
 	}
-	if owner && q.Action != "enroll" && q.Action != "seal" && q.Action != "read_finalized_cut" && q.Action != "get" && q.Action != "list" && q.Action != "current" && q.Action != "close" {
+	if owner && q.Action != "enroll" && q.Action != "restore" && q.Action != "seal" && q.Action != "read_finalized_cut" && q.Action != "get" && q.Action != "list" && q.Action != "current" && q.Action != "close" {
 		return Response{}, ErrForbidden
 	}
 	raw, err := json.Marshal(q)
@@ -113,8 +113,14 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 					return Response{}, ErrUnavailable
 				}
 			}
+			if e := s.revalidateResult(ctx, q, receipt.Response); e != nil {
+				return Response{}, e
+			}
 			return receipt.Response, nil
 		}
+	}
+	if q.Action == "restore" {
+		return s.restore(ctx, principal, q, requestHash)
 	}
 	if q.Action == "enroll" {
 		return s.enroll(ctx, principal, q, requestHash)
@@ -133,7 +139,14 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 		if e != nil {
 			return Response{}, e
 		}
-		return s.kernel.Apply(ctx, rec, b, items, Receipt{OperationID: q.OperationID, RequestSHA256: requestHash, Principal: principal, Response: out}, false)
+		result, e := s.kernel.Apply(ctx, rec, b, items, Receipt{OperationID: q.OperationID, RequestSHA256: requestHash, Principal: principal, Response: out}, false)
+		if e != nil {
+			return Response{}, e
+		}
+		if e = s.revalidateResult(ctx, q, result); e != nil {
+			return Response{}, e
+		}
+		return result, nil
 	}
 	switch q.Action {
 	case "challenge":
@@ -261,11 +274,17 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 		}
 		return Response{Current: &Current{Position: state.Position, Epoch: state.Epoch, ExpiresAt: state.Lease.ExpiresAt}}, nil
 	case "renew":
+		if q.Measurement == nil || *q.Measurement != state.Measurement {
+			return Response{}, ErrForbidden
+		}
 		if e := s.checkLease(state, q.LeaseID, now); e != nil {
 			return Response{}, e
 		}
 		l := *state.Lease
 		l.ExpiresAt = now.Add(s.config.LeaseLifetime)
+		if !l.ExpiresAt.After(state.Lease.ExpiresAt) {
+			return Response{}, ErrConflict
+		}
 		l.Position = state.Position
 		state.Lease = &l
 		return apply(state, nil, Response{Lease: &l})
@@ -344,6 +363,14 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 		var f FinalizedCut
 		if e = strictDecode(b, &f); e != nil {
 			return Response{}, e
+		}
+		if !owner {
+			if e = s.checkLease(state, f.Cut.LeaseID, now); e != nil {
+				return Response{}, e
+			}
+			if !now.Before(f.Cut.ExpiresAt) {
+				return Response{}, ErrExpired
+			}
 		}
 		return Response{FinalizedCut: &f}, nil
 	}
@@ -487,7 +514,7 @@ func validateAppend(st protocolState, q Request, owner bool, now time.Time) (pro
 }
 
 func validateRequest(q Request) error {
-	allowed := map[string]string{"enroll": "operation_id", "challenge": "operation_id", "prepare": "operation_id challenge_id nonce measurement", "activate": "operation_id reservation_id history_sha256", "current": "lease_id", "renew": "operation_id lease_id", "close": "operation_id lease_id reservation_id", "append": "operation_id lease_id key body", "seal": "operation_id lease_id key body", "get": "lease_id reservation_id cut_id key", "list": "lease_id reservation_id cut_id prefix start_after limit", "cut": "operation_id lease_id snapshot_attempt_id", "finalize_cut": "operation_id cut_id manifest_sha256", "read_finalized_cut": "cut_id"}
+	allowed := map[string]string{"enroll": "operation_id", "restore": "operation_id", "challenge": "operation_id", "prepare": "operation_id challenge_id nonce measurement", "activate": "operation_id reservation_id history_sha256", "current": "lease_id", "renew": "operation_id lease_id measurement", "close": "operation_id lease_id reservation_id", "append": "operation_id lease_id key body", "seal": "operation_id lease_id key body", "get": "lease_id reservation_id cut_id key", "list": "lease_id reservation_id cut_id prefix start_after limit", "cut": "operation_id lease_id snapshot_attempt_id", "finalize_cut": "operation_id cut_id manifest_sha256", "read_finalized_cut": "cut_id"}
 	fields, ok := allowed[q.Action]
 	if !ok {
 		return ErrInvalid
@@ -529,6 +556,42 @@ func validateRequest(q Request) error {
 	}
 	if q.Action == "cut" && q.SnapshotAttemptID == "" || q.Action == "finalize_cut" && (q.ManifestSHA256 == "" || q.CutID == "") {
 		return ErrInvalid
+	}
+	return nil
+}
+
+// Re-read immediately before acknowledging a mutation or durable retry. A
+// historical receipt is not authority for effects under a superseded lease.
+func (s *Server) revalidateResult(ctx context.Context, q Request, out Response) error {
+	rec, err := s.kernel.Current(ctx)
+	if err != nil {
+		return err
+	}
+	var st protocolState
+	if err = strictDecode(rec.State, &st); err != nil {
+		return err
+	}
+	now := s.config.Now().UTC()
+	switch q.Action {
+	case "append", "renew", "cut":
+		return s.checkLease(st, q.LeaseID, now)
+	case "activate":
+		if out.Lease == nil {
+			return ErrUnavailable
+		}
+		return s.checkLease(st, out.Lease.ID, now)
+	case "prepare":
+		if out.Prepared == nil || st.Prepared == nil || out.Prepared.ReservationID != st.Prepared.ReservationID || st.Phase != "PREPARING" && st.Phase != "ACTIVE" {
+			return ErrConflict
+		}
+		if !now.Before(st.Prepared.ExpiresAt) {
+			return ErrExpired
+		}
+	case "finalize_cut":
+		if out.FinalizedCut == nil {
+			return ErrUnavailable
+		}
+		return s.checkLease(st, out.FinalizedCut.Cut.LeaseID, now)
 	}
 	return nil
 }

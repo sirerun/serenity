@@ -83,7 +83,7 @@ func (s *S3Witness) Tip(ctx context.Context) (WitnessTip, bool, error) {
 	return t, f, e
 }
 func validTip(t WitnessTip) bool {
-	return t.Lineage != "" && t.TableARN != "" && t.Sequence > 0 && validID(t.SHA256) && t.Key == fmt.Sprintf("%020d/%s.json", t.Sequence, t.SHA256)
+	return t.Lineage != "" && t.TableARN != "" && t.Sequence > 0 && t.Sequence <= 100000 && t.TotalBytes > 0 && t.TotalBytes <= 64*1024*1024 && validID(t.SHA256) && t.Key == fmt.Sprintf("%020d/%s.json", t.Sequence, t.SHA256)
 }
 func (s *S3Witness) Read(ctx context.Context, t WitnessTip) ([]byte, error) {
 	if !validTip(t) {
@@ -99,14 +99,14 @@ func (s *S3Witness) Read(ctx context.Context, t WitnessTip) ([]byte, error) {
 	return b, nil
 }
 func (s *S3Witness) Advance(ctx context.Context, p Pending) error {
-	if !validTip(p.Next) || digest(p.Witness) != p.Next.SHA256 || p.Next.Sequence != p.Previous.Sequence+1 {
+	if !validTip(p.Next) || digest(p.Witness) != p.Next.SHA256 || p.Next.Sequence != p.Previous.Sequence+1 || p.Next.TotalBytes != p.Previous.TotalBytes+int64(len(p.Witness)) {
 		return ErrInvalid
 	}
 	if p.Bootstrap {
 		if p.Previous != (WitnessTip{}) || p.Next.Sequence != 1 {
 			return ErrForbidden
 		}
-	} else if !validTip(p.Previous) || p.Next.Lineage != p.Previous.Lineage || p.Next.TableARN != p.Previous.TableARN {
+	} else if !validTip(p.Previous) || p.Next.Lineage != p.Previous.Lineage || p.Next.TableARN != p.Previous.TableARN && !p.OwnerRebind {
 		return ErrForbidden
 	}
 	// A conflicting immutable witness is fatal. Every uncertain PUT is resolved
@@ -186,7 +186,7 @@ func History(ctx context.Context, s WitnessStore, tip WitnessTip, maxRecords, ma
 		if err = strictDecode(b, &w); err != nil {
 			return nil, err
 		}
-		if w.Version != 1 || w.Sequence != current.Sequence || w.Lineage != current.Lineage || w.TableARN != current.TableARN || w.Previous.Sequence+1 != w.Sequence {
+		if w.Version != 1 || w.Sequence != current.Sequence || w.Lineage != current.Lineage || w.TableARN != current.TableARN || w.Previous.Sequence+1 != w.Sequence || current.TotalBytes != w.Previous.TotalBytes+int64(len(b)) {
 			return nil, ErrConflict
 		}
 		if w.Sequence == 1 && w.Previous != (WitnessTip{}) {
@@ -201,7 +201,7 @@ func History(ctx context.Context, s WitnessStore, tip WitnessTip, maxRecords, ma
 	return reversed, nil
 }
 func strictDecode(b []byte, out any) error {
-	if !json.Valid(b) {
+	if !json.Valid(b) || rejectDuplicateKeys(json.NewDecoder(bytes.NewReader(b)), 0) != nil {
 		return ErrInvalid
 	}
 	dec := json.NewDecoder(bytes.NewReader(b))
@@ -210,6 +210,55 @@ func strictDecode(b []byte, out any) error {
 		return fmt.Errorf("decode: %w", ErrInvalid)
 	}
 	if err := dec.Decode(new(any)); err != io.EOF {
+		return ErrInvalid
+	}
+	return nil
+}
+
+func rejectDuplicateKeys(d *json.Decoder, depth int) error {
+	if depth > 64 {
+		return ErrInvalid
+	}
+	token, err := d.Token()
+	if err != nil {
+		return err
+	}
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch delim {
+	case 123:
+		seen := map[string]bool{}
+		for d.More() {
+			key, err := d.Token()
+			if err != nil {
+				return err
+			}
+			name, ok := key.(string)
+			if !ok || seen[name] {
+				return ErrInvalid
+			}
+			seen[name] = true
+			if err = rejectDuplicateKeys(d, depth+1); err != nil {
+				return err
+			}
+		}
+		end, err := d.Token()
+		if err != nil || end != json.Delim(125) {
+			return ErrInvalid
+		}
+	case 91:
+		for d.More() {
+			if err = rejectDuplicateKeys(d, depth+1); err != nil {
+				return err
+			}
+		}
+		end, err := d.Token()
+		if err != nil || end != json.Delim(93) {
+			return ErrInvalid
+		}
+	default:
 		return ErrInvalid
 	}
 	return nil

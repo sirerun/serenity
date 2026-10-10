@@ -1,6 +1,7 @@
 package authority
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -179,4 +180,56 @@ func (d *DynamoStore) List(ctx context.Context, prefix, after string, limit int)
 		keys = keys[:limit]
 	}
 	return keys, more, nil
+}
+
+// Import is used only while owner recovery has not published META. It never
+// overwrites an existing item; an interrupted batch resumes by exact readback.
+func (d *DynamoStore) Import(ctx context.Context, items []ImmutableItem) error {
+	for len(items) > 0 {
+		var batch []ImmutableItem
+		size := 0
+		for len(items) > 0 && len(batch) < 80 {
+			it := items[0]
+			if it.Key == "META" || it.Key == "" || len(it.Key) > 512 || len(it.Body) > 350*1024 {
+				return ErrInvalid
+			}
+			if size+len(it.Body) > 3*1024*1024 && len(batch) > 0 {
+				break
+			}
+			items = items[1:]
+			stored, found, err := d.Get(ctx, it.Key)
+			if err != nil {
+				return err
+			}
+			if found {
+				if !bytes.Equal(stored, it.Body) {
+					return ErrConflict
+				}
+				continue
+			}
+			batch = append(batch, it)
+			size += len(it.Body)
+		}
+		if len(batch) == 0 {
+			continue
+		}
+		tx := make([]types.TransactWriteItem, 0, len(batch))
+		for _, it := range batch {
+			item := d.key(it.Key)
+			item["payload"] = &types.AttributeValueMemberB{Value: it.Body}
+			tx = append(tx, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(d.table), Item: item, ConditionExpression: aws.String("attribute_not_exists(pk)")}})
+		}
+		if _, err := d.api.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: tx}); err != nil {
+			for _, it := range batch {
+				stored, found, readErr := d.Get(ctx, it.Key)
+				if readErr != nil || !found {
+					return ErrUnavailable
+				}
+				if !bytes.Equal(stored, it.Body) {
+					return ErrConflict
+				}
+			}
+		}
+	}
+	return nil
 }

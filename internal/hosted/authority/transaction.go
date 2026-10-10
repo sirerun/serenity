@@ -12,11 +12,12 @@ import (
 // WitnessTip is independently stored in S3. The exact table identity is part
 // of the fence: restoring an old DynamoDB table cannot restore write authority.
 type WitnessTip struct {
-	Lineage  string `json:"lineage"`
-	TableARN string `json:"table_arn"`
-	Sequence uint64 `json:"sequence"`
-	Key      string `json:"key"`
-	SHA256   string `json:"sha256"`
+	TotalBytes int64  `json:"total_bytes"`
+	Lineage    string `json:"lineage"`
+	TableARN   string `json:"table_arn"`
+	Sequence   uint64 `json:"sequence"`
+	Key        string `json:"key"`
+	SHA256     string `json:"sha256"`
 }
 
 type ImmutableItem struct {
@@ -25,6 +26,7 @@ type ImmutableItem struct {
 }
 
 type Pending struct {
+	OwnerRebind   bool       `json:"owner_rebind"`
 	OperationID   string     `json:"operation_id"`
 	RequestSHA256 string     `json:"request_sha256"`
 	Principal     string     `json:"principal"`
@@ -55,6 +57,7 @@ type Receipt struct {
 // AtomicStore must atomically CAS the state and create all immutable items and
 // the operation receipt. A provider timeout is never a negative existence proof.
 type AtomicStore interface {
+	Import(context.Context, []ImmutableItem) error
 	Load(context.Context) (Record, bool, error)
 	Receipt(context.Context, string) (Receipt, bool, error)
 	Commit(context.Context, uint64, Record, []ImmutableItem, Receipt) error
@@ -142,9 +145,14 @@ func (k *Kernel) Current(ctx context.Context) (Record, error) {
 	if !found {
 		return Record{}, ErrForbidden
 	}
-	r, err = k.Resolve(ctx, r)
-	if err != nil {
-		return Record{}, err
+	for attempt := 0; r.Pending != nil && attempt < 4; attempt++ {
+		r, err = k.Resolve(ctx, r)
+		if err != nil {
+			return Record{}, err
+		}
+	}
+	if r.Pending != nil {
+		return Record{}, ErrUnavailable
 	}
 	tip, exists, err := k.Witness.Tip(ctx)
 	if err != nil {
@@ -219,6 +227,10 @@ func (k *Kernel) Apply(ctx context.Context, old Record, state json.RawMessage, i
 		return Response{}, ErrInvalid
 	}
 	tip := WitnessTip{Lineage: k.Lineage, TableARN: k.TableARN, Sequence: w.Sequence, SHA256: digest(body)}
+	tip.TotalBytes = old.Tip.TotalBytes + int64(len(body))
+	if tip.Sequence > 99000 || tip.TotalBytes > 63*1024*1024 {
+		return Response{}, ErrInvalid
+	}
 	tip.Key = fmt.Sprintf("%020d/%s.json", tip.Sequence, tip.SHA256)
 	next := Record{Revision: old.Revision + 1, State: bytes.Clone(state), Tip: old.Tip, Pending: &Pending{OperationID: receipt.OperationID, RequestSHA256: receipt.RequestSHA256, Principal: receipt.Principal, Previous: old.Tip, Next: tip, Witness: body, Response: receipt.Response, Bootstrap: bootstrap}}
 	if err = k.Store.Commit(ctx, old.Revision, next, items, receipt); err != nil {
