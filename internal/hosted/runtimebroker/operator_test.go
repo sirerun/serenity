@@ -18,7 +18,11 @@ func ownerFiles(t *testing.T) (string, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Cleanup(func() {
+		if err := os.RemoveAll(dir); err != nil {
+			t.Errorf("cleanup owner fixture: %v", err)
+		}
+	})
 	credentials := filepath.Join(dir, "credentials")
 	if err := os.WriteFile(credentials, []byte("[owner]\naws_access_key_id=fixture\naws_secret_access_key=fixture-secret\n"), 0600); err != nil {
 		t.Fatal(err)
