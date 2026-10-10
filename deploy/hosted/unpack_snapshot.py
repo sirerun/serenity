@@ -30,7 +30,10 @@ def extract(archive,destination):
         seen=set()
         total=0
         with tarfile.open(archive,"r:") as tf:
+            member_count=0
             for member in tf:
+                member_count+=1
+                if member_count>MAX_FILES+2:raise ValueError("too many archive headers")
                 name=member.name
                 if name.startswith("./"):name=name[2:]
                 if member.isdir() and name in ("","brains"):

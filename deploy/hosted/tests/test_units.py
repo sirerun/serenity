@@ -248,8 +248,12 @@ class ReadinessRollbackTests(unittest.TestCase):
         deploy = DEPLOY.read_text()
         self.assertIn("serenity-hosted", deploy)
         self.assertIn("serenity.prev", deploy)
-        self.assertLess(deploy.index("systemctl enable --now caddy"), deploy.index('ln -sfn "/usr/local/lib/serenity/serenity-${number}" /usr/local/bin/serenity'))
-        self.assertRegex(deploy, r"if ! systemctl enable --now serenity-hosted \|\| ! systemctl restart serenity-hosted; then\n\s+serenity_restore_previous_binary")
+        failure = deploy[deploy.index("activation_failed()"):deploy.index("printf '%s  %s")]
+        self.assertIn('if [[ "$release_policy" == owner-kms-manifest-v1 ]]', failure)
+        self.assertIn("systemctl stop serenity-hosted", failure)
+        self.assertIn("serenity_restore_previous_binary", failure)
+        self.assertLess(deploy.index("systemctl enable --now caddy"), deploy.index('ln -sfn "$binary_target" /usr/local/bin/serenity'))
+        self.assertRegex(deploy, r"if ! systemctl enable --now serenity-hosted \|\| ! systemctl restart serenity-hosted; then\n\s+activation_failed")
 
     def test_readiness_helper_restores_previous_binary_after_failed_probe(self):
         self.assertTrue(READINESS_HELPER.is_file(), "deploy readiness helper must exist")
