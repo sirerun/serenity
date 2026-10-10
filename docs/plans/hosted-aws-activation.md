@@ -64,3 +64,23 @@ then an explicitly approved ongoing budget after measured request/duration/stora
 receipts. Do not activate merely because the estimate is small. Provider tests
 must count backend calls and stop at their assigned deadline. No reservation has
 yet been charged or assumed approved.
+
+## Cross-generation recovery and existing data
+
+Deployment failure stops both hosted service and broker under either signature
+policy. The first broker-enabled upgrade must never restart an older binary
+under newly installed units. Automatic binary-only rollback is unsupported;
+qualification must demonstrate recovery of an approved compatible binary,
+service units, broker configuration, authority state and data as one versioned
+set. A release pending receipt alone cannot authorize runtime or data rollback.
+
+Read-only production inventory found existing accounts and ready brains.
+Fresh enrollment cannot adopt that directory. Before live activation, prepare
+an owner-reviewed migration checkpoint: quiesce the old writer, preserve a
+verified immutable full backup and inventory, establish the provenance and
+completeness of existing deletion history, and bind the exact preserved data
+to an explicit migration authority decision. If that history cannot be proven,
+do not fabricate a clean journal or claim old privacy obligations are satisfied.
+The owner must choose a reviewed migration policy or retain the existing host
+while a separate fresh environment is qualified. No data deletion, automatic
+adoption, new production namespace, or downtime is authorized by this dossier.

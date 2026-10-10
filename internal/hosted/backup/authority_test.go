@@ -159,7 +159,7 @@ func TestCutSidecarRejectsDuplicateUnknownOversizeAndSymlink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	if _, err = readCutSidecar(root); err == nil {
 		t.Fatal("sidecar symlink accepted")
 	}
