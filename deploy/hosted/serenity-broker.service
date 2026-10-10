@@ -1,0 +1,31 @@
+[Unit]
+Description=Serenity privileged hosted journal broker
+After=network-online.target
+Wants=network-online.target
+Before=serenity-hosted.service
+
+[Service]
+Type=simple
+User=root
+Group=serenity
+RuntimeDirectory=serenity-broker
+RuntimeDirectoryMode=0750
+UMask=0027
+ExecStart=/usr/local/bin/serenity hosted broker --config /etc/serenity-authority/broker.json
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/run/serenity-broker
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# Broker requires root visibility of the managed service PID/executable/cgroup,
+# the system manager socket, and IMDSv2. Application metadata denial remains
+# exclusively on serenity-hosted.service. No static AWS environment credentials.
+UnsetEnvironment=AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_PROFILE AWS_SHARED_CREDENTIALS_FILE AWS_CONFIG_FILE
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

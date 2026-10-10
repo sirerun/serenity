@@ -25,6 +25,9 @@ func (s *Service) reconcileStartupOperations(ctx context.Context) (contracts.Rec
 func (s *Service) reconcileWith(ctx context.Context, reconciler *gateway.OperationReconciler) (contracts.ReconcileReport, error) {
 	sweepCtx, cancel := context.WithTimeout(ctx, operationSweepTimeout)
 	defer cancel()
+	if err := s.checkAuthority(sweepCtx); err != nil {
+		return contracts.ReconcileReport{}, err
+	}
 	report, err := s.operations.ReconcilePending(sweepCtx, reconciler, reconciler)
 	if err == nil {
 		err = sweepCtx.Err()

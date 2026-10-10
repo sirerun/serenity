@@ -205,6 +205,9 @@ func runBillingPage(
 // billingAccountPage closes its cursor before returning IDs, so a single-connection
 // SQLite pool is available for reconciliation and provider work.
 func (s *Service) billingAccountPage(ctx context.Context, after string) ([]string, error) {
+	if err := s.checkAuthority(ctx); err != nil {
+		return nil, err
+	}
 	rows, err := s.Store.DB().QueryContext(ctx, `SELECT id FROM accounts
 		WHERE id>? AND status IN ('active','restore_pending')
 		AND stripe_customer_id IS NOT NULL AND stripe_customer_id<>''
@@ -228,6 +231,9 @@ func (s *Service) billingAccountPage(ctx context.Context, after string) ([]strin
 }
 
 func (s *Service) reconcileBillingAccount(parent context.Context, accountID string) error {
+	if err := s.checkAuthority(parent); err != nil {
+		return err
+	}
 	status, err := s.billingAccountStatus(parent, accountID)
 	if err != nil {
 		return err
