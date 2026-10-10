@@ -75,12 +75,14 @@ func TestCIMDAndDCRHTTPAuthorization(t *testing.T) {
 			digest := sha256.Sum256([]byte(verifier))
 			q := url.Values{"response_type": {"code"}, "client_id": {id}, "redirect_uri": {callback}, "state": {"fixture"}, "code_challenge": {base64.RawURLEncoding.EncodeToString(digest[:])}, "code_challenge_method": {"S256"}, "resource": {"https://memory.example/mcp"}, "scope": {"memory:read memory:write"}}
 			q.Set("scope", "admin")
-			badResponse, badErr := http.Get(ts.URL + "/oauth/authorize?" + q.Encode())
+			noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+			badResponse, badErr := noRedirect.Get(ts.URL + "/oauth/authorize?" + q.Encode())
 			if badErr != nil {
 				t.Fatal(badErr)
 			}
 			_ = badResponse.Body.Close()
-			if badResponse.StatusCode != http.StatusBadRequest || handle != "" {
+			badTarget, parseErr := url.Parse(badResponse.Header.Get("Location"))
+			if badResponse.StatusCode != http.StatusSeeOther || parseErr != nil || badTarget.Query().Get("error") != "invalid_scope" || handle != "" {
 				t.Fatal("unsupported requested scope reached consent")
 			}
 			q.Set("scope", "memory:read memory:write")
