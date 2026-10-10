@@ -36,7 +36,7 @@ func (d *DynamoStore) key(key string) map[string]types.AttributeValue {
 	return map[string]types.AttributeValue{"pk": &types.AttributeValueMemberS{Value: d.namespace}, "sk": &types.AttributeValueMemberS{Value: key}}
 }
 func (d *DynamoStore) Get(ctx context.Context, key string) ([]byte, bool, error) {
-	r, err := d.api.GetItem(ctx, &dynamodb.GetItemInput{TableName: aws.String(d.table), Key: d.key(key), ConsistentRead: aws.Bool(true), ProjectionExpression: aws.String("payload")})
+	r, err := d.api.GetItem(ctx, &dynamodb.GetItemInput{TableName: aws.String(d.table), Key: d.key(key), ConsistentRead: aws.Bool(true), ProjectionExpression: aws.String("#payload"), ExpressionAttributeNames: map[string]string{"#payload": "payload"}})
 	if err != nil {
 		return nil, false, err
 	}
@@ -96,18 +96,20 @@ func (d *DynamoStore) Commit(ctx context.Context, expected uint64, next Record, 
 	}
 	meta["revision"] = &types.AttributeValueMemberN{Value: strconv.FormatUint(next.Revision, 10)}
 	meta["pending"] = &types.AttributeValueMemberS{Value: r.OperationID}
-	cond := "attribute_not_exists(pk)"
+	cond := "attribute_not_exists(#pk)"
+	names := map[string]string{"#pk": "pk"}
 	var values map[string]types.AttributeValue
 	if expected > 0 {
-		cond = "revision = :revision AND attribute_not_exists(pending)"
+		cond = "#revision = :revision AND attribute_not_exists(#pending)"
+		names = map[string]string{"#revision": "revision", "#pending": "pending"}
 		values = map[string]types.AttributeValue{":revision": &types.AttributeValueMemberN{Value: strconv.FormatUint(expected, 10)}}
 	}
-	tx := []types.TransactWriteItem{{Put: &types.Put{TableName: aws.String(d.table), Item: meta, ConditionExpression: aws.String(cond), ExpressionAttributeValues: values}}}
+	tx := []types.TransactWriteItem{{Put: &types.Put{TableName: aws.String(d.table), Item: meta, ConditionExpression: aws.String(cond), ExpressionAttributeValues: values, ExpressionAttributeNames: names}}}
 	op, err := d.item("OP#"+r.OperationID, r)
 	if err != nil {
 		return err
 	}
-	tx = append(tx, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(d.table), Item: op, ConditionExpression: aws.String("attribute_not_exists(pk)")}})
+	tx = append(tx, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(d.table), Item: op, ConditionExpression: aws.String("attribute_not_exists(#pk)"), ExpressionAttributeNames: map[string]string{"#pk": "pk"}}})
 	seen := map[string]bool{"META": true, "OP#" + r.OperationID: true}
 	for _, item := range items {
 		if seen[item.Key] || item.Key == "" || strings.HasPrefix(item.Key, "OP#") {
@@ -116,7 +118,7 @@ func (d *DynamoStore) Commit(ctx context.Context, expected uint64, next Record, 
 		seen[item.Key] = true
 		m := d.key(item.Key)
 		m["payload"] = &types.AttributeValueMemberB{Value: item.Body}
-		tx = append(tx, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(d.table), Item: m, ConditionExpression: aws.String("attribute_not_exists(pk)")}})
+		tx = append(tx, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(d.table), Item: m, ConditionExpression: aws.String("attribute_not_exists(#pk)"), ExpressionAttributeNames: map[string]string{"#pk": "pk"}}})
 	}
 	if len(tx) > 100 {
 		return ErrInvalid
@@ -142,8 +144,8 @@ func (d *DynamoStore) Complete(ctx context.Context, r Record) error {
 		return err
 	}
 	_, err = d.api.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: []types.TransactWriteItem{
-		{Put: &types.Put{TableName: aws.String(d.table), Item: meta, ConditionExpression: aws.String("revision = :revision AND pending = :pending"), ExpressionAttributeValues: map[string]types.AttributeValue{":revision": &types.AttributeValueMemberN{Value: strconv.FormatUint(r.Revision, 10)}, ":pending": &types.AttributeValueMemberS{Value: p.OperationID}}}},
-		{Put: &types.Put{TableName: aws.String(d.table), Item: op, ConditionExpression: aws.String("attribute_exists(pk)")}},
+		{Put: &types.Put{TableName: aws.String(d.table), Item: meta, ConditionExpression: aws.String("#revision = :revision AND #pending = :pending"), ExpressionAttributeNames: map[string]string{"#revision": "revision", "#pending": "pending"}, ExpressionAttributeValues: map[string]types.AttributeValue{":revision": &types.AttributeValueMemberN{Value: strconv.FormatUint(r.Revision, 10)}, ":pending": &types.AttributeValueMemberS{Value: p.OperationID}}}},
+		{Put: &types.Put{TableName: aws.String(d.table), Item: op, ConditionExpression: aws.String("attribute_exists(#pk)"), ExpressionAttributeNames: map[string]string{"#pk": "pk"}}},
 	}})
 	return err
 }
@@ -151,7 +153,7 @@ func (d *DynamoStore) List(ctx context.Context, prefix, after string, limit int)
 	if limit < 1 || limit > MaxPageKeys || len(prefix) > 512 || len(after) > 512 {
 		return nil, false, ErrInvalid
 	}
-	in := &dynamodb.QueryInput{TableName: aws.String(d.table), ConsistentRead: aws.Bool(true), KeyConditionExpression: aws.String("pk = :pk AND begins_with(sk, :prefix)"), ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: d.namespace}, ":prefix": &types.AttributeValueMemberS{Value: prefix}}, ProjectionExpression: aws.String("sk"), ScanIndexForward: aws.Bool(true), Limit: aws.Int32(int32(limit + 1))}
+	in := &dynamodb.QueryInput{TableName: aws.String(d.table), ConsistentRead: aws.Bool(true), KeyConditionExpression: aws.String("#pk = :pk AND begins_with(#sk, :prefix)"), ExpressionAttributeNames: map[string]string{"#pk": "pk", "#sk": "sk"}, ExpressionAttributeValues: map[string]types.AttributeValue{":pk": &types.AttributeValueMemberS{Value: d.namespace}, ":prefix": &types.AttributeValueMemberS{Value: prefix}}, ProjectionExpression: aws.String("#sk"), ScanIndexForward: aws.Bool(true), Limit: aws.Int32(int32(limit + 1))}
 	if after != "" {
 		if !strings.HasPrefix(after, prefix) {
 			return nil, false, ErrInvalid
@@ -217,7 +219,7 @@ func (d *DynamoStore) Import(ctx context.Context, items []ImmutableItem) error {
 		for _, it := range batch {
 			item := d.key(it.Key)
 			item["payload"] = &types.AttributeValueMemberB{Value: it.Body}
-			tx = append(tx, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(d.table), Item: item, ConditionExpression: aws.String("attribute_not_exists(pk)")}})
+			tx = append(tx, types.TransactWriteItem{Put: &types.Put{TableName: aws.String(d.table), Item: item, ConditionExpression: aws.String("attribute_not_exists(#pk)"), ExpressionAttributeNames: map[string]string{"#pk": "pk"}}})
 		}
 		if _, err := d.api.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: tx}); err != nil {
 			for _, it := range batch {
