@@ -36,7 +36,7 @@ Remote layout is snapshots/<UTC>-<archive-hash-prefix>/snapshot.tar and COMPLETE
 
 ## Cost worksheet and approval boundary
 
-No new spend is authorized by this document. The KMS key has a published one-dollar monthly key charge plus requests; API Gateway REST has a published first-tier $3.50 per million calls; Lambda also charges requests and duration; DynamoDB charges transactional request units, storage and PITR; S3 charges witness/backup storage and requests; CloudWatch charges ingestion/storage. Existing EC2/EBS cost continues.
+The original draft did not authorize spend; the approved activation envelope below now governs execution. The KMS key has a published one-dollar monthly key charge plus requests; API Gateway REST has a published first-tier $3.50 per million calls; Lambda also charges requests and duration; DynamoDB charges transactional request units, storage and PITR; S3 charges witness/backup storage and requests; CloudWatch charges ingestion/storage. Existing EC2/EBS cost continues.
 
 Use actual region-specific AWS Pricing API rates and measured call counts for the approval estimate. Do not multiply logical deletions by one request: transactions contain several item writes, witness publication uses multiple S3 operations, and bounded history traversal reads many objects. History has explicit cumulative limits and cannot be silently truncated; future compaction requires its own reviewed protocol. A low-traffic forecast is not a spend cap. Initial provider qualification must have a call-count/deadline limit and an owner-approved dollar reservation before activation.
 
@@ -82,8 +82,10 @@ completeness of existing deletion history, and bind the exact preserved data
 to an explicit migration authority decision. If that history cannot be proven,
 do not fabricate a clean journal or claim old privacy obligations are satisfied.
 The owner must choose a reviewed migration policy or retain the existing host
-while a separate fresh environment is qualified. No data deletion, automatic
-adoption, new production namespace, or downtime is authorized by this dossier.
+while a separate fresh environment is qualified. This describes the original
+unexecuted draft; the approved preserved migration below now authorizes its
+necessary quiescence and explicit adoption. Data deletion and implicit adoption
+remain forbidden.
 
 ## Approved activation envelope and legacy checkpoint
 
