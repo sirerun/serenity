@@ -19,7 +19,27 @@ command -v caddy >/dev/null
 command -v aws >/dev/null
 command -v git >/dev/null
 command -v curl >/dev/null
-command -v cosign >/dev/null || { echo 'Cosign is required to verify release signatures' >&2; exit 1; }
+release_policy=${SERENITY_RELEASE_POLICY:-sigstore}
+case "$release_policy" in
+    sigstore) command -v cosign >/dev/null || { echo 'Cosign is required to verify release signatures' >&2; exit 1; } ;;
+    kms-v1)
+        # This verifier is bootstrapped from separately reviewed source, never
+        # extracted from the candidate it is about to authenticate.
+        release_verifier=/usr/local/libexec/serenity-release
+        [[ -x "$release_verifier" ]] || { echo 'Pinned release verifier is missing' >&2; exit 1; }
+        for trust_file in "$release_verifier" /etc/serenity-release/policy.json /etc/serenity-release/approval.json; do
+            [[ -f "$trust_file" && ! -L "$trust_file" && $(stat -c %u "$trust_file") == 0 ]] || { echo 'Release trust file is not root-owned and regular' >&2; exit 1; }
+            (( (8#$(stat -c %a "$trust_file") & 8#022) == 0 )) || { echo 'Release trust file is writable by non-root users' >&2; exit 1; }
+        done
+        [[ -d /var/lib/serenity-release && ! -L /var/lib/serenity-release && $(stat -c %u /var/lib/serenity-release) == 0 ]] || { echo 'Release state directory requires explicit initialization' >&2; exit 1; }
+        (( (8#$(stat -c %a /var/lib/serenity-release) & 8#077) == 0 )) || { echo 'Release state directory must be private' >&2; exit 1; }
+        # Open without truncation; the verifier additionally validates the fd
+        # inode, owner, permissions, and lock before trusting it.
+        exec 9>>/var/lib/serenity-release/state.json.lock
+        flock -n 9 || { echo 'A release deployment is already active' >&2; exit 1; }
+        ;;
+    *) echo 'Unknown explicit release policy' >&2; exit 1 ;;
+esac
 mountpoint -q /var/lib/serenity || { echo 'Persistent data volume is not mounted' >&2; exit 1; }
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
@@ -27,8 +47,26 @@ number=${version#v}
 release_tag="v${number}"
 release_url="https://github.com/sirerun/serenity/releases/download/${release_tag}"
 curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 "$release_url/serenity_${number}_linux_arm64.tar.gz" --output "$work/release.tar.gz"
-curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 "$release_url/serenity_${number}_linux_arm64.tar.gz.sigstore.json" --output "$work/release.tar.gz.sigstore.json"
-"$script_dir/verify-release.sh" "$work/release.tar.gz" "$work/release.tar.gz.sigstore.json" "$release_tag"
+if [[ "$release_policy" == sigstore ]]; then
+    curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 "$release_url/serenity_${number}_linux_arm64.tar.gz.sigstore.json" --output "$work/release.tar.gz.sigstore.json"
+    "$script_dir/verify-release.sh" "$work/release.tar.gz" "$work/release.tar.gz.sigstore.json" "$release_tag"
+else
+    curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 "$release_url/serenity_${number}_linux_arm64.tar.gz.manifest.json" --output "$work/manifest.json"
+    curl --fail --location --proto '=https' --tlsv1.2 --max-time 120 "$release_url/serenity_${number}_linux_arm64.tar.gz.kms.sig" --output "$work/signature.der"
+    release_args=(--archive "$work/release.tar.gz" --manifest "$work/manifest.json"
+        --signature "$work/signature.der" --policy /etc/serenity-release/policy.json
+        --approval /etc/serenity-release/approval.json --state /var/lib/serenity-release/state.json
+        --tag "$release_tag" --lock-fd 9)
+    "$release_verifier" verify "${release_args[@]}"
+fi
+activation_failed() {
+    if [[ "$release_policy" == kms-v1 ]]; then
+        systemctl stop serenity-hosted || true
+        echo 'Activation failed; pending release requires exact owner recovery before another deployment' >&2
+    else
+        serenity_restore_previous_binary /usr/local/bin/serenity /usr/local/bin/serenity.prev serenity-hosted || true
+    fi
+}
 printf '%s  %s\n' "$checksum" "$work/release.tar.gz" | sha256sum --check --status
 tar -xzf "$work/release.tar.gz" -C "$work" serenity
 id serenity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/serenity --shell /sbin/nologin serenity
@@ -63,6 +101,9 @@ install -d -m 0755 /usr/local/lib/serenity
 if [[ -x /usr/local/bin/serenity ]]; then
     previous_target=$(readlink -f -- /usr/local/bin/serenity)
     [[ -x "$previous_target" ]] && ln -sfn -- "$previous_target" /usr/local/bin/serenity.prev
+fi
+if [[ "$release_policy" == kms-v1 ]]; then
+    "$release_verifier" prepare "${release_args[@]}"
 fi
 install -m 0755 "$work/serenity" "/usr/local/lib/serenity/serenity-${number}"
 chown serenity:serenity /var/lib/serenity
@@ -112,7 +153,7 @@ systemctl enable --now caddy
 # failures above this line leave the previously selected binary untouched.
 ln -sfn "/usr/local/lib/serenity/serenity-${number}" /usr/local/bin/serenity
 if ! systemctl enable --now serenity-hosted || ! systemctl restart serenity-hosted; then
-    serenity_restore_previous_binary /usr/local/bin/serenity /usr/local/bin/serenity.prev serenity-hosted || true
+    activation_failed
     exit 1
 fi
 # Reload through the 0600 unix admin socket. A process started under the old
@@ -120,19 +161,23 @@ fi
 # restarts Caddy instead; every later deploy is a zero-downtime reload.
 if [[ -S /run/caddy/admin.sock ]]; then
     if ! caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile --address unix//run/caddy/admin.sock; then
-        serenity_restore_previous_binary /usr/local/bin/serenity /usr/local/bin/serenity.prev serenity-hosted || true
+        activation_failed
         echo 'Caddy reload failed; inspect /root/serenity-caddy-rollback if proxy recovery is needed' >&2
         exit 1
     fi
 else
     if ! systemctl restart caddy; then
-        serenity_restore_previous_binary /usr/local/bin/serenity /usr/local/bin/serenity.prev serenity-hosted || true
+        activation_failed
         echo 'Caddy restart failed; inspect /root/serenity-caddy-rollback if proxy recovery is needed' >&2
         exit 1
     fi
 fi
-if ! serenity_rollback_on_readiness_failure /usr/local/bin/serenity /usr/local/bin/serenity.prev serenity-hosted http://127.0.0.1:8090/readyz; then
+if ! serenity_wait_ready http://127.0.0.1:8090/readyz; then
+    activation_failed
     exit 1
+fi
+if [[ "$release_policy" == kms-v1 ]]; then
+    "$release_verifier" commit "${release_args[@]}"
 fi
 systemctl start serenity-backup.service
 systemctl enable --now serenity-backup.timer
