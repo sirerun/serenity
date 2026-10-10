@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"testing"
 
@@ -161,8 +162,18 @@ func TestGatewayRejectsForgedContextAndOversizedBody(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	good := events.APIGatewayProxyRequest{Path: "/runtime", Resource: "/runtime", HTTPMethod: "POST", Body: `{"action":"current","lease_id":"` + strings.Repeat("a", 64) + `"}`, RequestContext: events.APIGatewayProxyRequestContext{APIID: b.APIID, AccountID: b.AccountID, Stage: b.Stage, DomainName: b.DomainName, HTTPMethod: "POST", RequestID: "request", ResourcePath: b.RuntimePath, Identity: events.APIGatewayRequestIdentity{UserArn: runtime, Caller: b.RuntimeCallerID, AccessKey: "authenticated-access-key"}}}
-	tests := map[string]func(*events.APIGatewayProxyRequest){"wrong api": func(e *events.APIGatewayProxyRequest) { e.RequestContext.APIID = "other" }, "wrong account": func(e *events.APIGatewayProxyRequest) { e.RequestContext.AccountID = "other" }, "wrong principal": func(e *events.APIGatewayProxyRequest) { e.RequestContext.Identity.UserArn = owner }, "wrong caller": func(e *events.APIGatewayProxyRequest) { e.RequestContext.Identity.Caller = "attacker" }, "owner path with runtime": func(e *events.APIGatewayProxyRequest) { e.Path = "/owner" }, "authorizer spoof": func(e *events.APIGatewayProxyRequest) {
+	good := events.APIGatewayProxyRequest{Path: "/runtime", Resource: "/runtime", HTTPMethod: "POST", Body: `{"action":"current","lease_id":"` + strings.Repeat("a", 64) + `"}`, RequestContext: events.APIGatewayProxyRequestContext{APIID: b.APIID, AccountID: b.AccountID, Stage: b.Stage, DomainName: b.DomainName, HTTPMethod: "POST", RequestID: "request", ResourcePath: b.RuntimePath, Identity: events.APIGatewayRequestIdentity{UserArn: runtime, Caller: b.RuntimeCallerID, AccessKey: ""}}}
+	// REST AWS_IAM context documents caller and userArn; accessKey is optional.
+	ownerEvent := good
+	ownerEvent.Path, ownerEvent.Resource = b.OwnerPath, b.OwnerPath
+	ownerEvent.RequestContext.ResourcePath = b.OwnerPath
+	ownerEvent.RequestContext.Identity = events.APIGatewayRequestIdentity{UserArn: owner, Caller: b.OwnerCallerID}
+	ownerEvent.Body = `{"action":"inspect"}`
+	accepted, err := g.Handle(context.Background(), ownerEvent)
+	if err != nil || accepted.StatusCode != 200 {
+		t.Fatalf("authenticated owner without accessKey refused: %d %v", accepted.StatusCode, err)
+	}
+	tests := map[string]func(*events.APIGatewayProxyRequest){"wrong api": func(e *events.APIGatewayProxyRequest) { e.RequestContext.APIID = "other" }, "wrong account": func(e *events.APIGatewayProxyRequest) { e.RequestContext.AccountID = "other" }, "wrong principal": func(e *events.APIGatewayProxyRequest) { e.RequestContext.Identity.UserArn = owner }, "wrong caller": func(e *events.APIGatewayProxyRequest) { e.RequestContext.Identity.Caller = "attacker" }, "empty principal": func(e *events.APIGatewayProxyRequest) { e.RequestContext.Identity.UserArn = "" }, "empty caller": func(e *events.APIGatewayProxyRequest) { e.RequestContext.Identity.Caller = "" }, "wrong resource": func(e *events.APIGatewayProxyRequest) { e.Resource = "/owner" }, "wrong context path": func(e *events.APIGatewayProxyRequest) { e.RequestContext.ResourcePath = "/owner" }, "wrong stage": func(e *events.APIGatewayProxyRequest) { e.RequestContext.Stage = "other" }, "wrong domain": func(e *events.APIGatewayProxyRequest) { e.RequestContext.DomainName = "other" }, "owner path with runtime": func(e *events.APIGatewayProxyRequest) { e.Path = "/owner" }, "authorizer spoof": func(e *events.APIGatewayProxyRequest) {
 		e.RequestContext.Authorizer = map[string]interface{}{"principalId": "owner"}
 	}}
 	for name, modify := range tests {
@@ -179,5 +190,26 @@ func TestGatewayRejectsForgedContextAndOversizedBody(t *testing.T) {
 	r, e := g.Handle(context.Background(), good)
 	if e != nil || r.StatusCode != 400 {
 		t.Fatalf("oversize accepted: %d %v", r.StatusCode, e)
+	}
+}
+
+func TestGatewayRejectionDiagnosticsContainOnlyBooleans(t *testing.T) {
+	var out bytes.Buffer
+	oldOutput, oldFlags := log.Writer(), log.Flags()
+	log.SetOutput(&out)
+	log.SetFlags(0)
+	defer func() { log.SetOutput(oldOutput); log.SetFlags(oldFlags) }()
+	g := Gateway{binding: GatewayBinding{APIID: "configured-api-secret", RuntimePath: "/runtime", OwnerPath: "/owner"}}
+	g.logRejectedContext(events.APIGatewayProxyRequest{
+		Path: "request-path-secret", Body: "request-body-secret",
+		Headers: map[string]string{"Authorization": "credential-secret"},
+		RequestContext: events.APIGatewayProxyRequestContext{
+			APIID:    "request-api-secret",
+			Identity: events.APIGatewayRequestIdentity{UserArn: "principal-secret", Caller: "caller-secret", AccessKey: "access-key-secret"},
+		},
+	})
+	want := "authority gateway rejected context: api=true account=false stage=false domain=false method=true request_id=true authorizer=false route=true principal=true caller=true\n"
+	if out.String() != want {
+		t.Fatalf("unexpected diagnostic shape: %q", out.String())
 	}
 }
