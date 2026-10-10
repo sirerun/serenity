@@ -52,10 +52,14 @@ func (s *S3ObjectStore) validateKey(key string) error {
 	return nil
 }
 
-// PutIfAbsent reports false only for S3's definitive 412 precondition result.
+// PutIfAbsent reports false without an error only for S3's definitive 412 result.
+// Objects must fit the same encoded-size bound enforced by journal observation.
 // A lost response is resolved by reading the exact key and comparing bytes;
 // 409, 404, cancellation, and other unresolved errors are preserved as errors.
 func (s *S3ObjectStore) PutIfAbsent(ctx context.Context, key string, body []byte) (bool, error) {
+	if len(body) > maxObservedObjectBytes {
+		return false, fmt.Errorf("hosted/deletion: journal object exceeds %d bytes", maxObservedObjectBytes)
+	}
 	if err := s.validateKey(key); err != nil {
 		return false, err
 	}
@@ -111,9 +115,12 @@ func (s *S3ObjectStore) Get(ctx context.Context, key string) ([]byte, bool, erro
 		return nil, false, err
 	}
 	defer func() { _ = out.Body.Close() }()
-	body, err := io.ReadAll(out.Body)
+	body, err := io.ReadAll(io.LimitReader(out.Body, maxObservedObjectBytes+1))
 	if err != nil {
 		return nil, false, err
+	}
+	if len(body) > maxObservedObjectBytes {
+		return nil, false, fmt.Errorf("hosted/deletion: journal object exceeds %d bytes", maxObservedObjectBytes)
 	}
 	return body, true, nil
 }
