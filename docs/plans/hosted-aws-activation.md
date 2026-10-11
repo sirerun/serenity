@@ -124,3 +124,36 @@ requires private owned configuration and an explicit credential profile.
 Restore operator remains root-only. Canonical release signing uses owner AWS
 CLI KMS Sign and root-installed offline pinned verification; no credential
 transfer or root-policy relaxation is needed.
+
+## Bounded same-stack disaster replay qualification
+
+The mandatory provider recovery drill may replace the journal within the existing
+authority stack under the approved $10, request and deadline limits. Render with
+--journal-incarnation recovery-<8 lowercase hexadecimal characters>; the empty
+default preserves the original generated table name and artifact-only identities.
+An incarnation selects a unique journal name and new immutable Lambda version
+and API deployment identities, even when the archive is unchanged.
+
+The original table remains retained and deletion protected; this produces two
+physical tables, one retained predecessor and one active replacement. Record both
+storage/PITR carrying costs. The drill creates no additional function, signing
+key or witness bucket. Review the change set before execution: only journal
+replacement, dependent role policy/environment, immutable version, API
+deployment, integration and permission retargeting are permitted.
+
+Hold and drain all writers, reconcile CLOSED authority with no live lease or
+reservation, and capture the exact independent witness TIP. Disable concurrency
+before replacement. Verify the replacement is empty, the original remains
+unchanged, the qualified function environment names the replacement, and both
+exclusive invocation policies match before bounded execution. Invoke owner
+RestoreAuthority once and retry the same operation for idempotence. Read back
+preserved lineage, position and adoption; increased epoch; CLOSED state; and
+the new witness TIP with the exact original predecessor. Nonempty deletion
+replay needs actual bounded journal history; empty-history recovery cannot
+stand in for it.
+
+After the witness TIP advances, never revert the stack to the old table.
+A failure disables concurrency and retains writer holds. Resume only after
+independent recovery review, then qualify startup replay, backup and frozen
+physical restore against the replacement. Snapshot restore does not authorize
+reactivation of frozen accounts.

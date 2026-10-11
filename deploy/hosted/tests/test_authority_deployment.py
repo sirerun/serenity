@@ -23,6 +23,43 @@ class AuthorityDeploymentTests(unittest.TestCase):
         self.assertNotIn("${GatewayVersion}",json.dumps(a))
         self.assertIn("GatewayVersion",original["Resources"])
 
+    def test_incarnation_replaces_version_and_retargets_every_reference(self):
+        template=json.loads((DEPLOY/"authority-stack.json").read_text())
+        rendered=[render_module.render(template,b"same archive",i) for i in ("","recovery-0123abcd","recovery-89abcdef")]
+        versions=[]
+        deployments=[]
+        for incarnation,t in zip(("","recovery-0123abcd","recovery-89abcdef"),rendered):
+            version=next(k for k,v in t["Resources"].items() if v["Type"]=="AWS::Lambda::Version")
+            deployment=next(k for k,v in t["Resources"].items() if v["Type"]=="AWS::ApiGateway::Deployment")
+            versions.append(version); deployments.append(deployment)
+            self.assertEqual(t["Parameters"]["JournalIncarnation"]["Default"],incarnation)
+            self.assertEqual(t["Resources"]["Stage"]["Properties"]["DeploymentId"],{"Ref":deployment})
+            for route in ("RuntimeMethod","OwnerMethod"):
+                self.assertIn("${"+version+"}",t["Resources"][route]["Properties"]["Integration"]["Uri"]["Fn::Sub"])
+            for v in t["Resources"].values():
+                if v["Type"]=="AWS::Lambda::Permission":
+                    self.assertEqual(v["Properties"]["FunctionName"],{"Ref":version})
+            self.assertNotIn('"Ref": "GatewayVersion"',json.dumps(t))
+            self.assertNotIn('"Ref": "Deployment"',json.dumps(t))
+            self.assertEqual(t["Outputs"]["GatewayVersionARN"]["Value"],{"Ref":version})
+        self.assertEqual(len(set(versions)),3)
+        self.assertEqual(len(set(deployments)),3)
+        import hashlib
+        self.assertEqual(versions[0],"GatewayVersion"+hashlib.sha256(b"same archive").hexdigest()[:24])
+        self.assertEqual(rendered[0]["Parameters"]["ArtifactCodeSHA256"],rendered[1]["Parameters"]["ArtifactCodeSHA256"])
+
+    def test_incarnation_validation_and_retained_journal(self):
+        template=json.loads((DEPLOY/"authority-stack.json").read_text())
+        for invalid in ("recovery-ABCDEF12","recovery-1234567","arbitrary","recovery-12345678\n"):
+            with self.assertRaises(ValueError):
+                render_module.render(template,b"archive",invalid)
+        journal=template["Resources"]["Journal"]
+        self.assertEqual(journal["DeletionPolicy"],"Retain")
+        self.assertEqual(journal["UpdateReplacePolicy"],"Retain")
+        self.assertTrue(journal["Properties"]["DeletionProtectionEnabled"])
+        self.assertEqual(journal["Properties"]["TableName"]["Fn::If"][2],{"Ref":"AWS::NoValue"})
+        self.assertEqual(template["Conditions"]["HasJournalIncarnation"],{"Fn::Not":[{"Fn::Equals":[{"Ref":"JournalIncarnation"},""]}]})
+
     def test_generated_routes_require_iam_and_pin_version(self):
         template=json.loads((DEPLOY/"authority-stack.json").read_text())
         resources=template["Resources"]
