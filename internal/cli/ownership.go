@@ -14,7 +14,7 @@ import (
 // no-brain transport-only mode. New commands default to ownership.
 func commandOwnsBrain(cmd *cobra.Command) bool {
 	switch cmd.CommandPath() {
-	case "serenity hosted backup", "serenity hosted restore", "serenity hosted serve", "serenity check", "serenity doctor", "serenity status", "serenity search", "serenity ask", "serenity report", "serenity protocol", "serenity protocol conformance", "serenity connect", "serenity connect claude", "serenity connectors status", "serenity serve":
+	case "serenity hosted broker", "serenity hosted plans", "serenity hosted authority new-operation-id", "serenity hosted authority inspect", "serenity hosted authority enroll", "serenity hosted authority restore-authority", "serenity hosted authority close", "serenity hosted authority seal", "serenity hosted authority inventory", "serenity hosted backup", "serenity hosted restore", "serenity hosted serve", "serenity check", "serenity doctor", "serenity status", "serenity search", "serenity ask", "serenity report", "serenity protocol", "serenity protocol conformance", "serenity connect", "serenity connect claude", "serenity connectors status", "serenity serve":
 		return false
 	default:
 		return true

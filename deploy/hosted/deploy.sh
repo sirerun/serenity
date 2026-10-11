@@ -91,7 +91,7 @@ fi
 id serenity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/serenity --shell /sbin/nologin serenity
 # The broker's root-owned enrollment is prepared in the reviewed activation
 # packet. Deployment cannot substitute caller identity or silently adopt data.
-python3 - "$work/serenity" <<'PYBROKER'
+python3 - "$work/serenity" > "$work/data-dir" <<'PYBROKER'
 import hashlib,json,os,pathlib,sys
 p=pathlib.Path("/etc/serenity-authority/broker.json")
 for parent in [p.parent,*p.parent.parents]:
@@ -113,7 +113,9 @@ if hosted_config.get("data_dir")!=data_dir:
     raise SystemExit("Broker and hosted service data directories differ")
 if config.get("executable_sha256")!=digest or config.get("socket")!="/run/serenity-broker/runtime.sock":
     raise SystemExit("Broker enrollment does not match candidate executable and host paths")
+print(data_dir)
 PYBROKER
+data_dir=$(cat "$work/data-dir")
 install -d -m 0700 -o serenity -g serenity /etc/serenity /etc/serenity/secrets
 for name in RESEND_API_KEY EMBEDDINGS_API_KEY; do
     aws --region us-west-2 secretsmanager get-secret-value --secret-id "serenity/hosted/$name" --query SecretString --output text > "$work/$name"
@@ -151,7 +153,21 @@ if [[ "$release_policy" == owner-kms-manifest-v1 ]]; then
 fi
 pending_install=1
 install -m 0755 "$work/serenity" "$binary_target"
-chown serenity:serenity /var/lib/serenity
+configure_data_parent() {
+    case "$1" in
+        /var/lib/serenity/hosted)
+            # The migrated data remains service-owned; its parent is custody
+            # protected so the broker can trust the selected directory path.
+            chown root:serenity /var/lib/serenity
+            chmod 0750 /var/lib/serenity
+            ;;
+        /var/lib/serenity)
+            chown serenity:serenity /var/lib/serenity
+            ;;
+        *) echo 'Unsupported private data directory' >&2; return 1 ;;
+    esac
+}
+configure_data_parent "$data_dir"
 install -m 0644 "$script_dir/serenity-hosted.service" /etc/systemd/system/serenity-hosted.service
 install -m 0644 "$script_dir/serenity-broker.service" /etc/systemd/system/serenity-broker.service
 # Migrate the old default origin and sender; preserve custom operator settings.
