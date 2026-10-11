@@ -107,7 +107,7 @@ No GitHub release was published.
 Original data and checkpoints remain retained. The restored journal namespace
 preserved its position at epoch 3, and owner restore was idempotent. Legacy
 operation inventory is not synthetic historical deletion-journal proof.
-Temporary qualification policy and owner credentials were removed.
+The temporary qualification policy and session-created local owner credential file were removed; original credential stores were preserved.
 
 T-HU.6 remains open for broader nonempty deletion replay, sustained renewal and
 exact compatible rollback qualification. Existing composite task checkboxes
