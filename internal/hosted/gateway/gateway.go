@@ -64,11 +64,12 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
+	// HTTP authentication schemes are case-insensitive (RFC 9110 section 11.1).
+	if len(auth) < 7 || !strings.EqualFold(auth[:7], "Bearer ") {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
-	raw := strings.TrimPrefix(auth, "Bearer ")
+	raw := strings.TrimLeft(auth[7:], " ")
 	binding, err := g.Issuer.Verify(r.Context(), raw)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)

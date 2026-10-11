@@ -51,6 +51,11 @@ func TestCIMDMetadataValidation(t *testing.T) {
 		{"secret auth", map[string]any{"token_endpoint_auth_method": "client_secret_post"}, false},
 		{"secret material", map[string]any{"client_secret": ""}, false}, {"private keys", map[string]any{"jwks": map[string]any{}}, false},
 		{"foreign declared scope", map[string]any{"scope": "openid memory:read"}, true}, {"password grant", map[string]any{"grant_types": []string{"password"}}, false},
+		{"Claude additional JWT capability", map[string]any{"grant_types": []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:jwt-bearer"}}, true},
+		{"additional response capability", map[string]any{"response_types": []string{"code", "id_token"}}, true},
+		{"empty grants", map[string]any{"grant_types": []string{}}, false},
+		{"empty responses", map[string]any{"response_types": []string{}}, false},
+		{"malformed grant", map[string]any{"grant_types": []string{"authorization_code", "bad grant"}}, false},
 		{"implicit response", map[string]any{"response_types": []string{"token"}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

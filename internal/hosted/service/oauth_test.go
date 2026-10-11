@@ -308,8 +308,9 @@ func testOAuthBrowserConsentMCPAndRevocation(t *testing.T, callback string) {
 		t.Helper()
 		req, _ := http.NewRequest("POST", origin+"/mcp", strings.NewReader(frame))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+token.Raw)
+		req.Header.Set("Authorization", "bearer "+token.Raw)
 		if session != "" {
+			req.Header.Set("Authorization", "bEaReR  "+token.Raw)
 			req.Header.Set("Mcp-Session-Id", session)
 			req.Header.Set("MCP-Protocol-Version", "2025-11-25")
 		}

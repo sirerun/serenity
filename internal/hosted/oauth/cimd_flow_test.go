@@ -30,7 +30,7 @@ func TestCIMDAndDCRHTTPAuthorization(t *testing.T) {
 			}
 			resolver := NewCIMDResolver()
 			resolver.http = &http.Client{Transport: metadataRoundTrip(func(*http.Request) (*http.Response, error) {
-				return metadataResponse(metadataBody(t, map[string]any{"scope": "openid memory:read memory:write"})), nil
+				return metadataResponse(metadataBody(t, map[string]any{"scope": "openid memory:read memory:write", "grant_types": []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:jwt-bearer"}, "response_types": []string{"code"}})), nil
 			})}
 			h.Store.Metadata = resolver
 			callback := "https://client.example/callback"
@@ -57,6 +57,10 @@ func TestCIMDAndDCRHTTPAuthorization(t *testing.T) {
 					t.Fatal(e)
 				}
 				return resp.StatusCode, body
+			}
+			status, unsupported := post("/oauth/token", url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:jwt-bearer"}, "client_id": {id}, "resource": {"https://memory.example/mcp"}})
+			if status != 400 || unsupported["error"] != "unsupported_grant_type" {
+				t.Fatalf("unsupported advertised capability enabled: %d %v", status, unsupported)
 			}
 			if mode == "dcr" {
 				resp, e := http.Post(ts.URL+"/oauth/register", "application/json", strings.NewReader(`{"client_name":"Gumloop fixture","redirect_uris":["`+callback+`"]}`))
@@ -206,5 +210,26 @@ func TestConsentApprovalFailuresAreDistinct(t *testing.T) {
 		if resp.StatusCode != tc.status || !strings.Contains(string(body), tc.text) || strings.Contains(string(body), "private-details") {
 			t.Fatalf("status %d body %s", resp.StatusCode, body)
 		}
+	}
+}
+
+func TestInvalidCIMDIsClientError(t *testing.T) {
+	adapter, _, _ := lifecycleStore(t)
+	h, err := New(adapter.DB, nil, nil, "https://memory.example", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolver := NewCIMDResolver()
+	resolver.http = &http.Client{Transport: metadataRoundTrip(func(*http.Request) (*http.Response, error) {
+		return metadataResponse(metadataBody(t, map[string]any{"grant_types": []string{"password"}})), nil
+	})}
+	h.Store.Metadata = resolver
+	q := url.Values{"client_id": {testMetadataID}, "redirect_uri": {"https://untrusted.example/callback"}}
+	w := httptest.NewRecorder()
+	h.Server.AuthorizeHandler(func(http.ResponseWriter, *http.Request, string, mcpoauth.ConsentRequest) {
+		t.Fatal("invalid metadata reached consent")
+	}).ServeHTTP(w, httptest.NewRequest("GET", "/oauth/authorize?"+q.Encode(), nil))
+	if w.Code != 400 || w.Header().Get("Location") != "" {
+		t.Fatalf("invalid metadata response status=%d redirect=%q", w.Code, w.Header().Get("Location"))
 	}
 }

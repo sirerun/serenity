@@ -25,7 +25,8 @@ type ClientMetadataResolver interface {
 	Resolve(context.Context, string) (mcpoauth.Client, error)
 }
 
-var errInvalidClientMetadata = errors.New("invalid client metadata")
+// Rejected metadata identifies no usable client; it is not an internal server failure.
+var errInvalidClientMetadata = fmt.Errorf("%w: invalid client metadata", mcpoauth.ErrNotFound)
 
 type cachedMetadata struct {
 	client  mcpoauth.Client
@@ -214,15 +215,14 @@ func (r *CIMDResolver) parseMetadata(id string, body []byte) (mcpoauth.Client, e
 			return mcpoauth.Client{}, errInvalidClientMetadata
 		}
 	}
-	for _, grant := range doc.Grants {
-		if grant != "authorization_code" && grant != "refresh_token" {
-			return mcpoauth.Client{}, errInvalidClientMetadata
-		}
+	// A reusable document describes capabilities across authorization servers.
+	// Require our code flow, but do not reject additional capabilities. The
+	// authorization and token endpoints still enforce this server's own grants.
+	if _, explicit := fields["grant_types"]; explicit && !metadataCapabilities(doc.Grants, "authorization_code", false) {
+		return mcpoauth.Client{}, errInvalidClientMetadata
 	}
-	for _, response := range doc.Responses {
-		if response != "code" {
-			return mcpoauth.Client{}, errInvalidClientMetadata
-		}
+	if _, explicit := fields["response_types"]; explicit && !metadataCapabilities(doc.Responses, "code", true) {
+		return mcpoauth.Client{}, errInvalidClientMetadata
 	}
 	// A reusable metadata document may declare scopes for other servers.
 	// Validate syntax only; the authorization server enforces its scope ceiling.
@@ -239,6 +239,26 @@ func (r *CIMDResolver) parseMetadata(id string, body []byte) (mcpoauth.Client, e
 		}
 	}
 	return mcpoauth.Client{ID: id, Name: doc.Name, RedirectURIs: doc.Redirects}, nil
+}
+
+// metadataCapabilities checks nonempty visible-ASCII values and the required
+// capability. Response types may be space-separated combinations (RFC 7591).
+func metadataCapabilities(values []string, required string, allowSpace bool) bool {
+	found := false
+	for _, value := range values {
+		if value == "" || strings.TrimSpace(value) != value {
+			return false
+		}
+		for _, c := range value {
+			if c < 0x21 || c > 0x7e {
+				if c != ' ' || !allowSpace {
+					return false
+				}
+			}
+		}
+		found = found || value == required
+	}
+	return found
 }
 
 func metadataTTL(h http.Header) time.Duration {
