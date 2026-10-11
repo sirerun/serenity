@@ -20,10 +20,10 @@ Source changes received independent review and landed verification. Local source
 
 Provider qualification exercised private readiness, a real witnessed backup, frozen restore, restart with epoch advancement, and revocation producing HTTP 503. The journal namespace was restored at epoch 3 while preserving its position; owner restore was idempotent. These checks do not prove nonempty historical deletion replay or a complete renewal and rollback campaign.
 
-Production private readiness returned HTTP 200 after activation. In Chrome, the authenticated visual memory explorer loaded its map with HTTP 200 and displayed 609 total records. List, detail and private-filter behavior were verified. The production backup completed its two S3 uploads, and the backup timer was enabled and active.
+Production private readiness returned HTTP 200 after activation. In Chrome, the authenticated visual memory explorer visibly loaded its map with 200 notes and displayed 609 total records. List, detail and private-filter behavior were verified. Production backup jobs completed, and the backup timer was enabled and active.
 
 ## Preservation and remaining qualification
 
-The original journal table, original data, immutable S3 checkpoint and EBS checkpoint remain retained. Preserved legacy data included 446 operations; this is a legacy operation inventory, not fabricated historical deletion-journal evidence. Temporary qualification IAM policy and owner credentials were removed.
+The original journal table, original data, immutable S3 checkpoint and EBS checkpoint remain retained. Preserved legacy data included 446 operations; this is a legacy operation inventory, not fabricated historical deletion-journal evidence. The temporary qualification IAM policy and session-created local owner credential file were removed; original credential stores were preserved.
 
 The requested deployment is complete. Broader T-HU.6 qualification remains open for nonempty deletion replay, sustained renewal and exact compatible rollback. The canonical plan's composite delivery gates remain open where their full acceptance criteria exceed this deployment receipt. No source, local or synthetic check is presented as provider or production acceptance.
