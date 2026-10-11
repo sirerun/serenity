@@ -9,6 +9,23 @@ import unittest
 SCRIPT = Path(__file__).resolve().parents[1] / "backup.sh"
 
 class BackupStageTests(unittest.TestCase):
+    def test_installed_backup_environment_selects_legacy_or_staged_data(self):
+        deploy = (SCRIPT.parent / "deploy.sh").read_text()
+        emitter = next(line for line in deploy.splitlines() if line.startswith("printf 'SERENITY_BACKUP_BUCKET="))
+        installer = next(line for line in deploy.splitlines() if line.startswith('install -m 0600 -o root -g root "$work/backup.env"'))
+        self.assertEqual(installer,'install -m 0600 -o root -g root "$work/backup.env" /etc/serenity-backup/backup.env')
+        for selected in ("/var/lib/serenity", "/var/lib/serenity/hosted"):
+            with self.subTest(selected=selected), tempfile.TemporaryDirectory() as d:
+                run = subprocess.run(["bash", "-c", emitter],
+                    env={**os.environ,"work":d,"backup_bucket":"synthetic-backup","data_dir":selected},
+                    capture_output=True,text=True)
+                self.assertEqual(run.returncode,0,run.stderr)
+                emitted=Path(d)/"backup.env"
+                consumer=subprocess.run(["bash","-c",'set -a; . "$1"; printf "%s\n%s\n" "$SERENITY_BACKUP_BUCKET" "$SERENITY_DATA_DIR"',"fixture",str(emitted)],
+                    capture_output=True,text=True)
+                self.assertEqual(consumer.returncode,0,consumer.stderr)
+                self.assertEqual(consumer.stdout,"synthetic-backup\n"+selected+"\n")
+
     def test_stage_created_under_selected_data_directory(self):
         lines = SCRIPT.read_text().splitlines()
         stage = next(line for line in lines if line.startswith("work=$(unprivileged mktemp"))
