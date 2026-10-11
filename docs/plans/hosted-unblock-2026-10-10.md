@@ -91,3 +91,27 @@ or a completed bounded provider qualification script.
 On 2026-10-10 the founder stated: ‘I approve. Deploy.’ This accepts live activation of the reviewed DynamoDB journal and KMS signing direction, necessary preserved-data migration and deployment. Initial qualification spending remains bounded by the proposed $10 allowance; no unrelated resources are authorized. Activation is limited to the existing host, one authority stack, owner-only signing and independently verified artifacts. Provider qualification, immutable prewrite checkpoint, truthful legacy-history provenance and tested recovery remain mandatory acceptance gates.
 
 T-HU.19 implementation assignment: legacy-migration worker owns witnessed adoption receipt, deterministic complete data inventory and first-admission checks. Coordinator owns CLI and preserved checkpoint. Owner-activation worker owns current-user owner transport with strict private-file checks; restore operator remains root-only. Source changes require independent exact-head review before landing.
+
+## Verified production activation — 2026-10-11
+
+The owner-authorized production deployment is complete at source
+ed8f0b9b76ed235da5c2febc4aebfc2c615a754a. See
+[the deployment receipt](hosted-deployment-2026-10-11.md) for exact artifact
+bindings and separate source, local, provider, release and production evidence.
+The authenticated explorer map, list, detail and private filter were verified
+in Chrome; production readiness and a real backup passed. Root-controlled
+KMS verification and release prepare/commit completed at sequence 1 through
+the reviewed manual SSM activation path, not the default deploy.sh path.
+No GitHub release was published.
+
+Original data and checkpoints remain retained. The restored journal namespace
+preserved its position at epoch 3, and owner restore was idempotent. Legacy
+operation inventory is not synthetic historical deletion-journal proof.
+Temporary qualification policy and owner credentials were removed.
+
+T-HU.6 remains open for broader nonempty deletion replay, sustained renewal and
+exact compatible rollback qualification. Existing composite task checkboxes
+are preserved: the deployment receipt closes the owner's immediate deployment
+request without claiming every original acceptance gate is complete. Earlier
+source-only and unexecuted-policy statements describe their historical stages;
+this receipt supersedes only the live claims it verifies.
