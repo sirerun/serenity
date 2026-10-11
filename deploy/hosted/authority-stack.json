@@ -59,6 +59,12 @@
     "RuntimeRoleName": {
       "Type": "String",
       "Description": "Exact existing instance role name; activation adds scoped invoke and explicit direct-authority denial"
+    },
+    "JournalIncarnation": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "^$|recovery-[a-f0-9]{8}$",
+      "Description": "Empty retains the original generated table name; reviewed recovery incarnation replaces only the journal and retains its predecessor"
     }
   },
   "Resources": {
@@ -98,6 +104,17 @@
         "OnDemandThroughput": {
           "MaxReadRequestUnits": 1000,
           "MaxWriteRequestUnits": 1000
+        },
+        "TableName": {
+          "Fn::If": [
+            "HasJournalIncarnation",
+            {
+              "Fn::Sub": "${AWS::StackName}-journal-${JournalIncarnation}"
+            },
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
         }
       }
     },
@@ -756,6 +773,20 @@
       "Value": {
         "Ref": "GatewayVersion"
       }
+    }
+  },
+  "Conditions": {
+    "HasJournalIncarnation": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "JournalIncarnation"
+            },
+            ""
+          ]
+        }
+      ]
     }
   }
 }
