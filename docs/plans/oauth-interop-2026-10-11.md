@@ -8,7 +8,7 @@ Acceptance: Reachable defects have regression tests and reviewed fixes; unresolv
 
 - [x] T1.1 Inspect discovery, registration, consent, tokens and MCP authorization Owner: oauth-auditor kind: agent stage: preflight acc: [requirement matrix cites official specifications and source; observed failure distinguished from inference]
 - [x] T1.2 Implement confirmed interoperability fixes Owner: oauth-coordinator kind: agent stage: implement blocked-by: [T1.1] acc: [minimal secure fixes and failing-before regression tests cover confirmed defects]
-- [ ] T1.3 Verify candidate Owner: oauth-coordinator kind: agent stage: verify blocked-by: [T1.2] acc: [affected race tests, full build and vet, lint and plan conformance pass on DGX at exact revision]
+- [x] T1.3 Verify candidate Owner: oauth-coordinator kind: agent stage: verify blocked-by: [T1.2] acc: [affected race tests, full build and vet, lint and plan conformance pass on DGX at exact revision]
 - [ ] T1.4 Independently review candidate Owner: oauth-reviewer kind: agent stage: review blocked-by: [T1.3] acc: [exact base and head independently clear with findings resolved]
 - [ ] T1.5 Merge and verify landing Owner: oauth-coordinator kind: agent stage: merge blocked-by: [T1.4] acc: [guarded rebase merge and landed tree and affected checks pass]
 - [ ] T1.6 Qualify live connection repair Owner: deployment-owner kind: agent stage: verify-landed blocked-by: [T1.5] acc: [existing release owner coordinates any deployment; actual Gumloop and Claude acceptance or exact remaining blocker recorded]
