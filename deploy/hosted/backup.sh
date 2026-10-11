@@ -23,8 +23,8 @@ unprivileged() {
         --property=NoNewPrivileges=yes --property=RuntimeMaxSec=120 --property=TimeoutStopSec=10 "$@"
 }
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
-work=$(unprivileged mktemp -d /var/lib/serenity/snapshot.XXXXXXXX)
-[[ "$work" == /var/lib/serenity/snapshot.* ]] || exit 1
+work=$(unprivileged mktemp -d "$SERENITY_DATA_DIR/snapshot.XXXXXXXX")
+[[ "$work" == "$SERENITY_DATA_DIR/snapshot."* ]] || exit 1
 install -d -m 0700 -o root -g root /var/lib/serenity-backup
 upload=$(mktemp -d /var/lib/serenity-backup/upload.XXXXXXXX)
 cleanup() {

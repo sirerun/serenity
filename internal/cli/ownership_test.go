@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,5 +186,46 @@ func TestServeOwnershipHeldThroughBlockedFlush(t *testing.T) {
 	}
 	if err := owner.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestHostedControlCommandsDoNotAcquireDefaultBrain(t *testing.T) {
+	for _, command := range []string{"broker", "authority"} {
+		t.Run(command, func(t *testing.T) {
+			rootDir := t.TempDir()
+			// Ownership acquisition would fail at this sentinel, even as root.
+			sentinel := filepath.Join(rootDir, ".serenity")
+			if err := os.WriteFile(sentinel, []byte("must remain unchanged"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			previousRoot := flagRoot
+			flagRoot = rootDir
+			defer func() { flagRoot = previousRoot }()
+			root := newRootCmd()
+			installBrainOwnership(root)
+			args := []string{"hosted", "broker", "--config", filepath.Join(rootDir, "missing.json")}
+			if command == "authority" {
+				args = []string{"hosted", "authority", "inspect"}
+			}
+			root.SetArgs(args)
+			err := root.Execute()
+			if err == nil {
+				t.Fatal("invalid control configuration accepted")
+			}
+			if command == "authority" && err.Error() != "explicit owner configuration required" {
+				t.Fatalf("control handler not reached: %v", err)
+			}
+			if command == "broker" && (strings.Contains(err.Error(), ".serenity") || (!strings.Contains(err.Error(), "missing.json") && err.Error() != "broker: root ownership required")) {
+				t.Fatalf("broker config error replaced by ownership: %v", err)
+			}
+			data, err := os.ReadFile(sentinel)
+			if err != nil || string(data) != "must remain unchanged" {
+				t.Fatalf("default brain state changed: %v", err)
+			}
+			entries, err := os.ReadDir(rootDir)
+			if err != nil || len(entries) != 1 {
+				t.Fatalf("control command created cwd state: %v", err)
+			}
+		})
 	}
 }
