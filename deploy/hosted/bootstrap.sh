@@ -72,7 +72,9 @@ if ! command -v caddy >/dev/null || [[ "$(caddy version 2>/dev/null | awk 'NR==1
 fi
 
 id serenity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/serenity --shell /sbin/nologin serenity
-install -d -m 0700 -o serenity -g serenity /etc/serenity /etc/serenity/secrets
+[[ ! -L /etc/serenity ]] || { echo 'Configuration parent must not be a symlink' >&2; exit 1; }
+install -d -m 0750 -o root -g serenity /etc/serenity
+install -d -m 0700 -o serenity -g serenity /etc/serenity/secrets
 install -d -m 0755 /etc/caddy
 # Caddy runs unprivileged (ADR 020): a dedicated system user, state under
 # /var/lib/caddy and the admin socket under /run/caddy. When a root-era
@@ -85,10 +87,20 @@ if [[ -d /root/.local/share/caddy && ! -e /var/lib/caddy/caddy ]]; then
     cp -a /root/.local/share/caddy /var/lib/caddy/
 fi
 chown -R caddy:caddy /var/lib/caddy
-install -d -m 0700 -o serenity -g serenity /var/lib/serenity /var/lib/serenity/brains
+configure_bootstrap_data_parent() {
+    if [[ -d /var/lib/serenity/hosted ]]; then
+        install -d -m 0750 -o root -g serenity /var/lib/serenity
+    else
+        install -d -m 0700 -o serenity -g serenity /var/lib/serenity
+    fi
+    install -d -m 0700 -o serenity -g serenity /var/lib/serenity/brains
+}
+configure_bootstrap_data_parent
 systemctl enable --now amazon-ssm-agent.service
+bootstrap_state=$(mktemp /etc/serenity/bootstrap.state.XXXXXXXX)
 printf 'architecture=%s\ndata_device=%s\ndata_uuid=%s\ncaddy_version=%s\n' \
-  "$(uname -m)" "$DATA_DEVICE" "$uuid" "$CADDY_VERSION" > /etc/serenity/bootstrap.state
-chmod 0600 /etc/serenity/bootstrap.state
-chown serenity:serenity /etc/serenity/bootstrap.state
+  "$(uname -m)" "$DATA_DEVICE" "$uuid" "$CADDY_VERSION" > "$bootstrap_state"
+chmod 0600 "$bootstrap_state"
+chown root:root "$bootstrap_state"
+mv -T "$bootstrap_state" /etc/serenity/bootstrap.state
 printf '%s\n' 'Serenity host bootstrap complete; application deployment remains a separate reviewed step.'
