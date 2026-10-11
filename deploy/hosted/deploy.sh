@@ -92,7 +92,7 @@ id serenity >/dev/null 2>&1 || useradd --system --home-dir /var/lib/serenity --s
 # The broker's root-owned enrollment is prepared in the reviewed activation
 # packet. Deployment cannot substitute caller identity or silently adopt data.
 python3 - "$work/serenity" > "$work/data-dir" <<'PYBROKER'
-import hashlib,json,os,pathlib,sys
+import hashlib,json,os,pathlib,stat,sys
 p=pathlib.Path("/etc/serenity-authority/broker.json")
 for parent in [p.parent,*p.parent.parents]:
     st=parent.lstat()
@@ -107,7 +107,16 @@ with open(sys.argv[1],"rb") as source:
 data_dir=config.get("data_dir")
 if data_dir not in ("/var/lib/serenity", "/var/lib/serenity/hosted"):
     raise SystemExit("Unsupported private data directory")
-with open("/etc/serenity/hosted.json", "rb") as hosted_source:
+hosted_path=pathlib.Path("/etc/serenity/hosted.json")
+for parent in [hosted_path.parent,*hosted_path.parent.parents]:
+    st=parent.lstat()
+    if parent.is_symlink() or st.st_uid!=0 or st.st_mode&0o022:
+        raise SystemExit("Hosted configuration ancestor is not immutable root custody")
+fd=os.open(hosted_path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+with os.fdopen(fd,"rb") as hosted_source:
+    st=os.fstat(hosted_source.fileno())
+    if not stat.S_ISREG(st.st_mode) or st.st_uid!=0 or st.st_nlink!=1 or (st.st_mode&0o777) not in (0o600,0o640):
+        raise SystemExit("Hosted configuration is not a private root-owned regular file")
     hosted_config=json.load(hosted_source)
 if hosted_config.get("data_dir")!=data_dir:
     raise SystemExit("Broker and hosted service data directories differ")
@@ -116,7 +125,8 @@ if config.get("executable_sha256")!=digest or config.get("socket")!="/run/sereni
 print(data_dir)
 PYBROKER
 data_dir=$(cat "$work/data-dir")
-install -d -m 0700 -o serenity -g serenity /etc/serenity /etc/serenity/secrets
+install -d -m 0750 -o root -g serenity /etc/serenity
+install -d -m 0700 -o serenity -g serenity /etc/serenity/secrets
 for name in RESEND_API_KEY EMBEDDINGS_API_KEY; do
     aws --region us-west-2 secretsmanager get-secret-value --secret-id "serenity/hosted/$name" --query SecretString --output text > "$work/$name"
     if [[ ! -s "$work/$name" ]] || grep -qx UNCONFIGURED "$work/$name"; then
@@ -128,7 +138,7 @@ done
 # Billing is enabled separately after test-mode qualification; its secrets are
 # installed through the same path only when the reviewed config enables it.
 if [[ ! -e /etc/serenity/hosted.json ]]; then
-    install -m 0600 -o serenity -g serenity "$script_dir/config.example.json" /etc/serenity/hosted.json
+    install -m 0640 -o root -g serenity "$script_dir/config.example.json" /etc/serenity/hosted.json
 fi
 
 caddy validate --config "$script_dir/Caddyfile" --adapter caddyfile
@@ -172,9 +182,18 @@ install -m 0644 "$script_dir/serenity-hosted.service" /etc/systemd/system/sereni
 install -m 0644 "$script_dir/serenity-broker.service" /etc/systemd/system/serenity-broker.service
 # Migrate the old default origin and sender; preserve custom operator settings.
 python3 - <<'PYCONFIG'
-import json, os
+import json, os, pathlib, stat
 path = "/etc/serenity/hosted.json"
-with open(path) as f:
+parent=pathlib.Path(path).parent
+for component in [parent,*parent.parents]:
+    st=component.lstat()
+    if component.is_symlink() or st.st_uid!=0 or st.st_mode&0o022:
+        raise SystemExit("Hosted configuration ancestor is not immutable root custody")
+fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+with os.fdopen(fd,"r") as f:
+    metadata=os.fstat(f.fileno())
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid!=0 or metadata.st_nlink!=1 or (metadata.st_mode&0o777) not in (0o600,0o640):
+        raise SystemExit("Hosted configuration is not a private root-owned regular file")
     config = json.load(f)
 changed = False
 if config.get("sender") == "login@serenity.sire.run":
@@ -185,13 +204,20 @@ if os.environ.get("SERENITY_DOMAIN_CUTOVER") != "1" and config.get("public_origi
     changed = True
 if changed:
     temporary = path + ".new"
-    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
     with os.fdopen(fd, "w") as f:
         json.dump(config, f, indent=2)
         f.write("\n")
-    metadata = os.stat(path)
-    os.chown(temporary, metadata.st_uid, metadata.st_gid)
+        f.flush()
+        os.fchown(f.fileno(), metadata.st_uid, metadata.st_gid)
+        os.fchmod(f.fileno(), 0o640)
+        os.fsync(f.fileno())
     os.replace(temporary, path)
+    parent_fd=os.open(parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        os.fsync(parent_fd)
+    finally:
+        os.close(parent_fd)
 PYCONFIG
 # Keep the previous Caddy unit and config once for rollback of the privilege
 # drop (ADR 020); the snapshot is only taken when the unit actually changes.

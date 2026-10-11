@@ -202,12 +202,11 @@ func TestHostedControlCommandsDoNotAcquireDefaultBrain(t *testing.T) {
 			flagRoot = rootDir
 			defer func() { flagRoot = previousRoot }()
 			root := newRootCmd()
-			installBrainOwnership(root)
 			args := []string{"hosted", "broker", "--config", filepath.Join(rootDir, "missing.json")}
 			if command == "authority" {
 				args = []string{"hosted", "authority", "inspect"}
 			}
-			root.SetArgs(args)
+			root.SetArgs(append([]string{"--root", rootDir}, args...))
 			err := root.Execute()
 			if err == nil {
 				t.Fatal("invalid control configuration accepted")
