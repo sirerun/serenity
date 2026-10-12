@@ -24,6 +24,8 @@ The fixture exercises real authenticated HTTP service assembly with synthetic li
 
 ## Activation handoff — not executed
 
+The minimal existing-host route and live public capability observation are in [the activation handoff](GOVERNED_MEMORY_ACTIVATION_HANDOFF.md). Public GitHub release publication is optional when using the already enrolled, separately reviewed manual KMS/S3/SSM activation path.
+
 Existing procedure: [hosted deployment](../../deploy/hosted/README.md), [deployment script](../../deploy/hosted/deploy.sh), and [release verification](../operator/release-verification.md). Previous deployment receipts describe historical state only; current production state and release sequence must be read again before activation.
 
 1. Obtain explicit authorization to publish a release and activate the existing hosted service. This candidate has not been pushed, merged, tagged, signed or deployed by the producer lane. Review the integrated Zati adapter pin and protocol contract together.
