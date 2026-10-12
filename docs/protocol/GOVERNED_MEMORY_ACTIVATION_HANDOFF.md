@@ -1,7 +1,7 @@
 # Governed memory hosted activation handoff
 
 Prepared 2026-10-12; no signing, deployment or production mutation performed.
-Candidate production source: `7773ed132d155638316925f72b79f7db39f0abed` (same production tree as `b1ef2fa195e2e25e268972e72c953aefc723e918`). Documentation follow-ups do not change the Zati adapter's tested producer pin.
+Production implementation: `7773ed132d155638316925f72b79f7db39f0abed` (same production tree as `b1ef2fa195e2e25e268972e72c953aefc723e918`). Final qualified source and Zati adapter pin: `7a5f647a37214c619300b8873974872a5ee30860`, which adds documentation and the official-issuer test fixture without changing production code. The full race suite passed at that exact revision. This documentation-only follow-up does not require another adapter pin.
 
 ## Public capability observation
 
