@@ -89,3 +89,9 @@ Canonical command envelopes (including queries and receipt metadata) are exclude
 from generic chunk extraction; only the projected statement text is eligible
 for normal MEMORY_VERBS search. All newly persisted command kinds count against
 storage bounds, including recall and inspect.
+
+An active claim may be retracted even when storage or write quota is full.
+Exactly one new retraction receipt is allowed per claim; further unique
+retractions of an inactive claim are refused. Replaying the original command
+recovers its result without adding storage. This bounds the quota exception to
+one tombstone per existing claim and preserves the ability to remove memory.

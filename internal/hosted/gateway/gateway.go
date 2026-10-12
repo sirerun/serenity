@@ -379,27 +379,9 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		runtime.Mutations.Lock()
 		defer runtime.Mutations.Unlock()
 	}
-	if name == "retract_governed_memory" {
-		projection, e := brainstore.LoadGovernedMemory(runtime.Sources)
-		if e != nil {
-			return result, e
-		}
-		if _, replay := projection.Commands[input.CommandID]; !replay {
-			entitlement, account, e := g.Meter.Subject(ctx, binding.AccountID, binding.PartnerID)
-			if e != nil {
-				return result, e
-			}
-			inv, e := g.inventory(ctx, binding.AccountID, filepath.Dir(runtime.Root))
-			if e != nil {
-				return result, e
-			}
-			if inv.StorageBytes+1<<20 >= max(entitlement.Plan.StorageBytes, account.Plan.StorageBytes) {
-				return failure("limit_exceeded", time.Time{}), nil
-			}
-		}
-	}
+
 	var reservation meter.Reservation
-	metered := name == "retract_governed_memory" || name == "recall" || name == "read_memory_fact" || (name == "remember" && g.Operations == nil)
+	metered := name == "recall" || name == "read_memory_fact" || (name == "remember" && g.Operations == nil)
 	if metered {
 		// The subject's window encodes its bucket, so account and partner
 		// usage never share a counter even though both rows belong to the

@@ -56,12 +56,16 @@ func governedFailure(w http.ResponseWriter, status int, code string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{"schema": brainstore.GovernedMemorySchema, "error": code})
+	if err := json.NewEncoder(w).Encode(map[string]string{"schema": brainstore.GovernedMemorySchema, "error": code}); err != nil {
+		return
+	}
 }
 func governedJSON(w http.ResponseWriter, r brainstore.GovernedResponse) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	json.NewEncoder(w).Encode(r)
+	if err := json.NewEncoder(w).Encode(r); err != nil {
+		return
+	}
 }
 func decodeGoverned(raw []byte, dst any) error {
 	d := json.NewDecoder(bytes.NewReader(raw))
@@ -358,6 +362,10 @@ func (g *Gateway) ServeGovernedMemory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if a.Kind == "retract" {
+			if !c.Active {
+				governedFailure(w, 409, "claim_already_inactive")
+				return
+			}
 			if c.Active {
 				c.Version++
 				c.Active = false
@@ -392,7 +400,7 @@ func (g *Gateway) ServeGovernedMemory(w http.ResponseWriter, r *http.Request) {
 	// Every admitted command persists its receipt, including reads. Bound the
 	// request, response, source metadata and Git publication overhead together.
 	growth := int64(len(canonical)+len(responseBytes))*4 + 4096
-	if inventory.StorageBytes+growth >= max(entitlement.Plan.StorageBytes, account.Plan.StorageBytes) {
+	if a.Kind != "retract" && inventory.StorageBytes+growth >= max(entitlement.Plan.StorageBytes, account.Plan.StorageBytes) {
 		governedFailure(w, 429, "limit_exceeded")
 		return
 	}
@@ -469,7 +477,7 @@ func validateGovernedAction(a governedAction) error {
 			}
 		}
 	case "recall":
-		if strings.TrimSpace(a.Query) == "" || utf8.RuneCountInString(a.Query) > 8192 || a.MaxClaims < 1 || a.MaxClaims > 200 || a.MinimumFreshness.IsZero() {
+		if strings.TrimSpace(a.Query) == "" || utf8.RuneCountInString(a.Query) > 8192 || a.MaxClaims < 1 || a.MaxClaims > 200 {
 			return invalid
 		}
 		switch a.Classification {
@@ -478,9 +486,7 @@ func validateGovernedAction(a governedAction) error {
 			return invalid
 		}
 	case "inspect", "retract":
-		if a.Kind == "inspect" && a.MinimumFreshness.IsZero() {
-			return invalid
-		}
+
 		if a.Claim == nil || !brainstore.ValidGovernedUUID(a.Claim.ID) || a.Claim.Version < 1 {
 			return invalid
 		}
@@ -519,4 +525,26 @@ func governedPublished(ctx context.Context, root string, p *brainstore.GovernedP
 		}
 	}
 	return true, nil
+}
+
+// Zero UTC is a valid no-floor freshness request. Presence and type, rather
+// than time.IsZero, distinguish it from an omitted or null requirement.
+func (a *governedAction) UnmarshalJSON(raw []byte) error {
+	type actionAlias governedAction
+	var decoded actionAlias
+	if err := decodeGoverned(raw, &decoded); err != nil {
+		return err
+	}
+	if decoded.Kind == "recall" || decoded.Kind == "inspect" {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &fields); err != nil {
+			return err
+		}
+		freshness, ok := fields["minimum_freshness"]
+		if !ok || string(bytes.TrimSpace(freshness)) == "null" {
+			return errors.New("minimum_freshness is required")
+		}
+	}
+	*a = governedAction(decoded)
+	return nil
 }
