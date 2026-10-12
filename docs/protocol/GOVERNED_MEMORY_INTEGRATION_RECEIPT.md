@@ -37,3 +37,11 @@ Existing procedure: [hosted deployment](../../deploy/hosted/README.md), [deploym
 5. Verify authenticated memory commands, reconciliation after restart, current-token revocation, ordinary MCP continuity, public health/readiness, backup completion and Zati connection custody against the deployed revision. Record startup provider probes separately from governed operations. Public smoke and integrated runtime acceptance remain separate from the script's local readiness result.
 
 No production reads, production mutations, release signing, provider spending or deployment were performed while preparing this receipt. Runtime identities, resource names, credentials and machine-local paths are intentionally excluded.
+
+## Controller renewal fixture follow-up
+
+Producer fixture revision `2f659651` passed the full race suite with the private recovery directory settings above. Its production code remains equivalent to adapter pin `7a5f647a`; no adapter re-pin or hosted deployment occurred.
+
+An explicitly gated test-only wrapper shortens the first authorization-code access token to four minutes in both its persisted token record and response. It preserves the original request body for the real OAuth handler. Refresh tokens still produce the normal one-hour access lifetime. This synthetic lifetime permits immediate renewal qualification without changing clocks or production configuration.
+
+The independent assembled acceptance at Zati `bb9459f` against producer `2f659651`, both race-enabled, passed in 21.97 seconds: one registration, two token exchanges, two binding reads, unchanged opaque credential reference and connection version, a completed governed recall using that reference after renewal, no refresh loop, and revocation preventing the next due refresh. Governed operations added no embedding requests. The browser/session, initial token lifetime and lifecycle dependencies are synthetic; this does not establish managed deployment or native browser acceptance. Owned fixture processes and private manifests were cleaned up.
