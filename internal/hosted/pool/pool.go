@@ -32,6 +32,8 @@ type Config struct {
 }
 type Runtime struct {
 	flush     func() error
+	Sources   *store.SourceStore
+	Queue     *writer.Queue
 	Mutations sync.Mutex
 	Tools     []mcp.Tool
 	Root      string
@@ -67,16 +69,22 @@ func (p *Pool) BrainsRoot() string {
 }
 
 func (p *Pool) Acquire(ctx context.Context, id string) (*Runtime, func(), error) {
-	return p.acquire(ctx, id, false)
+	return p.acquire(ctx, id, false, false)
+}
+
+// AcquireCanonical never runs provider-backed index recovery while opening.
+// Canonical-only consumers read the current source projection directly.
+func (p *Pool) AcquireCanonical(ctx context.Context, id string) (*Runtime, func(), error) {
+	return p.acquire(ctx, id, false, true)
 }
 
 // AcquireExisting pins an already-open runtime without opening, initializing,
 // recovering or evicting brain storage. Absence is a deferred capacity result.
 func (p *Pool) AcquireExisting(ctx context.Context, id string) (*Runtime, func(), error) {
-	return p.acquire(ctx, id, true)
+	return p.acquire(ctx, id, true, false)
 }
 
-func (p *Pool) acquire(ctx context.Context, id string, existingOnly bool) (*Runtime, func(), error) {
+func (p *Pool) acquire(ctx context.Context, id string, existingOnly, canonicalOnly bool) (*Runtime, func(), error) {
 	if !p.mu.TryLock() {
 		return nil, nil, ErrCapacity
 	}
@@ -120,7 +128,7 @@ func (p *Pool) acquire(ctx context.Context, id string, existingOnly bool) (*Runt
 			delete(p.open, oldest)
 		}
 		var err error
-		r, err = open(ctx, p.cfg, id)
+		r, err = open(ctx, p.cfg, id, canonicalOnly)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -157,7 +165,7 @@ func (p *Pool) Close() error {
 	}
 	return err
 }
-func open(ctx context.Context, cfg Config, id string) (*Runtime, error) {
+func open(ctx context.Context, cfg Config, id string, canonicalOnly bool) (*Runtime, error) {
 	if len(id) < 16 || len(id) > 64 {
 		return nil, errors.New("invalid brain id")
 	}
@@ -256,19 +264,21 @@ func open(ctx context.Context, cfg Config, id string) (*Runtime, error) {
 	if err != nil {
 		return fail(err)
 	}
-	if err = index.RecoverMemorySearch(ctx, root, eng, cfg.Embedder); err != nil {
-		return fail(errors.Join(err, eng.Close()))
+	if !canonicalOnly {
+		if err = index.RecoverMemorySearch(ctx, root, eng, cfg.Embedder); err != nil {
+			return fail(errors.Join(err, eng.Close()))
+		}
 	}
 	q := writer.NewQueue(nil)
 	handlers := memory.New(memory.Deps{Root: root, Config: c, Index: eng, Embedder: cfg.Embedder, Queue: q, Sources: store.NewSourceStore(root), Fence: store.NewFenceWriter(root), Shard: store.NewShardStore(root)})
 	var tools []mcp.Tool
 	for _, tool := range append(handlers.Tools(), handlers.ExtensionTools()...) {
 		switch tool.Name {
-		case "remember", "recall", "forget", "read_memory_fact":
+		case "remember", "recall", "forget", "read_memory_fact", "retract_governed_memory":
 			tools = append(tools, tool)
 		}
 	}
-	return &Runtime{Root: root, brainID: id, queue: q, Tools: tools, flush: func() error {
+	return &Runtime{Root: root, Sources: store.NewSourceStore(root), Queue: q, brainID: id, queue: q, Tools: tools, flush: func() error {
 		_, err := writer.FlushContext(context.Background(), q, root)
 		return err
 	}, close: func() error {

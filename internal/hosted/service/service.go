@@ -458,6 +458,8 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	issuer.OAuthVerify = auth.Verify
 	issuer.OAuthActive = auth.Active
 	mux.Handle("/mcp", auth.Challenge(g))
+	mux.HandleFunc("/memory/v1/commands", g.ServeGovernedMemory)
+	mux.HandleFunc("/memory/v1/commands/", g.ServeGovernedMemory)
 	mux.Handle("/oauth/", auth.Handler())
 	mux.Handle("/.well-known/oauth-authorization-server", auth.MetadataHandler())
 	mux.Handle("/.well-known/oauth-protected-resource", auth.Server.ProtectedResourceHandler())

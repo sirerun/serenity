@@ -70,13 +70,13 @@ func reservedMemoryKind(kind string) bool { return strings.HasPrefix(strings.ToL
 
 // reservedSourceKind covers every lifecycle kind only typed entry points write.
 func reservedSourceKind(kind string) bool {
-	return reservedMemoryKind(kind) || strings.EqualFold(kind, SourceKindTombstone)
+	return reservedMemoryKind(kind) || strings.EqualFold(kind, SourceKindTombstone) || strings.EqualFold(kind, GovernedMemoryKind)
 }
 
 // Write publishes ordinary imported material. Memory lifecycle kinds are reserved
 // for the typed entry points: importing JSON never grants expiry semantics.
 func (s *SourceStore) Write(data []byte, src domain.Source) (domain.Source, error) {
-	if reservedMemoryKind(src.Kind) {
+	if reservedMemoryKind(src.Kind) || strings.EqualFold(src.Kind, GovernedMemoryKind) {
 		return domain.Source{}, fmt.Errorf("store: reserved source kind %q requires a typed memory write", src.Kind)
 	}
 	if src.Kind == SourceKindTombstone {
@@ -385,6 +385,17 @@ func (s *SourceStore) readMeta(sha string) (domain.Source, error) {
 }
 
 func validateSourcePayload(data []byte, src domain.Source) error {
+	if src.Kind == GovernedMemoryKind {
+		var rec GovernedRecord
+		if err := json.Unmarshal(data, &rec); err != nil {
+			return err
+		}
+		if rec.Schema != GovernedMemorySchema || src.URI != "memory://governed" || src.IndexOnly || !src.OccurredAt.Equal(rec.RecordedAt) {
+			return fmt.Errorf("invalid governed source metadata")
+		}
+		return nil
+	}
+
 	if strings.TrimSpace(src.Kind) == "" {
 		return fmt.Errorf("store: source kind is required")
 	}

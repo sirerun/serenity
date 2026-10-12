@@ -200,7 +200,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Tools []json.RawMessage `json:"tools"`
 		} `json:"result"`
 	}
-	if method == "tools/list" && recorder.status == 200 && json.Unmarshal(recorder.body.Bytes(), &listed) == nil && len(listed.Result.Tools) == 4 {
+	if method == "tools/list" && recorder.status == 200 && json.Unmarshal(recorder.body.Bytes(), &listed) == nil && len(listed.Result.Tools) == 5 {
 		_ = g.record(r.Context(), binding, "connected")
 	}
 	if r.Method == http.MethodDelete && session != "" {
@@ -327,7 +327,7 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 	g.Maintenance.RLock()
 	defer g.Maintenance.RUnlock()
 	required := "memory:read"
-	if name == "remember" || name == "forget" {
+	if name == "remember" || name == "forget" || name == "retract_governed_memory" {
 		required = "memory:write"
 	}
 	allowed := false
@@ -364,7 +364,7 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		return failure("capacity", time.Time{}), nil
 	}
 	defer release()
-	if name == "remember" || name == "forget" {
+	if name == "remember" || name == "forget" || name == "retract_governed_memory" {
 		runtime.Mutations.Lock()
 		defer runtime.Mutations.Unlock()
 	}

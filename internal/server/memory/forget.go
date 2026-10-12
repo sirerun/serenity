@@ -148,6 +148,9 @@ func (h *Handlers) forget(ctx context.Context, args json.RawMessage) (any, bool,
 	if record.Payload.Visibility != store.MemoryVisibilityWorld {
 		return verbError(ErrCodeScopeDenied, "Fact is outside the remote scope", "manage private facts through a local interface"), true, nil
 	}
+	if _, meta, readErr := h.deps.Sources.Read(sha); readErr == nil && meta.Kind == store.GovernedMemoryKind {
+		return verbError(ErrCodeInvalidParams, "Governed memory retains command history", "Use retract_governed_memory with the UUID and version from provenance to remove it from active recall"), true, nil
+	}
 	mw := h.deps.memoryWriter()
 	if p, ok := principalFrom(ctx); ok && !p.Human {
 		if !slices.Contains(p.Scopes, ScopeForget) {

@@ -337,6 +337,9 @@ func LoadMemoryProjection(ss *SourceStore) (*MemoryProjection, error) {
 			}{src.SHA256, pl})
 		}
 	}
+	if err := AddGovernedProjection(ss, p, legacy); err != nil {
+		return nil, err
+	}
 	for _, e := range expiries {
 		target := e.pl.TargetSHA256
 		if e.pl.OperationKey != "" {

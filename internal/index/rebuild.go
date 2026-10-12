@@ -173,7 +173,7 @@ func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) e
 		switch src.Kind {
 		case store.SourceKindMemoryExpiry, store.SourceKindTombstone:
 			continue
-		case store.SourceKindMemoryFact:
+		case store.SourceKindMemoryFact, store.GovernedMemoryKind:
 			rec, ok := memProj.Get(src.SHA256)
 			if !ok || rec.Expired(now) {
 				continue
