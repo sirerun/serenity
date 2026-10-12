@@ -293,6 +293,10 @@ func (w *MemoryFact) purgeForgottenIndex(ctx context.Context, sha string) error 
 }
 
 func (w *MemoryFact) forgetLockedContext(ctx context.Context, targetSHA256, reason string, now time.Time) (ForgetResult, error) {
+	if _, src, err := w.Sources.Read(targetSHA256); err == nil && src.Kind == store.GovernedMemoryKind {
+		return ForgetResult{}, fmt.Errorf("governed memory retains command history; use retract_governed_memory with the claim UUID and version")
+	}
+
 	if ctx == nil {
 		return ForgetResult{}, ErrNilCommitContext
 	}
