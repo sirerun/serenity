@@ -19,7 +19,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/sirerun/serenity/internal/gitrun"
-	"github.com/sirerun/serenity/internal/hosted/meter"
 	brainstore "github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
 )
@@ -221,6 +220,18 @@ func (g *Gateway) ServeGovernedMemory(w http.ResponseWriter, r *http.Request) {
 		}
 		if rec, ok := projection.Commands[a.CommandID]; ok {
 			response = rec.Response
+			if rec.Response.Kind != "retract" {
+				metric := "recalls"
+				if rec.Response.Kind == "remember" {
+					metric = "writes"
+				}
+				settled, err := g.Meter.DurableCommitted(r.Context(), binding.AccountID, metric, "governed:"+binding.BrainID+":"+a.CommandID)
+				if err != nil || !settled {
+					response = newGovernedResponse(req)
+					response.Status = "unknown"
+					response.LookupAuthoritative = false
+				}
+			}
 		} else {
 			response.Status = "unknown"
 			response.LookupAuthoritative = false
@@ -278,6 +289,16 @@ func (g *Gateway) ServeGovernedMemory(w http.ResponseWriter, r *http.Request) {
 			}
 			published, err = governedPublished(r.Context(), runtime.Root, projection)
 			if err != nil || !published {
+				governedFailure(w, 503, "outcome_unknown")
+				return
+			}
+		}
+		if old.Response.Kind != "retract" {
+			metric := "recalls"
+			if old.Response.Kind == "remember" {
+				metric = "writes"
+			}
+			if err := g.Meter.CommitDurableOperation(r.Context(), binding.AccountID, metric, "governed:"+binding.BrainID+":"+a.CommandID); err != nil {
 				governedFailure(w, 503, "outcome_unknown")
 				return
 			}
@@ -409,9 +430,8 @@ func (g *Gateway) ServeGovernedMemory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var reservation meter.Reservation
 	if a.Kind != "retract" {
-		reservation, e = g.Meter.Reserve(r.Context(), binding.AccountID, metric, 1, limit, entitlement.Window, entitlement.ResetAt, "governed:"+binding.BrainID+":"+a.CommandID)
+		_, e = g.Meter.ReserveDurable(r.Context(), binding.AccountID, metric, 1, limit, entitlement.Window, entitlement.ResetAt, "governed:"+binding.BrainID+":"+a.CommandID)
 		if e != nil {
 			governedFailure(w, 429, "limit_exceeded")
 			return
@@ -423,9 +443,8 @@ func (g *Gateway) ServeGovernedMemory(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	rec := brainstore.GovernedRecord{Schema: brainstore.GovernedMemorySchema, RequestDigest: digest, Response: response, RecordedAt: now, Request: canonical}
 	e = writer.GovernedMemory(commitCtx, runtime.Queue, runtime.Sources, runtime.Root, rec)
-	if a.Kind != "retract" {
-		finishErr := g.Meter.Finish(commitCtx, reservation, e == nil)
-		e = errors.Join(e, finishErr)
+	if e == nil && a.Kind != "retract" {
+		e = g.Meter.CommitDurableOperation(commitCtx, binding.AccountID, metric, "governed:"+binding.BrainID+":"+a.CommandID)
 	}
 	if e != nil {
 		governedFailure(w, 503, "outcome_unknown")
