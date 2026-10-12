@@ -2,7 +2,9 @@ package service_test
 
 import (
 	"context"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -10,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/hosted/identity"
 	"github.com/sirerun/serenity/internal/hosted/service"
+	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
 // TestZatiHostedAssemblyProcess is an opt-in process fixture. It runs actual
@@ -31,9 +35,37 @@ func TestZatiHostedAssemblyProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal("fixture config invalid")
 	}
+	development := true
+	if os.Getenv("SERENITY_OAUTH_OFFICIAL_FIXTURE") == "1" {
+		host, _, bindErr := net.SplitHostPort(cfg.Bind)
+		embedding, embeddingErr := url.Parse(cfg.EmbeddingBaseURL)
+		if cfg.PublicOrigin != "https://serenity.sire.run" || bindErr != nil || host != "127.0.0.1" || embeddingErr != nil || embedding.Scheme != "https" || embedding.Hostname() != "127.0.0.1" || embedding.Port() == "" {
+			t.Fatal("official issuer fixture requires pinned issuer and loopback dependencies")
+		}
+		development = false
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
-	svc, err := service.NewWithDependencies(ctx, cfg, true, os.Stdout, testLifecycleDependencies(t))
+	var svc *service.Service
+	if development {
+		svc, err = service.NewWithDependencies(ctx, cfg, true, os.Stdout, testLifecycleDependencies(t))
+	} else {
+		if err = cfg.Validate(false); err != nil {
+			t.Fatal(err)
+		}
+		if err = os.MkdirAll(filepath.Join(cfg.DataDir, "brains"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		var db *store.Store
+		db, err = store.Open(filepath.Join(cfg.DataDir, "control.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		svc, err = service.AssembleWithDependencies(ctx, cfg, false, db, &identity.DevSender{Writer: os.Stdout}, embedding{}, testLifecycleDependencies(t))
+		if err != nil {
+			_ = db.Close()
+		}
+	}
 	if err != nil {
 		t.Fatalf("fixture assembly failed: %v", err)
 	}
