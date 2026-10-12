@@ -1,37 +1,34 @@
-# Governed memory hosted activation handoff
+# Governed memory hosted activation receipt
 
-Prepared 2026-10-12; no signing, deployment or production mutation performed.
-Production implementation: `7773ed132d155638316925f72b79f7db39f0abed` (same production tree as `b1ef2fa195e2e25e268972e72c953aefc723e918`). Final qualified source and Zati adapter pin: `7a5f647a37214c619300b8873974872a5ee30860`, which adds documentation and the official-issuer test fixture without changing production code. The full race suite passed at that exact revision. This documentation-only follow-up does not require another adapter pin.
+The integration coordinator activated the existing hosted service on 2026-10-12 under the user's autonomous completion request. This was a bounded upgrade using the existing KMS signer, root verifier, S3 staging and SSM transaction; no new stack, signing key, DNS change, billing activation or broader principal permissions were introduced.
 
-## Public capability observation
-
-Read-only, unauthenticated standard `curl` probes on 2026-10-12 at approximately 10:20 UTC observed:
-
-| Public route | Response |
+| Binding | Value |
 | --- | --- |
-| `/healthz` | 200 |
-| `/.well-known/oauth-authorization-server` | 200; PKCE S256, registration and refresh advertised |
-| `/oauth/binding` | 401 |
-| `/memory/v1/commands/<synthetic UUID>?project_id=capability-probe&brain_id=<synthetic UUID>` | 404 |
+| Installed source | `972d3692dc1b8fb9284fb9c68c850b14ae28da65` |
+| Release | `v0.1.14-governed-memory`, sequence 3 |
+| Manifest SHA256 | `cbd7c61ef6529873bec31eb7af151a52dc561c378ee8dc4c3415256945b8fa3a` |
+| Archive SHA256 | `3eb6ded8aaafefd1cd56996d8a4d4eaec6825721bad9ffb86483c3305977b097` |
+| Running executable SHA256 | `f1b6551028a7a89e6012e5e1576e4af028205c76ee6b2d49de821c552a15f402` |
 
-The candidate registers the governed route and returns 401 for an unauthenticated request before interpreting command parameters (`ServeGovernedMemory`). Therefore the public deployment does not currently expose the governed route required by this Zati adapter. A 404 does not identify the running source revision or distinguish an older binary from missing proxy routing. OAuth discovery and binding availability alone do not qualify governed memory.
+The Zati adapter retains qualified source pin `7a5f647a37214c619300b8873974872a5ee30860`. Installed source972d adds only test fixtures and documentation relative to that production implementation; production Go behavior is equivalent. The later four-minute initial-token fixture is test-only and is not present in the production binary.
 
-An initial Python urllib probe was refused by the edge with 403; that response is not evidence about the origin application. No token was submitted, grant created or memory changed by any probe. The last checked-in deployment receipt names source `da5c346b586b82b8a25f2d8f7a2211e6bdbaf573`, release sequence 2; this is historical evidence, not a fresh executable measurement.
+## Independently read activation evidence
 
-## Minimal owner decision
+The activation command completed successfully at 12:17 UTC. The root verifier checked the exact archive, signature, policy, approval and prior-state pin, then prepared and committed sequence3 under the shared release lock. Private readiness and the actual process executable digest were checked before commit. Previous binary, broker configuration and approval remain preserved.
 
-Approve one reviewed incremental activation of this exact candidate on the existing hosted service using its already enrolled owner KMS/root-verifier process. The current implementation request does not grant indiscriminate release signing or production changes. Repository AGENTS instructions supply merge coordination rules, not a blanket deployment grant. Earlier activation plans record separate, task-specific owner authorization.
+Read-only postflight at 12:19 UTC confirmed installed/highest sequence3, the exact manifest and executable above, matching broker source/build metadata, no pending release file, and active hosted service, broker and backup timer. The most recent backup then reported success at 12:00 UTC; that is pre-activation backup evidence, not a claim of a later backup.
 
-A new stack, a new signing key and a public GitHub release are not prerequisites. The previous approved upgrade used immutable S3 staging and a reviewed manual SSM transaction. See [that upgrade procedure](../plans/oauth-release-2026-10-11.md) and [its receipt](../plans/oauth-deployment-receipt-2026-10-11.md). Use the actual existing release policy and current state, not a guessed sequence or copied historical approval.
+The authority update retained previous builds and immutable versions, added the exact new executable/source, and selected version5. The base invocation policy remained unchanged. The exact new-version policy was checked while reserved concurrency was0, then the original concurrency1 was restored. A direct Lambda invocation was explicitly denied.
 
-## Reviewable activation checklist
+## Public capability and acceptance boundaries
 
-1. Freeze and independently review the integrated candidate and the corresponding Zati profile pin. Retain exact source/tree, build/test evidence, Linux ARM64 archive and executable digests. Existing local tests and synthetic managed-lifecycle fixtures do not qualify production activation.
-2. With explicit activation authorization, inspect the existing AWS instance, root release policy/approval/state, authority enrollment and previous executable. Establish exclusive deployment ownership. Confirm current backup health and recoverability before downtime; preserve the existing executable, broker configuration, approval and prior authority versions.
-3. Prepare a new exact manifest and independent approval binding the candidate, current previous-state digest and next allowed release sequence. Use only the existing approved KMS signer and root verifier. Stage immutable artifacts and reviewed activation scripts in the existing deployment system; verify archive, signature, manifest, approval and extracted executable before installation.
-4. Review the narrow authority change set adding the candidate executable/source and immutable configuration version while retaining previous versions. Follow the existing invocation-concurrency pause and exact policy readback procedure. Do not reset data, journal positions, namespaces, trust roots or principal permissions.
-5. Take a fresh backup. Under the existing root release-state lock, reverify, prepare, install the candidate and exact broker build binding, start broker/runtime, verify private readiness and measure the actual running executable, then commit the exact release transaction. Resume and verify the backup timer and a fresh backup.
-6. Check the unauthenticated governed route now returns the candidate's 401 refusal, then perform explicitly authorized account-level acceptance: real OAuth setup, governed remember/recall, read-only reconciliation after restart, revocation, MCP continuity, and Zati's same-grant renewal with stable credential reference. Record startup readiness probes separately from governed command provider calls. No successful customer-memory acceptance is claimed until this is observed.
+At 12:18 UTC, unauthenticated public checks returned200 for health, readiness and OAuth discovery, and401 for both governed memory POST and MCP. Before activation the governed route returned404; the route is now exposed and requires authentication.
+
+These checks do not establish a real user's OAuth consent, customer-memory write/recall, native browser flow or end-to-end Zati acceptance against production. The real-controller acceptance with synthetic account/browser/lifecycle and shortened initial token lifetime remains separately recorded in the [integration receipt](GOVERNED_MEMORY_INTEGRATION_RECEIPT.md).
+
+## Future incremental upgrades
+
+Use the existing reviewed release process: reread current state, preserve previous artifacts and fresh backups, construct the exact next-sequence manifest and approval, verify before quiescing, update only approved build/configuration bindings, and hold the root release lock through prepare, readiness, process measurement and commit. Cryptographic approval is an operational exact-artifact gate; this repository does not impose an additional conversational approval ceremony when activation is already within the user's authorization.
 
 ## Failure and rollback boundary
 

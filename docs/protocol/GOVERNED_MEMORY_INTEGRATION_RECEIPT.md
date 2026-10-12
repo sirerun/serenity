@@ -24,23 +24,15 @@ Active governed statements project into ordinary Serenity memory reads; command 
 
 The fixture exercises real authenticated HTTP service assembly with synthetic lifecycle dependencies. Production CLI startup still requires the managed root broker, signed authority/journal lifecycle and instance identity. The fixture does not qualify those production dependencies, and no bypass was added. Service startup may perform an embedding readiness probe; the governed command path itself does not require a provider request.
 
-## Activation handoff — not executed
+## Hosted activation
 
-The minimal existing-host route and live public capability observation are in [the activation handoff](GOVERNED_MEMORY_ACTIVATION_HANDOFF.md). Public GitHub release publication is optional when using the already enrolled, separately reviewed manual KMS/S3/SSM activation path.
+The integration coordinator deployed source `972d3692dc1b8fb9284fb9c68c850b14ae28da65` as signed sequence3 on 2026-10-12. Production behavior is equivalent to the retained adapter pin `7a5f647a`; subsequent changes before deployment were tests and documentation. Exact release hashes, independently inspected postflight evidence and public checks are recorded in the [activation receipt](GOVERNED_MEMORY_ACTIVATION_HANDOFF.md).
 
-Existing procedure: [hosted deployment](../../deploy/hosted/README.md), [deployment script](../../deploy/hosted/deploy.sh), and [release verification](../operator/release-verification.md). Previous deployment receipts describe historical state only; current production state and release sequence must be read again before activation.
-
-1. Obtain explicit authorization to publish a release and activate the existing hosted service. This candidate has not been pushed, merged, tagged, signed or deployed by the producer lane. Review the integrated Zati adapter pin and protocol contract together.
-2. Reconcile the existing instance, architecture, persistent data mount, backup health, release state and current managed lifecycle enrollment through the established AWS CLI/SSM procedure. Confirm broker configuration, journal authority, instance identity and readiness dependencies. Do not provision a replacement stack merely to deploy this candidate.
-3. Produce the reviewed Linux ARM64 archive and checksum. Use the existing approved signature policy: matching GitHub release-workflow Sigstore identity, or the explicitly enrolled owner KMS manifest policy with its approved manifest, monotonic sequence, signature, root-owned verifier/policy/approval files and locked release state. Signing authority, release publication access and the exact approval packet are prerequisites; this receipt supplies none of them.
-4. Publish matching authenticated release assets, then run the reviewed `deploy/hosted/deploy.sh VERSION ARCHIVE_SHA256 BACKUP_BUCKET final` through the established root SSM path. Preserve existing configuration and enrollment. The script verifies before extraction, prepares the release, selects the binary with its broker units, checks local readiness and commits only after readiness. On an uncommitted activation failure it stops the service/broker and retains state for exact owner recovery.
-5. Verify authenticated memory commands, reconciliation after restart, current-token revocation, ordinary MCP continuity, public health/readiness, backup completion and Zati connection custody against the deployed revision. Record startup provider probes separately from governed operations. Public smoke and integrated runtime acceptance remain separate from the script's local readiness result.
-
-No production reads, production mutations, release signing, provider spending or deployment were performed while preparing this receipt. Runtime identities, resource names, credentials and machine-local paths are intentionally excluded.
+The existing managed broker/authority and root-verifier transaction were used successfully, with prior builds preserved and no IAM widening or new infrastructure. Public governed memory now refuses unauthenticated requests with401. Real account consent and customer-memory acceptance against production remain unverified; synthetic fixture qualification is not upgraded into that claim.
 
 ## Controller renewal fixture follow-up
 
-Producer fixture revision `2f659651` passed the full race suite with the private recovery directory settings above. Its production code remains equivalent to adapter pin `7a5f647a`; no adapter re-pin or hosted deployment occurred.
+Producer fixture revision `2f659651` passed the full race suite with the private recovery directory settings above. Its production code remains equivalent to adapter pin `7a5f647a`; no adapter re-pin was needed. Hosted activation occurred subsequently as recorded above.
 
 An explicitly gated test-only wrapper shortens the first authorization-code access token to four minutes in both its persisted token record and response. It preserves the original request body for the real OAuth handler. Refresh tokens still produce the normal one-hour access lifetime. This synthetic lifetime permits immediate renewal qualification without changing clocks or production configuration.
 
