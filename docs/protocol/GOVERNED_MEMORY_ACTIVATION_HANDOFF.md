@@ -16,7 +16,7 @@ The Zati adapter retains qualified source pin `7a5f647a37214c619300b8873974872a5
 
 The activation command completed successfully at 12:17 UTC. The root verifier checked the exact archive, signature, policy, approval and prior-state pin, then prepared and committed sequence3 under the shared release lock. Private readiness and the actual process executable digest were checked before commit. Previous binary, broker configuration and approval remain preserved.
 
-Read-only postflight at 12:19 UTC confirmed installed/highest sequence3, the exact manifest and executable above, matching broker source/build metadata, no pending release file, and active hosted service, broker and backup timer. The most recent backup then reported success at 12:00 UTC; that is pre-activation backup evidence, not a claim of a later backup.
+Read-only postflight at 12:19 UTC confirmed installed/highest sequence3, the exact manifest and executable above, matching broker source/build metadata, no pending release file, and active hosted service, broker and backup timer. The most recent backup at that checkpoint reported success at 12:00 UTC. A later read-only check confirmed the first scheduled post-activation backup succeeded at 13:01:21 UTC (exit status0), with the same running executable and service processes, active broker and timer, installed/highest sequence3 and no pending transaction. This is backup completion evidence, not restore qualification.
 
 The authority update retained previous builds and immutable versions, added the exact new executable/source, and selected version5. The base invocation policy remained unchanged. The exact new-version policy was checked while reserved concurrency was0, then the original concurrency1 was restored. A direct Lambda invocation was explicitly denied.
 
@@ -35,3 +35,7 @@ Use the existing reviewed release process: reread current state, preserve previo
 Before release preparation, leave the installed candidate unchanged on failure; reconcile any authority routing/concurrency edits against the reviewed prior configuration before restarting. After preparation, retain the pending release marker and artifacts, stop uncommitted runtime/broker activation, and use only exact root-verifier recovery for the pinned manifest. Never erase pending state, lower sequence state or improvise an older binary restart.
 
 Preserving an older binary/configuration is not proof of compatible rollback. A rollback requires an explicitly approved compatible binary, authority/configuration and data-state assessment, followed by the verifier's permitted monotonic recovery procedure. This candidate's tests do not establish a full production rollback campaign.
+
+## Installed-service lifetime
+
+The manifest and approval expiration at 15:55 UTC bounds release verification and installation. Only the separate release-authenticator command reads those windows. Hosted and broker startup use their managed configuration, and authority leases renew against the approved executable/source mapping. The installed service does not stop or lose restart eligibility when that release admission window expires.
