@@ -25,6 +25,9 @@ func GovernedMemory(ctx context.Context, q *Queue, s *store.SourceStore, root st
 			if old.RequestDigest != rec.RequestDigest {
 				return nil, fmt.Errorf("governed command conflict")
 			}
+			sha := projection.SourceIDs[rec.Response.CommandID]
+			q.MarkTouched(filepath.Join(s.DirFor(sha), "bytes"))
+			q.MarkTouched(filepath.Join(s.DirFor(sha), "meta.yaml"))
 			return nil, nil
 		}
 		if projection.BrainID != "" && projection.BrainID != rec.Response.BrainID {

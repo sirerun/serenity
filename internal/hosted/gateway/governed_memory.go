@@ -18,6 +18,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/sirerun/serenity/internal/gitrun"
 	"github.com/sirerun/serenity/internal/hosted/meter"
 	brainstore "github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
@@ -202,6 +203,18 @@ func (g *Gateway) ServeGovernedMemory(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		response := newGovernedResponse(req)
+		published, err := governedPublished(r.Context(), sources.Root, projection)
+		if err != nil {
+			governedFailure(w, 503, "canonical_unavailable")
+			return
+		}
+		if !published {
+			response.Status = "unknown"
+			response.LookupAuthoritative = false
+			completeGovernedResponse(&response, projection, time.Now().UTC())
+			governedJSON(w, response)
+			return
+		}
 		if rec, ok := projection.Commands[a.CommandID]; ok {
 			response = rec.Response
 		} else {
@@ -247,6 +260,24 @@ func (g *Gateway) ServeGovernedMemory(w http.ResponseWriter, r *http.Request) {
 			governedFailure(w, 409, "operation_conflict")
 			return
 		}
+		published, err := governedPublished(r.Context(), runtime.Root, projection)
+		if err != nil {
+			governedFailure(w, 503, "canonical_unavailable")
+			return
+		}
+		if !published {
+			// An explicit same-command POST may finish publication of the exact
+			// already persisted receipt; status GET never writes or retries it.
+			if err = writer.GovernedMemory(r.Context(), runtime.Queue, runtime.Sources, runtime.Root, old); err != nil {
+				governedFailure(w, 503, "outcome_unknown")
+				return
+			}
+			published, err = governedPublished(r.Context(), runtime.Root, projection)
+			if err != nil || !published {
+				governedFailure(w, 503, "outcome_unknown")
+				return
+			}
+		}
 		response := old.Response
 		completeGovernedResponse(&response, projection, time.Now().UTC())
 		governedJSON(w, response)
@@ -259,6 +290,11 @@ func (g *Gateway) ServeGovernedMemory(w http.ResponseWriter, r *http.Request) {
 		response.LookupAuthoritative = false
 		completeGovernedResponse(&response, projection, time.Now().UTC())
 		governedJSON(w, response)
+		return
+	}
+	published, e := governedPublished(r.Context(), runtime.Root, projection)
+	if e != nil || !published {
+		governedFailure(w, 503, "publication_pending")
 		return
 	}
 	response := newGovernedResponse(req)
@@ -342,17 +378,29 @@ func (g *Gateway) ServeGovernedMemory(w http.ResponseWriter, r *http.Request) {
 	if a.Kind == "remember" {
 		metric, limit = "writes", entitlement.Plan.Writes
 	}
-	if a.Kind == "remember" {
-		inventory, e := g.inventory(r.Context(), binding.AccountID, filepath.Dir(runtime.Root))
-		if e != nil {
-			governedFailure(w, 503, "inventory_unavailable")
-			return
-		}
-		if inventory.Memories >= max(entitlement.Plan.Memories, account.Plan.Memories) || inventory.StorageBytes+int64(len(canonical))*4 >= max(entitlement.Plan.StorageBytes, account.Plan.StorageBytes) {
-			governedFailure(w, 429, "limit_exceeded")
-			return
-		}
+
+	inventory, e := g.inventory(r.Context(), binding.AccountID, filepath.Dir(runtime.Root))
+	if e != nil {
+		governedFailure(w, 503, "inventory_unavailable")
+		return
 	}
+	responseBytes, e := json.Marshal(response)
+	if e != nil {
+		governedFailure(w, 503, "unavailable")
+		return
+	}
+	// Every admitted command persists its receipt, including reads. Bound the
+	// request, response, source metadata and Git publication overhead together.
+	growth := int64(len(canonical)+len(responseBytes))*4 + 4096
+	if inventory.StorageBytes+growth >= max(entitlement.Plan.StorageBytes, account.Plan.StorageBytes) {
+		governedFailure(w, 429, "limit_exceeded")
+		return
+	}
+	if a.Kind == "remember" && inventory.Memories >= max(entitlement.Plan.Memories, account.Plan.Memories) {
+		governedFailure(w, 429, "limit_exceeded")
+		return
+	}
+
 	var reservation meter.Reservation
 	if a.Kind != "retract" {
 		reservation, e = g.Meter.Reserve(r.Context(), binding.AccountID, metric, 1, limit, entitlement.Window, entitlement.ResetAt, "governed:"+binding.BrainID+":"+a.CommandID)
@@ -448,4 +496,27 @@ func validateGovernedAction(a governedAction) error {
 		}
 	}
 	return nil
+}
+
+// governedPublished proves the canonical command sources are included in HEAD.
+// A source fsync followed by a failed Git publication remains unknown on GET.
+func governedPublished(ctx context.Context, root string, p *brainstore.GovernedProjection) (bool, error) {
+	if len(p.SourceIDs) == 0 {
+		return true, nil
+	}
+	out, err := gitrun.CanonicalReadOnly(root).Output(ctx, "ls-tree", "-r", "--name-only", "HEAD", "--", "brain/sources")
+	if err != nil {
+		return false, err
+	}
+	paths := map[string]bool{}
+	for _, name := range strings.Split(string(out), "\n") {
+		paths[name] = true
+	}
+	for _, sha := range p.SourceIDs {
+		base := "brain/sources/" + sha[:2] + "/" + sha + "/"
+		if !paths[base+"bytes"] || !paths[base+"meta.yaml"] {
+			return false, nil
+		}
+	}
+	return true, nil
 }

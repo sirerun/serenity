@@ -41,6 +41,9 @@ func (h *Handlers) retractGoverned(ctx context.Context, args json.RawMessage) (a
 		if old.RequestDigest != digest {
 			return RememberOperationConflict(), true, nil
 		}
+		if err := writer.GovernedMemory(ctx, h.deps.Queue, h.deps.Sources, h.deps.Root, old); err != nil {
+			return nil, false, err
+		}
 		return old.Response, false, nil
 	}
 	c, ok := p.Claims[req.ClaimID]

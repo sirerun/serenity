@@ -342,9 +342,16 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 	var input struct {
 		Fact         string `json:"fact"`
 		OperationKey string `json:"operation_key"`
+		CommandID    string `json:"adapter_command_id"`
 	}
 	if err = json.Unmarshal(args, &input); err != nil {
 		return failure("invalid_params", time.Time{}), nil
+	}
+	if name == "retract_governed_memory" {
+		if !brainstore.ValidGovernedUUID(input.CommandID) {
+			return failure("invalid_params", time.Time{}), nil
+		}
+		input.OperationKey = input.CommandID
 	}
 	if name == "remember" && !brainstore.ValidMemoryOperationKey(input.OperationKey) {
 		return failure("invalid_params", time.Time{}), nil
@@ -359,7 +366,11 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 	if _, checkErr := g.Issuer.Store.BrainByID(ctx, binding.AccountID, binding.BrainID); checkErr != nil {
 		return failure("scope_denied", time.Time{}), nil
 	}
-	runtime, release, err := g.Pool.Acquire(ctx, binding.BrainID)
+	acquire := g.Pool.Acquire
+	if name == "retract_governed_memory" {
+		acquire = g.Pool.AcquireCanonical
+	}
+	runtime, release, err := acquire(ctx, binding.BrainID)
 	if err != nil {
 		return failure("capacity", time.Time{}), nil
 	}
@@ -368,8 +379,27 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 		runtime.Mutations.Lock()
 		defer runtime.Mutations.Unlock()
 	}
+	if name == "retract_governed_memory" {
+		projection, e := brainstore.LoadGovernedMemory(runtime.Sources)
+		if e != nil {
+			return result, e
+		}
+		if _, replay := projection.Commands[input.CommandID]; !replay {
+			entitlement, account, e := g.Meter.Subject(ctx, binding.AccountID, binding.PartnerID)
+			if e != nil {
+				return result, e
+			}
+			inv, e := g.inventory(ctx, binding.AccountID, filepath.Dir(runtime.Root))
+			if e != nil {
+				return result, e
+			}
+			if inv.StorageBytes+1<<20 >= max(entitlement.Plan.StorageBytes, account.Plan.StorageBytes) {
+				return failure("limit_exceeded", time.Time{}), nil
+			}
+		}
+	}
 	var reservation meter.Reservation
-	metered := name == "recall" || name == "read_memory_fact" || (name == "remember" && g.Operations == nil)
+	metered := name == "retract_governed_memory" || name == "recall" || name == "read_memory_fact" || (name == "remember" && g.Operations == nil)
 	if metered {
 		// The subject's window encodes its bucket, so account and partner
 		// usage never share a counter even though both rows belong to the
@@ -379,7 +409,7 @@ func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, nam
 			return result, e
 		}
 		metric, limit := "recalls", entitlement.Plan.Recalls
-		if name == "remember" {
+		if name == "remember" || name == "retract_governed_memory" {
 			metric, limit = "writes", entitlement.Plan.Writes
 		}
 		reservation, e = g.Meter.Reserve(ctx, binding.AccountID, metric, 1, limit, entitlement.Window, entitlement.ResetAt, operationKey(binding.BrainID, name, input.OperationKey))

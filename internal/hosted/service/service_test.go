@@ -160,7 +160,7 @@ func TestHostedJourneyAndIsolation(t *testing.T) {
 	if e := json.Unmarshal(body, &listed); e != nil {
 		t.Fatal(e)
 	}
-	if len(listed.Result.Tools) != 4 {
+	if len(listed.Result.Tools) != 5 {
 		t.Fatalf("tools: %s", body)
 	}
 	call(tokenA, sessionA, "remember", map[string]any{"fact": "My launch codeword is silver otter", "provenance": "hosted integration test", "operation_key": "first-memory"})

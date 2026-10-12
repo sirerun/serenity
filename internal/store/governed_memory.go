@@ -67,6 +67,7 @@ type GovernedRecord struct {
 	Request json.RawMessage `json:"request"`
 }
 type GovernedProjection struct {
+	SourceIDs   map[string]string
 	WriterOwner string
 	Origins     map[string]string
 	LegacyIDs   map[string]int64
@@ -106,7 +107,7 @@ func ValidGovernedDigest(s string) bool {
 // identity and latest claim versions. An absent command remains unknown, never
 // proof that a timed-out request was not admitted.
 func LoadGovernedMemory(s *SourceStore) (*GovernedProjection, error) {
-	p := &GovernedProjection{Commands: map[string]GovernedRecord{}, Claims: map[string]GovernedClaim{}, Origins: map[string]string{}, LegacyIDs: map[string]int64{}}
+	p := &GovernedProjection{Commands: map[string]GovernedRecord{}, Claims: map[string]GovernedClaim{}, Origins: map[string]string{}, SourceIDs: map[string]string{}, LegacyIDs: map[string]int64{}}
 	entries, err := s.All()
 	if err != nil {
 		return nil, err
@@ -140,6 +141,7 @@ func LoadGovernedMemory(s *SourceStore) (*GovernedProjection, error) {
 			return nil, fmt.Errorf("duplicate governed command identity")
 		}
 		p.Commands[r.CommandID] = rec
+		p.SourceIDs[r.CommandID] = meta.SHA256
 		if r.WriterOwner != "" {
 			if p.WriterOwner != "" && p.WriterOwner != r.WriterOwner {
 				return nil, fmt.Errorf("conflicting governed writer owner")
@@ -149,6 +151,9 @@ func LoadGovernedMemory(s *SourceStore) (*GovernedProjection, error) {
 
 		if r.Kind == "remember" && len(r.Claims) == 1 {
 			c := r.Claims[0]
+			if !ValidGovernedUUID(c.ID) {
+				return nil, fmt.Errorf("invalid governed claim identity")
+			}
 			legacy, err := strconv.ParseInt(strings.ReplaceAll(c.ID, "-", "")[:13], 16, 64)
 			if err != nil {
 				return nil, err
