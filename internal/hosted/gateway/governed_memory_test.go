@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/sirerun/serenity/internal/gitrun"
-	"github.com/sirerun/serenity/internal/hosted/pool"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,6 +13,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/sirerun/serenity/internal/gitrun"
+	"github.com/sirerun/serenity/internal/hosted/pool"
 
 	"github.com/sirerun/serenity/internal/hosted/meter"
 	brainstore "github.com/sirerun/serenity/internal/store"
@@ -206,7 +207,11 @@ func TestGovernedColdStartAndReadOnlyRestartStatus(t *testing.T) {
 	}
 	p = newPool()
 	g.Pool = p
-	defer p.Close()
+	defer func() {
+		if err := p.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	before, err := brainstore.NewSourceStore(brainRoot).All()
 	if err != nil {
 		t.Fatal(err)
@@ -374,7 +379,7 @@ func TestGovernedStatusSerializesWithMCPRetraction(t *testing.T) {
 				return
 			}
 			c := response.Claims[0]
-			if !(c.Version == 1 && c.Active || c.Version == 2 && !c.Active) {
+			if (c.Version != 1 || !c.Active) && (c.Version != 2 || c.Active) {
 				errs <- "inconsistent snapshot"
 			}
 		}()
@@ -446,5 +451,88 @@ func TestGovernedUnpublishedReceiptRemainsUnknownUntilExplicitReplay(t *testing.
 	}
 	if got := status(); got.Status != "completed" || !got.LookupAuthoritative {
 		t.Fatalf("publication not recovered: %+v", got)
+	}
+}
+
+func TestGovernedFullQuotaAllowsOneRetractionOnly(t *testing.T) {
+	ctx := context.Background()
+	g, _, s, accountID, brainID, root := newLifecycleExportFixture(t)
+	g.Meter = &meter.Meter{Store: s}
+	token, err := g.Issuer.Issue(ctx, brainID, accountID, []string{"memory:read", "memory:write"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := governedTestAction("remember", "00000000-0000-4000-8000-000000000071")
+	a.WriterOwner = accountID
+	a.Text = "removable even at quota"
+	req := governedRequest{Schema: brainstore.GovernedMemorySchema, ProjectID: brainID, Action: a}
+	code, res, body := governedTestCall(t, g, token, req)
+	if code != 200 {
+		t.Fatalf("write %d %s", code, body)
+	}
+	limits, _, err := g.Meter.Subject(ctx, accountID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Create(filepath.Join(root, "quota-fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = file.Truncate(limits.Plan.StorageBytes); err != nil {
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	a = governedTestAction("retract", "00000000-0000-4000-8000-000000000072")
+	a.WriterOwner = accountID
+	a.Claim = &governedRef{ID: res.Claims[0].ID, Version: 1}
+	a.Reason = "remove"
+	a.Removal = "active_recall"
+	req.Action = a
+	code, res, body = governedTestCall(t, g, token, req)
+	if code != 200 || res.Claims[0].Active {
+		t.Fatalf("quota blocked retraction %d %s", code, body)
+	}
+	if code, _, body := governedTestCall(t, g, token, req); code != 200 {
+		t.Fatalf("original replay %d %s", code, body)
+	}
+	req.Action.CommandID = "00000000-0000-4000-8000-000000000073"
+	req.Action.Claim.Version = 2
+	if code, _, body := governedTestCall(t, g, token, req); code != 409 {
+		t.Fatalf("inactive tombstone amplification %d %s", code, body)
+	}
+	args, _ := json.Marshal(map[string]any{"adapter_command_id": "00000000-0000-4000-8000-000000000074", "claim_id": res.Claims[0].ID, "version": 2, "reason": "amplify"})
+	result, err := g.CallForAccount(ctx, accountID, brainID, "retract_governed_memory", args)
+	if err != nil || !result.IsError {
+		t.Fatalf("MCP inactive tombstone amplification %v %+v", err, result)
+	}
+	projection, err := brainstore.LoadGovernedMemory(brainstore.NewSourceStore(root))
+	if err != nil || len(projection.Commands) != 2 {
+		t.Fatalf("extra tombstones persisted %v", err)
+	}
+}
+
+func TestGovernedZeroFreshnessMeansNoFloor(t *testing.T) {
+	ctx := context.Background()
+	g, _, s, accountID, brainID, _ := newLifecycleExportFixture(t)
+	g.Meter = &meter.Meter{Store: s}
+	token, err := g.Issuer.Issue(ctx, brainID, accountID, []string{"memory:read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := governedTestAction("recall", "00000000-0000-4000-8000-000000000081")
+	a.Query = "*"
+	a.MaxClaims = 10
+	a.Classification = "internal"
+	req := governedRequest{Schema: brainstore.GovernedMemorySchema, ProjectID: brainID, Action: a}
+	if code, _, body := governedTestCall(t, g, token, req); code != 200 {
+		t.Fatalf("zero freshness refused %d %s", code, body)
+	}
+	for _, raw := range []string{`{"kind":"recall"}`, `{"kind":"recall","minimum_freshness":null}`} {
+		var action governedAction
+		if err := json.Unmarshal([]byte(raw), &action); err == nil {
+			t.Fatal("missing/null freshness accepted")
+		}
 	}
 }

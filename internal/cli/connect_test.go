@@ -267,7 +267,7 @@ func TestConnectClaudeInstall(t *testing.T) {
 	for _, item := range list {
 		names[item.(map[string]any)["name"].(string)] = true
 	}
-	if !reflect.DeepEqual(names, map[string]bool{"recall": true, "remember": true, "entity": true, "synthesize": true, "forget": true, "cancel_memory_operation": true, "read_memory_fact": true}) || len(list) != 7 {
+	if !reflect.DeepEqual(names, map[string]bool{"recall": true, "remember": true, "entity": true, "synthesize": true, "forget": true, "cancel_memory_operation": true, "read_memory_fact": true, "retract_governed_memory": true}) || len(list) != 8 {
 		t.Fatal("wrong registered memory tools", list)
 	}
 	result := frames["entity"]["result"].(map[string]any)

@@ -5,11 +5,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/sirerun/serenity/internal/domain"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sirerun/serenity/internal/domain"
 )
 
 // GovernedMemoryKind contains immutable attributed statements and their command
@@ -89,7 +90,7 @@ func ValidGovernedUUID(s string) bool {
 			}
 			continue
 		}
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}

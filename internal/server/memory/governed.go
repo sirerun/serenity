@@ -60,6 +60,9 @@ func (h *Handlers) retractGoverned(ctx context.Context, args json.RawMessage) (a
 			break
 		}
 	}
+	if !c.Active {
+		return verbError(ErrCodeOperationConflict, "Claim is already inactive", "Replay the original command to recover its result; no new tombstone is needed"), true, nil
+	}
 	if c.Active {
 		c.Active = false
 		c.Version++
