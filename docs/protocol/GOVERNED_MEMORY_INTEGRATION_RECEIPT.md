@@ -41,3 +41,24 @@ The independent assembled acceptance at Zati `bb9459f` against producer `2f65965
 ## Scheduled backup follow-up
 
 Read-only production status confirmed the first scheduled post-activation backup completed successfully at 2026-10-12 13:01:21 UTC, with exit status0. Hosted service, broker and backup timer remained active; the running executable digest was unchanged, sequence3 remained installed and no release transaction was pending. This does not qualify a production restore. The release manifest's 15:55 UTC expiration limits installation admission, not ongoing service operation or normal broker-authorized restart.
+
+## Quota settlement recovery follow-up
+
+Source implementation: `11723e3d` (not deployed by this follow-up).
+Governed reservations now survive ordinary lease expiry and released-row cleanup.
+A publication error retains the original reservation. Exact command replay first
+establishes publication, then settles that original admission and original quota
+window before returning completion. Settlement is transactional and idempotent,
+including a legacy released reservation. Missing or ambiguous admission fails
+closed; recovery does not invent a reservation or require fresh quota admission.
+Read-only status never settles usage and reports an unsettled command as unknown.
+
+Focused verification passed: `go test ./internal/hosted/meter
+./internal/hosted/gateway -count=1`, the same packages with `-race`,
+`go vet`, and `golangci-lint run` (zero issues). Tests cover an actual Git
+publication failure after durable receipt creation, an injected settlement
+failure after publication, exact replay without duplicate charge or claim,
+wrong-payload refusal, read-only unsettled status, database restart, 48-hour
+expiry/cleanup, legacy released admission, current quota denial, and missing
+admission refusal. These are local synthetic failure-window checks, not a
+production deployment or billing reconciliation of historical deleted rows.
