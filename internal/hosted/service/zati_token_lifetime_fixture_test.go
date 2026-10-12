@@ -1,11 +1,14 @@
 package service_test
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"time"
 
 	"github.com/ajent-social/go/mcpoauth"
@@ -21,11 +24,18 @@ func shortInitialOAuthTokenFixture(next http.Handler, db *store.Store) http.Hand
 			next.ServeHTTP(w, r)
 			return
 		}
-		if err := r.ParseForm(); err != nil {
+		requestBody, err := io.ReadAll(io.LimitReader(r.Body, 65537))
+		if err != nil || len(requestBody) > 65536 {
 			http.Error(w, "invalid fixture token request", 400)
 			return
 		}
-		if r.PostForm.Get("grant_type") != "authorization_code" {
+		r.Body = io.NopCloser(bytes.NewReader(requestBody))
+		form, err := url.ParseQuery(string(requestBody))
+		if err != nil {
+			http.Error(w, "invalid fixture token form", 400)
+			return
+		}
+		if form.Get("grant_type") != "authorization_code" {
 			next.ServeHTTP(w, r)
 			return
 		}
