@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/plans"
@@ -161,24 +162,39 @@ type Reservation struct {
 }
 
 func (m *Meter) Reserve(ctx context.Context, accountID, metric string, amount, limit int64, window string, reset time.Time, operationKey string) (r Reservation, err error) {
+	return m.reserve(ctx, accountID, metric, amount, limit, window, reset, operationKey, false)
+}
+
+// ReserveDurable retains an admitted governed operation until explicit settlement.
+// Its operation identity survives lease expiry and ordinary released-row cleanup.
+func (m *Meter) ReserveDurable(ctx context.Context, accountID, metric string, amount, limit int64, window string, reset time.Time, operationKey string) (Reservation, error) {
+	if !strings.HasPrefix(operationKey, "governed:") {
+		return Reservation{}, errors.New("invalid durable operation key")
+	}
+	return m.reserve(ctx, accountID, metric, amount, limit, window, reset, operationKey, true)
+}
+func (m *Meter) reserve(ctx context.Context, accountID, metric string, amount, limit int64, window string, reset time.Time, operationKey string, durable bool) (r Reservation, err error) {
 	if amount < 0 || limit < 0 {
 		return r, errors.New("invalid reservation amount")
 	}
 	now := m.now()
 	err = m.Store.Transaction(ctx, func(tx *sql.Tx) error {
-		_, e := tx.ExecContext(ctx, `UPDATE reservations SET status='released' WHERE status='open' AND lease_expires_at<=?`, store.Stamp(now))
+		_, e := tx.ExecContext(ctx, `UPDATE reservations SET status='released' WHERE status='open' AND lease_expires_at<=? AND (operation_key IS NULL OR operation_key NOT LIKE 'governed:%')`, store.Stamp(now))
 		if e != nil {
 			return e
 		}
-		if _, e = tx.ExecContext(ctx, `DELETE FROM reservations WHERE status='released' AND created_at<?`, store.Stamp(now.Add(-24*time.Hour))); e != nil {
+		if _, e = tx.ExecContext(ctx, `DELETE FROM reservations WHERE status='released' AND created_at<? AND (operation_key IS NULL OR operation_key NOT LIKE 'governed:%')`, store.Stamp(now.Add(-24*time.Hour))); e != nil {
 			return e
 		}
 		if operationKey != "" {
 			var status string
-			e = tx.QueryRowContext(ctx, `SELECT id,status FROM reservations WHERE account_id=? AND metric=? AND operation_key=? AND status!='released' ORDER BY created_at LIMIT 1`, accountID, metric, operationKey).Scan(&r.ID, &status)
+			e = tx.QueryRowContext(ctx, `SELECT id,status FROM reservations WHERE account_id=? AND metric=? AND operation_key=? AND (status!='released' OR ?) ORDER BY created_at LIMIT 1`, accountID, metric, operationKey, durable).Scan(&r.ID, &status)
 			if e == nil {
 				if status == "committed" {
 					r.Replay = true
+					return nil
+				}
+				if durable && status == "open" {
 					return nil
 				}
 				return ErrInProgress
