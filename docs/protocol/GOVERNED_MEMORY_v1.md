@@ -25,7 +25,10 @@ GET `/memory/v1/commands/COMMAND_UUID?project_id=HOSTED_PROJECT&brain_id=LOCAL_U
 recovers a stored command under current read authority. It does not open a
 runtime, flush, call a model, or repeat a mutation. Missing commands return
 `unknown` and `lookup_authoritative:false`; absence is not proof of nonadmission.
-A repeated POST compares normalized request bytes and conflicts on changed
+An unpublished source receipt remains unknown until its exact source files are
+proven in the canonical Git HEAD. An explicit identical POST can finish that
+publication; a status GET never does so. A repeated POST compares normalized
+request bytes and conflicts on changed
 input. Completed commands retain their original producer-minted claim identity.
 
 ## Evidence
@@ -73,3 +76,16 @@ Promotion and immutable revision export actions are not implemented by this
 protocol and remain explicitly unsupported. Existing account export continues
 to include canonical source history. A production deployment, native Zati
 connection flow and live OAuth acceptance are separate qualification gates.
+
+### Legacy visibility mapping
+
+Legacy `world` means readable by agent clients of the same authenticated brain;
+it grants no public, cross-account or cross-project access. Governed statements
+use this mapping so authorized Serenity clients see the same saved facts.
+The existing remember action has no per-fact classification field; caller
+artifact references are preserved, not fetched. Recall's classification labels
+the query supplied by Zati, and does not widen the credential's brain scope.
+Canonical command envelopes (including queries and receipt metadata) are excluded
+from generic chunk extraction; only the projected statement text is eligible
+for normal MEMORY_VERBS search. All newly persisted command kinds count against
+storage bounds, including recall and inspect.

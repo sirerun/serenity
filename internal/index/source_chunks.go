@@ -52,7 +52,7 @@ func sourceChunkAuthority(root string, proj *store.MemoryProjection, restricted 
 		if !loaded {
 			expected = make(map[string]Hit)
 			data, src, err := ss.Read(hit.SourceSHA256)
-			if err == nil && utf8.Valid(data) {
+			if err == nil && src.Kind != store.GovernedMemoryKind && utf8.Valid(data) {
 				for _, part := range chunk.Split(string(data), chunk.DefaultConfig) {
 					ref := fmt.Sprintf("src:%s:%d-%d", src.SHA256, part.Span.Start, part.Span.End)
 					expected[ref] = Hit{ChunkRef: ref, Text: part.Text, SourceSHA256: src.SHA256, Kind: src.Kind}
