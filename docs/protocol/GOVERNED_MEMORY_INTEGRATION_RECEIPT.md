@@ -2,8 +2,10 @@
 
 ## Source and evidence
 
-Production candidate and acceptance-fixture source: `7773ed132d155638316925f72b79f7db39f0abed`.
+Original qualified production candidate and acceptance-fixture source: `7773ed132d155638316925f72b79f7db39f0abed`.
 The final commit adds only the opt-in hosted process fixture; production code is unchanged from `b1ef2fa195e2e25e268972e72c953aefc723e918`.
+Final qualified source and Zati adapter pin: `7a5f647a37214c619300b8873974872a5ee30860`. It adds the official-issuer fixture and documentation, with no production code change. The full `go test -race -p 1 ./...` suite passed again at this exact revision using the private fixture directory settings below; the hosted service package reran in 22.700 seconds. The earlier lint and build results below retain their original revisions.
+
 This receipt is a documentation-only follow-up, not a new production protocol revision.
 
 On Linux ARM64, with Go from the task toolchain, `GOMAXPROCS=2`, an isolated Go cache, and a private fixture directory:
