@@ -69,7 +69,14 @@ func TestZatiHostedAssemblyProcess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fixture assembly failed: %v", err)
 	}
-	server := &http.Server{Addr: cfg.Bind, Handler: svc.Handler, ReadHeaderTimeout: 5 * time.Second}
+	handler := svc.Handler
+	if os.Getenv("SERENITY_OAUTH_SHORT_INITIAL_TOKEN_FIXTURE") == "1" {
+		if development {
+			t.Fatal("short initial token fixture requires official issuer fixture")
+		}
+		handler = shortInitialOAuthTokenFixture(handler, svc.Store)
+	}
+	server := &http.Server{Addr: cfg.Bind, Handler: handler, ReadHeaderTimeout: 5 * time.Second}
 	done := make(chan error, 1)
 	go func() { done <- server.ListenAndServe() }()
 	select {
