@@ -42,7 +42,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: go build -o "$RUNNER_TEMP/serenity" ./cmd/serenity
+      - run: go test -c -o "$RUNNER_TEMP/serenity-signup-fixture" ./internal/hosted/service
       - run: npm ci --ignore-scripts
       - run: npx playwright install --with-deps chromium
       - name: Real-browser OAuth handoff regression
@@ -51,7 +51,7 @@ jobs:
           SERENITY_PLAYWRIGHT: ${{ github.workspace }}/node_modules/playwright
       - run: npm run test:hosted
         env:
-          SERENITY_TEST_BINARY: ${{ runner.temp }}/serenity
+          SERENITY_SIGNUP_FIXTURE_BINARY: ${{ runner.temp }}/serenity-signup-fixture
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         if: always()
         with:
