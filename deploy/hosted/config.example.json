@@ -10,5 +10,7 @@
   "max_in_flight": 16,
   "account_cap": 100,
   "billing_enabled": false,
+  "workos_enabled": false,
+  "workos_client_id": "",
   "embedding_base_url": "https://openrouter.ai/api/v1"
 }
