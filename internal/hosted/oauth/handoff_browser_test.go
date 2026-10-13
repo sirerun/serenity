@@ -3,10 +3,6 @@ package oauth
 import (
 	"crypto/sha256"
 	"encoding/base64"
-	"github.com/ajent-social/go/mcpoauth"
-	"github.com/sirerun/serenity/internal/hosted/identity"
-	"github.com/sirerun/serenity/internal/hosted/provision"
-	"github.com/sirerun/serenity/internal/hosted/store"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,6 +12,11 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/ajent-social/go/mcpoauth"
+	"github.com/sirerun/serenity/internal/hosted/identity"
+	"github.com/sirerun/serenity/internal/hosted/provision"
+	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
 func TestChromeConsentHandoff(t *testing.T) {
