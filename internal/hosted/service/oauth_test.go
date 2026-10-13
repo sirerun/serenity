@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"html"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -149,11 +150,31 @@ func testOAuthBrowserConsentMCPAndRevocation(t *testing.T, callback string) {
 		t.Fatal("foreign brain accepted")
 	}
 	r = post("/oauth/consent", consent, noRedirect)
-	read(r)
-	if r.StatusCode != 303 {
+	body = read(r)
+	if r.StatusCode != http.StatusOK {
 		t.Fatalf("approval status %d", r.StatusCode)
 	}
-	target, _ := url.Parse(r.Header.Get("Location"))
+	if r.Header.Get("Location") != "" || r.Header.Get("Cache-Control") != "no-store" || r.Header.Get("Referrer-Policy") != "no-referrer" {
+		t.Fatal("approval did not commit a private continuation document")
+	}
+	if !strings.Contains(r.Header.Get("Content-Security-Policy"), "form-action 'none'") {
+		t.Fatal("continuation allows form submissions")
+	}
+	// Follow the rendered, HTML-escaped continuation target rather than an
+	// HTTP redirect. Chromium coverage exercises the actual navigation chain.
+	targetURL := html.UnescapeString(extract(body, `<a href="([^"]+)" rel="noreferrer">`))
+	refreshURL := html.UnescapeString(extract(body, `<meta http-equiv="refresh" content="0;url=([^"]+)">`))
+	if targetURL != refreshURL {
+		t.Fatal("automatic and manual continuation destinations differ")
+	}
+	target, err := url.Parse(targetURL)
+	if err != nil {
+		t.Fatal("invalid continuation destination")
+	}
+	callbackURL, err := url.Parse(callback)
+	if err != nil || target.Scheme != callbackURL.Scheme || target.Host != callbackURL.Host || target.Path != callbackURL.Path || target.User != nil || target.Fragment != callbackURL.Fragment {
+		t.Fatal("continuation left the registered callback")
+	}
 	code := target.Query().Get("code")
 	replayResponse := post("/oauth/consent", consent, noRedirect)
 	replayBody := read(replayResponse)
