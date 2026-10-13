@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ajent-social/go/mcpoauth"
+	"github.com/sirerun/serenity/internal/hosted/browserflow"
 	"github.com/sirerun/serenity/internal/hosted/credential"
 	"github.com/sirerun/serenity/internal/hosted/identity"
 	"github.com/sirerun/serenity/internal/hosted/provision"
@@ -127,8 +128,7 @@ func (h *Hosted) consent(w http.ResponseWriter, r *http.Request, handle string, 
 		http.Error(w, "Memory unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	// Chromium applies form-action to redirects after form submission too.
-	// Permit only the callback origin of this immutable authorization request.
+	// Display the callback from the immutable authorization request.
 	record, err := h.Store.Consent(r.Context(), store.Hash(handle))
 	if err != nil {
 		http.Error(w, "Connection request expired", 400)
@@ -139,7 +139,6 @@ func (h *Hosted) consent(w http.ResponseWriter, r *http.Request, handle string, 
 		http.Error(w, "Invalid callback destination", 400)
 		return
 	}
-	w.Header().Set("Content-Security-Policy", strings.Replace(w.Header().Get("Content-Security-Policy"), "form-action 'self'", "form-action 'self' "+callback.Scheme+"://"+callback.Host, 1))
 	metadataHost := ""
 	if validClientMetadataURL(request.ClientID) {
 		metadataURL, _ := url.Parse(request.ClientID)
@@ -182,7 +181,7 @@ func (h *Hosted) approve(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Connection request expired", 400)
 			return
 		}
-		http.Redirect(w, r, target, http.StatusSeeOther)
+		browserflow.Continue(w, target)
 		return
 	}
 	if r.PostForm.Get("decision") != "approve" {
@@ -215,7 +214,7 @@ func (h *Hosted) approve(w http.ResponseWriter, r *http.Request) {
 		writeApprovalError(w, err)
 		return
 	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
+	browserflow.Continue(w, target)
 }
 
 // writeApprovalError keeps authentication failures separate from service failures.
