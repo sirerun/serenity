@@ -11,8 +11,8 @@ const listen = server => new Promise(resolve => server.listen(0, '127.0.0.1', ()
 const close = server => new Promise(resolve => server.close(resolve));
 
 test.beforeAll(async () => {
-  const binary = process.env.SERENITY_TEST_BINARY;
-  if (!binary || !fs.existsSync(binary)) throw new Error('Build Serenity and set SERENITY_TEST_BINARY; this test must not skip missing service setup.');
+  const binary = process.env.SERENITY_SIGNUP_FIXTURE_BINARY;
+  if (!binary || !fs.existsSync(binary)) throw new Error('Build the service test fixture and set SERENITY_SIGNUP_FIXTURE_BINARY; this test must not skip missing service setup.');
   directory = fs.mkdtempSync(path.join(os.tmpdir(), 'serenity-hosted-browser-'));
   fs.mkdirSync(path.join(directory, 'secrets'), { mode: 0o700 });
   fs.writeFileSync(path.join(directory, 'secrets', 'EMBEDDINGS_API_KEY'), 'local-test-only', { mode: 0o600 });
@@ -31,7 +31,7 @@ test.beforeAll(async () => {
   origin = `http://127.0.0.1:${servicePort}`;
   const config = { bind: `127.0.0.1:${servicePort}`, data_dir: path.join(directory, 'data'), secrets_dir: path.join(directory, 'secrets'), public_origin: origin, embedding_model: 'test', embedding_version: 'v1', embedding_base_url: `http://127.0.0.1:${providerPort}`, max_open: 2, max_in_flight: 4, account_cap: 10 };
   fs.writeFileSync(path.join(directory, 'config.json'), JSON.stringify(config));
-  service = spawn(binary, ['hosted', 'serve', '--config', path.join(directory, 'config.json')], { env: { ...process.env, SERENITY_HOSTED_DEV: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  service = spawn(binary, ['-test.run=^TestSignupBrowserFixture$', '-test.timeout=6m'], { env: { ...process.env, SERENITY_SIGNUP_FIXTURE_CONFIG: path.join(directory, 'config.json') }, stdio: ['ignore', 'pipe', 'pipe'] });
   service.stdout.on('data', data => { log += data; });
   service.stderr.on('data', data => { log += data; });
   await expect.poll(async () => {
@@ -142,6 +142,11 @@ test('OAuth login resumes consent and browser follows only the approved callback
   const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
   let callbackURL = '';
   callbackServer = http.createServer((request, response) => {
+    if (new URL(request.url, 'http://fixture.invalid').pathname !== '/callback') {
+      response.writeHead(404);
+      response.end();
+      return;
+    }
     callbackURL = `http://${request.headers.host}${request.url}`;
     response.writeHead(200, { 'Content-Type': 'text/html' });
     response.end('<h1>Agent connected</h1>');
