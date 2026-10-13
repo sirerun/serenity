@@ -29,6 +29,7 @@ type Sender interface {
 	Send(context.Context, string, string) error
 }
 type Service struct {
+	WorkOS           *WorkOS
 	Store            *store.Store
 	Sender           Sender
 	Origin           string

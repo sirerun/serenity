@@ -102,6 +102,19 @@ func TestAccountDeletionJournalsIntentBeforePreflightAndOutcomeAfterSQL(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	for _, row := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO sessions(id,account_id,token_hash,created_at,expires_at,csrf_secret) VALUES(?,?,?,?,?,?)`, []any{"workos-session", account.ID, "workos-session-hash", "created", "expires", "csrf"}},
+		{`INSERT INTO workos_identities(client_id,subject,account_id,created_at) VALUES(?,?,?,?)`, []any{"client_fixture", "user_fixture", account.ID, "created"}},
+		{`INSERT INTO workos_logins(state_hash,verifier,session_hash,account_id,client_id,expires_at) VALUES(?,?,?,?,?,?)`, []any{"state-hash", "verifier", "workos-session-hash", account.ID, "client_fixture", "expires"}},
+	} {
+		if _, e := db.DB().Exec(row.sql, row.args...); e != nil {
+			t.Fatal(e)
+		}
+	}
 	journal := &recordingDeletionJournal{}
 	journal.onAppend = func(entry contracts.DeletionEntry) {
 		if entry.Outcome != contracts.DeletionOutcomePurged {
@@ -150,6 +163,13 @@ func TestAccountDeletionJournalsIntentBeforePreflightAndOutcomeAfterSQL(t *testi
 	if status != "deleted" {
 		t.Fatalf("account status = %q", status)
 	}
+	for _, table := range []string{"workos_identities", "workos_logins", "sessions"} {
+		var n int
+		if e := db.DB().QueryRow(`SELECT count(*) FROM ` + table).Scan(&n); e != nil || n != 0 {
+			t.Fatalf("account deletion retained %s: %d %v", table, n, e)
+		}
+	}
+
 }
 
 func TestDeclinedPreflightLeavesDurableRequestWithoutPurge(t *testing.T) {

@@ -182,3 +182,25 @@ CREATE UNIQUE INDEX operations_active_client_key
  WHERE client_key<>'' AND phase<>'released';
 INSERT INTO schema_migrations(version,applied_at) VALUES(9,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
 `
+
+// migration10 binds external subjects to existing account authority, independently
+// of email. Pending browser authentications expire and are consumed before exchange.
+const migration10 = `
+CREATE TABLE workos_identities(
+ client_id TEXT NOT NULL,
+ subject TEXT NOT NULL,
+ account_id TEXT NOT NULL REFERENCES accounts(id),
+ created_at TEXT NOT NULL,
+ PRIMARY KEY(client_id,subject),
+ UNIQUE(client_id,account_id)
+);
+CREATE TABLE workos_logins(
+ state_hash TEXT PRIMARY KEY,
+ verifier TEXT NOT NULL,
+ session_hash TEXT NOT NULL,
+ account_id TEXT REFERENCES accounts(id),
+ client_id TEXT NOT NULL,
+ expires_at TEXT NOT NULL
+);
+INSERT INTO schema_migrations(version,applied_at) VALUES(10,strftime('%Y-%m-%dT%H:%M:%SZ','now'));
+`

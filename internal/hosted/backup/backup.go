@@ -1162,6 +1162,7 @@ func freezeRestoredControlDB(ctx context.Context, db *store.Store) error {
 		for _, statement := range []string{
 			`DELETE FROM oauth_grants`, `DELETE FROM oauth_codes`, `DELETE FROM oauth_consents`,
 			`DELETE FROM sessions`, `DELETE FROM login_tokens`,
+			`DELETE FROM workos_logins`, `DELETE FROM workos_identities`,
 			`UPDATE accounts SET status='restore_pending',plan_id='free',plan_version=1`,
 			`UPDATE subscriptions SET status='restore_pending'`,
 		} {

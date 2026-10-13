@@ -1033,7 +1033,7 @@ func TestRestoreRevokesCredentialsAndOAuthState(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// Seed one row of every OAuth/session table freezeRestoredControlDB is
+	// Seed one row of every WorkOS/OAuth/session table freezeRestoredControlDB is
 	// claimed to clear, including a grant's cascade-dependent token/refresh
 	// rows, so the regression proves the fuller revocation claim rather than
 	// just client_credentials.
@@ -1043,6 +1043,8 @@ func TestRestoreRevokesCredentialsAndOAuthState(t *testing.T) {
 		sql  string
 		args []any
 	}{
+		{`INSERT INTO workos_identities(client_id,subject,account_id,created_at) VALUES(?,?,?,?)`, []any{"client_fixture", "user_fixture", accountID, store.Stamp(time.Now())}},
+		{`INSERT INTO workos_logins(state_hash,verifier,session_hash,client_id,expires_at) VALUES(?,?,?,?,?)`, []any{store.Hash("state"), "verifier", store.Hash("session"), "client_fixture", future}},
 		{`INSERT INTO oauth_grants(id,record,expires_at) VALUES(?,?,?)`, []any{grantID, "{}", future}},
 		{`INSERT INTO oauth_tokens(id,grant_id,record,expires_at) VALUES(?,?,?,?)`, []any{store.ID(), grantID, "{}", future}},
 		{`INSERT INTO oauth_refresh(id,grant_id,record,expires_at) VALUES(?,?,?,?)`, []any{store.ID(), grantID, "{}", future}},
@@ -1082,7 +1084,7 @@ func TestRestoreRevokesCredentialsAndOAuthState(t *testing.T) {
 	if revokedAt == nil {
 		t.Fatal("restored credential must be revoked")
 	}
-	for _, table := range []string{"oauth_grants", "oauth_tokens", "oauth_refresh", "oauth_codes", "oauth_consents", "sessions", "login_tokens"} {
+	for _, table := range []string{"oauth_grants", "oauth_tokens", "oauth_refresh", "oauth_codes", "oauth_consents", "sessions", "login_tokens", "workos_logins", "workos_identities"} {
 		var count int
 		if err = restoredDB.DB().QueryRow(`SELECT count(*) FROM ` + table).Scan(&count); err != nil {
 			t.Fatal(err)
