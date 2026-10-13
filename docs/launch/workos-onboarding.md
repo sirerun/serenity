@@ -130,3 +130,9 @@ Synthetic provider and local browser tests do not establish real WorkOS, Stripe
 or MCP-client acceptance. Provider configuration and live gates remain pending
 until their actual receipts are recorded. General MCP compatibility is a target;
 only clients exercised end to end are called qualified.
+
+## Current delivery checkpoint
+
+See [the 2026-10-13 delivery receipt](paid-auth-delivery-2026-10-13.md) for exact
+reviewed, merged and deployed revisions, actual Chrome observations and remaining
+provider activation. WorkOS source is merged but is not yet deployed or enabled.
