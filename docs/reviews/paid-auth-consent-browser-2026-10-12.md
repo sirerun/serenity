@@ -49,4 +49,3 @@ After relocating the shared browser script to browserflow/testdata, targeted
 Chrome and continuation-policy tests passed again (OAuth 1.526s; browserflow
 0.693s). Browser tests skip explicitly when SERENITY_PLAYWRIGHT is unset.
 Hosted CI and live client acceptance remain separate, unverified gates.
-
