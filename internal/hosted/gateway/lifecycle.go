@@ -471,6 +471,12 @@ func (g *Gateway) deleteAccountUnderMaintenance(ctx context.Context, account, ro
 		if _, e := tx.ExecContext(ctx, `DELETE FROM login_tokens WHERE email=?`, email); e != nil {
 			return e
 		}
+		if _, e := tx.ExecContext(ctx, `DELETE FROM workos_logins WHERE account_id=?`, account); e != nil {
+			return e
+		}
+		if _, e := tx.ExecContext(ctx, `DELETE FROM workos_identities WHERE account_id=?`, account); e != nil {
+			return e
+		}
 		if _, e := tx.ExecContext(ctx, `DELETE FROM sessions WHERE account_id=?`, account); e != nil {
 			return e
 		}

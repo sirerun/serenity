@@ -50,6 +50,7 @@ func (u usageRow) Remaining() int64 {
 }
 
 type view struct {
+	WorkOS                                               bool
 	Usage                                                []usageRow
 	Reset                                                string
 	OperationKey                                         string
@@ -75,6 +76,11 @@ func (d *Dashboard) Handler() http.Handler {
 	mux.HandleFunc("GET /login", d.login)
 	mux.HandleFunc("POST /login", d.requestLink)
 	mux.HandleFunc("GET /login/consume", d.consume)
+	if d.Identity != nil && d.Identity.WorkOS != nil {
+		mux.HandleFunc("GET /login/workos", d.workOSStart)
+		mux.HandleFunc("POST /login/workos/link", d.workOSLink)
+		mux.HandleFunc("GET /login/workos/callback", d.workOSCallback)
+	}
 	mux.Handle("GET /", website.Handler())
 	mux.HandleFunc("GET /dashboard", d.home)
 	mux.HandleFunc("GET /dashboard/explore", d.explore)
@@ -126,7 +132,7 @@ func render(w http.ResponseWriter, status int, v view) {
 	}
 }
 func (d *Dashboard) login(w http.ResponseWriter, r *http.Request) {
-	render(w, 200, view{Title: "Your memory, ready when you are"})
+	render(w, 200, view{WorkOS: d.Identity != nil && d.Identity.WorkOS != nil, Title: "Your memory, ready when you are"})
 }
 func (d *Dashboard) requestLink(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
@@ -161,6 +167,9 @@ func (d *Dashboard) consume(w http.ResponseWriter, r *http.Request) {
 		render(w, 400, view{Title: "This link is no longer available", Message: "Request a new sign-in link to continue."})
 		return
 	}
+	d.finishLogin(w, r, raw)
+}
+func (d *Dashboard) finishLogin(w http.ResponseWriter, r *http.Request, raw string) {
 	http.SetCookie(w, &http.Cookie{Name: "serenity_session", Value: raw, Path: "/", HttpOnly: true, Secure: !d.Dev, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 3600})
 	if resume, e := r.Cookie("serenity_oauth_resume"); e == nil {
 		http.SetCookie(w, &http.Cookie{Name: "serenity_oauth_resume", Value: "", Path: "/", HttpOnly: true, Secure: !d.Dev, SameSite: http.SameSiteLaxMode, MaxAge: -1})
@@ -278,7 +287,7 @@ func (d *Dashboard) home(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	render(w, 200, view{PartnerLinks: links, Message: message, Page: section, Usage: usage, Reset: ent.ResetAt.UTC().Format("2 Jan 2006 15:04 UTC"), OperationKey: store.ID(), Connected: connected > 0, MemorySaved: saved > 0, Brains: brains, CanAddBrain: int64(len(brains)) < ent.Plan.Brains, Title: titles[section], SignedIn: true, Billing: d.Billing, CSRF: s.CSRF, BrainID: brain.ID, Endpoint: d.Origin + "/mcp", Plan: strings.ToUpper(ent.Plan.ID[:1]) + ent.Plan.ID[1:]})
+	render(w, 200, view{WorkOS: d.Identity.WorkOS != nil, PartnerLinks: links, Message: message, Page: section, Usage: usage, Reset: ent.ResetAt.UTC().Format("2 Jan 2006 15:04 UTC"), OperationKey: store.ID(), Connected: connected > 0, MemorySaved: saved > 0, Brains: brains, CanAddBrain: int64(len(brains)) < ent.Plan.Brains, Title: titles[section], SignedIn: true, Billing: d.Billing, CSRF: s.CSRF, BrainID: brain.ID, Endpoint: d.Origin + "/mcp", Plan: strings.ToUpper(ent.Plan.ID[:1]) + ent.Plan.ID[1:]})
 }
 func (d *Dashboard) issue(w http.ResponseWriter, r *http.Request) {
 	s, ok := d.session(w, r, true)

@@ -19,7 +19,7 @@ import (
 var ErrNotFound = errors.New("hosted record not found")
 
 // SchemaVersion is the highest forward migration this binary understands.
-const SchemaVersion = 9
+const SchemaVersion = 10
 
 type Store struct{ db *sql.DB }
 type Account struct {
@@ -113,6 +113,11 @@ func Open(path string) (*Store, error) {
 		}
 		if version < 9 {
 			if _, e := tx.Exec(migration9); e != nil {
+				return e
+			}
+		}
+		if version < 10 {
+			if _, e := tx.Exec(migration10); e != nil {
 				return e
 			}
 		}

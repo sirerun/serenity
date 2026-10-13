@@ -38,6 +38,9 @@ import (
 )
 
 type Config struct {
+	WorkOSEnabled    bool   `json:"workos_enabled"`
+	WorkOSClientID   string `json:"workos_client_id"`
+	workOS           *identity.WorkOS
 	BillingEnabled   bool   `json:"billing_enabled"`
 	BuilderPrice     string `json:"builder_price"`
 	ScalePrice       string `json:"scale_price"`
@@ -153,6 +156,9 @@ func Load(path string) (Config, error) {
 	return c, nil
 }
 func (c *Config) Validate(dev bool) error {
+	if c.WorkOSEnabled && (!strings.HasPrefix(c.WorkOSClientID, "client_") || strings.ContainsAny(c.WorkOSClientID, " \t\r\n") || len(c.WorkOSClientID) > 256) {
+		return errors.New("workos_enabled requires a valid workos_client_id")
+	}
 	if c.RegistrationMode == "" {
 		c.RegistrationMode = contracts.RegistrationPublic
 	}
@@ -328,6 +334,13 @@ func NewWithDependencies(ctx context.Context, cfg Config, dev bool, devOutput io
 		}
 		cfg.billingConfig = &billing.Config{SecretKey: key, WebhookSecret: webhook, BuilderPrice: cfg.BuilderPrice, ScalePrice: cfg.ScalePrice, Origin: cfg.PublicOrigin}
 	}
+	if cfg.WorkOSEnabled {
+		key, e := readSecret(cfg.SecretsDir, "WORKOS_API_KEY")
+		if e != nil {
+			return nil, e
+		}
+		cfg.workOS = &identity.WorkOS{ClientID: cfg.WorkOSClientID, APIKey: key}
+	}
 	var sender identity.Sender
 	if dev {
 		sender = &identity.DevSender{Writer: devOutput}
@@ -367,6 +380,9 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	}
 	if err := deps.validate(); err != nil {
 		return nil, err
+	}
+	if cfg.WorkOSEnabled && (cfg.workOS == nil || cfg.workOS.APIKey == "" || cfg.workOS.ClientID != cfg.WorkOSClientID) {
+		return nil, errors.New("hosted: WorkOS enabled without qualified configuration")
 	}
 	if db == nil {
 		return nil, errors.New("hosted: control store is required")
@@ -430,7 +446,7 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	for _, email := range cfg.InviteAllowlist {
 		allowlist[email] = struct{}{}
 	}
-	id := &identity.Service{Store: db, Sender: sender, Origin: cfg.PublicOrigin, AccountCap: cfg.AccountCap, RegistrationMode: cfg.RegistrationMode, InviteAllowlist: allowlist}
+	id := &identity.Service{WorkOS: cfg.workOS, Store: db, Sender: sender, Origin: cfg.PublicOrigin, AccountCap: cfg.AccountCap, RegistrationMode: cfg.RegistrationMode, InviteAllowlist: allowlist}
 	provisioner := &provision.Provisioner{Store: db, BrainsRoot: filepath.Join(cfg.DataDir, "brains")}
 	dash := &dashboard.Dashboard{Gateway: g, Identity: id, Provision: provisioner, Issuer: issuer, Meter: metering, Origin: cfg.PublicOrigin, Dev: dev, Billing: cfg.BillingEnabled}
 	operationReconciler := gateway.NewOperationReconciler(g)
