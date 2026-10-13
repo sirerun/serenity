@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/sirerun/serenity/internal/hosted/browserflow"
 	"github.com/sirerun/serenity/internal/hosted/identity"
 )
 
@@ -74,5 +75,5 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Billing is temporarily unavailable. Your existing memory remains accessible.", http.StatusServiceUnavailable)
 		return
 	}
-	http.Redirect(w, r, target, http.StatusSeeOther)
+	browserflow.Continue(w, target)
 }
