@@ -149,3 +149,32 @@ func TestImportProgressReadsLegacyQueueAndRejectsDowngradedMetadata(t *testing.T
 		t.Fatalf("downgraded progress accepted: %v", e)
 	}
 }
+
+func TestCaptureIdenticalPendingRetryDoesNotRequireAnotherWrite(t *testing.T) {
+	o := testOptions(t)
+	q := openTest(t, o)
+	in := testInput()
+	captureTest(t, q, in)
+	before, e := os.ReadFile(filepath.Join(o.Directory, "queue.bin"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	// A pending-path obstruction makes any new state publication fail. The
+	// already durable identical record remains a successful write-free retry.
+	if e = os.Mkdir(filepath.Join(o.Directory, "queue.pending"), 0700); e != nil {
+		t.Fatal(e)
+	}
+	d, e := q.Capture(in)
+	if e != nil || !d.Admitted {
+		t.Fatalf("durable retry: %+v %v", d, e)
+	}
+	after, e := os.ReadFile(filepath.Join(o.Directory, "queue.bin"))
+	if e != nil || !bytes.Equal(before, after) {
+		t.Fatal("retry rewrote queue")
+	}
+	in.Event = "new-event"
+	in.Sequence++
+	if _, e = q.Capture(in); e != ErrStorage {
+		t.Fatalf("new publication unexpectedly succeeded: %v", e)
+	}
+}
