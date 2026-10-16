@@ -80,11 +80,17 @@ type codexLine struct {
 // not captured. Their gaps remain visible. No path in a record is ever opened.
 func ReadCodex(r io.Reader, enrollment Enrollment, previous Cursor, limit int) (Page, error) {
 	var out Page
+	if r == nil {
+		return out, ErrFormat
+	}
 	if !enrollment.VisibleSession || enrollment.SessionID == "" || len(enrollment.SessionID) > 128 {
 		return out, ErrEnrollment
 	}
 	if limit < 1 || limit > MaxPageEvents {
 		return out, ErrLimit
+	}
+	if previous.Lines == 0 && previous != (Cursor{}) {
+		return out, ErrRewrite
 	}
 	if previous.Lines < 0 || (previous.Lines > 0 && (previous.SessionID != enrollment.SessionID || previous.Version != CodexVersion || len(previous.PrefixSHA256) != 64)) {
 		return out, ErrRewrite
