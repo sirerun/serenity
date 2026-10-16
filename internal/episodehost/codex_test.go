@@ -208,3 +208,81 @@ func TestCodexEncryptedMessageDoesNotAdmitMixedPlaintext(t *testing.T) {
 		}
 	}
 }
+
+func phaseMessage(phase, text string) string {
+	return line("response_item", map[string]any{"type": "message", "role": "assistant", "phase": phase,
+		"content": []any{map[string]string{"type": "output_text", "text": text}}})
+}
+
+func TestCodexPartialAndFinalAnswersRetainOccurrencesAcrossPagingAndRetry(t *testing.T) {
+	// Identical text is still two occurrences, not a streaming replacement.
+	raw := metadata() + phaseMessage("partial_answer", "same\n\t answer") + phaseMessage("final_answer", "same\n\t answer")
+	first, err := ReadCodex(strings.NewReader(raw), enrolled, Cursor{}, 1)
+	if err != nil || first.Complete || len(first.Messages) != 1 || first.Cursor.Lines != 2 || len(first.Gaps) != 0 {
+		t.Fatalf("partial page: %+v %v", first, err)
+	}
+	retry, err := ReadCodex(strings.NewReader(raw), enrolled, Cursor{}, 1)
+	if err != nil || len(retry.Messages) != 1 || retry.Messages[0] != first.Messages[0] || retry.Cursor != first.Cursor {
+		t.Fatalf("unacknowledged retry changed: %+v %v", retry, err)
+	}
+	second, err := ReadCodex(strings.NewReader(raw), enrolled, first.Cursor, 1)
+	if err != nil || !second.Complete || len(second.Messages) != 1 || second.Cursor.Lines != 3 || len(second.Gaps) != 0 {
+		t.Fatalf("final page: %+v %v", second, err)
+	}
+	a, b := first.Messages[0], second.Messages[0]
+	if a.ID == b.ID || a.Sequence != 2 || b.Sequence != 3 || a.Text != "same\n\t answer" || b.Text != a.Text || a.Role != "assistant" || b.Role != "assistant" {
+		t.Fatalf("occurrence loss: %+v %+v", a, b)
+	}
+	whole, err := ReadCodex(strings.NewReader(raw), enrolled, Cursor{}, 2)
+	if err != nil || len(whole.Messages) != 2 || whole.Messages[0] != a || whole.Messages[1] != b || whole.Cursor != second.Cursor {
+		t.Fatalf("page size changed identities: %+v %v", whole, err)
+	}
+	replay, err := ReadCodex(strings.NewReader(raw), enrolled, second.Cursor, 1)
+	if err != nil || len(replay.Messages) != 0 || replay.Cursor != second.Cursor || !replay.Complete {
+		t.Fatalf("acknowledged replay: %+v %v", replay, err)
+	}
+}
+
+func TestCodexPartialAnswerCannotBypassExclusions(t *testing.T) {
+	cases := []struct {
+		name, reason string
+		change       func(map[string]any, map[string]any)
+	}{
+		{"provenance", "host_provenance_metadata_unsupported", func(row, item map[string]any) {
+			row["metadata"] = map[string]any{"delivered_assistant_message": "EXCLUDED"}
+		}},
+		{"encrypted", "encrypted_message_excluded", func(row, item map[string]any) { item["encrypted_content"] = "EXCLUDED" }},
+		{"analysis", "nonvisible_channel_excluded", func(row, item map[string]any) { item["channel"] = "analysis" }},
+		{"unknown-channel", "nonvisible_channel_excluded", func(row, item map[string]any) { item["channel"] = "future" }},
+		{"developer", "nonvisible_role_excluded", func(row, item map[string]any) { item["role"] = "developer" }},
+		{"reasoning", "reasoning_excluded", func(row, item map[string]any) { item["type"] = "reasoning" }},
+		{"tool", "tool_or_response_type_unsupported", func(row, item map[string]any) { item["type"] = "function_call_output" }},
+		{"attachment", "attachment_or_content_unsupported", func(row, item map[string]any) {
+			item["content"] = []any{map[string]string{"type": "input_image", "image_url": "EXCLUDED"}}
+		}},
+		{"encrypted-part", "attachment_or_content_unsupported", func(row, item map[string]any) {
+			item["content"] = []any{map[string]string{"type": "encrypted_content", "encrypted_content": "EXCLUDED"}}
+		}},
+		{"unknown-phase", "unknown_phase_excluded", func(row, item map[string]any) { item["phase"] = "future_answer" }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			item := map[string]any{"type": "message", "role": "assistant", "phase": "partial_answer", "content": []any{map[string]string{"type": "output_text", "text": "EXCLUDED"}}}
+			row := map[string]any{"timestamp": "2026-10-16T10:00:00Z", "type": "response_item", "payload": item}
+			tc.change(row, item)
+			encoded, err := json.Marshal(row)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw := metadata() + string(encoded) + "\n" + phaseMessage("partial_answer", "visible")
+			page, err := ReadCodex(strings.NewReader(raw), enrolled, Cursor{}, 1)
+			if err != nil || len(page.Messages) != 1 || page.Messages[0].Text != "visible" || len(page.Gaps) != 1 || page.Gaps[0] != (Gap{2, tc.reason}) || page.Cursor.Lines != 3 {
+				t.Fatalf("exclusion bypass: %+v %v", page, err)
+			}
+			encoded, err = json.Marshal(page)
+			if err != nil || strings.Contains(string(encoded), "EXCLUDED") {
+				t.Fatal("excluded bytes escaped")
+			}
+		})
+	}
+}

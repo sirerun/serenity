@@ -257,7 +257,9 @@ func decodeCodexLine(row codexLine, line int, session string) ([]Message, []Gap,
 	if item.Channel != "" && item.Channel != "final" && item.Channel != "commentary" {
 		return gap("nonvisible_channel_excluded")
 	}
-	if item.Phase != "" && item.Phase != "final_answer" && item.Phase != "commentary" {
+	// Codex 0.163.0 MessagePhase defines partial_answer as stable answer text,
+	// not turn completion. It uses the same occurrence identity as other text.
+	if item.Phase != "" && item.Phase != "final_answer" && item.Phase != "partial_answer" && item.Phase != "commentary" {
 		return gap("unknown_phase_excluded")
 	}
 	var text strings.Builder
