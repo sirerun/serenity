@@ -93,7 +93,10 @@ func TestFenceScopeRetainsProducerIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v.Conversations["conversation1"] {
+	if len(v.Conversations) != 1 || !v.Conversations[episodeclient.ConversationFenceKey("another-producer", "conversation1")] {
+		t.Fatal("incomplete fence set")
+	}
+	if v.Conversations[episodeclient.ConversationFenceKey(testBinding.Producer, "conversation1")] {
 		t.Fatal("cross-producer fence conflation")
 	}
 }

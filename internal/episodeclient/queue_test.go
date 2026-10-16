@@ -205,7 +205,9 @@ func TestDrainFailsClosedAndRetainsBlockedItems(t *testing.T) {
 		{"stale", func(v *Verification) { v.SyncedAt = time.Now().Add(-2 * time.Minute) }},
 		{"future", func(v *Verification) { v.SyncedAt = time.Now().Add(time.Minute) }},
 		{"unbounded_ttl", func(v *Verification) { v.ExpiresAt = time.Now().Add(time.Hour) }},
-		{"deleted", func(v *Verification) { v.Conversations["conversation-test"] = true }},
+		{"deleted", func(v *Verification) {
+			v.Conversations[ConversationFenceKey(v.Binding.Producer, "conversation-test")] = true
+		}},
 	}
 	for _, tt := range mutations {
 		t.Run(tt.name, func(t *testing.T) {
@@ -233,7 +235,7 @@ func TestGenerationRollbackBlockedAfterRestart(t *testing.T) {
 	captureTest(t, q, testInput())
 	g := reconcileFunc(func(ctx context.Context, k ReplayKey) (Verification, error) {
 		v, e := allowed(ctx, k)
-		v.Conversations[k.Conversation] = true
+		v.Conversations[ConversationFenceKey(k.Binding.Producer, k.Conversation)] = true
 		return v, e
 	})
 	p := publishFunc(func(_ context.Context, r Record, _ uint64) (Receipt, error) {
@@ -531,7 +533,7 @@ func TestKnownFenceBlocksRecaptureAndCannotDisappear(t *testing.T) {
 	captureTest(t, q, in)
 	fenced := reconcileFunc(func(ctx context.Context, k ReplayKey) (Verification, error) {
 		v, e := allowed(ctx, k)
-		v.Conversations[k.Conversation] = true
+		v.Conversations[ConversationFenceKey(k.Binding.Producer, k.Conversation)] = true
 		return v, e
 	})
 	never := publishFunc(func(_ context.Context, r Record, _ uint64) (Receipt, error) {
@@ -567,5 +569,35 @@ func TestKnownFenceBlocksRecaptureAndCannotDisappear(t *testing.T) {
 	}
 	if _, e := q.Capture(in); e != ErrBlocked {
 		t.Fatal("resume overrode server fence")
+	}
+}
+
+func TestFullOpaqueFenceSetSurvivesUnrelatedConversationAndRestart(t *testing.T) {
+	o := testOptions(t)
+	q := openTest(t, o)
+	in := testInput()
+	fence := ConversationFenceKey(o.Policy.Binding.Producer, "deleted-conversation")
+	other := ConversationFenceKey("other-producer", in.Conversation)
+	reconcile := reconcileFunc(func(ctx context.Context, k ReplayKey) (Verification, error) {
+		v, e := allowed(ctx, k)
+		v.Conversations[fence] = true
+		v.Conversations[other] = true
+		return v, e
+	})
+	publish := publishFunc(func(_ context.Context, r Record, _ uint64) (Receipt, error) { return receiptFor(r), nil })
+	captureTest(t, q, in)
+	if r, e := q.Drain(context.Background(), reconcile, publish, 1); e != nil || r.Published != 1 {
+		t.Fatalf("first: %+v %v", r, e)
+	}
+	q.Close()
+	q = openTest(t, o)
+	in.Conversation = "another-live-conversation"
+	captureTest(t, q, in)
+	if r, e := q.Drain(context.Background(), reconcile, publish, 1); e != nil || r.Published != 1 {
+		t.Fatalf("restart: %+v %v", r, e)
+	}
+	in.Conversation = "deleted-conversation"
+	if _, e := q.Capture(in); e != ErrBlocked {
+		t.Fatalf("forgot known fence: %v", e)
 	}
 }
