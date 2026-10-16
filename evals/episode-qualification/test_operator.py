@@ -1,0 +1,206 @@
+"""Synthetic filesystem/systemd custody model; never invokes a live unit/provider."""
+import copy
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import tempfile
+import types
+import unittest
+from unittest import mock
+
+HERE = Path(__file__).resolve().parent
+spec = importlib.util.spec_from_file_location('fixture_operator', HERE / 'offline_operator.py')
+a = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(a)
+
+
+def blob(value):
+    return json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
+
+
+class Model(a.Adapter):
+    def __init__(self, root):
+        self.now = 1000
+        self.states = {}
+        super().__init__(root=root, owner=os.geteuid(), clock=lambda: self.now,
+                         systemctl=lambda unit: dict(self.states[unit]))
+
+    def trusted(self, path, private=False, directory=False, owner=None):
+        # Model service UID 1200 on unprivileged or root test workers. No real
+        # ownership changes, live systemctl, provider call or subprocess launch.
+        if owner == 1200:
+            owner = self.owner
+        return super().trusted(path, private, directory, owner)
+
+
+class CustodyTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.model = Model(self.root)
+        self.addCleanup(self.model.close)
+        self.hold = dict(manifest_sha256='a'*64, executable_sha256='b'*64,
+                         source='c'*40, previous_state_sha256=a.digest(b'previous-state'),
+                         expected_state_sha256='d'*64, supervisor='serenity-release-fixture.service',
+                         stage='/var/lib/serenity-release/fixture', backup_timer_prior_state='active',
+                         phase='maintenance-ready', timestamp=990)
+        self.proof = dict(version=1, purpose='serenity-episode-fixture-offline-v1', operation='prepare',
+            nonce='1'*64, issued_at=1000, expires_at=1120, boot_id='00000000-0000-0000-0000-000000000001',
+            uid=1200, gid=1200, tool_source='e'*40, tool_path='/opt/fixture/tool', tool_sha256=a.digest(b'tool'),
+            wrapper_path='/opt/fixture/offline_operator.py', wrapper_sha256=a.digest(b'wrapper'),
+            runtime_path=self.hold['stage']+'/activation-runtime.py', runtime_sha256='',
+            service_binary_path='/opt/service/serenity', service_binary_sha256=a.digest(b'service'), service_source='f'*40,
+            config_path=a.HOSTED, config_sha256='', data_dir='/data', private_dir='/fixture-private', account_cap=10,
+            hold_sha256=a.digest(blob(self.hold)), hold=self.hold, state_sha256=self.hold['previous_state_sha256'], ready_sha256='',
+            authority_receipt_path='/proof/authority.json', authority_receipt_sha256='',
+            authority_generator_path='/proof/generator.py', authority_generator_sha256=a.digest(b'generator'),
+            lock_device=0, lock_inode=0, schema_sha256='2'*64,authority_scope='synthetic-scope',authority_session_id='synthetic-session',concurrency_target='synthetic-function')
+        self.put(a.STATE+'.lock', b'')
+        st=self.model.path(a.STATE+'.lock').stat()
+        self.proof.update(lock_device=st.st_dev, lock_inode=st.st_ino)
+        self.put(a.STATE, b'previous-state')
+        self.put(a.HOLD, blob(self.hold))
+        config = blob(dict(data_dir='/data', account_cap=10, episode_archive_enabled=False, episode_synthetic_brains=[]))
+        self.proof['config_sha256']=a.digest(config)
+        self.put(a.HOSTED, config)
+        c={key:self.hold[key] for key in ('manifest_sha256','executable_sha256','previous_state_sha256','expected_state_sha256','supervisor','stage')}
+        c.update(commit=self.hold['source'], previous_commit=self.proof['service_source'], previous_executable_sha256=self.proof['service_binary_sha256'], hosted_config_sha256=self.proof['config_sha256'])
+        runtime = ('CONFIG='+repr(c)+'\n'
+            'def unit_conditions(unit): return [("ConditionPathExists", False, True, '+repr(a.HOLD)+', 0)]\n'
+            'def mandatory_negated_condition(rows,path): return any(row[:4]==("ConditionPathExists",False,True,path) for row in rows)\n').encode()
+        self.put(self.proof['runtime_path'],runtime)
+        self.proof['runtime_sha256']=a.digest(runtime)
+        ready=blob(dict(manifest_sha256=self.hold['manifest_sha256'],state_sha256=self.proof['state_sha256'],installed_pair='previous-unmodified',held=True,services_started=False))
+        self.put(self.hold['stage']+'/maintenance-ready.json', ready)
+        self.proof['ready_sha256']=a.digest(ready)
+        self.authority=dict(version=1,observed_at=999,status='CLOSED',active_leases=0,concurrency=0,
+            session_id='synthetic-session',scope='synthetic-scope',boot_id=self.proof['boot_id'],
+            hold_sha256=self.proof['hold_sha256'],state_sha256=self.proof['state_sha256'],request_ids=['synthetic-request'],concurrency_target='synthetic-function')
+        self.write_authority()
+        for path,data in [(self.proof['tool_path'],b'tool'),(self.proof['wrapper_path'],b'wrapper'),(self.proof['service_binary_path'],b'service'),(self.proof['authority_generator_path'],b'generator')]:
+            self.put(path,data)
+        self.put('/proc/sys/kernel/random/boot_id', self.proof['boot_id'].encode())
+        self.model.path('/usr/local/bin').mkdir(parents=True,mode=0o700)
+        self.model.path('/usr/local/bin/serenity').symlink_to(self.proof['service_binary_path'])
+        for path in ('/data','/data/brains','/fixture-private'):
+            self.model.path(path).mkdir(parents=True,mode=0o700)
+        self.put('/data/control.db',b'synthetic-db-placeholder')  # wrapper never opens SQLite
+        for unit in a.UNITS:
+            base='/etc/systemd/system/'+unit+'.d/'
+            if unit in a.WRITERS:
+                content=a.MARKER+'[Service]\nExecCondition=+/usr/bin/python3 '+self.proof['runtime_path']+' guard '+unit+'\n'
+                self.put(base+'91-serenity-release-maintenance.conf',(a.MARKER+'[Unit]\nBindsTo='+self.hold['supervisor']+'\nAfter='+self.hold['supervisor']+'\n[Service]\nRestart=no\n').encode(),0o644)
+            else:
+                content=a.MARKER+'[Unit]\nConditionPathExists=!'+a.HOLD+'\n'
+            self.put(base+'90-serenity-release-guard.conf',content.encode(),0o644)
+            self.model.states[unit]=dict(LoadState='loaded',ActiveState='inactive',SubState='dead',MainPID='0',ControlPID='0',Job='',NeedDaemonReload='no',ExecCondition='path=/usr/bin/python3 ; argv[]=/usr/bin/python3 '+self.proof['runtime_path']+' guard '+unit+' ; ignore_errors=no',BindsTo=self.hold['supervisor'],Restart='no',User='serenity',Group='serenity',ControlGroup='')
+        self.write_proof()
+
+    def put(self,path,data,mode=0o600):
+        p=self.model.path(path)
+        p.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
+        p.write_bytes(data);p.chmod(mode)
+        return p
+
+    def write_authority(self):
+        data=blob(self.authority)
+        self.put(self.proof['authority_receipt_path'],data)
+        self.proof['authority_receipt_sha256']=a.digest(data)
+
+    def write_proof(self):
+        self.put('/proof/proof.json',blob(self.proof))
+
+    def test_valid_model_and_one_use_proof(self):
+        fds=self.model.prepare('/proof/proof.json')
+        self.assertEqual(len(fds),6)
+        self.model.refresh()
+        self.model.consume('/proof/proof.json')
+        with self.assertRaises(FileExistsError):self.model.consume('/proof/proof.json')
+        self.assertEqual(self.model.path(a.HOLD).read_bytes(),blob(self.hold))
+
+    def test_proof_fields_refused(self):
+        for key,value in [('expires_at',999),('issued_at',1001),('expires_at',1400),('uid',0),('operation','serve'),('tool_source','unknown'),('config_path','/etc/other.json'),('lock_inode',1),('tool_sha256','0'*64)]:
+            with self.subTest(key=key,value=value):
+                p=copy.deepcopy(self.proof);p[key]=value
+                self.put('/proof/changed.json',blob(p))
+                m=Model(self.root);m.states=self.model.states
+                try:
+                    with self.assertRaises((RuntimeError,FileNotFoundError)):m.prepare('/proof/changed.json')
+                finally:m.close()
+
+    def test_bad_authority_refused_even_with_matching_receipt_hash(self):
+        for key,value in [('status','OPEN'),('active_leases',1),('concurrency',1),('observed_at',900),('boot_id','wrong'),('request_ids',[]),('scope','foreign-scope'),('concurrency_target','foreign-function')]:
+            with self.subTest(key=key):
+                saved=self.authority.copy();self.authority[key]=value;self.write_authority();self.write_proof()
+                m=Model(self.root);m.states=self.model.states
+                try:
+                    with self.assertRaises(RuntimeError):m.prepare('/proof/proof.json')
+                finally:m.close()
+                self.authority=saved
+
+    def test_missing_and_unsafe_proof(self):
+        self.model.path('/proof/proof.json').chmod(0o644)
+        with self.assertRaises(RuntimeError):self.model.prepare('/proof/proof.json')
+
+    def test_duplicate_json_refused(self):
+        with self.assertRaises(RuntimeError):a.decode(b'{"version":1,"version":1}')
+
+    def test_state_lock_contention(self):
+        self.model.prepare('/proof/proof.json')
+        other=Model(self.root);self.addCleanup(other.close);other.states=self.model.states
+        with self.assertRaises(BlockingIOError):other.prepare('/proof/proof.json')
+
+    def test_refresh_detects_file_replacement_races(self):
+        for path in (a.HOLD,a.STATE,'/proof/proof.json',self.proof['runtime_path'],self.proof['tool_path'],a.HOSTED):
+            with self.subTest(path=path):
+                m=Model(self.root);m.states=self.model.states
+                try:
+                    m.prepare('/proof/proof.json')
+                    p=m.path(path);backup=p.with_suffix(p.suffix+'.saved');p.rename(backup)
+                    p.write_bytes(backup.read_bytes());p.chmod(backup.stat().st_mode & 0o777)
+                    try:
+                        with self.assertRaises(RuntimeError):m.refresh()
+                    finally:
+                        p.unlink();backup.rename(p)
+                finally:m.close()
+
+    def test_permit_and_service_races(self):
+        self.model.prepare('/proof/proof.json')
+        permit=self.put(a.RUN+'/'+a.WRITERS[0]+'.permit',b'not-authority')
+        with self.assertRaises(RuntimeError):self.model.refresh()
+        permit.unlink()
+        for prop,value in [('ActiveState','active'),('MainPID','42'),('ControlPID','42'),('Job','5'),('NeedDaemonReload','yes'),('LoadState','not-found'),('Restart','always'),('ExecCondition','ignored guard')]:
+            original=self.model.states[a.WRITERS[0]][prop]
+            self.model.states[a.WRITERS[0]][prop]=value
+            with self.subTest(prop=prop):
+                with self.assertRaises(RuntimeError):self.model.refresh()
+            self.model.states[a.WRITERS[0]][prop]=original
+        self.model.now=1120
+        with self.assertRaises(RuntimeError):self.model.refresh()
+
+    def test_positive_or_trigger_backup_condition_refused(self):
+        self.model.prepare('/proof/proof.json')
+        for trigger,negate in [(False,False),(True,True)]:
+            self.model.module.unit_conditions=lambda unit:[('ConditionPathExists',trigger,negate,a.HOLD,0)]
+            with self.assertRaises(RuntimeError):self.model.refresh()
+
+    def test_hold_wrong_phase_refused(self):
+        self.hold['phase']='failed'
+        self.proof['hold_sha256']=a.digest(blob(self.hold));self.put(a.HOLD,blob(self.hold));self.write_proof()
+        with self.assertRaises(RuntimeError):self.model.prepare('/proof/proof.json')
+
+    def test_startup_guard_writable_refused(self):
+        p=self.model.path('/etc/systemd/system/'+a.WRITERS[0]+'.d/90-serenity-release-guard.conf')
+        p.chmod(0o666)
+        with self.assertRaises(RuntimeError):self.model.prepare('/proof/proof.json')
+
+    def test_root_proof_symlink_refused(self):
+        p=self.model.path('/proof/proof.json');p.rename(p.with_name('real.json'));p.symlink_to('real.json')
+        with self.assertRaises(RuntimeError):self.model.prepare('/proof/proof.json')
+
+
+if __name__=='__main__':
+    unittest.main()

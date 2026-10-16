@@ -1,7 +1,5 @@
-// Command episode-qualification is a deliberately disabled offline operator entry
-// point. The fixture engine is not reachable until the existing maintenance
-// authority contract is supplied and independently reviewed. It is never linked
-// into the hosted service.
+// Command episode-qualification is a separate offline operator child. It is not
+// linked into the hosted binary. Only inherited root custody enables execution.
 package main
 
 import (
@@ -10,9 +8,16 @@ import (
 	"os"
 )
 
-func run(out io.Writer) int {
-	fmt.Fprintln(out, "REFUSED: offline maintenance authority integration unavailable; no files opened or changed")
-	return 1
+// Set to the exact reviewed source commit with -ldflags; an unpinned build refuses.
+var sourceRevision string
+
+func run(args []string, out io.Writer) int {
+	if executeCustody(args) != nil {
+		fmt.Fprintln(out, "REFUSED: fixture custody or operation failed; retain hold for reconciliation")
+		return 1
+	}
+	fmt.Fprintln(out, "fixture operation completed; synthetic accounts/data retained; capture unchanged")
+	return 0
 }
 
-func main() { os.Exit(run(os.Stderr)) }
+func main() { os.Exit(run(os.Args[1:], os.Stderr)) }
