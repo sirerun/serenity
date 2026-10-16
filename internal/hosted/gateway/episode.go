@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/sirerun/serenity/internal/episodejson"
 	"github.com/sirerun/serenity/internal/hosted/meter"
 	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
@@ -240,7 +241,7 @@ func (g *Gateway) ServeEpisodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req episodeRequest
-	if !utf8.Valid(raw) || decodeGoverned(raw, &req) != nil {
+	if !episodejson.Valid(raw) || decodeGoverned(raw, &req) != nil {
 		episodeFailure(w, 400, "invalid_params")
 		return
 	}
