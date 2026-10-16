@@ -148,7 +148,7 @@ class CustodyTests(unittest.TestCase):
         # parent's real read-only receipt remains a separate integration gate.
         unit = a.WRITERS[0]
         rows = self.model.states[unit]['ExecCondition']
-        payload = blob(dict(type=a.EXEC_CONDITION_TYPE, data=[rows]))
+        payload = blob(dict(type=a.EXEC_CONDITION_TYPE, data=rows))
         bus = mock.Mock()
         bus.manager.return_value = '/org/freedesktop/systemd1/unit/serenity_2dhosted_2eservice'
         self.model.module = types.SimpleNamespace(SystemdBus=lambda: bus)
@@ -161,7 +161,7 @@ class CustodyTests(unittest.TestCase):
                 'org.freedesktop.systemd1.Service', 'ExecCondition'])
         self.assertEqual(bus.manager.call_args_list, [mock.call('RefUnit', unit), mock.call('GetUnit', unit), mock.call('UnrefUnit', unit)])
         bus.close.assert_called_once()
-        for bad in (b'{}', b'{"type":"s","data":[]}', blob(dict(type=a.EXEC_CONDITION_TYPE, data=rows)),
+        for bad in (b'{}', b'{"type":"s","data":[]}', blob(dict(type=a.EXEC_CONDITION_TYPE, data=[rows])),
                     b'{"type":"a(sasbttttuii)","data":[],"data":[]}'):
             bus.reset_mock()
             with mock.patch.object(a.subprocess, 'run', return_value=types.SimpleNamespace(stdout=bad)):
@@ -170,6 +170,18 @@ class CustodyTests(unittest.TestCase):
                     a.exact_guard(result, self.proof['runtime_path'], unit)
             bus.manager.assert_any_call('UnrefUnit', unit)
             bus.close.assert_called_once()
+
+    def test_observed_get_property_representation(self):
+        # Shape captured from both running writer units with busctl get-property;
+        # runtime path is normalized to this isolated model. No provider claim.
+        for unit in a.WRITERS:
+            row = ['/usr/bin/python3', ['/usr/bin/python3', self.proof['runtime_path'],
+                   'guard', unit], False, 0, 0, 0, 0, 0, 0, 0]
+            payload = blob({'type': 'a(sasbttttuii)', 'data': [row]})
+            a.exact_guard(a.decode_exec_conditions(payload), self.proof['runtime_path'], unit)
+            with self.assertRaises(RuntimeError):
+                a.exact_guard(a.decode_exec_conditions(blob({'type': 'a(sasbttttuii)',
+                    'data': [[row]]})), self.proof['runtime_path'], unit)
 
     def test_exec_condition_query_failure_releases_reference(self):
         unit = a.WRITERS[0]

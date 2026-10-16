@@ -85,9 +85,9 @@ def decode_exec_conditions(data):
     value = decode(data)
     require(type(value) is dict and set(value) == {'type', 'data'})
     require(value['type'] == EXEC_CONDITION_TYPE and type(value['data']) is list)
-    # busctl wraps the single property value in its message-arguments array.
-    require(len(value['data']) == 1 and type(value['data'][0]) is list)
-    return value['data'][0]
+    # get-property emits the property array directly (unlike method replies).
+    # Exact command cardinality and field types are validated by exact_guard.
+    return value['data']
 
 
 class Adapter:
