@@ -57,6 +57,9 @@ func newEpisodePortableRestore(t *testing.T) *episodePortableRestore {
 		parent: parent, snapshot: filepath.Join(parent, "portable-before-exclusion"),
 		artifacts: make(map[string][32]byte),
 	}
+	if g.Issuer.OAuthVerify != nil {
+		t.Fatal("source real-key fixture must use the ordinary issuer")
+	}
 	f.binding, err = g.Issuer.Verify(ctx, token)
 	if err != nil {
 		t.Fatal(err)
@@ -188,8 +191,28 @@ func (f *episodePortableRestore) requireFrozen(t *testing.T) {
 	if credentials == 0 || revoked != credentials {
 		t.Fatalf("restored credentials: total=%d revoked=%d", credentials, revoked)
 	}
-	if _, err := f.g.Issuer.Verify(context.Background(), f.token); !errors.Is(err, credential.ErrRevoked) {
-		t.Fatalf("old credential not revoked: %v", err)
+	// Verify's credential lookup joins only active accounts. A frozen account
+	// therefore yields ErrInvalidCredential before Verify can inspect revoked_at.
+	// Prove revocation independently on the exact real key authenticated before
+	// backup; generic denial or an unrelated revoked row is not custody evidence.
+	if len(f.token) != 60 || !strings.HasPrefix(f.token, "sk_live_") || f.token[16] != '_' {
+		t.Fatal("original real-key fixture was replaced or malformed")
+	}
+	var revokedAt string
+	if err := db.QueryRow(`SELECT revoked_at FROM client_credentials
+		WHERE id=? AND account_id=? AND brain_id=? AND prefix=? AND verifier=? AND scopes=? AND generation=?`,
+		f.binding.CredentialID, f.binding.AccountID, f.binding.BrainID,
+		f.token[8:16], hoststore.Hash(f.token[17:]), strings.Join(f.binding.Scopes, ","), f.binding.Generation).Scan(&revokedAt); err != nil {
+		t.Fatalf("original credential identity or revocation missing: %v", err)
+	}
+	if stamp, err := time.Parse(time.RFC3339Nano, revokedAt); err != nil || stamp.IsZero() {
+		t.Fatal("original credential has no valid revocation timestamp")
+	}
+	if f.g.Issuer.OAuthVerify != nil {
+		t.Fatal("real-key custody assertion must use the ordinary issuer")
+	}
+	if _, err := f.g.Issuer.Verify(context.Background(), f.token); !errors.Is(err, credential.ErrInvalidCredential) {
+		t.Fatalf("frozen account did not reject the original real key: %v", err)
 	}
 }
 
