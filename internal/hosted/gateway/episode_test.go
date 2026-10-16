@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/hosted/deletion"
 	"github.com/sirerun/serenity/internal/hosted/meter"
 	"github.com/sirerun/serenity/internal/hosted/pool"
 	"github.com/sirerun/serenity/internal/store"
@@ -61,6 +62,11 @@ func episodeHTTPSetup(t *testing.T) (*Gateway, *pool.Pool, string, string) {
 	g.Meter = &meter.Meter{Store: s}
 	g.EpisodeArchiveEnabled = true
 	g.EpisodeSyntheticBrains = []string{brain}
+	journal, journalErr := deletion.NewFilesystemJournal(t.TempDir(), "episode-http-test", 1, time.Now)
+	if journalErr != nil {
+		t.Fatal(journalErr)
+	}
+	g.Journal = journal
 	token, err := g.Issuer.Issue(context.Background(), brain, account, []string{"memory:read", "memory:write"})
 	if err != nil {
 		t.Fatal(err)
@@ -141,6 +147,11 @@ func TestEpisodeHTTPGatesBindingScopesAndRevocation(t *testing.T) {
 		t.Fatalf("synthetic scope %d", code)
 	}
 	g.EpisodeSyntheticBrains = []string{brain}
+	journal, journalErr := deletion.NewFilesystemJournal(t.TempDir(), "episode-http-test", 1, time.Now)
+	if journalErr != nil {
+		t.Fatal(journalErr)
+	}
+	g.Journal = journal
 	req.ProjectID = "other-brain"
 	if code, _, _ := episodeHTTPCall(t, g, token, req); code != 403 {
 		t.Fatalf("brain mismatch %d", code)
