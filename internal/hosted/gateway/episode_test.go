@@ -377,12 +377,14 @@ func TestEpisodeHTTPStorageAdmissionUsesCanonicalEncoding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer release()
-	inventory, err := g.inventory(ctx, binding.AccountID, filepath.Dir(runtime.Root))
+	// Release the fixture lease before the HTTP handler acquires its own.
+	root, sources := runtime.Root, runtime.Sources
+	release()
+	inventory, err := g.inventory(ctx, binding.AccountID, filepath.Dir(root))
 	if err != nil {
 		t.Fatal(err)
 	}
-	filler, err := os.Create(filepath.Join(runtime.Root, "storage-budget-fixture"))
+	filler, err := os.Create(filepath.Join(root, "storage-budget-fixture"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -410,7 +412,7 @@ func TestEpisodeHTTPStorageAdmissionUsesCanonicalEncoding(t *testing.T) {
 	if w.Code != 429 || !strings.Contains(w.Body.String(), "limit_exceeded") {
 		t.Fatalf("canonical quota bypass: %d %s", w.Code, w.Body.String())
 	}
-	projection, err := store.LoadEpisodes(ctx, runtime.Sources)
+	projection, err := store.LoadEpisodes(ctx, sources)
 	if err != nil {
 		t.Fatal(err)
 	}
