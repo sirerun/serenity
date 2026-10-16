@@ -603,6 +603,11 @@ func snapshot(ctx context.Context, b *budget, r *gitrun.Runner, commit string) (
 		if !ok || len(f) != 3 || f[0] != "100644" || f[1] != "blob" || !gitID(f[2]) || !validPath(path) {
 			return nil, ErrUnsafe
 		}
+		// A malformed historical tree may list the same full path twice.
+		// Reject even identical entries before the map can hide either one.
+		if _, exists := files[path]; exists {
+			return nil, ErrUnsafe
+		}
 		data, e := b.git(ctx, r, nil, "cat-file", "blob", f[2])
 		if e != nil {
 			return nil, e
