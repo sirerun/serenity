@@ -20,7 +20,7 @@ func (episodeOfflineSchemaLoader) Load(url string) (any, error) {
 }
 func episodeFixtureSchema(t *testing.T, name string) *jsonschema.Schema {
 	t.Helper()
-	raw, err := os.ReadFile("../../../docs/protocol/schemas/episode_" + name + ".schema.json")
+	raw, err := os.ReadFile("../../../docs/protocol/schemas/episodes/episode_" + name + ".schema.json")
 	if err != nil {
 		t.Fatal(err)
 	}
