@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/episodejson"
+	hoststore "github.com/sirerun/serenity/internal/hosted/store"
 )
 
 // This control is registered only on AdminHandler, behind the existing private
@@ -70,7 +71,12 @@ func (s *Service) configureEpisodeQualification(w http.ResponseWriter, r *http.R
 				return sql.ErrNoRows
 			}
 		}
-		return nil
+		detail, marshalErr := json.Marshal(req)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		_, auditErr := tx.ExecContext(r.Context(), `INSERT INTO audit_log(actor,action,created_at,detail) VALUES('operator','episode.qualification.request',?,?)`, hoststore.Stamp(time.Now()), string(detail))
+		return auditErr
 	})
 	if err != nil {
 		http.Error(w, "qualification refused", 403)

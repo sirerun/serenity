@@ -143,3 +143,22 @@ capture or physical purge.
 The safety-build test checks the compiled HTTP gate, and a service startup
 fixture checks replay with the archive disabled. These are isolated source
 checks; actual signed fallback installation and live acceptance remain separate.
+
+## Expiring operator qualification
+
+The existing private admin transport accepts `POST /episodes/qualification`
+with `brain_ids` (at most two distinct IDs) and `expires_at` (at most fifteen
+minutes in the future). The public router does not register this control.
+It issues no credential and creates no account. Only active free-plan default
+brains belonging to dedicated `@serenity-episode-fixture.invalid` identities,
+with no partner or billing relationship, qualify. The separate reviewed offline
+fixture tool and maintenance recipe own their creation and private credentials;
+this suffix does not claim email verification.
+
+Admission records an operator request in the existing audit log. The gate lives
+only in process memory, expires on each request and is rechecked inside mutation
+authority. Empty `brain_ids` with no expiration disables it immediately. Restart
+also closes it. Permanent archive configuration, WorkOS and billing are unchanged;
+nondefault permanent enrollment and enabled optional authorities reject this
+qualification route. The compiled safety build refuses enablement. Real-history
+capture and physical-purge capabilities remain false throughout qualification.
