@@ -27,6 +27,9 @@ class Model(a.Adapter):
         super().__init__(root=root, owner=os.geteuid(), clock=lambda: self.now,
                          systemctl=lambda unit: dict(self.states[unit]))
 
+    def exec_conditions(self, unit):
+        return self.states[unit]['ExecCondition']
+
     def trusted(self, path, private=False, directory=False, owner=None):
         # Model service UID 1200 on unprivileged or root test workers. No real
         # ownership changes, live systemctl, provider call or subprocess launch.
@@ -96,8 +99,91 @@ class CustodyTests(unittest.TestCase):
             else:
                 content=a.MARKER+'[Unit]\nConditionPathExists=!'+a.HOLD+'\n'
             self.put(base+'90-serenity-release-guard.conf',content.encode(),0o644)
-            self.model.states[unit]=dict(LoadState='loaded',ActiveState='inactive',SubState='dead',MainPID='0',ControlPID='0',Job='',NeedDaemonReload='no',ExecCondition='path=/usr/bin/python3 ; argv[]=/usr/bin/python3 '+self.proof['runtime_path']+' guard '+unit+' ; ignore_errors=no',BindsTo=self.hold['supervisor'],Restart='no',User='serenity',Group='serenity',ControlGroup='')
+            self.model.states[unit]=dict(LoadState='loaded',ActiveState='inactive',SubState='dead',MainPID='0',ControlPID='0',Job='',NeedDaemonReload='no',ExecCondition=[['/usr/bin/python3', ['/usr/bin/python3', self.proof['runtime_path'], 'guard', unit], False, 0, 0, 0, 0, 0, 0, 0]],BindsTo=self.hold['supervisor'],Restart='no',User='serenity',Group='serenity',ControlGroup='')
         self.write_proof()
+
+    def test_other_executable_with_guard_text_refused(self):
+        self.model.prepare('/proof/proof.json')
+        for unit in a.WRITERS:
+            row = self.model.states[unit]['ExecCondition'][0]
+            row[0] = row[1][0] = '/usr/bin/true'
+        with self.assertRaises(RuntimeError):
+            self.model.refresh()
+        self.model.close()
+        with self.assertRaises(RuntimeError):
+            self.model.prepare('/proof/proof.json')
+
+    def test_python_non_guard_invocation_refused(self):
+        self.model.prepare('/proof/proof.json')
+        for unit in a.WRITERS:
+            self.model.states[unit]['ExecCondition'][0][1] = [
+                '/usr/bin/python3', '-c', 'pass', self.proof['runtime_path'], 'guard', unit]
+        with self.assertRaises(RuntimeError):
+            self.model.refresh()
+        self.model.close()
+        with self.assertRaises(RuntimeError):
+            self.model.prepare('/proof/proof.json')
+
+    def test_ambiguous_or_ignored_exec_conditions_refused(self):
+        self.model.prepare('/proof/proof.json')
+        unit = a.WRITERS[0]
+        good = copy.deepcopy(self.model.states[unit]['ExecCondition'])
+        ignored = copy.deepcopy(good)
+        ignored[0][2] = True
+        malformed_bool = copy.deepcopy(good)
+        malformed_bool[0][2] = 0
+        malformed_pid = copy.deepcopy(good)
+        malformed_pid[0][7] = True
+        for rows in ([], good + good, good + ignored, ignored, malformed_bool,
+                     malformed_pid, 'path=/usr/bin/python3 ; ignore_errors=no'):
+            with self.subTest(rows=rows):
+                self.model.states[unit]['ExecCondition'] = rows
+                with self.assertRaises(RuntimeError):
+                    self.model.refresh()
+        self.model.states[unit]['ExecCondition'] = good
+        self.model.refresh()
+
+    def test_typed_exec_condition_transport_and_reference_cleanup(self):
+        # A synthetic instance of busctl's typed property representation. The
+        # parent's real read-only receipt remains a separate integration gate.
+        unit = a.WRITERS[0]
+        rows = self.model.states[unit]['ExecCondition']
+        payload = blob(dict(type=a.EXEC_CONDITION_TYPE, data=[rows]))
+        bus = mock.Mock()
+        bus.manager.return_value = '/org/freedesktop/systemd1/unit/serenity_2dhosted_2eservice'
+        self.model.module = types.SimpleNamespace(SystemdBus=lambda: bus)
+        with mock.patch.object(a.subprocess, 'run', return_value=types.SimpleNamespace(stdout=payload)) as run:
+            result = a.Adapter.exec_conditions(self.model, unit)
+            a.exact_guard(result, self.proof['runtime_path'], unit)
+            self.assertEqual(run.call_args.args[0], [
+                '/usr/bin/busctl', '--system', '--json=short', 'get-property',
+                'org.freedesktop.systemd1', bus.manager.return_value,
+                'org.freedesktop.systemd1.Service', 'ExecCondition'])
+        self.assertEqual(bus.manager.call_args_list, [mock.call('RefUnit', unit), mock.call('GetUnit', unit), mock.call('UnrefUnit', unit)])
+        bus.close.assert_called_once()
+        for bad in (b'{}', b'{"type":"s","data":[]}', blob(dict(type=a.EXEC_CONDITION_TYPE, data=rows)),
+                    b'{"type":"a(sasbttttuii)","data":[],"data":[]}'):
+            bus.reset_mock()
+            with mock.patch.object(a.subprocess, 'run', return_value=types.SimpleNamespace(stdout=bad)):
+                with self.assertRaises(RuntimeError):
+                    result = a.Adapter.exec_conditions(self.model, unit)
+                    a.exact_guard(result, self.proof['runtime_path'], unit)
+            bus.manager.assert_any_call('UnrefUnit', unit)
+            bus.close.assert_called_once()
+
+    def test_exec_condition_query_failure_releases_reference(self):
+        unit = a.WRITERS[0]
+        bus = mock.Mock()
+        self.model.module = types.SimpleNamespace(SystemdBus=lambda: bus)
+        for failure in (FileNotFoundError(), a.subprocess.TimeoutExpired('busctl', 5),
+                        a.subprocess.CalledProcessError(1, 'busctl')):
+            bus.reset_mock()
+            with self.subTest(failure=type(failure).__name__):
+                with mock.patch.object(a.subprocess, 'run', side_effect=failure):
+                    with self.assertRaises(type(failure)):
+                        a.Adapter.exec_conditions(self.model, unit)
+                bus.manager.assert_any_call('UnrefUnit', unit)
+                bus.close.assert_called_once()
 
     def put(self,path,data,mode=0o600):
         p=self.model.path(path)

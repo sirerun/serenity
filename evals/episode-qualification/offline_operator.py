@@ -62,6 +62,34 @@ def absolute(path):
     return isinstance(path, str) and str(Path(path)) == path and path.startswith('/') and '..' not in Path(path).parts and not re.search(r'[\s\x00]', path)
 
 
+EXEC_CONDITION_TYPE = 'a(sasbttttuii)'
+
+
+def exact_guard(rows, runtime, unit):
+    # systemd Service.ExecCondition: path, argv, ignore_errors, four timestamps,
+    # PID, exit code, exit status. Never parse systemctl's display rendering.
+    require(type(rows) is list and len(rows) == 1)
+    row = rows[0]
+    require(type(row) is list and len(row) == 10)
+    require(row[0] == '/usr/bin/python3')
+    require(type(row[1]) is list and row[1] == ['/usr/bin/python3', runtime, 'guard', unit])
+    require(row[2] is False)
+    for value, bits, signed in zip(row[3:], (64, 64, 64, 64, 32, 32, 32),
+                                   (False, False, False, False, False, True, True)):
+        require(type(value) is int)
+        require(-(1 << (bits - 1)) <= value < (1 << (bits - 1)) if signed
+                else 0 <= value < (1 << bits))
+
+
+def decode_exec_conditions(data):
+    value = decode(data)
+    require(type(value) is dict and set(value) == {'type', 'data'})
+    require(value['type'] == EXEC_CONDITION_TYPE and type(value['data']) is list)
+    # busctl wraps the single property value in its message-arguments array.
+    require(len(value['data']) == 1 and type(value['data'][0]) is list)
+    return value['data'][0]
+
+
 class Adapter:
     def __init__(self, root=Path('/'), owner=0, clock=time.time, systemctl=None):
         self.root, self.owner, self.clock = Path(root), owner, clock
@@ -123,12 +151,35 @@ class Adapter:
         self.fds = []
 
     def real_systemctl(self, unit):
-        props = 'LoadState,ActiveState,SubState,MainPID,ControlPID,Job,NeedDaemonReload,ExecCondition,BindsTo,Restart,User,Group,ControlGroup'
+        props = 'LoadState,ActiveState,SubState,MainPID,ControlPID,Job,NeedDaemonReload,BindsTo,Restart,User,Group,ControlGroup'
         completed = subprocess.run(['/usr/bin/systemctl', 'show', unit, '--no-pager', '--property=' + props],
                                    check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                    text=True, timeout=5, env={'PATH': '/usr/bin:/bin', 'LANG': 'C'})
         require(len(completed.stdout) < 32768)
         return unique(line.split('=', 1) for line in completed.stdout.splitlines())
+
+    def exec_conditions(self, unit):
+        # Reuse the pinned runtime's read-only bus custody: RefUnit prevents an
+        # inactive unit being garbage-collected between GetUnit and the query.
+        # busctl emits typed JSON; missing support or malformed data refuses.
+        require(unit in WRITERS)
+        bus = self.module.SystemdBus()
+        try:
+            bus.manager('RefUnit', unit)
+            try:
+                path = bus.manager('GetUnit', unit)
+                completed = subprocess.run([
+                    '/usr/bin/busctl', '--system', '--json=short', 'get-property',
+                    'org.freedesktop.systemd1', path,
+                    'org.freedesktop.systemd1.Service', 'ExecCondition'],
+                    check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                    timeout=5, env={'PATH': '/usr/bin:/bin', 'LANG': 'C'})
+                require(len(completed.stdout) < 32768)
+                return decode_exec_conditions(completed.stdout)
+            finally:
+                bus.manager('UnrefUnit', unit)
+        finally:
+            bus.close()
 
     def check_time(self):
         p, now = self.proof, int(self.clock())
@@ -200,8 +251,7 @@ class Adapter:
                     require(group.startswith('/') and '..' not in Path(group).parts)
                     require(not self.path('/sys/fs/cgroup' + group + '/cgroup.procs').read_text().strip())
             if unit in WRITERS:
-                require(p['runtime_path'] + ' guard ' + unit in v['ExecCondition'])
-                require('ignore_errors=no' in v['ExecCondition'] and 'ignore_errors=yes' not in v['ExecCondition'])
+                exact_guard(self.exec_conditions(unit), p['runtime_path'], unit)
                 require(h['supervisor'] in v['BindsTo'].split() and v['Restart'] == 'no')
             else:
                 require(self.module.mandatory_negated_condition(self.module.unit_conditions(unit), HOLD))

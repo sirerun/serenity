@@ -46,6 +46,16 @@ child has exited and final checks finish. It verifies:
   service UID/GID, data directory, boot ID and reviewed source commits.
 - Root-owned persistent `90-serenity-release-guard.conf` and transaction
   `91-serenity-release-maintenance.conf` bytes, effective writer ExecCondition,
+  read as the typed D-Bus `org.freedesktop.systemd1.Service.ExecCondition`
+  property (`a(sasbttttuii)`) through `/usr/bin/busctl --system --json=short`.
+  The pinned runtime's `SystemdBus` holds a `RefUnit` reference across the
+  property read and releases it afterward. Exactly one command is allowed:
+  executable `/usr/bin/python3`, argv exactly `[/usr/bin/python3,
+  <pinned-runtime-path>, guard, <exact-unit>]`, and `ignore_errors=false`.
+  Empty/multiple commands, display strings, wrapper arguments, ignored errors,
+  unsupported JSON/type representations or unavailable bus access refuse.
+  This requires busctl JSON support and parent verification against the actual
+  host's read-only typed property receipt. The adapter also checks
   supervisor binding and Restart=no. Backup/timer conditions use the established
   runtime's typed systemd reader: the hold condition must be mandatory and
   negated, not positive or a trigger condition.
