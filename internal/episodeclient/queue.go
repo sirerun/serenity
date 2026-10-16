@@ -275,7 +275,7 @@ func (q *Queue) read() (queueState, error) {
 		return s, ErrStorage
 	}
 	for id, fenced := range s.Fenced {
-		if !validID(id) || !fenced || !s.GenerationKnown {
+		if !validFenceKey(id) || !fenced || !s.GenerationKnown {
 			return s, ErrStorage
 		}
 	}
@@ -395,7 +395,7 @@ func (q *Queue) Capture(in Input) (Decision, error) {
 		if e != nil {
 			return e
 		}
-		if s.Fenced[r.Conversation] {
+		if s.Fenced[ConversationFenceKey(r.Binding.Producer, r.Conversation)] {
 			return ErrBlocked
 		}
 		if paused(s, r) {
@@ -515,8 +515,8 @@ type Verification struct {
 	GenerationKnown     bool
 	Generation          uint64
 	SyncedAt, ExpiresAt time.Time
-	// Conversations is the complete fence set translated by the protocol adapter
-	// to local conversation IDs; translation must preserve producer scope.
+	// Conversations is the complete server fence set, keyed by
+	// ConversationFenceKey, including streams belonging to other producers.
 	Conversations map[string]bool
 }
 type Reconciler interface {
@@ -551,7 +551,7 @@ func verificationOK(v Verification, r Record, s queueState, now time.Time) bool 
 		return false
 	}
 	for id, fenced := range v.Conversations {
-		if !validID(id) || !fenced {
+		if !validFenceKey(id) || !fenced {
 			return false
 		}
 	}
@@ -610,7 +610,7 @@ func (q *Queue) Drain(ctx context.Context, g Reconciler, p Publisher, max int) (
 			if e = q.write(s); e != nil {
 				return e
 			}
-			if v.Conversations[r.Conversation] {
+			if v.Conversations[ConversationFenceKey(r.Binding.Producer, r.Conversation)] {
 				return ErrBlocked
 			}
 			if !verificationOK(v, r, s, time.Now()) {

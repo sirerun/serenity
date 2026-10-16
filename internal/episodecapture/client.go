@@ -112,8 +112,8 @@ func (c *Client) allowed(ctx context.Context, key episodeclient.ReplayKey) bool 
 }
 
 // Reconcile authenticates to the exact brain and downloads its complete bounded
-// fence set. Only the current producer/conversation can be mapped into this
-// queue: another producer's equal conversation label is not the same stream.
+// fence set. Opaque keys preserve producer identity across restarts and
+// reconciliation for unrelated conversations.
 func (c *Client) Reconcile(ctx context.Context, key episodeclient.ReplayKey) (episodeclient.Verification, error) {
 	var out episodeclient.Verification
 	if !c.allowed(ctx, key) {
@@ -133,8 +133,8 @@ func (c *Client) Reconcile(ctx context.Context, key episodeclient.ReplayKey) (ep
 	}
 	now := time.Now()
 	out = episodeclient.Verification{Binding: key.Binding, Workspace: key.Workspace, Allowed: true, Full: true, GenerationKnown: true, Generation: *res.Generation, SyncedAt: now, ExpiresAt: now.Add(30 * time.Second), Conversations: map[string]bool{}}
-	if res.Fences[store.EpisodeConversationKey(key.Binding.Producer, key.Conversation)] != 0 {
-		out.Conversations[key.Conversation] = true
+	for hash := range res.Fences {
+		out.Conversations[hash] = true
 	}
 	return out, nil
 }

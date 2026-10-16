@@ -92,7 +92,7 @@ func jsonValue(dec *json.Decoder, depth int) bool {
 				return false
 			}
 			for _, c := range k {
-				if !(c >= 'a' && c <= 'z' || c == '_') {
+				if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_') {
 					return false
 				}
 			}
