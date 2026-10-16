@@ -385,3 +385,42 @@ func TestEpisodeReplayStartupHonorsWholeBrainDeletionDisposition(t *testing.T) {
 		})
 	}
 }
+
+// This also runs in the episode_archive_disabled safety build: replay must not
+// depend on serving or enabling the archive API.
+func TestEpisodeReplaySafetyBuildStartup(t *testing.T) {
+	ctx := context.Background()
+	db, cfg, _, brain := episodeReplayServiceFixture(t)
+	cfg.EpisodeArchiveEnabled = false
+	entry := episodeReplayEntry(brain)
+	svc, err := AssembleWithDependencies(ctx, cfg, true, db, nil, deletionEmbedding{}, testLifecycleDependenciesWithEntries(t, entry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := svc.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	runtime, release, err := svc.Pool.AcquireCanonical(ctx, brain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	p, err := store.LoadEpisodes(ctx, runtime.Sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := contracts.ParseEpisodeDeletionIdentity(entry.SubjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Fences[id.ConversationHash] == 0 {
+		t.Fatal("safety startup lost external fence")
+	}
+	w := httptest.NewRecorder()
+	svc.Handler.ServeHTTP(w, httptest.NewRequest("POST", "/episodes/v1", strings.NewReader(`{}`)))
+	if w.Code != 404 || !strings.Contains(w.Body.String(), `"error":"archive_disabled"`) {
+		t.Fatalf("disabled archive %d %s", w.Code, w.Body.String())
+	}
+}

@@ -127,3 +127,19 @@ exercise an actual pre-delete Git snapshot against current admitted journal
 history, checkpoint exclusion, sibling isolation, ordinary authority admission,
 sealed recovery, invalid history and legitimate whole-brain deletion.
 These are synthetic verification fixtures, not provider or production receipts.
+
+## Compatible safety build
+
+A release built with `-tags episode_archive_disabled` retains journal decoding
+and startup fence replay, but compiles the episode HTTP entry point closed.
+It returns `archive_disabled` even if a stale configuration enables the archive.
+This is a compatible safety build, not an assertion that the old foundation
+binary can read new-subject history. Its exact source, build tag, executable,
+signed manifest, authority allowlist and lower-sequence rollback authorization
+must be qualified before the first production episode intent. The normal build
+still requires its explicit synthetic allowlist; neither profile enables real
+capture or physical purge.
+
+The safety-build test checks the compiled HTTP gate, and a service startup
+fixture checks replay with the archive disabled. These are isolated source
+checks; actual signed fallback installation and live acceptance remain separate.
