@@ -57,6 +57,12 @@ func (f *fixture) commit() string {
 	f.t.Helper()
 	f.git("add", "--all")
 	tree := strings.TrimSpace(string(f.git("write-tree")))
+	return f.commitTree(tree)
+}
+
+// Publish a fixture tree without checking it out or changing the clean index.
+func (f *fixture) commitTree(tree string) string {
+	f.t.Helper()
 	raw := "tree " + tree + "\n"
 	old, e := gitrun.CanonicalReadOnly(f.root).Output(context.Background(), "rev-parse", "--verify", "HEAD")
 	if e == nil {
@@ -565,4 +571,139 @@ func TestInterruptedStageIsRemovedAndRetrySucceeds(t *testing.T) {
 		t.Fatal("interrupted operation activated candidate")
 	}
 	mustBuild(t, req)
+}
+
+func (f *fixture) gitInput(input []byte, args ...string) string {
+	f.t.Helper()
+	out, err := (&budget{}).git(context.Background(), gitrun.Quarantine(f.root), input, args...)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// Include Git files as well as canonical sources: a rejected build must leave
+// refs, objects, reflogs, index and working bytes untouched.
+func sourceFileDigests(t *testing.T, root string) map[string][32]byte {
+	t.Helper()
+	result := map[string][32]byte{}
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		result[path] = sha256.Sum256(raw)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func assertHistoricalRejection(t *testing.T, f *fixture, malformed string) {
+	t.Helper()
+	req := f.request()
+	before := sourceFileDigests(t, f.root)
+	// Prove clean HEAD/reachability qualification is not what rejects the case.
+	if _, err := qualifyGit(context.Background(), &budget{}, gitrun.CanonicalReadOnly(f.root), f.root); err != nil {
+		t.Fatalf("fixture failed initial qualification: %v", err)
+	}
+	if _, err := snapshot(context.Background(), &budget{}, gitrun.CanonicalReadOnly(f.root), malformed); !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("malformed historical snapshot: %v", err)
+	}
+	if _, err := Build(context.Background(), req); !errors.Is(err, ErrUnsafe) {
+		t.Fatalf("historical build: %v", err)
+	}
+	if _, err := os.Lstat(req.Destination); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("destination published: %v", err)
+	}
+	after := sourceFileDigests(t, f.root)
+	if len(before) != len(after) {
+		t.Fatal("source file set changed")
+	}
+	for path, digest := range before {
+		if got, ok := after[path]; !ok || got != digest {
+			t.Fatalf("source changed: %s", path)
+		}
+	}
+}
+
+func TestDuplicateHistoricalPathsRejected(t *testing.T) {
+	for _, name := range []string{"bytes", "meta.yaml"} {
+		for _, identical := range []bool{false, true} {
+			variant := "different"
+			if identical {
+				variant = "identical"
+			}
+			t.Run(name+"/"+variant, func(t *testing.T) {
+				f := newFixture(t)
+				sha := f.put(appendRecord("delete", "command", "synthetic secret", false))
+				clean := f.commit()
+				cleanTree := strings.TrimSpace(string(f.git("rev-parse", clean+"^{tree}")))
+				ids := map[string]string{}
+				for _, file := range []string{"bytes", "meta.yaml"} {
+					ids[file] = strings.TrimSpace(string(f.git("rev-parse", clean+":"+sourceBase(sha)+file)))
+				}
+				hidden := ids[name]
+				if !identical {
+					hidden = f.gitInput([]byte("unknown historical payload"), "hash-object", "-w", "--stdin")
+				}
+				// Raw tree encoding deliberately preserves a duplicate entry. Ordinary
+				// index/write-tree construction cannot represent this malformed shape.
+				var leaf []byte
+				add := func(file, id string) {
+					oid, err := hex.DecodeString(id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					leaf = append(leaf, []byte("100644 "+file+"\x00")...)
+					leaf = append(leaf, oid...)
+				}
+				for _, file := range []string{"bytes", "meta.yaml"} {
+					if file == name {
+						add(file, hidden)
+					}
+					add(file, ids[file]) // Canonical entry last: reproduces the overwrite.
+				}
+				tree := f.gitInput(leaf, "hash-object", "--literally", "-t", "tree", "-w", "--stdin")
+				for _, dir := range []string{sha, sha[:2], "sources", "brain"} {
+					tree = f.gitInput([]byte("040000 tree "+tree+"\t"+dir+"\x00"), "mktree", "-z")
+				}
+				malformed := f.commitTree(tree)
+				f.commitTree(cleanTree) // Restore clean ordinary HEAD without checkout.
+				listing := f.git("ls-tree", "-rz", "--full-tree", malformed)
+				repeated := []byte("\t" + sourceBase(sha) + name + "\x00")
+				if bytes.Count(listing, repeated) != 2 {
+					t.Fatal("fixture did not retain both full paths")
+				}
+				if status := f.git("status", "--porcelain=v1", "--untracked-files=all", "--ignored"); len(status) != 0 {
+					t.Fatal("fixture HEAD is not clean")
+				}
+				assertHistoricalRejection(t, f, malformed)
+			})
+		}
+	}
+}
+
+func TestHistoricalGitlinkRejectedWithCleanHead(t *testing.T) {
+	f := newFixture(t)
+	f.put(appendRecord("delete", "command", "synthetic secret", false))
+	clean := f.commit()
+	cleanTree := strings.TrimSpace(string(f.git("rev-parse", clean+"^{tree}")))
+	entries := f.git("ls-tree", "-z", clean)
+	entries = append(entries, []byte("160000 commit "+clean+"\tsubmodule\x00")...)
+	tree := f.gitInput(entries, "mktree", "-z")
+	malformed := f.commitTree(tree)
+	f.commitTree(cleanTree)
+	if status := f.git("status", "--porcelain=v1", "--untracked-files=all", "--ignored"); len(status) != 0 {
+		t.Fatal("fixture HEAD is not clean")
+	}
+	assertHistoricalRejection(t, f, malformed)
 }
