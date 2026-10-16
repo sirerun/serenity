@@ -99,7 +99,7 @@ func (c *Client) call(ctx context.Context, operation string, generation *uint64,
 		return out, ErrUnavailable
 	}
 	body, err := io.ReadAll(io.LimitReader(res.Body, store.EpisodeMaxResponseBytes+1))
-	if err != nil || len(body) > store.EpisodeMaxResponseBytes || json.Unmarshal(body, &out) != nil {
+	if err != nil || len(body) > store.EpisodeMaxResponseBytes || !episodeclient.ValidJSON(body) || json.Unmarshal(body, &out) != nil {
 		return response{}, ErrUnavailable
 	}
 	if out.Schema != store.EpisodeSchema || out.ProjectID != c.options.Binding.Brain || out.Status != "completed" || out.Generation == nil || !store.ValidSourceSHA(out.Revision) {

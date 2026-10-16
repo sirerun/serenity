@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/sirerun/serenity/internal/episodeclient"
 )
 
 const CodexVersion = "0.163.0"
@@ -129,7 +131,7 @@ func ReadCodex(r io.Reader, enrollment Enrollment, previous Cursor, limit int) (
 			return Page{}, ErrFormat
 		}
 		var row codexLine
-		if uniqueJSON(raw) != nil || json.Unmarshal(raw, &row) != nil || len(row.Payload) == 0 {
+		if !episodeclient.ValidJSON(raw) || json.Unmarshal(raw, &row) != nil || len(row.Payload) == 0 {
 			return Page{}, ErrFormat
 		}
 		if lineNo == 1 {
@@ -264,67 +266,4 @@ func decodeCodexLine(row codexLine, line int, session string) ([]Message, []Gap,
 	// different positions remain distinct. Prefix verification detects rewrites.
 	sum := sha256.Sum256([]byte(fmt.Sprintf("codex-visible-v1\x00%s\x00%d", session, line)))
 	return []Message{{ID: hex.EncodeToString(sum[:]), Sequence: int64(line), Role: item.Role, Text: text.String(), OccurredAt: occurred}}, gaps, nil
-}
-
-// Reject ambiguous duplicate keys before classifying visibility. Nesting is
-// bounded independently of byte limits, including skipped payloads.
-func uniqueJSON(raw []byte) error {
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.UseNumber()
-	var value func(int) error
-	value = func(depth int) error {
-		if depth > 64 {
-			return ErrFormat
-		}
-		t, err := d.Token()
-		if err != nil {
-			return ErrFormat
-		}
-		delim, ok := t.(json.Delim)
-		if !ok {
-			return nil
-		}
-		switch delim {
-		case '{':
-			seen := map[string]bool{}
-			for d.More() {
-				k, e := d.Token()
-				if e != nil {
-					return ErrFormat
-				}
-				key, ok := k.(string)
-				if !ok || seen[key] {
-					return ErrFormat
-				}
-				seen[key] = true
-				if e = value(depth + 1); e != nil {
-					return e
-				}
-			}
-			end, e := d.Token()
-			if e != nil || end != json.Delim('}') {
-				return ErrFormat
-			}
-		case '[':
-			for d.More() {
-				if e := value(depth + 1); e != nil {
-					return e
-				}
-			}
-			end, e := d.Token()
-			if e != nil || end != json.Delim(']') {
-				return ErrFormat
-			}
-		default:
-			return ErrFormat
-		}
-		return nil
-	}
-	if err := value(0); err != nil {
-		return err
-	}
-	if _, err := d.Token(); err != io.EOF {
-		return ErrFormat
-	}
-	return nil
 }
