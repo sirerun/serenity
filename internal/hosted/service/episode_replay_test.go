@@ -309,11 +309,15 @@ func TestEpisodeReplayStartupFoundationFenceRequiresReconciliation(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = svc.Pool.Close(); err != nil {
+	if err = svc.Close(); err != nil {
 		t.Fatal(err)
 	}
-	svc.Gateway.Close()
-	resumed, err := AssembleWithDependencies(ctx, cfg, true, db, nil, deletionEmbedding{}, testLifecycleDependencies(t))
+	reopened, err := hoststore.Open(filepath.Join(cfg.DataDir, "control.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = reopened.Close() })
+	resumed, err := AssembleWithDependencies(ctx, cfg, true, reopened, nil, deletionEmbedding{}, testLifecycleDependencies(t))
 	if !errors.Is(err, gateway.ErrEpisodeReplayPending) || resumed != nil {
 		t.Fatalf("foundation falsely gained restore protection: %v", err)
 	}
