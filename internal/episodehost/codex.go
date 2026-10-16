@@ -146,7 +146,7 @@ func ReadCodex(r io.Reader, enrollment Enrollment, previous Cursor, limit int) (
 		} else if row.Type == "session_meta" {
 			return Page{}, ErrRewrite
 		}
-		hash.Write(raw)
+		_, _ = hash.Write(raw)
 		if lineNo <= previous.Lines {
 			if lineNo == previous.Lines {
 				if hex.EncodeToString(hash.Sum(nil)) != previous.PrefixSHA256 {
