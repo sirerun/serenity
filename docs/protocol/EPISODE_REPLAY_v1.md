@@ -186,3 +186,5 @@ journal entries, rejects an unjournaled foundation fence, and reconciles both
 existing and missing admitted external fences across repeated startup. Run the
 same regression in normal and `episode_archive_disabled` builds. This fixture
 is authored verification coverage; execution receipts are required separately.
+
+The private admin route `POST /episodes/qualification/revoke` accepts only a nonempty `credential_ids` array of at most eight distinct IDs. Every key must belong to a dedicated fixture identity under the same free/unbilled/nonpartner/default-brain checks. Validation, idempotent per-key revocation and a content-free audit are transactional; any unknown or ordinary key refuses the whole batch. It creates no credential and is absent from the public handler. This supports cleanup after synthetic qualification without changing permanent configuration or another account. Synthetic account rows and canonical data remain retained; revocation is not physical purge.
