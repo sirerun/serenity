@@ -138,15 +138,16 @@ func pinFD(fd int, private bool) (rootPin, []byte, error) {
 	return pin, data, nil
 }
 func (p custodyProof) valid(now int64, source string, uid, gid int) bool {
-	if p.Version == 1 {
+	switch p.Version {
+	case 1:
 		if p.Purpose != "serenity-episode-fixture-offline-v1" || p.SourceAdoption != nil || (p.Operation != "prepare" && p.Operation != "reissue" && p.Operation != "revoke") {
 			return false
 		}
-	} else if p.Version == 2 {
+	case 2:
 		if p.Purpose != "serenity-episode-fixture-offline-v2" || p.Operation != "adopt-source" || p.SourceAdoption == nil || !p.SourceAdoption.valid(source) {
 			return false
 		}
-	} else {
+	default:
 		return false
 	}
 	if uid <= 0 || gid <= 0 || p.UID != uid || p.GID != gid || p.ToolSource != source || !sourceID.MatchString(source) || p.AccountCap <= 0 {
