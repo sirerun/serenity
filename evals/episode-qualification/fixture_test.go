@@ -289,11 +289,11 @@ func TestPrivatePathsAndTargetBinding(t *testing.T) {
 	}
 }
 
-func TestMainAlwaysRefusesWithoutSecretOutput(t *testing.T) {
-	// This command cannot select a target, open a database, inspect configuration,
-	// or accept a forged maintenance boolean. This is not live guard qualification.
+func TestMainRefusesMissingCustodyWithoutSecretOutput(t *testing.T) {
+	// Missing custody cannot open a target or accept a maintenance boolean.
+	// This is not live guard qualification.
 	var out bytes.Buffer
-	if run(&out) != 1 || out.String() != "REFUSED: offline maintenance authority integration unavailable; no files opened or changed\n" {
+	if run(nil, &out) != 1 || out.String() != "REFUSED: fixture custody or operation failed; retain hold for reconciliation\n" {
 		t.Fatal("main did not fail closed")
 	}
 	if strings.Contains(out.String(), "sk_live_") {
@@ -355,7 +355,7 @@ func TestMissingManifestNeverAdoptsReservedIdentity(t *testing.T) {
 
 func TestPendingBrainDirectoryCollisionRefused(t *testing.T) {
 	e := fixture(t)
-	m := &manifest{Version: 1, Namespace: store.ID(), Target: e.target, Accounts: make([]fixtureAccount, 2)}
+	m := &manifest{Version: 2, Namespace: store.ID(), Target: e.target, Accounts: make([]fixtureAccount, 2)}
 	for i := range m.Accounts {
 		m.Accounts[i].Email = email(m.Namespace, i)
 	}
@@ -374,4 +374,56 @@ func TestPendingBrainDirectoryCollisionRefused(t *testing.T) {
 	if count(t, e, `SELECT count(*) FROM brains`) != 0 {
 		t.Fatal("foreign directory adopted")
 	}
+}
+
+func TestCustodyLossPreventsNextMutation(t *testing.T) {
+	e := fixture(t)
+	allowed := true
+	e.authorize = func() error {
+		if !allowed {
+			return errRefused
+		}
+		return nil
+	}
+	e.checkpoint = func(stage string) error {
+		if stage == "account-created" {
+			allowed = false
+		}
+		return nil
+	}
+	refuse(t, e, "prepare")
+	if count(t, e, `SELECT count(*) FROM accounts`) != 1 || count(t, e, `SELECT count(*) FROM brains`) != 0 || count(t, e, `SELECT count(*) FROM client_credentials`) != 0 {
+		t.Fatal("continued mutation after custody loss")
+	}
+	// Recovery only after a new validated custody interval; intent predates row.
+	allowed = true
+	e.checkpoint = nil
+	mustOperate(t, e, "prepare")
+}
+
+func TestInterruptedOwnershipRequiresSameMaintenanceHold(t *testing.T) {
+	e := fixture(t)
+	e.custodyEpoch = "synthetic-hold-one"
+	interrupted := errors.New("interrupted")
+	e.checkpoint = func(stage string) error {
+		if stage == "key-issued" {
+			return interrupted
+		}
+		return nil
+	}
+	if err := e.operate(context.Background(), "prepare"); !errors.Is(err, interrupted) {
+		t.Fatal("checkpoint not reached")
+	}
+	e.checkpoint = nil
+	e.custodyEpoch = "synthetic-hold-two"
+	refuse(t, e, "prepare")
+	if count(t, e, `SELECT count(*) FROM client_credentials WHERE revoked_at IS NULL`) != 1 {
+		t.Fatal("foreign epoch mutated orphan")
+	}
+	e.custodyEpoch = "synthetic-hold-one"
+	mustOperate(t, e, "prepare")
+	mustOperate(t, e, "revoke")
+	// Fully bound, inert identities can be reused under a new reviewed hold.
+	e.custodyEpoch = "synthetic-hold-two"
+	mustOperate(t, e, "prepare")
 }

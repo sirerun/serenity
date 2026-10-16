@@ -24,7 +24,7 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/store"
 )
 
-// This engine has no production caller. A caller MUST own an exclusive offline
+// A caller MUST own an exclusive offline
 // maintenance fence for its entire lifetime, including between retries. Tests
 // supply fresh synthetic stores. A private manifest is custody, not authority.
 // In particular, no boolean, environment variable or command line bypass exists.
@@ -46,10 +46,11 @@ type fixtureAccount struct {
 }
 
 type manifest struct {
-	Version   int
-	Namespace string
-	Target    target
-	Accounts  []fixtureAccount
+	Version      int
+	Namespace    string
+	CustodyEpoch string
+	Target       target
+	Accounts     []fixtureAccount
 }
 
 type engine struct {
@@ -57,7 +58,9 @@ type engine struct {
 	target     target
 	privateDir string
 	// Test-only interruption injection; never logs or receives any secret.
-	checkpoint func(string) error
+	checkpoint   func(string) error
+	authorize    func() error
+	custodyEpoch string
 }
 
 var errRefused = errors.New("fixture refused: unsafe, foreign, ambiguous or unsupported state")
@@ -72,7 +75,20 @@ func (e *engine) mark(stage string) error {
 	return nil
 }
 
+func (e *engine) allowed(ctx context.Context) error {
+	if ctx.Err() != nil {
+		return errRefused
+	}
+	if e.authorize != nil {
+		return e.authorize()
+	}
+	return nil // nil is only used by isolated in-package tests
+}
+
 func (e *engine) validate(ctx context.Context) error {
+	if e.allowed(ctx) != nil {
+		return errRefused
+	}
 	if e.store == nil || e.target.AccountCap <= 0 || !hexDigest.MatchString(e.target.ConfigSHA256) || !sourceID.MatchString(e.target.Source) || !filepath.IsAbs(e.target.ConfigPath) || filepath.Clean(e.target.ConfigPath) != e.target.ConfigPath {
 		return errRefused
 	}
@@ -101,6 +117,9 @@ func (e *engine) validate(ctx context.Context) error {
 // fsync. No key is returned, printed, or included in an error. The private file
 // is the sole plaintext key output. Leftover temp files are never adopted.
 func (e *engine) persist(ctx context.Context, m *manifest) error {
+	if e.allowed(ctx) != nil {
+		return errRefused
+	}
 	if err := privatefs.ValidateDirectory(ctx, e.privateDir); err != nil {
 		return errRefused
 	}
@@ -170,7 +189,7 @@ func (e *engine) load(ctx context.Context) (*manifest, error) {
 	if decoder.Decode(&extra) != io.EOF {
 		return nil, errRefused
 	}
-	if len(m.Accounts) != 2 || m.Version != 1 || !generatedID.MatchString(m.Namespace) || m.Target != e.target {
+	if len(m.Accounts) != 2 || m.Version != 2 || !generatedID.MatchString(m.Namespace) || m.Target != e.target {
 		return nil, errRefused
 	}
 	for i, a := range m.Accounts {
@@ -183,6 +202,12 @@ func (e *engine) load(ctx context.Context) (*manifest, error) {
 			}
 		}
 	}
+	for _, a := range m.Accounts {
+		if a.Pending != "" && m.CustodyEpoch != e.custodyEpoch {
+			return nil, errRefused
+		}
+	}
+	m.CustodyEpoch = e.custodyEpoch
 	if m.Accounts[0].AccountID != "" && m.Accounts[0].AccountID == m.Accounts[1].AccountID {
 		return nil, errRefused
 	}
@@ -190,10 +215,10 @@ func (e *engine) load(ctx context.Context) (*manifest, error) {
 }
 
 func email(namespace string, i int) string {
-	return fmt.Sprintf("episode-%s-%d@qualification.invalid", strings.ToLower(namespace), i+1)
+	return fmt.Sprintf("episode-%s-%d@serenity-episode-fixture.invalid", strings.ToLower(namespace), i+1)
 }
 
-// operate is intentionally unexported and unreachable from main. Modes are
+// operate is called only after inherited offline custody is verified. Modes are
 // prepare (replay preserves keys), reissue, and revoke (retains rows/data).
 func (e *engine) operate(ctx context.Context, mode string) error {
 	if mode != "prepare" && mode != "reissue" && mode != "revoke" {
@@ -231,10 +256,10 @@ func (e *engine) operate(ctx context.Context, mode string) error {
 			}
 		}
 		var reserved int
-		if err = e.store.DB().QueryRowContext(ctx, `SELECT count(*) FROM accounts WHERE email LIKE 'episode-%@qualification.invalid'`).Scan(&reserved); err != nil || reserved != 0 {
+		if err = e.store.DB().QueryRowContext(ctx, `SELECT count(*) FROM accounts WHERE email LIKE 'episode-%@serenity-episode-fixture.invalid'`).Scan(&reserved); err != nil || reserved != 0 {
 			return errRefused
 		}
-		m = &manifest{Version: 1, Namespace: store.ID(), Target: e.target, Accounts: make([]fixtureAccount, 2)}
+		m = &manifest{Version: 2, Namespace: store.ID(), Target: e.target, CustodyEpoch: e.custodyEpoch, Accounts: make([]fixtureAccount, 2)}
 		for i := range m.Accounts {
 			m.Accounts[i].Email = email(m.Namespace, i)
 		}
@@ -306,6 +331,9 @@ func (e *engine) operate(ctx context.Context, mode string) error {
 			if err = e.persist(ctx, m); err != nil {
 				return err
 			}
+			if e.allowed(ctx) != nil {
+				return errRefused
+			}
 			account, createErr := e.store.CreateAccount(ctx, a.Email)
 			if createErr != nil {
 				return errRefused
@@ -334,6 +362,9 @@ func (e *engine) operate(ctx context.Context, mode string) error {
 				return errRefused
 			}
 			if n == 0 {
+				if e.allowed(ctx) != nil {
+					return errRefused
+				}
 				if _, err = e.store.InsertBrain(ctx, a.AccountID, a.BrainID, a.BrainID, "allocating", time.Now()); err != nil {
 					return errRefused
 				}
@@ -342,6 +373,9 @@ func (e *engine) operate(ctx context.Context, mode string) error {
 				return err
 			}
 			p := provision.Provisioner{Store: e.store, BrainsRoot: filepath.Join(e.target.DataDir, "brains")}
+			if e.allowed(ctx) != nil {
+				return errRefused
+			}
 			b, err := p.Provision(ctx, a.AccountID)
 			if err != nil || b.ID != a.BrainID {
 				return errRefused
@@ -364,6 +398,9 @@ func (e *engine) operate(ctx context.Context, mode string) error {
 				return err
 			}
 			issuer := credential.Issuer{Store: e.store}
+			if e.allowed(ctx) != nil {
+				return errRefused
+			}
 			key, err := issuer.Issue(ctx, a.BrainID, a.AccountID, []string{"memory:read", "memory:write"})
 			if err != nil {
 				return errRefused
@@ -532,6 +569,9 @@ func (e *engine) inspect(ctx context.Context, a *fixtureAccount) error {
 func (e *engine) revoke(ctx context.Context, a *fixtureAccount) error {
 	issuer := credential.Issuer{Store: e.store}
 	for _, id := range a.CredentialIDs {
+		if e.allowed(ctx) != nil {
+			return errRefused
+		}
 		if err := issuer.RevokeKey(ctx, id); err != nil {
 			return errRefused
 		}
