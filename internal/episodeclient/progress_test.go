@@ -122,3 +122,30 @@ func TestImportPagePolicyFailureRollsBackEarlierAdmissions(t *testing.T) {
 		t.Fatal("partial policy commit")
 	}
 }
+
+func TestImportProgressReadsLegacyQueueAndRejectsDowngradedMetadata(t *testing.T) {
+	o := testOptions(t)
+	q := openTest(t, o)
+	nonce := make([]byte, q.aead.NonceSize())
+	legacy := q.aead.Seal(nonce, nonce, []byte(`{"version":1,"items":null,"paused":null,"generation":0,"generation_known":false}`), q.aad)
+	if e := os.WriteFile(filepath.Join(o.Directory, "queue.bin"), legacy, 0600); e != nil {
+		t.Fatal(e)
+	}
+	old, next, in := importFixture(t, q)
+	if e := q.CapturePage(old, next, []Input{in}); e != nil {
+		t.Fatal(e)
+	}
+	if e := q.withLock(func() error {
+		s, e := q.read()
+		if e != nil {
+			return e
+		}
+		if s.Version != 2 {
+			t.Fatal("progress not versioned")
+		}
+		s.Version = 1
+		return validateImports(s)
+	}); e != ErrStorage {
+		t.Fatalf("downgraded progress accepted: %v", e)
+	}
+}
