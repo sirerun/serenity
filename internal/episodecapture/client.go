@@ -94,7 +94,7 @@ func (c *Client) call(ctx context.Context, operation string, generation *uint64,
 	if err != nil {
 		return out, ErrUnavailable
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		return out, ErrUnavailable
 	}

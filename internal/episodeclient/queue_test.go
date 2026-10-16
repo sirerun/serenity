@@ -27,7 +27,7 @@ func openTest(t *testing.T, o Options) *Queue {
 	if e != nil {
 		t.Fatal(e)
 	}
-	t.Cleanup(func() { q.Close() })
+	t.Cleanup(func() { closeTest(t, q) })
 	return q
 }
 func captureTest(t *testing.T, q *Queue, in Input) {
@@ -68,7 +68,7 @@ func TestQueueEncryptedRestartBindingAndRedaction(t *testing.T) {
 			t.Fatal("plaintext at rest")
 		}
 	}
-	q.Close()
+	closeTest(t, q)
 	q = openTest(t, o)
 	seen := false
 	out, e := q.Drain(context.Background(), reconcileFunc(allowed), publishFunc(func(_ context.Context, r Record, _ uint64) (Receipt, error) {
@@ -82,12 +82,12 @@ func TestQueueEncryptedRestartBindingAndRedaction(t *testing.T) {
 		t.Fatalf("drain %v %+v", e, out)
 	}
 	captureTest(t, q, testInput())
-	q.Close()
+	closeTest(t, q)
 	bad := o
 	bad.Key = bytes.Repeat([]byte{8}, 32)
 	if q, e := OpenQueue(bad); e != ErrStorage {
 		if q != nil {
-			q.Close()
+			closeTest(t, q)
 		}
 		t.Fatal("wrong key accepted")
 	}
@@ -96,7 +96,7 @@ func TestQueueEncryptedRestartBindingAndRedaction(t *testing.T) {
 	bad.Policy.Binding.Brain = "other"
 	if q, e := OpenQueue(bad); e != ErrStorage {
 		if q != nil {
-			q.Close()
+			closeTest(t, q)
 		}
 		t.Fatal("wrong binding accepted")
 	}
@@ -165,7 +165,7 @@ func TestPauseClearsOnlyCoveredItemsAndSurvivesRestart(t *testing.T) {
 	if e != nil || n != 1 {
 		t.Fatalf("pause %v %d", e, n)
 	}
-	q.Close()
+	closeTest(t, q)
 	q = openTest(t, o)
 	if _, e = q.Capture(in); e != ErrPaused {
 		t.Fatal("pause not durable")
@@ -245,7 +245,7 @@ func TestGenerationRollbackBlockedAfterRestart(t *testing.T) {
 	if _, e := q.Drain(context.Background(), g, p, 1); e != ErrBlocked {
 		t.Fatal(e)
 	}
-	q.Close()
+	closeTest(t, q)
 	q = openTest(t, o)
 	g = reconcileFunc(func(ctx context.Context, k ReplayKey) (Verification, error) {
 		v, e := allowed(ctx, k)
@@ -305,7 +305,7 @@ func TestFilesystemProtections(t *testing.T) {
 			o := testOptions(t)
 			q := openTest(t, o)
 			captureTest(t, q, testInput())
-			q.Close()
+			closeTest(t, q)
 			data := filepath.Join(o.Directory, "queue.bin")
 			switch mode {
 			case "directory_mode":
@@ -355,7 +355,7 @@ func TestFilesystemProtections(t *testing.T) {
 			}
 			if got, e := OpenQueue(o); e != ErrStorage {
 				if got != nil {
-					got.Close()
+					closeTest(t, got)
 				}
 				t.Fatalf("unsafe storage accepted: %v", e)
 			}
@@ -458,7 +458,7 @@ func TestInterruptedSnapshotNeverReplacesCommittedQueue(t *testing.T) {
 	o := testOptions(t)
 	q := openTest(t, o)
 	captureTest(t, q, testInput())
-	q.Close()
+	closeTest(t, q)
 	if e := os.WriteFile(filepath.Join(o.Directory, "queue.pending"), []byte("interrupted-ciphertext"), 0600); e != nil {
 		t.Fatal(e)
 	}
@@ -513,7 +513,7 @@ func TestImportQueueRestartUsesSamePendingIdentity(t *testing.T) {
 	if e != nil || first.Admitted != 1 {
 		t.Fatal(e)
 	}
-	q.Close()
+	closeTest(t, q)
 	q = openTest(t, o)
 	// Simulates a crash after Capture but before the adapter persisted its cursor.
 	second, e := Import(bytes.NewReader(b), src, Cursor{}, q.Capture)
@@ -543,7 +543,7 @@ func TestKnownFenceBlocksRecaptureAndCannotDisappear(t *testing.T) {
 	if _, e := q.Drain(context.Background(), fenced, never, 1); e != ErrBlocked {
 		t.Fatal(e)
 	}
-	q.Close()
+	closeTest(t, q)
 	q = openTest(t, o)
 	in.Event = "new-event"
 	in.Sequence = 2
@@ -589,7 +589,7 @@ func TestFullOpaqueFenceSetSurvivesUnrelatedConversationAndRestart(t *testing.T)
 	if r, e := q.Drain(context.Background(), reconcile, publish, 1); e != nil || r.Published != 1 {
 		t.Fatalf("first: %+v %v", r, e)
 	}
-	q.Close()
+	closeTest(t, q)
 	q = openTest(t, o)
 	in.Conversation = "another-live-conversation"
 	captureTest(t, q, in)
@@ -599,5 +599,12 @@ func TestFullOpaqueFenceSetSurvivesUnrelatedConversationAndRestart(t *testing.T)
 	in.Conversation = "deleted-conversation"
 	if _, e := q.Capture(in); e != ErrBlocked {
 		t.Fatalf("forgot known fence: %v", e)
+	}
+}
+
+func closeTest(t *testing.T, q *Queue) {
+	t.Helper()
+	if err := q.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
