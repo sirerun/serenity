@@ -1,0 +1,13 @@
+[extend]
+useDefault = true
+
+# These are the exact SHA-256 identities computed from the public synthetic
+# episode fixture, not credentials. Keep every other default rule and value.
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Two deterministic episode conformance identities in their fixture only"
+condition = "AND"
+paths = ['''^testdata/conformance/episodes/cases\.json$''']
+regexTarget = "secret"
+regexes = ['''^(418e7aeab0185c01fb80890d8e7e4602755d5c7e8db357fbe7c307a4cec431b0|a8febad7544a4a3d05560e48b53997e8bc03ca70c7db8eebfcf508d589770d70)$''']
