@@ -35,7 +35,11 @@ func fixture(t *testing.T) *engine {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("close fixture store: %v", err)
+		}
+	})
 	return &engine{store: db, privateDir: filepath.Join(root, "private"), target: target{DataDir: filepath.Join(root, "data"), ConfigPath: filepath.Join(root, "config.json"), ConfigSHA256: strings.Repeat("a", 64), Source: strings.Repeat("b", 40), AccountCap: 10}}
 }
 

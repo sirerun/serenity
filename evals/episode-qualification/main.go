@@ -13,10 +13,14 @@ var sourceRevision string
 
 func run(args []string, out io.Writer) int {
 	if executeCustody(args) != nil {
-		fmt.Fprintln(out, "REFUSED: fixture custody or operation failed; retain hold for reconciliation")
+		if _, err := fmt.Fprintln(out, "REFUSED: fixture custody or operation failed; retain hold for reconciliation"); err != nil {
+			return 1
+		}
 		return 1
 	}
-	fmt.Fprintln(out, "fixture operation completed; synthetic accounts/data retained; capture unchanged")
+	if _, err := fmt.Fprintln(out, "fixture operation completed; synthetic accounts/data retained; capture unchanged"); err != nil {
+		return 1
+	}
 	return 0
 }
 
