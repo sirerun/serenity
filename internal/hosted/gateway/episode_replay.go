@@ -238,7 +238,7 @@ func (g *Gateway) ReplayEpisodeDeletions(ctx context.Context, entries []contract
 		}
 		// Inspect the source namespace without initializing a runtime for unrelated
 		// empty/provisioning brains. This also detects foundation-only local fences.
-		p, err := store.LoadEpisodes(ctx, store.NewSourceStore(filepath.Join(g.Pool.BrainsRoot(), b.id)))
+		p, err := store.LoadEpisodesForReplay(ctx, store.NewSourceStore(filepath.Join(g.Pool.BrainsRoot(), b.id)))
 		if err != nil {
 			return nil, err
 		}
@@ -291,7 +291,7 @@ func (g *Gateway) replayEpisodeBrain(ctx context.Context, account, brain string,
 			return err
 		}
 	}
-	p, err := store.LoadEpisodes(ctx, runtime.Sources)
+	p, err := store.LoadEpisodesForReplay(ctx, runtime.Sources)
 	if err != nil {
 		return err
 	}
