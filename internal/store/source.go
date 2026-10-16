@@ -385,6 +385,30 @@ func (s *SourceStore) readMeta(sha string) (domain.Source, error) {
 }
 
 func validateSourcePayload(data []byte, src domain.Source) error {
+	if src.Kind == SourceKindEpisode {
+		if len(data) > EpisodeMaxRecordBytes {
+			return ErrEpisodeLimit
+		}
+		var rec EpisodeRecord
+		if err := json.Unmarshal(data, &rec); err != nil {
+			return err
+		}
+		if err := validateEpisodeRecord(rec); err != nil {
+			return err
+		}
+		occurred := rec.RecordedAt
+		if rec.Input != nil {
+			if len(rec.Input.Events) > 0 {
+				occurred = rec.Input.Events[0].OccurredAt
+			} else if rec.Input.Checkpoint != nil {
+				occurred = rec.Input.Checkpoint.CreatedAt
+			}
+		}
+		if src.URI != "memory://episode" || src.IndexOnly || !src.OccurredAt.Equal(occurred) {
+			return ErrEpisodeInvalid
+		}
+		return nil
+	}
 	if src.Kind == GovernedMemoryKind {
 		var rec GovernedRecord
 		if err := json.Unmarshal(data, &rec); err != nil {

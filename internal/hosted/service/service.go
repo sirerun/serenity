@@ -35,9 +35,13 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/provision"
 	"github.com/sirerun/serenity/internal/hosted/store"
 	"github.com/sirerun/serenity/internal/router"
+	brainstore "github.com/sirerun/serenity/internal/store"
 )
 
 type Config struct {
+	EpisodeArchiveEnabled  bool     `json:"episode_archive_enabled"`
+	EpisodeSyntheticBrains []string `json:"episode_synthetic_brains"`
+
 	WorkOSEnabled    bool   `json:"workos_enabled"`
 	WorkOSClientID   string `json:"workos_client_id"`
 	workOS           *identity.WorkOS
@@ -156,6 +160,18 @@ func Load(path string) (Config, error) {
 	return c, nil
 }
 func (c *Config) Validate(dev bool) error {
+	if c.EpisodeArchiveEnabled && len(c.EpisodeSyntheticBrains) == 0 {
+		return errors.New("episode archive requires explicit synthetic brain allowlist")
+	}
+	if len(c.EpisodeSyntheticBrains) > 16 {
+		return errors.New("episode synthetic brain allowlist exceeds limit")
+	}
+	for _, brain := range c.EpisodeSyntheticBrains {
+		if !brainstore.ValidEpisodeID(brain) {
+			return errors.New("invalid episode synthetic brain identity")
+		}
+	}
+
 	if c.WorkOSEnabled && (!strings.HasPrefix(c.WorkOSClientID, "client_") || strings.ContainsAny(c.WorkOSClientID, " \t\r\n") || len(c.WorkOSClientID) > 256) {
 		return errors.New("workos_enabled requires a valid workos_client_id")
 	}
@@ -441,7 +457,7 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	issuer := &credential.Issuer{Store: db}
 	metering := &meter.Meter{Store: db}
 	operations := &operation.Ledger{Store: db}
-	g := &gateway.Gateway{Issuer: issuer, Pool: p, Meter: metering, Operations: operations, Journal: deps.Journal}
+	g := &gateway.Gateway{EpisodeArchiveEnabled: cfg.EpisodeArchiveEnabled, EpisodeSyntheticBrains: append([]string(nil), cfg.EpisodeSyntheticBrains...), Issuer: issuer, Pool: p, Meter: metering, Operations: operations, Journal: deps.Journal}
 	allowlist := make(map[string]struct{}, len(cfg.InviteAllowlist))
 	for _, email := range cfg.InviteAllowlist {
 		allowlist[email] = struct{}{}
@@ -474,6 +490,7 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	issuer.OAuthVerify = auth.Verify
 	issuer.OAuthActive = auth.Active
 	mux.Handle("/mcp", auth.Challenge(g))
+	mux.HandleFunc("/episodes/v1", g.ServeEpisodes)
 	mux.HandleFunc("/memory/v1/commands", g.ServeGovernedMemory)
 	mux.HandleFunc("/memory/v1/commands/", g.ServeGovernedMemory)
 	mux.Handle("/oauth/", auth.Handler())

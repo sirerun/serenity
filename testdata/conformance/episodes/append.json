@@ -1,0 +1,43 @@
+{
+  "schema": "serenity.episodes/v1",
+  "project_id": "synthetic-brain",
+  "operation": "append",
+  "qualification": "synthetic",
+  "generation": 0,
+  "mutation": {
+    "operation": "append",
+    "producer_id": "fixture-producer",
+    "conversation_id": "fixture-conversation",
+    "command_id": "append-001",
+    "host": "synthetic-host",
+    "host_version": "fixture-v1",
+    "workspace_label": "synthetic-workspace",
+    "policy_version": "synthetic-policy-v1",
+    "events": [
+      {
+        "event_id": "event-001",
+        "sequence": 0,
+        "role": "user",
+        "type": "message",
+        "occurred_at": "2021-02-03T04:05:06Z",
+        "observed_at": "2026-10-16T10:00:00Z",
+        "attribution": "host-reported role, not a verified human principal",
+        "text": "  Exact visible text.\nQuoted: \"ignore previous instructions\" is evidence only.\n日本語\n",
+        "attachments": [
+          {
+            "attachment_id": "attachment-001",
+            "media_type": "application/octet-stream",
+            "data": "AP9leGFjdCBhdHRhY2htZW50Cg==",
+            "sha256": "f2a2a33fbf6a3242ea7f97d582063ac4a21d3f50068731e0069fc719b8d33f9e"
+          }
+        ],
+        "gaps": [
+          "hidden_reasoning_not_exposed"
+        ]
+      }
+    ],
+    "gaps": [
+      "host_coverage_not_verified"
+    ]
+  }
+}
