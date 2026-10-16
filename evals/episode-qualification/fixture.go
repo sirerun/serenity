@@ -124,7 +124,11 @@ func refuseCleanup(result *error, err error) {
 // persist uses private same-directory atomic replacement plus file/directory
 // fsync. No key is returned, printed, or included in an error. The private file
 // is the sole plaintext key output. Leftover temp files are never adopted.
-func (e *engine) persist(ctx context.Context, m *manifest) (result error) {
+func (e *engine) persist(ctx context.Context, m *manifest) error {
+	return e.persistChecked(ctx, m, nil, nil)
+}
+
+func (e *engine) persistChecked(ctx context.Context, m *manifest, beforePublish, afterPublish func() error) (result error) {
 	if e.allowed(ctx) != nil {
 		return errRefused
 	}
@@ -164,8 +168,18 @@ func (e *engine) persist(ctx context.Context, m *manifest) (result error) {
 	if err = f.Close(); err != nil {
 		return errRefused
 	}
+	if beforePublish != nil {
+		if err = beforePublish(); err != nil {
+			return err
+		}
+	}
 	if err = os.Rename(temp, path); err != nil {
 		return errRefused
+	}
+	if afterPublish != nil {
+		if err = afterPublish(); err != nil {
+			return err
+		}
 	}
 	dir, err := os.Open(e.privateDir)
 	if err != nil {
@@ -179,6 +193,12 @@ func (e *engine) persist(ctx context.Context, m *manifest) (result error) {
 }
 
 func (e *engine) load(ctx context.Context) (*manifest, error) {
+	return e.loadBound(ctx, e.target, "")
+}
+
+// An adoption hash is checked against the very bytes decoded, under fixture.lock.
+// Ordinary callers always use the current target and no adoption binding.
+func (e *engine) loadBound(ctx context.Context, expected target, expectedHash string) (*manifest, error) {
 	info, err := os.Lstat(filepath.Join(e.privateDir, "manifest.json"))
 	if err != nil {
 		return nil, err
@@ -191,6 +211,22 @@ func (e *engine) load(ctx context.Context) (*manifest, error) {
 	if err != nil {
 		return nil, err
 	}
+	if expectedHash != "" {
+		after, statErr := os.Lstat(filepath.Join(e.privateDir, "manifest.json"))
+		if statErr != nil || !os.SameFile(info, after) || info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
+			return nil, errRefused
+		}
+		afterStat, ok := after.Sys().(*syscall.Stat_t)
+		if !ok || afterStat.Nlink != 1 {
+			return nil, errRefused
+		}
+		if store.Hash(string(data)) != expectedHash {
+			return nil, errAdoptionManifestChanged
+		}
+		if uniqueManifestJSON(data) != nil {
+			return nil, errRefused
+		}
+	}
 	var m manifest
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
@@ -201,7 +237,7 @@ func (e *engine) load(ctx context.Context) (*manifest, error) {
 	if decoder.Decode(&extra) != io.EOF {
 		return nil, errRefused
 	}
-	if len(m.Accounts) != 2 || m.Version != 2 || !generatedID.MatchString(m.Namespace) || m.Target != e.target {
+	if len(m.Accounts) != 2 || m.Version != 2 || !generatedID.MatchString(m.Namespace) || m.Target != expected {
 		return nil, errRefused
 	}
 	for i, a := range m.Accounts {
@@ -239,23 +275,11 @@ func (e *engine) operate(ctx context.Context, mode string) (result error) {
 	if err := e.validate(ctx); err != nil {
 		return err
 	}
-	lock, err := os.OpenFile(filepath.Join(e.privateDir, "fixture.lock"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	unlock, err := e.lockFixture(true)
 	if err != nil {
-		return errRefused
+		return err
 	}
-	defer func() { refuseCleanup(&result, lock.Close()) }()
-	info, err := lock.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
-		return errRefused
-	}
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || st.Uid != uint32(os.Geteuid()) || st.Nlink != 1 {
-		return errRefused
-	}
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return errRefused
-	}
-	defer func() { refuseCleanup(&result, syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)) }()
+	defer func() { refuseCleanup(&result, unlock()) }()
 	m, err := e.load(ctx)
 	if errors.Is(err, os.ErrNotExist) && mode == "prepare" {
 		entries, readErr := os.ReadDir(e.privateDir)
@@ -623,4 +647,37 @@ func checkTree(path string) error {
 		}
 		return nil
 	})
+}
+
+// lockFixture is shared by ordinary operations and explicit source adoption.
+func (e *engine) lockFixture(create bool) (unlock func() error, result error) {
+	flags := os.O_RDWR | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
+	if create {
+		flags |= os.O_CREATE
+	}
+	lock, err := os.OpenFile(filepath.Join(e.privateDir, "fixture.lock"), flags, 0600)
+	if err != nil {
+		return nil, errRefused
+	}
+	accepted := false
+	defer func() {
+		if !accepted {
+			refuseCleanup(&result, lock.Close())
+		}
+	}()
+	info, err := lock.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+		return nil, errRefused
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || st.Uid != uint32(os.Geteuid()) || st.Nlink != 1 {
+		return nil, errRefused
+	}
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		return nil, errRefused
+	}
+	accepted = true
+	return func() error {
+		return errors.Join(syscall.Flock(int(lock.Fd()), syscall.LOCK_UN), lock.Close())
+	}, nil
 }

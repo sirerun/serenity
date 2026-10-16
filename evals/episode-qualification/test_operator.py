@@ -1,7 +1,9 @@
 """Synthetic filesystem/systemd custody model; never invokes a live unit/provider."""
 import copy
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -298,6 +300,138 @@ class CustodyTests(unittest.TestCase):
     def test_root_proof_symlink_refused(self):
         p=self.model.path('/proof/proof.json');p.rename(p.with_name('real.json'));p.symlink_to('real.json')
         with self.assertRaises(RuntimeError):self.model.prepare('/proof/proof.json')
+
+    def adoption_proof(self):
+        p = copy.deepcopy(self.proof)
+        p.update(version=2, purpose='serenity-episode-fixture-offline-v2', operation='adopt-source',
+                 source_adoption=dict(old_source='3'*40, old_manifest_sha256='4'*64))
+        return p
+
+    def test_adoption_packet_preserved_in_inherited_fd_and_one_use(self):
+        self.proof = self.adoption_proof()
+        self.write_proof()
+        fds = self.model.prepare('/proof/proof.json')
+        self.assertEqual(len(fds), 6)
+        self.assertEqual(os.pread(fds[0], 65536, 0), blob(self.proof))
+        self.model.consume('/proof/proof.json')
+        self.model.refresh()
+        with self.assertRaises(FileExistsError):
+            self.model.consume('/proof/proof.json')
+        # The root adapter never reads the private manifest/keys or rewrites
+        # source authority. The child hashes/decodes under its fixture lock.
+        self.assertEqual(list(self.model.path('/fixture-private').iterdir()), [])
+        self.assertEqual(self.model.path('/data/control.db').read_bytes(), b'synthetic-db-placeholder')
+
+    def test_adoption_proof_exact_extension(self):
+        original = self.adoption_proof()
+        for key, value in [('version', 1), ('version', 3), ('version', True),
+                           ('purpose', 'serenity-episode-fixture-offline-v1'),
+                           ('operation', 'prepare'), ('operation', 'reissue'), ('operation', 'revoke'),
+                           ('source_adoption', None), ('source_adoption', {}),
+                           ('source_adoption', dict(old_source='3'*40)),
+                           ('source_adoption', dict(old_source='3'*40, old_manifest_sha256='4'*64, extra=True)),
+                           ('source_adoption', dict(old_source=original['tool_source'], old_manifest_sha256='4'*64)),
+                           ('source_adoption', dict(old_source='bad', old_manifest_sha256='4'*64)),
+                           ('source_adoption', dict(old_source='3'*40, old_manifest_sha256='bad'))]:
+            with self.subTest(key=key, value=value):
+                p = copy.deepcopy(original)
+                p[key] = value
+                with self.assertRaises(RuntimeError):
+                    self.model.validate_proof(blob(p))
+        p = copy.deepcopy(original)
+        del p['source_adoption']
+        with self.assertRaises(RuntimeError):
+            self.model.validate_proof(blob(p))
+        for mode in ('prepare', 'reissue', 'revoke'):
+            p = copy.deepcopy(self.proof)
+            p['operation'] = mode
+            self.model.validate_proof(blob(p))
+            for extra in (None, original['source_adoption']):
+                p['source_adoption'] = extra
+                with self.assertRaises(RuntimeError):
+                    self.model.validate_proof(blob(p))
+
+    def test_adoption_custody_refresh_still_checks_all_pins_and_units(self):
+        self.proof = self.adoption_proof()
+        self.write_proof()
+        self.model.prepare('/proof/proof.json')
+        self.proof['source_adoption']['old_manifest_sha256'] = '5'*64
+        self.write_proof()
+        with self.assertRaises(RuntimeError):
+            self.model.refresh()
+
+    def test_adoption_keeps_cold_state_and_authority_requirements(self):
+        self.proof = self.adoption_proof()
+        for key, value in [('state_sha256', '9'*64), ('schema_sha256', ''),
+                           ('lock_inode', 1), ('uid', 0), ('expires_at', 999),
+                           ('hold_sha256', '9'*64), ('config_sha256', '9'*64),
+                           ('authority_receipt_sha256', '9'*64), ('tool_sha256', '9'*64)]:
+            with self.subTest(key=key):
+                p = copy.deepcopy(self.proof)
+                p[key] = value
+                self.put('/proof/changed.json', blob(p))
+                model = Model(self.root)
+                model.states = self.model.states
+                try:
+                    with self.assertRaises(RuntimeError):
+                        model.prepare('/proof/changed.json')
+                finally:
+                    model.close()
+        self.write_proof()
+        self.model.states[a.WRITERS[0]]['ActiveState'] = 'active'
+        with self.assertRaises(RuntimeError):
+            self.model.prepare('/proof/proof.json')
+
+    def test_adoption_child_outcome_is_not_success_or_generic_denial(self):
+        # Execute orchestration model only: no real UID transition, process,
+        # systemd call, root filesystem access or production adoption.
+        adapter = a.Adapter()
+        adapter.proof = self.adoption_proof()
+        adapter.proof['wrapper_path'] = str(Path(a.__file__).absolute())
+        child = mock.Mock()
+        child.poll.return_value = 3
+        child.returncode = 3
+        fds = (30, 31, 32, 33, 34, 35)
+        with mock.patch.object(a.os, 'geteuid', return_value=0), \
+             mock.patch.object(a.sys, 'flags', types.SimpleNamespace(isolated=1)), \
+             mock.patch.object(a.pwd, 'getpwnam', return_value=types.SimpleNamespace(pw_uid=1200, pw_gid=1200)), \
+             mock.patch.object(adapter, 'prepare', return_value=fds), \
+             mock.patch.object(adapter, 'consume') as consume, \
+             mock.patch.object(adapter, 'refresh'), \
+             mock.patch.object(a.subprocess, 'Popen', return_value=child) as launch:
+            with self.assertRaises(a.AdoptionOutcome) as outcome:
+                adapter.execute('/proof/proof.json')
+            self.assertEqual(outcome.exception.code, 3)
+            consume.assert_called_once_with('/proof/proof.json')
+            self.assertEqual(launch.call_args.kwargs['pass_fds'], fds)
+            self.assertEqual(launch.call_args.kwargs['user'], 1200)
+            self.assertEqual(launch.call_args.kwargs['extra_groups'], [])
+            self.assertEqual(launch.call_args.args[0][1:], ['--custody-fds', '30,31,32,33,34,35'])
+            child.wait.assert_called_once_with(timeout=5)
+
+    def test_adoption_main_preserves_publication_outcomes(self):
+        for code in (2, 3, 5, 6):
+            with self.subTest(code=code):
+                self.model.proof = self.adoption_proof()
+                output = io.StringIO()
+                with mock.patch.object(a, 'Adapter', return_value=self.model), \
+                     mock.patch.object(self.model, 'execute', side_effect=a.AdoptionOutcome(code)), \
+                     mock.patch.object(a.signal, 'signal'), mock.patch.object(a.signal, 'alarm'), \
+                     contextlib.redirect_stderr(output):
+                    self.assertEqual(a.main(['operator', '/proof/proof.json']), code)
+                self.assertIn(a.ADOPTION_OUTCOMES[code], output.getvalue())
+                self.assertIn('proof consumed', output.getvalue())
+        # A killed child, wrapper interruption or failed final custody refresh
+        # cannot establish whether atomic publication happened.
+        self.model.proof = self.adoption_proof()
+        output = io.StringIO()
+        with mock.patch.object(a, 'Adapter', return_value=self.model), \
+             mock.patch.object(self.model, 'execute', side_effect=RuntimeError('synthetic interruption')), \
+             mock.patch.object(a.signal, 'signal'), mock.patch.object(a.signal, 'alarm'), \
+             contextlib.redirect_stderr(output):
+            self.assertEqual(a.main(['operator', '/proof/proof.json']), 6)
+        self.assertIn('publication not established', output.getvalue())
+        self.assertNotIn('REFUSED:', output.getvalue())
 
 
 if __name__=='__main__':
