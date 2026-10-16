@@ -17,6 +17,8 @@ real capture and cross-host continuity remain unqualified.
 | [395](https://github.com/sirerun/serenity/pull/395) | `6c06849c9375796bf7b1b7c74db93592097185bf` | `5dcef0a9e5d3b9091ced4e7ab99fe24c2af63bc0` | Offline recovery of correctly verified, recorded revoked fixture keys |
 | [396](https://github.com/sirerun/serenity/pull/396) | `8e753dad3cffdce38e4118d68f82b9eedfb664fe` | `e1f12e3c7ba7ec5e8807adf156a87f3c07793c47` | Actual portable backup/restore with frozen-account and external replay qualification |
 
+| [397](https://github.com/sirerun/serenity/pull/397) | `49a88d7ee5d888f0c7e9fe9ab01a4cf55ff5c4ea` | `f4c091e42fdebc493555093f9e3baf8a0f216a4d` | Explicit offline fixture source adoption; fenced read-only store admission |
+
 Each landed tree equals its independently accepted tree and is reachable from
 main. Actions jobs did not start because the account is billing-locked.
 Owner-authorized ADR024 fallback is source verification, not hosted-CI success.
@@ -44,6 +46,22 @@ remain outside the erasure builder's contract. This qualifies a synthetic
 portable restore boundary; it does not establish provider admission, activation
 or managed production restore.
 
+PR 397 adds a distinct source-adoption operation bound to the exact old private
+manifest hash/source and the current operator executable/source. Only the two
+reserved fixture identities with a complete, verified, revoked key inventory
+qualify. Ordinary operations remain source-strict. A separate immutable read-only
+store opener requires the caller's cold exclusive fence, refuses SQLite sidecars,
+and performs no initialization or migration. The operation changes only private
+manifest source/epoch, not accounts, credentials or backed-up control data.
+
+Its final source passed 24 Python models, affected race/vet, lint, vulnerability
+checks and a Darwin arm64 cross-build. The landed Linux operator, SHA256
+`a459cda480f168f39004e6a057fb25c1fd2370d088f3f0ffd69b6301ddadac50`,
+passed 22 synthetic cases using real service-UID/inherited-descriptor execution,
+the old released operator and exact refusal outcomes. This does not qualify the
+real root/systemd wrapper, provider authority, current cold maintenance or
+production adoption/reissue. The artifact is retained but not installed.
+
 A controlled installed Codex 0.163.0 session emitted two known visible markers
 under the selected runtime settings. Both carried sibling provenance metadata.
 A sanitized projection preserving physical positions produced **zero admitted
@@ -62,7 +80,7 @@ Hosted **sequence 8/high-water 8** uses source
 The authority runs published version 8 from that source with reviewed policies
 and concurrency 1. Newer client/test/operator source is not implicitly installed.
 
-At 21:06 UTC root/public observations, exact release/process checks pass;
+At 21:53 UTC root/public observations, exact release/process checks pass;
 health/readiness and public metadata return 200, unauthenticated memory/MCP 401,
 and episodes 404 with `archive_disabled` and `no-store`. Capture, WorkOS and
 billing remain disabled. The backup timer is active, with no pending release or
@@ -71,7 +89,7 @@ maintenance hold. This is not a real-user OAuth-login qualification.
 The first full synthetic API run failed at its initial public-disabled check:
 the edge returned plain-text 403 to the default Python user agent. It stopped
 before append, exclusion or restart. A truthfully identified Serenity client
-received the expected JSON. Separately reviewed cleanup verified both reserved
+received the expected JSON. Separately reviewed cleanup at 21:06 UTC verified both reserved
 fixture keys return 401, closed the temporary gate, verified exact public 404,
 restored the timer and checked the recovery unit stopped-or-absent with no
 remaining cgroup. Independent receipt review accepted cleanup. The original
@@ -87,6 +105,11 @@ A subsequent provider refresh confirmed published 8 configuration, code, full
 policies and routes unchanged and concurrency 1. Strict comparison identified only
 an opaque revision-ID change on the unpublished latest version; this is recorded
 without attributing a cause or treating it as a code/configuration change.
+At 21:54 UTC another read-only refresh matched the published version 8 full
+configuration, code, owner/runtime API methods and stage, with concurrency 1.
+That narrower refresh did not recheck policies, stack state, closure or journals;
+those claims retain their earlier receipt timestamps. The 21:53 root check did
+not rerun the two-key HTTP denial check from the accepted 21:06 cleanup.
 
 ## Rollback and next live gate
 
@@ -101,11 +124,19 @@ Old release 6/safety 5 and old authority code are incompatible after a new episo
 journal subject and are not an assumed rollback path.
 
 Full live append/read/attachment/retry/isolation/checkpoint/exclusion/restart
-qualification remains pending; its keys are revoked. A new attempt needs reviewed
-current-state cold reissue, explicit compatibility with the existing source-bound
-fixture manifest, and exact historical/current credential inventory. PR 395 is
-not an installed tool update or permission to retag that manifest. A new packet
-must retain TLS, no redirect/proxy, exact pins, bounded cleanup and 401/404 checks.
+qualification remains pending; its keys are revoked. A new attempt needs fresh
+reviewed cold maintenance, installation and explicit source adoption using the
+landed operator, then reissue and an exact historical/current credential inventory.
+PR 395/397 are not installed tool updates or permission to retag the manifest.
+
+A separately reviewed offline retry-template copy passed 60 Python models. It
+uses truthful Serenity HTTP identification, explicitly distinguishes the new
+fixture-tool source from hosted source 30919/state 8, and expects exactly two
+recorded credentials per account after one reissue. No actual packet has been
+rendered, uploaded or invoked. Fresh custody/manifest pins and exact operational
+review remain required. The HTTP checker verifies the two current keys; it does
+not claim HTTP denial coverage for all four historical/current key records.
+TLS, no redirect/proxy, bounded cleanup and 401/404 requirements remain.
 Quota exhaustion, physical erasure and managed restore remain separate gates.
 
 ## Remaining design
