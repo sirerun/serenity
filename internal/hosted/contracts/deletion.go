@@ -41,7 +41,7 @@ import (
 // seal is stopped by revoking its credentials (FenceReceipt), not by the
 // protocol.
 //
-// The journal records opaque account/brain IDs and deletion intent/outcome
+// The journal records opaque account/brain IDs or versioned episode hashes and deletion intent/outcome
 // only, never email or memory content. AppendDeletion must durably succeed
 // before the corresponding delete is acknowledged to the caller.
 
@@ -77,7 +77,7 @@ func (w DeletionWatermark) IsZero() bool { return w == DeletionWatermark{} }
 type DeletionEntry struct {
 	Watermark   DeletionWatermark // assigned by AppendDeletion; immutable afterwards
 	SubjectType DeletionSubjectType
-	SubjectID   string // opaque account or brain ID, never an email address
+	SubjectID   string // opaque legacy ID or strict episode identity; never plaintext content
 	Outcome     DeletionOutcome
 	RecordedAt  time.Time
 }
