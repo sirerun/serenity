@@ -15,6 +15,7 @@ real capture and cross-host continuity remain unqualified.
 | [393](https://github.com/sirerun/serenity/pull/393) | `3b5b22e0ecbf45f4d20d897398b6c2eb2c4ed3b7` | `f6efd727577728161200a93becf8919a76adca30` | Synthetic Git snapshot, external replay and inactive-candidate qualification |
 | [394](https://github.com/sirerun/serenity/pull/394) | `3b90f59a4ba983d5f8259f9c590a7ed758a620f9` | `25d74ce0c64e0032516b38a6902d579c43eb8c1a` | Codex partial-answer phase through protected synthetic import |
 | [395](https://github.com/sirerun/serenity/pull/395) | `6c06849c9375796bf7b1b7c74db93592097185bf` | `5dcef0a9e5d3b9091ced4e7ab99fe24c2af63bc0` | Offline recovery of correctly verified, recorded revoked fixture keys |
+| [396](https://github.com/sirerun/serenity/pull/396) | `8e753dad3cffdce38e4118d68f82b9eedfb664fe` | `e1f12e3c7ba7ec5e8807adf156a87f3c07793c47` | Actual portable backup/restore with frozen-account and external replay qualification |
 
 Each landed tree equals its independently accepted tree and is reachable from
 main. Actions jobs did not start because the account is billing-locked.
@@ -33,6 +34,15 @@ external journal ambiguity, exclusion replay and dependent checkpoints, plus
 The fixture adapter passed 18 Python models; its actual source 30919 binary
 passed 12 isolated Linux UID/GID/descriptor cases. Separate real Unix-peer checks
 verified service-owner admission and root/identity refusal.
+
+PR 396 uses the existing manifest-v2 backup and restore APIs. Restored accounts
+stay frozen, exact original keys remain revoked, and complete caller-trusted
+external history excludes original and dependent evidence before synthetic
+canonical reads. Missing, unsealed, wrong or conflicting history refuses.
+Snapshot and historical bytes remain retained, and mixed hosted repositories
+remain outside the erasure builder's contract. This qualifies a synthetic
+portable restore boundary; it does not establish provider admission, activation
+or managed production restore.
 
 A controlled installed Codex 0.163.0 session emitted two known visible markers
 under the selected runtime settings. Both carried sibling provenance metadata.
