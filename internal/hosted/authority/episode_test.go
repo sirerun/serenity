@@ -27,13 +27,13 @@ func TestEpisodeIntentAuthorityAdmission(t *testing.T) {
 		{"brain-purged", contracts.DeletionSubjectBrain, "synthetic-brain", contracts.DeletionOutcomePurged, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s, c, l, now, _, _ := activeFixture(t)
+			_, c, l, now, _, _ := activeFixture(t)
 			body, err := (contracts.JournalObject{Kind: contracts.JournalKindEntry, Generation: 1, SequenceID: 1, WriterID: l.WriterID, SubjectType: tc.subject, SubjectID: tc.id, Outcome: tc.outcome, RecordedAt: *now}).Encode()
 			if err != nil {
 				t.Fatal(err)
 			}
-			q := Request{Action: "append", OperationID: opID(t), LeaseID: l.ID, Key: contracts.JournalKey(1, 1), Body: body}
-			_, err = s.execute(context.Background(), "runtime", q)
+			key := contracts.JournalKey(1, 1)
+			_, err = c.Store(l).PutIfAbsent(context.Background(), key, body)
 			if !tc.valid {
 				if !errors.Is(err, ErrInvalid) {
 					t.Fatalf("invalid entry accepted or wrong refusal: %v", err)
@@ -44,7 +44,7 @@ func TestEpisodeIntentAuthorityAdmission(t *testing.T) {
 				t.Fatal(err)
 			}
 			// A retry has the same immutable object; the independent reader admits it.
-			if _, err = c.Store(l).PutIfAbsent(context.Background(), q.Key, body); err != nil {
+			if _, err = c.Store(l).PutIfAbsent(context.Background(), key, body); err != nil {
 				t.Fatal(err)
 			}
 		})
