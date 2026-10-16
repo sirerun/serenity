@@ -369,7 +369,7 @@ func (g *Gateway) ServeEpisodes(w http.ResponseWriter, r *http.Request) {
 			episodeError(w, store.ErrEpisodeConflict)
 			return
 		}
-		if p.Fences[store.EpisodeConversationKey(req.Mutation.ProducerID, req.Mutation.ConversationID)] != 0 && !(exists && old.Kind == "exclude") {
+		if p.Fences[store.EpisodeConversationKey(req.Mutation.ProducerID, req.Mutation.ConversationID)] != 0 && (!exists || old.Kind != "exclude") {
 			episodeError(w, store.ErrEpisodeFenced)
 			return
 		}
