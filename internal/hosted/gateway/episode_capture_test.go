@@ -143,3 +143,18 @@ func TestEpisodeCaptureCodexSyntheticStaging(t *testing.T) {
 		t.Fatal("staging replay duplicated")
 	}
 }
+
+func TestEpisodeCaptureRejectsAmbiguousWireJSON(t *testing.T) {
+	g, _, brain, token := episodeHTTPSetup(t)
+	for _, extra := range []string{`,"operation":"append"`, `,"OPERATION":"append"`, `,"query":"\ud800"`} {
+		raw := `{"schema":"serenity.episodes/v1","project_id":"` + brain + `","operation":"fences","qualification":"synthetic"` + extra + `}`
+		req := httptest.NewRequest("POST", "/episodes/v1", strings.NewReader(raw))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		g.ServeEpisodes(w, req)
+		if w.Code != 400 {
+			t.Fatalf("ambiguous JSON status %d", w.Code)
+		}
+	}
+}

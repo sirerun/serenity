@@ -17,6 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/sirerun/serenity/internal/domain"
+	"github.com/sirerun/serenity/internal/episodejson"
 )
 
 // SourceStore holds raw imported material content-addressed under
@@ -388,6 +389,9 @@ func validateSourcePayload(data []byte, src domain.Source) error {
 	if src.Kind == SourceKindEpisode {
 		if len(data) > EpisodeMaxRecordBytes {
 			return ErrEpisodeLimit
+		}
+		if !episodejson.Valid(data) {
+			return ErrEpisodeInvalid
 		}
 		var rec EpisodeRecord
 		if err := json.Unmarshal(data, &rec); err != nil {
