@@ -147,6 +147,9 @@ func mutation(r episodeclient.Record) (store.EpisodeInput, error) {
 		kind = "tool_call"
 	}
 	event := store.EpisodeEvent{ID: r.Event, Sequence: int64(r.Sequence), Role: r.Role, Type: kind, OccurredAt: r.SourceTime, ObservedAt: r.ObservedTime, Attribution: "producer_reported_visible_evidence", Text: r.Text, Attachments: []store.EpisodeAttachment{}, Gaps: []string{}}
+	if r.Tool != "" || r.Kind == "tool_request" || r.Kind == "tool_result" {
+		event.Gaps = append(event.Gaps, "tool_identity_and_pairing_not_archived")
+	}
 	for _, a := range r.Attachments {
 		event.Attachments = append(event.Attachments, store.EpisodeAttachment{ID: a.ID, MediaType: a.MediaType, Data: a.Bytes, SHA256: a.SHA256})
 	}

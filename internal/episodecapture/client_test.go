@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/sirerun/serenity/internal/episodeclient"
 	"github.com/sirerun/serenity/internal/store"
@@ -98,5 +99,16 @@ func TestFenceScopeRetainsProducerIdentity(t *testing.T) {
 	}
 	if v.Conversations[episodeclient.ConversationFenceKey(testBinding.Producer, "conversation1")] {
 		t.Fatal("cross-producer fence conflation")
+	}
+}
+
+func TestToolCoverageGapIsExplicit(t *testing.T) {
+	r := episodeclient.Record{Binding: testBinding, Workspace: "workspace1", Conversation: "conversation1", Event: "event1", Sequence: 1, Role: "tool", Kind: "tool_result", Tool: "shell", Text: "synthetic output", SourceTime: time.Now(), ObservedTime: time.Now()}
+	in, err := mutation(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(in.Events[0].Gaps) != 1 || in.Events[0].Gaps[0] != "tool_identity_and_pairing_not_archived" {
+		t.Fatal("tool coverage silently lost")
 	}
 }
