@@ -127,6 +127,12 @@ qualification remains pending; its keys are revoked. A new attempt needs fresh
 reviewed cold maintenance, installation and explicit source adoption using the
 landed operator, then reissue and an exact historical/current credential inventory.
 PR 395/397 are not installed tool updates or permission to retag the manifest.
+The current reviewed maintenance runtime is a release 6-to-8 transition: its
+entry and previous-pair checks do not admit healthy, unheld current state 8.
+An independently qualified current-state maintenance entry/closeout contract is
+still needed; copying old hold, ready, nonce or previous-state fields cannot
+satisfy it. This is a capability gap before credential reissue, not a missing
+real-user credential or a reason to bypass the release verifier.
 
 A separately reviewed offline retry-template copy passed 60 Python models. It
 uses truthful Serenity HTTP identification, explicitly distinguishes the new
