@@ -68,7 +68,7 @@ type response struct {
 	Schema     string                `json:"schema"`
 	ProjectID  string                `json:"project_id"`
 	Status     string                `json:"status"`
-	Generation uint64                `json:"generation"`
+	Generation *uint64               `json:"generation"`
 	Revision   string                `json:"revision"`
 	Fences     map[string]uint64     `json:"fences"`
 	Receipt    *store.EpisodeReceipt `json:"receipt,omitempty"`
@@ -102,7 +102,7 @@ func (c *Client) call(ctx context.Context, operation string, generation *uint64,
 	if err != nil || len(body) > store.EpisodeMaxResponseBytes || json.Unmarshal(body, &out) != nil {
 		return response{}, ErrUnavailable
 	}
-	if out.Schema != store.EpisodeSchema || out.ProjectID != c.options.Binding.Brain || out.Status != "completed" || !store.ValidSourceSHA(out.Revision) {
+	if out.Schema != store.EpisodeSchema || out.ProjectID != c.options.Binding.Brain || out.Status != "completed" || out.Generation == nil || !store.ValidSourceSHA(out.Revision) {
 		return response{}, ErrReceipt
 	}
 	return out, nil
@@ -127,12 +127,12 @@ func (c *Client) Reconcile(ctx context.Context, key episodeclient.ReplayKey) (ep
 		return out, ErrReceipt
 	}
 	for hash, g := range res.Fences {
-		if !store.ValidSourceSHA(hash) || g == 0 || g > res.Generation {
+		if !store.ValidSourceSHA(hash) || g == 0 || g > *res.Generation {
 			return out, ErrReceipt
 		}
 	}
 	now := time.Now()
-	out = episodeclient.Verification{Binding: key.Binding, Workspace: key.Workspace, Allowed: true, Full: true, GenerationKnown: true, Generation: res.Generation, SyncedAt: now, ExpiresAt: now.Add(30 * time.Second), Conversations: map[string]bool{}}
+	out = episodeclient.Verification{Binding: key.Binding, Workspace: key.Workspace, Allowed: true, Full: true, GenerationKnown: true, Generation: *res.Generation, SyncedAt: now, ExpiresAt: now.Add(30 * time.Second), Conversations: map[string]bool{}}
 	if res.Fences[store.EpisodeConversationKey(key.Binding.Producer, key.Conversation)] != 0 {
 		out.Conversations[key.Conversation] = true
 	}
@@ -180,7 +180,7 @@ func (c *Client) Publish(ctx context.Context, r episodeclient.Record, generation
 		return episodeclient.Receipt{}, err
 	}
 	receipt := out.Receipt
-	if out.Generation != generation || receipt == nil || receipt.CommandKey != store.EpisodeCommandKey(in.ProducerID, in.CommandID) || receipt.ConversationKey != store.EpisodeConversationKey(in.ProducerID, in.ConversationID) || receipt.Digest != store.EpisodeHash(in) || !store.ValidSourceSHA(receipt.SourceSHA256) || receipt.RecordedAt.IsZero() || len(receipt.EventRefs) != 1 || receipt.EventRefs[0].EventKey != store.EpisodeEventKey(in.ProducerID, in.ConversationID, r.Event) || receipt.EventRefs[0].Digest != store.EpisodeHash(in.Events[0]) {
+	if *out.Generation != generation || receipt == nil || receipt.CommandKey != store.EpisodeCommandKey(in.ProducerID, in.CommandID) || receipt.ConversationKey != store.EpisodeConversationKey(in.ProducerID, in.ConversationID) || receipt.Digest != store.EpisodeHash(in) || !store.ValidSourceSHA(receipt.SourceSHA256) || receipt.RecordedAt.IsZero() || len(receipt.EventRefs) != 1 || receipt.EventRefs[0].EventKey != store.EpisodeEventKey(in.ProducerID, in.ConversationID, r.Event) || receipt.EventRefs[0].Digest != store.EpisodeHash(in.Events[0]) {
 		return episodeclient.Receipt{}, ErrReceipt
 	}
 	return episodeclient.Receipt{Key: key, Digest: episodeclient.DigestRecord(r), Complete: true}, nil
