@@ -147,11 +147,6 @@ func TestEpisodeHTTPGatesBindingScopesAndRevocation(t *testing.T) {
 		t.Fatalf("synthetic scope %d", code)
 	}
 	g.EpisodeSyntheticBrains = []string{brain}
-	journal, journalErr := deletion.NewFilesystemJournal(t.TempDir(), "episode-http-test", 1, time.Now)
-	if journalErr != nil {
-		t.Fatal(journalErr)
-	}
-	g.Journal = journal
 	req.ProjectID = "other-brain"
 	if code, _, _ := episodeHTTPCall(t, g, token, req); code != 403 {
 		t.Fatalf("brain mismatch %d", code)
