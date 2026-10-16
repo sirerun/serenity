@@ -635,6 +635,10 @@ func (s *Service) AdminHandler() http.Handler {
 		if !s.admitRequest(w, r) {
 			return
 		}
+		if r.Method == http.MethodPost && r.URL.Path == "/episodes/qualification" {
+			s.configureEpisodeQualification(w, r)
+			return
+		}
 		if r.Method == http.MethodPost && r.URL.Path == "/operations/resolve" {
 			s.resolveOperatorReview(w, r)
 			return
