@@ -50,7 +50,7 @@ Missing or unsettled status means `unknown`, never “did not execute.”
 
 ## Envelope and operations
 
-The request schema is [episode_request.schema.json](schemas/episode_request.schema.json).
+The request schema is [episode_request.schema.json](schemas/episodes/episode_request.schema.json).
 Unknown fields and trailing JSON are rejected. See the executable
 [append fixture](../../testdata/conformance/episodes/append.json).
 
