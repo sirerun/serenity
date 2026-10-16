@@ -92,3 +92,72 @@ func TestEpisodeQualificationRejectsOrdinaryAccountAndMalformedControl(t *testin
 		}
 	}
 }
+
+func TestEpisodeQualificationCredentialCleanupIsPrivateAtomicAndScoped(t *testing.T) {
+	svc, account, brain := qualificationService(t, true)
+	ctx := context.Background()
+	token, err := svc.Gateway.Issuer.Issue(ctx, brain, account, []string{"memory:read", "memory:write"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding, err := svc.Gateway.Issuer.Verify(ctx, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := func(ids []string, public bool) int {
+		raw, _ := json.Marshal(map[string]any{"credential_ids": ids})
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "/episodes/qualification/revoke", bytes.NewReader(raw))
+		if public {
+			svc.Handler.ServeHTTP(w, r)
+		} else {
+			svc.AdminHandler().ServeHTTP(w, r)
+		}
+		return w.Code
+	}
+	if call([]string{binding.CredentialID}, true) == 204 {
+		t.Fatal("public cleanup exposed")
+	}
+	if _, err = svc.Gateway.Issuer.Verify(ctx, token); err != nil {
+		t.Fatal("public request changed key")
+	}
+	if call([]string{binding.CredentialID, "unknown-key"}, false) != 403 {
+		t.Fatal("mixed invalid batch accepted")
+	}
+	if _, err = svc.Gateway.Issuer.Verify(ctx, token); err != nil {
+		t.Fatal("failed batch partially revoked key")
+	}
+	if call([]string{binding.CredentialID, binding.CredentialID}, false) != 400 {
+		t.Fatal("duplicate key accepted")
+	}
+	for range 2 {
+		if call([]string{binding.CredentialID}, false) != 204 {
+			t.Fatal("cleanup or retry refused")
+		}
+	}
+	if _, err = svc.Gateway.Issuer.Verify(ctx, token); err == nil {
+		t.Fatal("cleaned-up credential still valid")
+	}
+	var count int
+	if err = svc.Store.DB().QueryRow(`SELECT count(*) FROM audit_log WHERE action='episode.qualification.revoke'`).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("audit %d %v", count, err)
+	}
+	ordinary, ordinaryAccount, ordinaryBrain := qualificationService(t, false)
+	other, err := ordinary.Gateway.Issuer.Issue(ctx, ordinaryBrain, ordinaryAccount, []string{"memory:read"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherBinding, err := ordinary.Gateway.Issuer.Verify(ctx, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(map[string]any{"credential_ids": []string{otherBinding.CredentialID}})
+	w := httptest.NewRecorder()
+	ordinary.AdminHandler().ServeHTTP(w, httptest.NewRequest("POST", "/episodes/qualification/revoke", bytes.NewReader(raw)))
+	if w.Code != 403 {
+		t.Fatal("ordinary credential cleanup allowed")
+	}
+	if _, err = ordinary.Gateway.Issuer.Verify(ctx, other); err != nil {
+		t.Fatal("ordinary key changed")
+	}
+}
