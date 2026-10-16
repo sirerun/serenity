@@ -293,7 +293,7 @@ func (e *engine) operate(ctx context.Context, mode string) (result error) {
 	}
 	// Validate both identities before mutating either one.
 	for i := range m.Accounts {
-		if err = e.inspect(ctx, &m.Accounts[i]); err != nil {
+		if err = e.inspect(ctx, &m.Accounts[i], mode != "prepare"); err != nil {
 			return err
 		}
 	}
@@ -444,7 +444,7 @@ func (e *engine) capacity(ctx context.Context, additional int) error {
 	return nil
 }
 
-func (e *engine) inspect(ctx context.Context, a *fixtureAccount) error {
+func (e *engine) inspect(ctx context.Context, a *fixtureAccount, recoverRevoked bool) error {
 	var id, email, status, plan string
 	var version int
 	var foreign bool
@@ -575,6 +575,17 @@ func (e *engine) inspect(ctx context.Context, a *fixtureAccount) error {
 	if a.Key != "" {
 		issuer := credential.Issuer{Store: e.store}
 		b, err := issuer.Verify(ctx, a.Key)
+		if recoverRevoked && errors.Is(err, credential.ErrRevoked) {
+			// Verify has already validated the key shape and secret against its
+			// stored verifier. Offline custody permits recovering that recorded
+			// identity, never using a revoked key as authentication. The exclusive
+			// cold fence prevents a concurrent credential replacement here.
+			c, lookupErr := e.store.CredentialByPrefix(ctx, a.Key[8:16])
+			if lookupErr == nil && c.RevokedAt != nil {
+				b = credential.Binding{AccountID: c.AccountID, BrainID: c.BrainID, CredentialID: c.ID}
+				err = nil
+			}
+		}
 		if err != nil || b.AccountID != id || b.BrainID != a.BrainID || !slices.Contains(a.CredentialIDs, b.CredentialID) {
 			return errRefused
 		}

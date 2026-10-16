@@ -431,3 +431,98 @@ func TestInterruptedOwnershipRequiresSameMaintenanceHold(t *testing.T) {
 	e.custodyEpoch = "synthetic-hold-two"
 	mustOperate(t, e, "prepare")
 }
+
+// The private online cleanup intentionally retains manifest key strings while
+// revoking their exact database records. Offline recovery must not confuse that
+// custody evidence with a still-authenticated credential.
+func externallyRevokeFixture(t *testing.T, e *engine, m *manifest) {
+	t.Helper()
+	issuer := credential.Issuer{Store: e.store}
+	for _, a := range m.Accounts {
+		for _, id := range a.CredentialIDs {
+			if err := issuer.RevokeKey(context.Background(), id); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+func TestExternallyRevokedFixtureRecovery(t *testing.T) {
+	for _, mode := range []string{"reissue", "revoke"} {
+		t.Run(mode, func(t *testing.T) {
+			e := fixture(t)
+			original := mustOperate(t, e, "prepare")
+			externallyRevokeFixture(t, e, original)
+			recovered := mustOperate(t, e, mode)
+			issuer := credential.Issuer{Store: e.store}
+			for i, old := range original.Accounts {
+				a := recovered.Accounts[i]
+				if a.AccountID != old.AccountID || a.BrainID != old.BrainID {
+					t.Fatal("recovery changed fixture identity")
+				}
+				if _, err := issuer.Verify(context.Background(), old.Key); !errors.Is(err, credential.ErrRevoked) {
+					t.Fatal("revoked key regained authentication")
+				}
+				if mode == "reissue" {
+					binding, err := issuer.Verify(context.Background(), a.Key)
+					if err != nil || binding.AccountID != old.AccountID || binding.BrainID != old.BrainID || len(a.CredentialIDs) != 2 || a.CredentialIDs[0] != old.CredentialIDs[0] || a.Key == old.Key {
+						t.Fatal("replacement credential or retained custody incorrect")
+					}
+				} else if a.Key != "" || len(a.CredentialIDs) != 1 {
+					t.Fatal("revoke failed to clear retained secret or changed IDs")
+				}
+			}
+			wantLive := 0
+			if mode == "reissue" {
+				wantLive = 2
+			}
+			if count(t, e, `SELECT count(*) FROM client_credentials WHERE revoked_at IS NULL`) != wantLive || count(t, e, `SELECT count(*) FROM accounts`) != 2 || count(t, e, `SELECT count(*) FROM brains`) != 2 {
+				t.Fatal("recovery changed cardinality")
+			}
+			mustOperate(t, e, "revoke")
+			mustOperate(t, e, "revoke")
+			if count(t, e, `SELECT count(*) FROM client_credentials WHERE revoked_at IS NULL`) != 0 {
+				t.Fatal("idempotent cleanup left a live credential")
+			}
+		})
+	}
+}
+
+func TestRevokedFixtureCustodyRefusalsPreserveState(t *testing.T) {
+	for _, mode := range []string{"prepare", "reissue", "revoke"} {
+		for _, damage := range []string{"unchanged", "wrong-secret", "swapped-revoked-key", "unrecorded-credential"} {
+			if damage == "unchanged" && mode != "prepare" {
+				continue
+			}
+			t.Run(mode+"/"+damage, func(t *testing.T) {
+				e := fixture(t)
+				m := mustOperate(t, e, "prepare")
+				externallyRevokeFixture(t, e, m)
+				switch damage {
+				case "wrong-secret":
+					key := m.Accounts[0].Key
+					replacement := "A"
+					if key[17] == 'A' {
+						replacement = "B"
+					}
+					m.Accounts[0].Key = key[:17] + replacement + key[18:]
+				case "swapped-revoked-key":
+					m.Accounts[0].Key = m.Accounts[1].Key
+				case "unrecorded-credential":
+					m.Accounts[0].CredentialIDs = nil
+				}
+				save(t, e, m)
+				path := filepath.Join(e.privateDir, "manifest.json")
+				before, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				refuse(t, e, mode)
+				after, err := os.ReadFile(path)
+				if err != nil || !bytes.Equal(before, after) || count(t, e, `SELECT count(*) FROM client_credentials`) != 2 || count(t, e, `SELECT count(*) FROM client_credentials WHERE revoked_at IS NULL`) != 0 {
+					t.Fatal("refused custody changed manifest or credentials")
+				}
+			})
+		}
+	}
+}
