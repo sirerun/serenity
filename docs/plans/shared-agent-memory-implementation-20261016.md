@@ -18,7 +18,7 @@ Executor: current engineering session with bounded headless Codex helpers. Selec
 fidelity: executable
 Acceptance: additive gated archive API has exact evidence, bounded admission, existing-brain isolation and truthful deletion capabilities.
 
-- [ ] T1.1 Freeze bounded protocol and preflight  Owner: integration  kind: agent  stage: implement  acc: [schema and capability limits are documented with canonical writer binding and current ownership and build route evidence]
+- [x] T1.1 Freeze bounded protocol and preflight  Owner: integration  kind: agent  stage: implement  acc: [schema and capability limits are documented with canonical writer binding and current ownership and build route evidence]
 - [ ] T1.2 Implement archive service foundation  Owner: archive-lane  kind: agent  stage: implement  deps: [T1.1]  acc: [synthetic HTTP fixtures verify exact event and attachment reads, stable retry conflicts, publication acknowledgment, bounded quotas, current brain authorization, fences and checkpoint context without changing v1]
 - [ ] T1.3 Qualify exclusion and physical erasure recovery  Owner: integration  kind: agent  stage: implement  deps: [T1.2]  acc: [tests distinguish immediate exclusion from physical purge and prevent stale imports, indexes, derivatives and restored backups from resurrecting deleted content; capture remains disabled for unqualified paths]
 - [ ] T1.4 Verify archive candidate  Owner: integration  kind: agent  stage: verify  deps: [T1.3]  acc: [affected tests and race checks, format and file-first checks pass on exact candidate with redaction, quota, retry, isolation and restart evidence; Wazi plan validates]
@@ -62,6 +62,7 @@ Acceptance: deployed capabilities and versions have live evidence, rollback and 
 
 | Batch | Members | Owner | Prerequisites | Verification/review/merge/landed | Selection | Requested/actual size |
 | --- | --- | --- | --- | --- | --- | --- |
+| Gated foundation | T1.1-T1.2, T2.0, T2.9-T2.10 | integration plus two completed implementation lanes | validated plan and frozen protocol | T1.8-T1.11 | gpt-6-astra / low | 5/5 |
 | Archive | T1.1-T1.3 | integration plus isolated archive-lane | validated plan and protocol freeze | T1.4-T1.7 | gpt-6-astra / low | 3/3 |
 | Client and hosts | T2.1-T2.4 | integration plus isolated client-lane | T1.7 | T2.5-T2.8 | gpt-6-astra / low | 4/4 |
 | Operations | T3.1-T3.6 | integration | explicit deployment authority and dependency rows | live receipts | gpt-6-astra / low | 6/6 |
@@ -77,3 +78,5 @@ Independent preparation: T2.0 may run concurrently with T1.2 against the documen
 T2.9 is independent speculative preparation in internal/episodehost only; it uses synthetic fixtures and current public version-pinned source. Host installation and real-history capture stay blocked by T2.1 and erasure qualification. Its source joins T2.5/T2.6 verification and exact-revision review.
 
 Foundation split: the first candidate comprises T1.1-T1.2, T2.0, T2.9 and T2.10, with delivery gates T1.8-T1.11. It may deploy default-off under T3.2. T1.3-T1.7 remain open for full erasure/restore qualification and cannot be inferred complete from this increment. T2.10 is an isolated speculative synthetic integration under internal/episodecapture plus focused gateway fixtures; no real upload is enabled. Full host and production-capture dependencies remain unchanged. The external deletion journal currently accepts only brain/account subjects and foreign T23.48/T23.49 claims remain protected.
+
+T1.1 evidence: EPISODES_v1.md and request/response/error schemas freeze the synthetic-only protocol; existing writer and brain scope remain authoritative. Current PR386 and ownership audit preserve foreign recovery/deletion claims. The immutable Go1.26.9 Linux arm64 image and source-hash transfer were exercised on existing Spark capacity, with bounded two-CPU jobs and no heavy Mac build. Independent deployment preparation owns only external task artifacts and read-only target evidence; integration retains T3.1 execution ownership.
