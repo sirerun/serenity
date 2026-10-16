@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io/fs"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -14,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/hosted/deletion"
 	"github.com/sirerun/serenity/internal/hosted/gateway"
@@ -422,5 +425,120 @@ func TestEpisodeReplaySafetyBuildStartup(t *testing.T) {
 	svc.Handler.ServeHTTP(w, httptest.NewRequest("POST", "/episodes/v1", strings.NewReader(`{}`)))
 	if w.Code != 404 || !strings.Contains(w.Body.String(), `"error":"archive_disabled"`) {
 		t.Fatalf("disabled archive %d %s", w.Code, w.Body.String())
+	}
+}
+
+// Run this same regression normally and with -tags episode_archive_disabled.
+// The inventory is real canonical ordinary data, not synthetic empty filenames.
+// It is built once and reused across startup, migration refusal and two replay
+// publications so every discovery path encounters more than 65,536 entries.
+func TestEpisodeReplayLargeOrdinaryInventoryStartup(t *testing.T) {
+	ctx := context.Background()
+	db, cfg, _, brain := episodeReplayServiceFixture(t)
+	cfg.EpisodeArchiveEnabled = false
+	cfg.EpisodeSyntheticBrains = nil // An unenrolled brain still needs discovery.
+	root := filepath.Join(cfg.DataDir, "brains", brain)
+	sources := store.NewSourceStore(root)
+	for i := 0; i < 22000; i++ {
+		data := []byte(fmt.Sprintf("ordinary retained source %05d", i))
+		if _, err := sources.Write(data, domain.Source{Kind: "file", URI: "fixture:ordinary", OccurredAt: time.Date(2026, 10, 16, 0, 0, 0, 0, time.UTC)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	episodeReplayGit(t, "-C", root, "add", "--", "brain/sources")
+	episodeReplayGit(t, "-C", root, "commit", "-m", "ordinary inventory fixture")
+	count := 0
+	if err := filepath.WalkDir(filepath.Join(root, "brain", "sources"), func(_ string, _ fs.DirEntry, err error) error { count++; return err }); err != nil {
+		t.Fatal(err)
+	}
+	if count <= 65536 {
+		t.Fatalf("fixture has only %d entries", count)
+	}
+	// The interactive budget is unchanged even though maintenance must complete.
+	if _, err := store.LoadEpisodes(ctx, sources); !errors.Is(err, store.ErrEpisodeLimit) {
+		t.Fatalf("interactive budget changed: %v", err)
+	}
+	svc, err := AssembleWithDependencies(ctx, cfg, true, db, nil, deletionEmbedding{}, testLifecycleDependencies(t))
+	if err != nil {
+		t.Fatalf("archive-off ordinary startup: %v", err)
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	if svc.Handler == nil {
+		t.Fatal("startup did not install handlers")
+	}
+	disabled := httptest.NewRecorder()
+	svc.Handler.ServeHTTP(disabled, httptest.NewRequest("POST", "/episodes/v1", strings.NewReader(`{}`)))
+	if disabled.Code != 404 || !strings.Contains(disabled.Body.String(), "archive_disabled") {
+		t.Fatalf("archive enabled: %d %s", disabled.Code, disabled.Body.String())
+	}
+	if err = svc.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopen := func() *hoststore.Store {
+		t.Helper()
+		reopened, err := hoststore.Open(filepath.Join(cfg.DataDir, "control.db"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = reopened.Close() })
+		return reopened
+	}
+	// A foundation-only fence must be found despite the ordinary inventory and
+	// the archive being disabled. It may not be hidden by ignoring scan limits.
+	entry := episodeReplayEntry(brain)
+	id, err := contracts.ParseEpisodeDeletionIdentity(entry.SubjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fence := store.EpisodeRecord{Schema: store.EpisodeSchema, BrainID: brain, Kind: "exclude", CommandKey: id.CommandHash, ConversationKey: id.ConversationHash, RequestDigest: id.RequestDigest, Generation: 1, RecordedAt: entry.RecordedAt}
+	if _, err = sources.PutEpisode(fence); err != nil {
+		t.Fatal(err)
+	}
+	episodeReplayGit(t, "-C", root, "add", "--", "brain/sources")
+	episodeReplayGit(t, "-C", root, "commit", "-m", "foundation fence fixture")
+	foundationDB := reopen()
+	blocked, err := AssembleWithDependencies(ctx, cfg, true, foundationDB, nil, deletionEmbedding{}, testLifecycleDependencies(t))
+	if blocked != nil {
+		_ = blocked.Close()
+		t.Fatal("unjournaled foundation fence admitted")
+	}
+	if !errors.Is(err, gateway.ErrEpisodeReplayPending) {
+		t.Fatalf("foundation discovery: %v", err)
+	}
+	if err = foundationDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// The first admitted fence already exists. The second must be installed.
+	// Both the writer's pre/post loads and the gateway's final verification must
+	// use complete discovery, not just the initial startup scan.
+	second := entry
+	secondID := id
+	secondID.CommandHash = store.EpisodeCommandKey("p", "second-delete")
+	secondID.ConversationHash = store.EpisodeConversationKey("p", "second-conversation")
+	secondID.RequestDigest = store.EpisodeHash(store.EpisodeInput{Operation: "exclude", ProducerID: "p", CommandID: "second-delete", ConversationID: "second-conversation"})
+	second.SubjectID = secondID.String()
+	for attempt := 0; attempt < 2; attempt++ {
+		replayDB := reopen()
+		resumed, err := AssembleWithDependencies(ctx, cfg, true, replayDB, nil, deletionEmbedding{}, testLifecycleDependenciesWithEntries(t, entry, second))
+		if err != nil {
+			t.Fatalf("large-brain replay %d: %v", attempt, err)
+		}
+		t.Cleanup(func() { _ = resumed.Close() })
+		projection, err := store.LoadEpisodesForReplay(ctx, sources)
+		if err != nil {
+			_ = resumed.Close()
+			t.Fatal(err)
+		}
+		if len(projection.Fences) != 2 || projection.Fences[id.ConversationHash] != 1 || projection.Fences[secondID.ConversationHash] != 2 {
+			_ = resumed.Close()
+			t.Fatalf("fences missing after replay: %+v", projection.Fences)
+		}
+		if _, err = store.LoadEpisodes(ctx, sources); !errors.Is(err, store.ErrEpisodeLimit) {
+			_ = resumed.Close()
+			t.Fatalf("replay relaxed interactive limit: %v", err)
+		}
+		if err = resumed.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

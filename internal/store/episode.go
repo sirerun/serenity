@@ -379,10 +379,31 @@ func (s *SourceStore) PutEpisode(r EpisodeRecord) (domain.Source, error) {
 // LoadEpisodes is a bounded, rebuildable projection over existing canonical
 // SourceStore files. No database or plaintext request journal is introduced.
 func LoadEpisodes(ctx context.Context, s *SourceStore) (*EpisodeProjection, error) {
+	return loadEpisodes(ctx, s, false)
+}
+
+// LoadEpisodesForReplay discovers every episode during admitted startup replay,
+// including foundation-only fences in unenrolled ordinary brains. Unlike the
+// interactive loader, ordinary source entries do not consume a scan ceiling.
+// Directory pages and traversal depth are bounded; all episode projection limits
+// and validation remain shared with LoadEpisodes. Callers must hold startup or
+// serialized runtime authority, and provide cancellation for maintenance work.
+func LoadEpisodesForReplay(ctx context.Context, s *SourceStore) (*EpisodeProjection, error) {
+	return loadEpisodes(ctx, s, true)
+}
+
+func loadEpisodes(ctx context.Context, s *SourceStore, replay bool) (*EpisodeProjection, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	p := &EpisodeProjection{Records: map[string]EpisodeRecord{}, SourceIDs: map[string]string{}, Events: map[string]ArchivedEpisodeEvent{}, Fences: map[string]uint64{}}
 	base := filepath.Join(s.Root, "brain", "sources")
 	seen := 0
-	err := filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
+	walk := filepath.WalkDir
+	if replay {
+		walk = func(root string, visit fs.WalkDirFunc) error { return walkEpisodeReplaySources(ctx, root, visit) }
+	}
+	err := walk(base, func(path string, d fs.DirEntry, err error) error {
 		if errors.Is(err, fs.ErrNotExist) && path == base {
 			return nil
 		}
@@ -392,9 +413,11 @@ func LoadEpisodes(ctx context.Context, s *SourceStore) (*EpisodeProjection, erro
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		seen++
-		if seen > 65536 {
-			return ErrEpisodeLimit
+		if !replay {
+			seen++
+			if seen > 65536 {
+				return ErrEpisodeLimit
+			}
 		}
 		if d.Type()&os.ModeSymlink != 0 {
 			return fmt.Errorf("episode source symlink")
@@ -542,8 +565,66 @@ func LoadEpisodes(ctx context.Context, s *SourceStore) (*EpisodeProjection, erro
 			}
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
+
+// Canonical sources use only two directory levels below the root. The generous
+// depth bound rejects pathological trees without retaining an unbounded stack
+// or directory handles. Ordinary inventory size is deliberately not bounded.
+func walkEpisodeReplaySources(ctx context.Context, root string, visit fs.WalkDirFunc) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	info, err := os.Lstat(root)
+	if err != nil {
+		return visit(root, nil, err)
+	}
+	var walk func(string, fs.DirEntry, int) error
+	walk = func(path string, entry fs.DirEntry, depth int) (retErr error) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := visit(path, entry, nil); err != nil {
+			if err == filepath.SkipDir && entry.IsDir() {
+				return nil
+			}
+			return err
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+		if depth > 64 {
+			return fmt.Errorf("%w: episode source directory nesting", ErrEpisodeInvalid)
+		}
+		dir, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer func() { retErr = errors.Join(retErr, dir.Close()) }()
+		for {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			entries, err := dir.ReadDir(128)
+			if err != nil && err != io.EOF {
+				return err
+			}
+			for _, child := range entries {
+				if err := walk(filepath.Join(path, child.Name()), child, depth+1); err != nil {
+					return err
+				}
+			}
+			if err == io.EOF {
+				return nil
+			}
+		}
+	}
+	return walk(root, fs.FileInfoToDirEntry(info), 0)
+}
+
 func (p *EpisodeProjection) SortedEvents() []ArchivedEpisodeEvent {
 	out := make([]ArchivedEpisodeEvent, 0, len(p.Events))
 	for _, e := range p.Events {

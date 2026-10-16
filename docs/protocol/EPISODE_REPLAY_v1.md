@@ -96,6 +96,23 @@ Unresolved identities, malformed versions, conflicting receipts, wrong-brain
 canonical records, missing journal evidence, incomplete history, cancellation
 and publication failure all stop startup.
 
+Startup discovery scans every nondeleted brain, including unenrolled brains
+when the archive is disabled or compiled out in the safety build. It uses
+`LoadEpisodesForReplay`: streaming directory reads of at most 128 entries per
+page, with cancellation checks before each page and entry. Ordinary inventories
+do not consume the interactive 65,536-entry budget. Traversal retains at most
+65 open directory levels (canonical sources use two levels below the root);
+pathological deeper trees fail closed. Metadata and episode bytes, records,
+fences, identities and dependencies retain the shared projection validation
+and existing limits. No scan-limit error is ignored and no enrollment filter
+may hide foundation fences. The interactive API retains its original budget.
+
+Both writer replay loads and the gateway's final projection check use this
+maintenance discovery. Replay publication verification requests only the
+bounded episode paths from Git, without materializing the ordinary inventory.
+A large ordinary brain can therefore reconcile existing and missing fences,
+not merely pass the first startup scan.
+
 Missing canonical fences are rebuilt with the existing serialized writer,
 without original identifiers or payloads. Every canonical exclusion must match
 an admitted external intent, and every admitted active-brain intent must have
@@ -162,3 +179,10 @@ also closes it. Permanent archive configuration, WorkOS and billing are unchange
 nondefault permanent enrollment and enabled optional authorities reject this
 qualification route. The compiled safety build refuses enablement. Real-history
 capture and physical-purge capabilities remain false throughout qualification.
+
+The large-inventory regression builds 22,000 canonical ordinary sources (more
+than 65,536 filesystem entries), requires archive-off startup without episode
+journal entries, rejects an unjournaled foundation fence, and reconciles both
+existing and missing admitted external fences across repeated startup. Run the
+same regression in normal and `episode_archive_disabled` builds. This fixture
+is authored verification coverage; execution receipts are required separately.
