@@ -134,3 +134,16 @@ func TestCodexRejectsUnicodeReplacementAndCaseAliases(t *testing.T) {
 		}
 	}
 }
+
+func TestCodexEmptyTextOccurrenceAndMalformedText(t *testing.T) {
+	page, err := ReadCodex(strings.NewReader(metadata()+message("user", "")), enrolled, Cursor{}, 64)
+	if err != nil || len(page.Messages) != 1 || page.Messages[0].Text != "" || !page.Complete {
+		t.Fatalf("empty occurrence lost: %+v %v", page, err)
+	}
+	for _, part := range []map[string]any{{"type": "input_text"}, {"type": "input_text", "text": nil}} {
+		raw := metadata() + line("response_item", map[string]any{"type": "message", "role": "user", "content": []any{part}})
+		if _, err = ReadCodex(strings.NewReader(raw), enrolled, Cursor{}, 64); !errors.Is(err, ErrFormat) {
+			t.Fatalf("malformed text accepted: %v", err)
+		}
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"math"
 	"regexp"
 	"strings"
 	"time"
@@ -85,7 +86,9 @@ const (
 	MaxTextBytes       = 64 << 10
 	MaxAttachmentBytes = 32 << 10
 	MaxAttachments     = 8
-	MaxEventBytes      = 512 << 10
+	// Leave 4 KiB for wire-only attribution and envelope fields below the
+	// archive event bound (448 KiB). Never stage a permanently oversized item.
+	MaxEventBytes = (448 << 10) - 4096
 )
 
 // Input is the package's normalized visible-event schema, not a host schema.
@@ -200,7 +203,7 @@ func admit(p Policy, in Input) (Record, Decision, error) {
 		d.Gaps = []Gap{{"unsupported_host_mode", -1}}
 		return r, d, ErrUnsupported
 	}
-	if !validID(in.Conversation) || !validID(in.Event) || in.Sequence == 0 || in.SourceTime.IsZero() || in.ObservedTime.IsZero() || len(in.Text) > MaxTextBytes || !utf8.ValidString(in.Text) || len(in.Attachments) > MaxAttachments || len(in.Tool) > 128 {
+	if !validID(in.Conversation) || !validID(in.Event) || in.Sequence == 0 || in.Sequence > math.MaxInt64 || in.SourceTime.IsZero() || in.ObservedTime.IsZero() || len(in.Text) > MaxTextBytes || !utf8.ValidString(in.Text) || len(in.Attachments) > MaxAttachments || len(in.Tool) > 128 {
 		return r, d, ErrInvalid
 	}
 	switch in.Role {
@@ -241,7 +244,8 @@ func admit(p Policy, in Input) (Record, Decision, error) {
 			r.Gaps = append(r.Gaps, Gap{reason, i})
 			continue
 		}
-		b := append([]byte(nil), a.Bytes...)
+		b := make([]byte, len(a.Bytes))
+		copy(b, a.Bytes)
 		if a.MediaType == "text/plain" {
 			if !utf8.Valid(b) {
 				r.Gaps = append(r.Gaps, Gap{"attachment_encoding_unsupported", i})

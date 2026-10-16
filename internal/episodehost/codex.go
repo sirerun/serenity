@@ -221,8 +221,8 @@ func decodeCodexLine(row codexLine, line int, session string) ([]Message, []Gap,
 		Channel string `json:"channel"`
 		Phase   string `json:"phase"`
 		Content []struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
+			Type string  `json:"type"`
+			Text *string `json:"text"`
 		} `json:"content"`
 	}
 	if json.Unmarshal(row.Payload, &item) != nil {
@@ -244,18 +244,23 @@ func decodeCodexLine(row codexLine, line int, session string) ([]Message, []Gap,
 		return gap("unknown_phase_excluded")
 	}
 	var text strings.Builder
+	hasText := false
 	var gaps []Gap
 	for _, part := range item.Content {
 		if part.Type != "input_text" && part.Type != "output_text" {
 			gaps = append(gaps, Gap{line, "attachment_or_content_unsupported"})
 			continue
 		}
-		if text.Len()+len(part.Text) > MaxVisibleTextBytes {
+		if part.Text == nil {
+			return nil, nil, ErrFormat
+		}
+		hasText = true
+		if text.Len()+len(*part.Text) > MaxVisibleTextBytes {
 			return nil, nil, ErrLimit
 		}
-		text.WriteString(part.Text)
+		text.WriteString(*part.Text)
 	}
-	if text.Len() == 0 {
+	if !hasText {
 		return nil, gaps, nil
 	}
 	occurred, err := time.Parse(time.RFC3339Nano, row.Timestamp)

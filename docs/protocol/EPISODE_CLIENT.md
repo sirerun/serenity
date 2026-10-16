@@ -118,7 +118,7 @@ Limits are deliberately conservative and are not measured capacity claims:
 | --- | --- |
 | Text per input and admitted record | 64 KiB |
 | Attachment bytes | 32 KiB each, at most 8 per input |
-| Serialized admitted record | 512 KiB |
+| Serialized admitted record | 444 KiB (4 KiB reserved below the wire event bound) |
 | Pending records | Caller limit, 1–1024 |
 | Pending serialized record bytes | Caller limit, 1 byte–32 MiB |
 | Pause scopes | 1024 |

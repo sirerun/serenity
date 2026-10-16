@@ -394,7 +394,15 @@ func (g *Gateway) ServeEpisodes(w http.ResponseWriter, r *http.Request) {
 				episodeFailure(w, 503, "inventory_unavailable")
 				return
 			}
-			growth := int64(len(raw))*4 + 8192
+			// Admission must use the same escaping as canonical publication; the
+			// caller can send much smaller literal HTML characters on the wire.
+			canonical, e := json.Marshal(req.Mutation)
+			if e != nil {
+				episodeError(w, store.ErrEpisodeInvalid)
+				return
+			}
+			// Reserve canonical copies plus wrapper, metadata and Git overhead.
+			growth := int64(len(canonical))*4 + 64<<10
 			if inventory.StorageBytes+growth >= max(entitlement.Plan.StorageBytes, account.Plan.StorageBytes) {
 				episodeFailure(w, 429, "limit_exceeded")
 				return
