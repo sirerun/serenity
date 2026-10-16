@@ -182,7 +182,7 @@ func validateEpisodeRequest(r episodeRequest) error {
 // Enabling it requires an explicit synthetic brain allowlist; no production
 // history, physical erasure, or managed restore qualification is implied.
 func (g *Gateway) ServeEpisodes(w http.ResponseWriter, r *http.Request) {
-	if !g.EpisodeArchiveEnabled {
+	if !episodeArchiveBuildEnabled || !g.EpisodeArchiveEnabled {
 		episodeFailure(w, 404, "archive_disabled")
 		return
 	}
