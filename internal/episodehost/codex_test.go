@@ -147,3 +147,64 @@ func TestCodexEmptyTextOccurrenceAndMalformedText(t *testing.T) {
 		}
 	}
 }
+
+func TestCodexHarnessProvenanceIsNotAnOriginalOccurrence(t *testing.T) {
+	for _, provenance := range []any{
+		map[string]any{"compaction_output": true},
+		map[string]any{"inherited_user_message": true},
+		map[string]any{"delivered_assistant_message": "EXCLUDED"},
+		map[string]any{"retained_source": map[string]any{"text": "EXCLUDED"}},
+		map[string]any{"guardian_sources": []string{"EXCLUDED"}},
+		map[string]any{"client_authored": false},
+		map[string]any{"user_input_order": 1},
+		map[string]any{"future_provenance": "EXCLUDED"},
+	} {
+		row := map[string]any{"timestamp": "2026-10-16T10:00:00Z", "type": "response_item", "metadata": provenance,
+			"payload": map[string]any{"type": "message", "role": "assistant", "content": []any{map[string]string{"type": "output_text", "text": "EXCLUDED"}}}}
+		b, _ := json.Marshal(row)
+		raw := metadata() + string(b) + "\n" + message("user", "original")
+		p, err := ReadCodex(strings.NewReader(raw), enrolled, Cursor{}, 1)
+		if err != nil || len(p.Messages) != 1 || p.Messages[0].Text != "original" || len(p.Gaps) != 1 || p.Gaps[0].Reason != "host_provenance_metadata_unsupported" || p.Cursor.Lines != 3 {
+			t.Fatalf("provenance admission: %+v %v", p, err)
+		}
+		encoded, _ := json.Marshal(p)
+		if strings.Contains(string(encoded), "EXCLUDED") {
+			t.Fatal("provenance content escaped through a gap or event")
+		}
+		replay, err := ReadCodex(strings.NewReader(raw), enrolled, p.Cursor, 1)
+		if err != nil || len(replay.Messages) != 0 || !replay.Complete {
+			t.Fatalf("replay %+v %v", replay, err)
+		}
+	}
+}
+
+func TestCodexAbsentProvenanceAndMalformedMetadata(t *testing.T) {
+	for _, value := range []string{"null", "{}"} {
+		raw := metadata() + strings.TrimSuffix(strings.TrimSuffix(message("user", "original"), "\n"), "}") + `,"metadata":` + value + "}\n"
+		p, err := ReadCodex(strings.NewReader(raw), enrolled, Cursor{}, 1)
+		if err != nil || len(p.Messages) != 1 || p.Messages[0].Text != "original" {
+			t.Fatalf("empty metadata: %+v %v", p, err)
+		}
+	}
+	for _, value := range []string{`[]`, `"EXCLUDED"`, `true`, `1`} {
+		raw := metadata() + strings.TrimSuffix(strings.TrimSuffix(message("user", "original"), "\n"), "}") + `,"metadata":` + value + "}\n"
+		if _, err := ReadCodex(strings.NewReader(raw), enrolled, Cursor{}, 1); !errors.Is(err, ErrFormat) {
+			t.Fatalf("malformed metadata accepted: %v", err)
+		}
+	}
+}
+
+func TestCodexEncryptedMessageDoesNotAdmitMixedPlaintext(t *testing.T) {
+	for _, encrypted := range []any{"opaque", "", map[string]string{"future": "opaque"}} {
+		raw := metadata() + line("response_item", map[string]any{"type": "message", "role": "assistant", "encrypted_content": encrypted,
+			"content": []any{map[string]string{"type": "output_text", "text": "EXCLUDED"}}})
+		p, err := ReadCodex(strings.NewReader(raw), enrolled, Cursor{}, 1)
+		if err != nil || len(p.Messages) != 0 || len(p.Gaps) != 1 || p.Gaps[0].Reason != "encrypted_message_excluded" {
+			t.Fatalf("encrypted admission: %+v %v", p, err)
+		}
+		encoded, _ := json.Marshal(p)
+		if strings.Contains(string(encoded), "EXCLUDED") {
+			t.Fatal("encrypted mixed payload copied")
+		}
+	}
+}
