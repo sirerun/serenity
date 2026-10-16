@@ -336,6 +336,14 @@ func (g *Gateway) ServeEpisodes(w http.ResponseWriter, r *http.Request) {
 		episodeFailure(w, 403, "binding_mismatch")
 		return
 	}
+	if err = g.checkEpisodeReplay(binding.BrainID, p, req.Mutation); err != nil {
+		episodeFailure(w, 503, "exclusion_replay_pending")
+		return
+	}
+	if req.Operation == "exclude" {
+		generation := g.episodeRetryGeneration(binding.BrainID, p, *req.Mutation, *req.Generation)
+		req.Generation = &generation
+	}
 	response := episodeResponse{Schema: store.EpisodeSchema, ProjectID: binding.BrainID, Status: "completed", Generation: p.Generation, Revision: episodeRevision(p), Omissions: []string{"host_coverage_not_verified"}, PhysicalPurge: "unsupported", ManagedRestore: "unsupported", Authority: "attributed_evidence_not_execution_authority"}
 	var readReservation *meter.Reservation
 	defer func() {
@@ -414,7 +422,15 @@ func (g *Gateway) ServeEpisodes(w http.ResponseWriter, r *http.Request) {
 			}
 			admitted = &reservation
 		}
-		receipt, e := writer.Episode(ctx, runtime.Queue, runtime.Sources, runtime.Root, binding.BrainID, *req.Generation, *req.Mutation, recheck)
+		var receipt store.EpisodeReceipt
+		var e error
+		if req.Operation == "exclude" {
+			receipt, e = writer.EpisodeJournaledExclude(ctx, runtime.Queue, runtime.Sources, runtime.Root, binding.BrainID, *req.Generation, *req.Mutation, recheck, func(fence *store.EpisodeRecord) error {
+				return g.appendEpisodeIntent(ctx, binding.BrainID, fence)
+			})
+		} else {
+			receipt, e = writer.Episode(ctx, runtime.Queue, runtime.Sources, runtime.Root, binding.BrainID, *req.Generation, *req.Mutation, recheck)
+		}
 		if e != nil {
 			// These errors precede source mutation. Release their quota hold;
 			// uncertain publication failures retain the durable reservation.
@@ -423,6 +439,9 @@ func (g *Gateway) ServeEpisodes(w http.ResponseWriter, r *http.Request) {
 			}
 			episodeError(w, e)
 			return
+		}
+		if req.Operation == "exclude" {
+			g.episodeExclusionPublished(binding.BrainID, key)
 		}
 		if req.Operation != "exclude" {
 			if e = g.Meter.CommitDurableOperation(ctx, binding.AccountID, "writes", meterKey); e != nil {

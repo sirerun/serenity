@@ -45,6 +45,7 @@ type sessionBinding struct {
 type Gateway struct {
 	EpisodeArchiveEnabled  bool
 	EpisodeSyntheticBrains []string
+	episodeReplay          map[string]map[string]episodeReplayIntent // guarded by mu; rebuilt from admitted history
 
 	admission    limiter
 	Maintenance  sync.RWMutex
