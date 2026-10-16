@@ -511,7 +511,16 @@ func validateAppend(st protocolState, q Request, owner bool, now time.Time) (pro
 	}
 	switch o.Kind {
 	case contracts.JournalKindEntry:
-		if q.Action != "append" || o.SubjectType != contracts.DeletionSubjectAccount && o.SubjectType != contracts.DeletionSubjectBrain || o.SubjectID == "" || len(o.SubjectID) > 4096 || o.Outcome != contracts.DeletionIntentRequested && o.Outcome != contracts.DeletionOutcomePurged {
+		if q.Action != "append" || o.SubjectID == "" || len(o.SubjectID) > 4096 {
+			return st, ErrInvalid
+		}
+		if o.SubjectType == contracts.DeletionSubjectEpisodeConversation {
+			entry := contracts.DeletionEntry{SubjectType: o.SubjectType, SubjectID: o.SubjectID, Outcome: o.Outcome}
+			if entry.Validate() != nil {
+				return st, ErrInvalid
+			}
+		} else if o.SubjectType != contracts.DeletionSubjectAccount && o.SubjectType != contracts.DeletionSubjectBrain || o.Outcome != contracts.DeletionIntentRequested && o.Outcome != contracts.DeletionOutcomePurged {
+			// Preserve the established legacy account/brain acceptance boundary.
 			return st, ErrInvalid
 		}
 	case contracts.JournalKindSeal:
