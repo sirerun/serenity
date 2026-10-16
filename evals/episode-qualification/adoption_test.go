@@ -106,12 +106,12 @@ func assertManifestUnwritten(t *testing.T, e *engine, before []byte, info os.Fil
 }
 
 func TestSourceAdoptionChangesOnlySourceAndCustodyEpoch(t *testing.T) {
-	e, original, binding := adoptionFixture(t)
+	e, _, binding := adoptionFixture(t)
 	// Multiple historical credentials must all survive, inert, in exact order.
 	e.target.Source = binding.OldSource
 	rotated := mustOperate(t, e, "reissue")
 	externallyRevokeFixture(t, e, rotated)
-	original = rotated
+	original := rotated
 	e.target.Source = strings.Repeat("c", 40)
 	e.custodyEpoch = strings.Repeat("3", 64)
 	binding.OldManifestSHA256 = manifestHash(t, e)
