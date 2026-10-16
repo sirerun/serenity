@@ -361,3 +361,60 @@ func TestEpisodeHTTPLargeAdmittedEventRemainsExactlyReadable(t *testing.T) {
 		t.Fatal("large admitted original not exact")
 	}
 }
+
+func TestEpisodeHTTPStorageAdmissionUsesCanonicalEncoding(t *testing.T) {
+	g, p, brain, token := episodeHTTPSetup(t)
+	ctx := context.Background()
+	binding, err := g.Issuer.Verify(ctx, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits, account, err := g.Meter.Subject(ctx, binding.AccountID, binding.PartnerID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, release, err := p.AcquireCanonical(ctx, brain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	inventory, err := g.inventory(ctx, binding.AccountID, filepath.Dir(runtime.Root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	filler, err := os.Create(filepath.Join(runtime.Root, "storage-budget-fixture"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = filler.Truncate(max(limits.Plan.StorageBytes, account.Plan.StorageBytes) - inventory.StorageBytes - 300*1024); err != nil {
+		t.Fatal(err)
+	}
+	if err = filler.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := episodeHTTPFixture(t, brain)
+	req.Mutation.Events = req.Mutation.Events[:1]
+	req.Mutation.Events[0].Text = strings.Repeat("<", 64<<10)
+	req.Mutation.Events[0].Attachments = nil
+	var encoded bytes.Buffer
+	encoder := json.NewEncoder(&encoded)
+	encoder.SetEscapeHTML(false)
+	if err = encoder.Encode(req); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("POST", "/episodes/v1", &encoded)
+	r.Header.Set("Authorization", "Bearer "+token)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	g.ServeEpisodes(w, r)
+	if w.Code != 429 || !strings.Contains(w.Body.String(), "limit_exceeded") {
+		t.Fatalf("canonical quota bypass: %d %s", w.Code, w.Body.String())
+	}
+	projection, err := store.LoadEpisodes(ctx, runtime.Sources)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projection.Records) != 0 {
+		t.Fatal("refused request mutated canonical archive")
+	}
+}

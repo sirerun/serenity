@@ -158,3 +158,60 @@ func TestEpisodeCaptureRejectsAmbiguousWireJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestEpisodeCaptureWireBoundsBeforeStaging(t *testing.T) {
+	for _, mode := range []string{"encoded-size", "sequence-range", "empty-image"} {
+		t.Run(mode, func(t *testing.T) {
+			g, _, brain, token := episodeHTTPSetup(t)
+			server := httptest.NewTLSServer(http.HandlerFunc(g.ServeEpisodes))
+			defer server.Close()
+			q := captureQueue(t, brain)
+			c := captureClient(t, server, brain, token, func(context.Context, episodeclient.ReplayKey) bool { return true })
+			in := captureInput()
+			switch mode {
+			case "encoded-size":
+				in.Text = strings.Repeat("<", 64<<10)
+				for _, id := range []string{"a", "b"} {
+					in.Attachments = append(in.Attachments, episodeclient.AttachmentInput{ID: id, MediaType: "image/png", Class: "exposed", SecretStatus: "clear", Available: true, Bytes: make([]byte, 32<<10)})
+				}
+			case "sequence-range":
+				in.Sequence = 1 << 63
+			case "empty-image":
+				in.Attachments = []episodeclient.AttachmentInput{{ID: "empty", MediaType: "image/png", Class: "exposed", SecretStatus: "clear", Available: true, Bytes: []byte{}}}
+			}
+			d, err := q.Capture(in)
+			if mode != "empty-image" {
+				if !errors.Is(err, episodeclient.ErrInvalid) || d.Admitted {
+					t.Fatalf("incompatible input staged: %+v %v", d, err)
+				}
+				if stats, e := q.Stats(); e != nil || stats.Items != 0 {
+					t.Fatalf("rejected input persisted: %+v %v", stats, e)
+				}
+			} else if err != nil || !d.Admitted {
+				t.Fatalf("empty bytes rejected: %+v %v", d, err)
+			}
+			next := captureInput()
+			next.Event = "next"
+			next.Sequence = 2
+			if _, err = q.Capture(next); err != nil {
+				t.Fatal(err)
+			}
+			want := 1
+			if mode == "empty-image" {
+				want = 2
+			}
+			result, err := q.Drain(context.Background(), c, c, 8)
+			if err != nil || result.Published != want || result.Remaining != 0 {
+				t.Fatalf("drain %+v %v", result, err)
+			}
+			if mode == "empty-image" {
+				read := episodeReadRequest(brain, "read")
+				read.EventKey = store.EpisodeEventKey("producer1", "conversation1", "event1")
+				code, res, body := episodeHTTPCall(t, g, token, read)
+				if code != 200 || len(res.Events) != 1 || len(res.Events[0].Event.Attachments) != 1 || res.Events[0].Event.Attachments[0].Data == nil || len(res.Events[0].Event.Attachments[0].Data) != 0 {
+					t.Fatalf("empty attachment lost: %d %s", code, body)
+				}
+			}
+		})
+	}
+}
