@@ -43,6 +43,16 @@ Acceptance: additive gated archive API has exact evidence, bounded admission, ex
 - [x] T1.20 Merge external episode fence candidate  Owner: integration  kind: agent  stage: merge  deps: [T1.19]  acc: [current holds and protection gates permit exact reviewed-head guarded rebase merge]
 - [x] T1.21 Verify external episode fence landing  Owner: integration  kind: agent  stage: verify  deps: [T1.20]  acc: [reviewed tree equals landed main tree and qualified source behavior is recorded]
 
+### E1c — Restore-to-erasure cross-component qualification
+fidelity: executable
+Acceptance: a synthetic pre-exclusion snapshot restored behind complete admitted external history cannot regain readable evidence; inactive candidate construction removes excluded historical objects without pretending to activate or purge managed copies.
+
+- [ ] T1.22 Add restore-to-erasure qualification fixture  Owner: erasure-chain-lane  kind: agent  stage: implement  deps: [T1.16, T1.21]  acc: [isolated actual Git and existing journal/gateway/store paths exercise pre-exclusion snapshot restore, complete external replay, stale queue and dependent checkpoint refusal, inactive candidate construction and preserved unrelated sources; missing or conflicting history refuses preparation; no production or managed-backup mutation]
+- [ ] T1.23 Verify restore-to-erasure candidate  Owner: integration  kind: agent  stage: verify  deps: [T1.22]  acc: [focused affected race and vet and required static checks pass on exact source; controlled old-copy retention and physical-completion gaps remain explicit]
+- [ ] T1.24 Independently review restore-to-erasure candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T1.23]  acc: [separate exact base and head review resolves findings without inferring authority from a local snapshot or weakening existing refusal boundaries]
+- [ ] T1.25 Merge restore-to-erasure candidate  Owner: integration  kind: agent  stage: merge  deps: [T1.24]  acc: [current claims and protections permit exact reviewed-head guarded rebase merge with accurately labeled verification]
+- [ ] T1.26 Verify restore-to-erasure landing  Owner: integration  kind: agent  stage: verify  deps: [T1.25]  acc: [landed tree equals reviewed candidate and main ancestry is verified; full T1.3 and real-capture gates remain open]
+
 ### E2 — Shared client and host continuity
 fidelity: executable
 Acceptance: enrolled histories are captured safely and can continue across qualified hosts; unsupported surfaces remain visible.
@@ -152,3 +162,5 @@ Resume replay landing: PR391 independently accepted5d0c9d1cbcd36f3fdb8f4b57313ae
 Fixture source verification: ecbdcb01 Python12 filesystem/systemd model tests passed. DGX identified the missing existing checkout immutability trigger in the strict schema inventory; corrected325bf7ec with required-trigger regression. Cleanup/static findings fixed608bdb3551825cb0a1d17ddcce1c7ac77408eb4d; package race/vet, lint2.11.4 and govuln1.9.0 pass. An explicitly injected source-only schema harness produced9bd9153fd18f433eb1d0416c7faa38ca6eefdc29ebcd8585f3a021b8b63ed963 from a fresh synthetic schema10 database. Rebase preserves fixture source byte-for-byte. Model tests do not establish real UID/FD/systemd/provider behavior.
 
 Source merge and live packet sequencing: T3.9 reviews the source and offline custody contract; the exact signed artifacts and fresh operational packet can only be finalized after source lands. Their original mandatory independent review is preserved explicitly in T3.13, before bounded T3.14 execution and T3.15 receipt verification. These new rows do not close or replace original full T3.3 (all API/privacy/restore/physical-erasure gates), T3.4–T3.6, or any remaining client/host task.
+
+Resume01 additional bounded lane at20:10UTC: parent retains live authority/host recovery ownership; isolated erasure-chain lane owns only new synthetic cross-component qualification and necessary narrow episode-specific helpers. It cannot activate or purge a production source, edit foreign lifecycle/backup interfaces, change capture capabilities or launch helpers. Existing57taskIDs include all prior52 unchanged. No live or managed-restore acceptance is implied.
