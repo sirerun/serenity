@@ -257,7 +257,9 @@ func (c *custody) check() error {
 	}
 	err = syscall.Flock(int(c.probe.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if err == nil {
-		syscall.Flock(int(c.probe.Fd()), syscall.LOCK_UN)
+		if syscall.Flock(int(c.probe.Fd()), syscall.LOCK_UN) != nil {
+			return errRefused
+		}
 		return errRefused
 	}
 	if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
@@ -271,12 +273,16 @@ func (c *custody) check() error {
 
 // schemaDigest uses only schema metadata. It cannot read a customer row. A proof
 // must pin the parent-reviewed schema fingerprint, not just an integer version.
-func schemaDigest(ctx context.Context, db *sql.DB) (string, error) {
+func schemaDigest(ctx context.Context, db *sql.DB) (digest string, result error) {
 	rows, err := db.QueryContext(ctx, `SELECT type,name,tbl_name,coalesce(sql,'') FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name`)
 	if err != nil {
 		return "", errRefused
 	}
-	defer rows.Close()
+	defer func() {
+		if rows.Close() != nil {
+			digest, result = "", errRefused
+		}
+	}()
 	expected := map[string]bool{
 		"accounts":                           false,
 		"accounts_created_by_partner":        false,
@@ -346,8 +352,9 @@ func schemaDigest(ctx context.Context, db *sql.DB) (string, error) {
 			if strings.ContainsRune(field, 0) {
 				return "", errRefused
 			}
-			io.WriteString(hasher, field)
-			hasher.Write([]byte{0})
+			// SHA-256 writes always consume the input and return a nil error.
+			_, _ = io.WriteString(hasher, field)
+			_, _ = hasher.Write([]byte{0})
 		}
 	}
 	if rows.Err() != nil {
@@ -361,7 +368,7 @@ func schemaDigest(ctx context.Context, db *sql.DB) (string, error) {
 	return hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-func preflightDB(ctx context.Context, p custodyProof) error {
+func preflightDB(ctx context.Context, p custodyProof) (result error) {
 	for _, dir := range []string{p.DataDir, filepath.Join(p.DataDir, "brains"), p.PrivateDir} {
 		if privatefs.ValidateDirectory(ctx, dir) != nil {
 			return errRefused
@@ -385,7 +392,7 @@ func preflightDB(ctx context.Context, p custodyProof) error {
 	if err != nil {
 		return errRefused
 	}
-	defer db.Close()
+	defer func() { refuseCleanup(&result, db.Close()) }()
 	db.SetMaxOpenConns(1)
 	var n, min, max int
 	if db.QueryRowContext(ctx, `SELECT count(*),min(version),max(version) FROM schema_migrations`).Scan(&n, &min, &max) != nil || n != 10 || min != 1 || max != 10 {
@@ -398,7 +405,7 @@ func preflightDB(ctx context.Context, p custodyProof) error {
 	return nil
 }
 
-func executeCustody(args []string) error {
+func executeCustody(args []string) (result error) {
 	c, err := newCustody(args)
 	if err != nil {
 		return errRefused
@@ -406,10 +413,10 @@ func executeCustody(args []string) error {
 	// Keep descriptor wrappers alive until operation exit; child owns no root paths.
 	defer func() {
 		for _, pin := range c.pins {
-			pin.file.Close()
+			refuseCleanup(&result, pin.file.Close())
 		}
-		c.probe.Close()
-		c.lock.Close()
+		refuseCleanup(&result, c.probe.Close())
+		refuseCleanup(&result, c.lock.Close())
 	}()
 	p := c.proof
 	deadline := time.Now().Add(110 * time.Second)
@@ -437,7 +444,7 @@ func executeCustody(args []string) error {
 	if err != nil {
 		return errRefused
 	}
-	defer db.Close()
+	defer func() { refuseCleanup(&result, db.Close()) }()
 	e := engine{store: db, privateDir: p.PrivateDir, target: target{DataDir: p.DataDir, ConfigPath: p.ConfigPath, ConfigSHA256: p.ConfigSHA256, Source: p.ToolSource, AccountCap: p.AccountCap}, authorize: c.check, custodyEpoch: p.HoldSHA256}
 	if e.operate(ctx, p.Operation) != nil || c.check() != nil {
 		return errRefused

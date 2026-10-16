@@ -113,10 +113,18 @@ func (e *engine) validate(ctx context.Context) error {
 	return nil
 }
 
+// refuseCleanup keeps cleanup failures content-free and prevents a successful
+// result when a file, database, or lock could not be closed or released.
+func refuseCleanup(result *error, err error) {
+	if err != nil {
+		*result = errRefused
+	}
+}
+
 // persist uses private same-directory atomic replacement plus file/directory
 // fsync. No key is returned, printed, or included in an error. The private file
 // is the sole plaintext key output. Leftover temp files are never adopted.
-func (e *engine) persist(ctx context.Context, m *manifest) error {
+func (e *engine) persist(ctx context.Context, m *manifest) (result error) {
 	if e.allowed(ctx) != nil {
 		return errRefused
 	}
@@ -140,13 +148,17 @@ func (e *engine) persist(ctx context.Context, m *manifest) error {
 		return errRefused
 	}
 	temp := f.Name()
-	defer os.Remove(temp)
+	defer func() {
+		if err := os.Remove(temp); !errors.Is(err, os.ErrNotExist) {
+			refuseCleanup(&result, err)
+		}
+	}()
 	if _, err = f.Write(data); err != nil {
-		f.Close()
+		refuseCleanup(&result, f.Close())
 		return errRefused
 	}
 	if err = f.Sync(); err != nil {
-		f.Close()
+		refuseCleanup(&result, f.Close())
 		return errRefused
 	}
 	if err = f.Close(); err != nil {
@@ -220,7 +232,7 @@ func email(namespace string, i int) string {
 
 // operate is called only after inherited offline custody is verified. Modes are
 // prepare (replay preserves keys), reissue, and revoke (retains rows/data).
-func (e *engine) operate(ctx context.Context, mode string) error {
+func (e *engine) operate(ctx context.Context, mode string) (result error) {
 	if mode != "prepare" && mode != "reissue" && mode != "revoke" {
 		return errRefused
 	}
@@ -231,7 +243,7 @@ func (e *engine) operate(ctx context.Context, mode string) error {
 	if err != nil {
 		return errRefused
 	}
-	defer lock.Close()
+	defer func() { refuseCleanup(&result, lock.Close()) }()
 	info, err := lock.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
 		return errRefused
@@ -243,7 +255,7 @@ func (e *engine) operate(ctx context.Context, mode string) error {
 	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		return errRefused
 	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	defer func() { refuseCleanup(&result, syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)) }()
 	m, err := e.load(ctx)
 	if errors.Is(err, os.ErrNotExist) && mode == "prepare" {
 		entries, readErr := os.ReadDir(e.privateDir)
@@ -493,7 +505,7 @@ func (e *engine) inspect(ctx context.Context, a *fixtureAccount) error {
 		var path, state string
 		var def int
 		var deleted sql.NullString
-		if err = e.store.DB().QueryRowContext(ctx, `SELECT path_key,state,is_default,deleted_at FROM brains WHERE id=? AND account_id=?`, a.BrainID, id).Scan(&path, &state, &def, &deleted); err != nil || path != a.BrainID || def != 1 || deleted.Valid || (state != "ready" && !(state == "allocating" && a.Pending == "brain")) {
+		if err = e.store.DB().QueryRowContext(ctx, `SELECT path_key,state,is_default,deleted_at FROM brains WHERE id=? AND account_id=?`, a.BrainID, id).Scan(&path, &state, &def, &deleted); err != nil || path != a.BrainID || def != 1 || deleted.Valid || (state != "ready" && (state != "allocating" || a.Pending != "brain")) {
 			return errRefused
 		}
 	}
@@ -521,7 +533,9 @@ func (e *engine) inspect(ctx context.Context, a *fixtureAccount) error {
 	seen := map[string]bool{}
 	for _, cid := range a.CredentialIDs {
 		if seen[cid] {
-			rows.Close()
+			if rows.Close() != nil {
+				return errRefused
+			}
 			return errRefused
 		}
 		seen[cid] = true
@@ -532,7 +546,9 @@ func (e *engine) inspect(ctx context.Context, a *fixtureAccount) error {
 		var generation int
 		var partner sql.NullString
 		if rows.Scan(&cid, &bid, &scopes, &generation, &partner) != nil || bid != a.BrainID || scopes != "memory:read,memory:write" || generation != 1 || partner.Valid {
-			rows.Close()
+			if rows.Close() != nil {
+				return errRefused
+			}
 			return errRefused
 		}
 		if !slices.Contains(a.CredentialIDs, cid) {

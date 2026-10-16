@@ -69,7 +69,11 @@ func TestInheritedDescriptorMustBePrivateRegularRootFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	t.Cleanup(func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("close synthetic descriptor: %v", err)
+		}
+	})
 	if _, _, err := pinFD(int(f.Fd()), true); err == nil {
 		t.Fatal("nonprivate descriptor accepted")
 	}
@@ -80,7 +84,11 @@ func TestInheritedDescriptorMustBePrivateRegularRootFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer write.Close()
+	t.Cleanup(func() {
+		if err := write.Close(); err != nil {
+			t.Errorf("close synthetic descriptor: %v", err)
+		}
+	})
 	if _, _, err = pinFD(int(write.Fd()), true); err == nil {
 		t.Fatal("writable descriptor accepted")
 	}
