@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/sirerun/serenity/internal/gitrun"
 	"github.com/sirerun/serenity/internal/store"
-	"strings"
 )
 
 // Episode publishes originals and content-free replay/fence metadata through
@@ -27,9 +27,11 @@ func Episode(ctx context.Context, q *Queue, s *store.SourceStore, root, brain st
 		return receipt, store.ErrEpisodeLimit
 	}
 	// Detach mutable slices from the caller before queue admission.
-	if err = json.Unmarshal(raw, &in); err != nil {
+	var detached store.EpisodeInput
+	if err = json.Unmarshal(raw, &detached); err != nil {
 		return receipt, err
 	}
+	in = detached
 	key := store.EpisodeCommandKey(in.ProducerID, in.CommandID)
 	conversation := store.EpisodeConversationKey(in.ProducerID, in.ConversationID)
 	digest := store.EpisodeHash(in)

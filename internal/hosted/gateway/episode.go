@@ -42,6 +42,7 @@ type episodeRequest struct {
 	Revision       string              `json:"revision,omitempty"`
 }
 type episodeResponse struct {
+	Capture        *store.EpisodeCapture        `json:"capture,omitempty"`
 	Schema         string                       `json:"schema"`
 	ProjectID      string                       `json:"project_id"`
 	Status         string                       `json:"status"`
@@ -100,7 +101,7 @@ func episodeRevision(p *store.EpisodeProjection) string {
 	return store.EpisodeHash(ids)
 }
 func episodeCapabilities() map[string]any {
-	return map[string]any{"synthetic_only": true, "real_history_capture": false, "append": true, "exact_read": true, "attachments": "inline_bounded", "search": "direct_lexical_scan", "context": true, "checkpoint": "client_supplied_evidence", "immediate_exclusion": true, "physical_purge": false, "managed_restore": false, "portable_export": false, "automatic_extraction": false, "model_calls": false, "max_request_bytes": store.EpisodeMaxRequestBytes, "max_record_bytes": store.EpisodeMaxRecordBytes, "max_events": store.EpisodeMaxEvents, "max_event_text_bytes": store.EpisodeMaxTextBytes, "max_attachment_bytes": store.EpisodeMaxAttachmentBytes, "max_attachments_per_event": 8, "max_attachments_per_batch": 16, "max_records": store.EpisodeMaxRecords, "max_fences": store.EpisodeMaxFences, "max_archive_bytes": store.EpisodeMaxArchiveBytes, "max_response_bytes": store.EpisodeMaxResponseBytes, "max_results": 64, "max_scan_entries": 65536, "context_estimator": "serialized_json_bytes", "native_restore": false}
+	return map[string]any{"synthetic_only": true, "real_history_capture": false, "append": true, "exact_read": true, "attachments": "inline_bounded", "search": "direct_lexical_scan", "context": true, "checkpoint": "client_supplied_evidence", "immediate_exclusion": true, "physical_purge": false, "managed_restore": false, "portable_export": false, "automatic_extraction": false, "model_calls": false, "max_request_bytes": store.EpisodeMaxRequestBytes, "max_record_bytes": store.EpisodeMaxRecordBytes, "max_events": store.EpisodeMaxEvents, "max_event_text_bytes": store.EpisodeMaxTextBytes, "max_event_json_bytes": store.EpisodeMaxEventJSONBytes, "max_attachment_bytes": store.EpisodeMaxAttachmentBytes, "max_attachments_per_event": 8, "max_attachments_per_batch": 16, "max_records": store.EpisodeMaxRecords, "max_fences": store.EpisodeMaxFences, "max_archive_bytes": store.EpisodeMaxArchiveBytes, "max_response_bytes": store.EpisodeMaxResponseBytes, "max_results": 64, "max_scan_entries": 65536, "context_estimator": "serialized_json_bytes", "native_restore": false}
 }
 func validateEpisodeEnvelope(raw []byte, req episodeRequest) error {
 	allowed := map[string]bool{"schema": true, "project_id": true, "operation": true, "qualification": true}
@@ -447,6 +448,7 @@ func (g *Gateway) ServeEpisodes(w http.ResponseWriter, r *http.Request) {
 		switch req.Operation {
 		case "capabilities":
 			response.Capabilities = episodeCapabilities()
+			response.Capabilities["archive_usage"] = map[string]any{"records": p.DataRecords, "events": len(p.Events), "fences": len(p.Fences), "canonical_json_bytes": p.Bytes}
 		case "fences":
 			response.Fences = p.Fences
 		case "status":
@@ -491,6 +493,8 @@ func (g *Gateway) ServeEpisodes(w http.ResponseWriter, r *http.Request) {
 				receipt := p.Receipt(req.CommandKey)
 				response.Receipt = &receipt
 				response.Checkpoint = rec.Input.Checkpoint
+				capture := rec.Input.Capture()
+				response.Capture = &capture
 				for _, ref := range rec.Refs {
 					event := p.Events[ref.EventKey]
 					if !p.EventEligible(event) {

@@ -62,7 +62,7 @@ server eligibility.
 
 | Operation | Additional fields | Result |
 | --- | --- | --- |
-| `capabilities` | None | Explicit supported/unsupported flags and numerical limits |
+| `capabilities` | None | Explicit supported/unsupported flags, numerical limits and archive usage |
 | `append` | `generation`, `mutation` with ordered visible events | Stable content-free receipt after publication |
 | `checkpoint` | `generation`, `mutation` with checkpoint | Exact client-supplied continuation evidence and validated source refs |
 | `exclude` | `generation`, minimal `mutation` identity only | Immediate conversation exclusion, new generation; no physical purge claim |
@@ -125,7 +125,9 @@ metadata and content-free event refs; original event attribution and source date
 remain available. Read-by-command resolves these refs in the original batch
 order. Event refs are `{event_key, digest}`; the event digest is SHA256 of its
 canonical typed JSON. Read responses include the original source SHA256,
-producer/conversation IDs, original workspace/policy and exact event.
+producer/conversation IDs, original host/version, workspace/policy, batch
+`capture_gaps`, and exact event. Read-by-command also returns `capture` metadata
+for that command, so a deduplicated import retains its own coverage gaps.
 
 ## Context, checkpoints and coverage
 
@@ -144,7 +146,8 @@ response JSON is independently capped at 512 KiB. A result/byte-limited page has
 returned `revision`. Revision covers the current archive source set, including
 fences. A changed revision returns 409; restart pagination. If the first event
 exceeds the budget, `next_offset` remains unchanged: increase the budget or use
-an exact event read. No event is silently truncated. No selected result is not
+an exact event read. A full batch can exceed an exact-read response budget; its receipt exposes event
+keys so each admitted event can be read individually. No event is silently truncated. No selected result is not
 proof that no relevant or uncaptured history exists.
 
 A checkpoint mutation replaces `events` with
@@ -199,6 +202,7 @@ queue propagation and other real-history acceptance are parent followup gates.
 | HTTP request | 1 MiB |
 | Canonical record | 512 KiB (input also reserves metadata overhead) |
 | Event text | 64 KiB UTF-8 bytes |
+| Entire encoded event | 448 KiB, ensuring an admitted event fits an exact read |
 | Events / batch | 64 |
 | Attachment decoded bytes | 32 KiB each |
 | Attachments | 8/event, 16/batch |

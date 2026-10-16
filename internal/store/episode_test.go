@@ -3,6 +3,8 @@ package store
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -142,5 +144,22 @@ func TestEpisodeProjectionRejectsCorruptionAndSymlinks(t *testing.T) {
 	}
 	if _, err := LoadEpisodes(ctx, s); !errors.Is(err, context.Canceled) {
 		t.Fatalf("context %v", err)
+	}
+}
+
+func TestEpisodeEncodedEventBoundProtectsExactRead(t *testing.T) {
+	in := episodeFixture(t)
+	in.Events[0].Text = strings.Repeat("\x00", EpisodeMaxTextBytes)
+	data := make([]byte, EpisodeMaxAttachmentBytes)
+	sum := sha256.Sum256(data)
+	attachment := EpisodeAttachment{ID: "a", MediaType: "application/octet-stream", Data: data, SHA256: hex.EncodeToString(sum[:])}
+	in.Events[0].Attachments = []EpisodeAttachment{attachment}
+	if err := ValidateEpisodeInput(in); err != nil {
+		t.Fatalf("within exact-read bound: %v", err)
+	}
+	attachment.ID = "b"
+	in.Events[0].Attachments = append(in.Events[0].Attachments, attachment)
+	if err := ValidateEpisodeInput(in); !errors.Is(err, ErrEpisodeLimit) {
+		t.Fatalf("expanded event can exceed exact-read bound: %v", err)
 	}
 }

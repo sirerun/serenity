@@ -96,7 +96,10 @@
           "policy_version",
           "source_sha256",
           "ref",
-          "event"
+          "event",
+          "host",
+          "host_version",
+          "capture_gaps"
         ],
         "properties": {
           "producer_id": {
@@ -129,6 +132,21 @@
           },
           "event": {
             "$ref": "#/$defs/event"
+          },
+          "host": {
+            "type": "string"
+          },
+          "host_version": {
+            "type": "string"
+          },
+          "capture_gaps": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       }
@@ -178,6 +196,48 @@
     },
     "authority": {
       "const": "attributed_evidence_not_execution_authority"
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "producer_id",
+        "conversation_id",
+        "host",
+        "host_version",
+        "workspace_label",
+        "policy_version",
+        "gaps"
+      ],
+      "properties": {
+        "producer_id": {
+          "type": "string"
+        },
+        "conversation_id": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "host_version": {
+          "type": "string"
+        },
+        "workspace_label": {
+          "type": "string"
+        },
+        "policy_version": {
+          "type": "string"
+        },
+        "gaps": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
     }
   },
   "$defs": {

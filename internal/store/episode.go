@@ -29,6 +29,7 @@ const EpisodeMaxFences = 256
 const EpisodeMaxArchiveBytes = 32 << 20
 const EpisodeMaxEvents = 64
 const EpisodeMaxTextBytes = 64 << 10
+const EpisodeMaxEventJSONBytes = 448 << 10
 const EpisodeMaxAttachmentBytes = 32 << 10
 const EpisodeMaxResponseBytes = 512 << 10
 
@@ -178,7 +179,24 @@ type EpisodeReceipt struct {
 	RecordedAt      time.Time    `json:"recorded_at"`
 	EventRefs       []EpisodeRef `json:"event_refs"`
 }
+type EpisodeCapture struct {
+	ProducerID     string   `json:"producer_id"`
+	ConversationID string   `json:"conversation_id"`
+	Host           string   `json:"host"`
+	HostVersion    string   `json:"host_version"`
+	WorkspaceLabel string   `json:"workspace_label"`
+	PolicyVersion  string   `json:"policy_version"`
+	Gaps           []string `json:"gaps"`
+}
+
+func (in EpisodeInput) Capture() EpisodeCapture {
+	return EpisodeCapture{in.ProducerID, in.ConversationID, in.Host, in.HostVersion, in.WorkspaceLabel, in.PolicyVersion, in.Gaps}
+}
+
 type ArchivedEpisodeEvent struct {
+	Host           string       `json:"host"`
+	HostVersion    string       `json:"host_version"`
+	CaptureGaps    []string     `json:"capture_gaps"`
 	ProducerID     string       `json:"producer_id"`
 	ConversationID string       `json:"conversation_id"`
 	WorkspaceLabel string       `json:"workspace_label"`
@@ -292,6 +310,13 @@ func validateEpisodeInput(in EpisodeInput, referencesOnly bool) error {
 			}
 			aids[a.ID] = true
 			count++
+		}
+		encoded, err := json.Marshal(e)
+		if err != nil {
+			return ErrEpisodeInvalid
+		}
+		if len(encoded) > EpisodeMaxEventJSONBytes {
+			return ErrEpisodeLimit
 		}
 	}
 	if count > 16 {
@@ -451,7 +476,7 @@ func LoadEpisodes(ctx context.Context, s *SourceStore) (*EpisodeProjection, erro
 			if _, ok := p.Events[key]; ok {
 				return ErrEpisodeConflict
 			}
-			p.Events[key] = ArchivedEpisodeEvent{r.Input.ProducerID, r.Input.ConversationID, r.Input.WorkspaceLabel, r.Input.PolicyVersion, sha, EpisodeRef{key, EpisodeHash(e)}, e}
+			p.Events[key] = ArchivedEpisodeEvent{Host: r.Input.Host, HostVersion: r.Input.HostVersion, CaptureGaps: r.Input.Gaps, ProducerID: r.Input.ProducerID, ConversationID: r.Input.ConversationID, WorkspaceLabel: r.Input.WorkspaceLabel, PolicyVersion: r.Input.PolicyVersion, SourceSHA256: sha, Ref: EpisodeRef{key, EpisodeHash(e)}, Event: e}
 		}
 		return nil
 	})

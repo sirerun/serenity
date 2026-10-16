@@ -269,3 +269,35 @@ func TestEpisodeArchiveQuotaReservesFenceCapacity(t *testing.T) {
 		t.Fatalf("fence at capacity: %v", err)
 	}
 }
+
+func TestEpisodeQueueOwnsDetachedOriginals(t *testing.T) {
+	ctx := context.Background()
+	root, _ := gitRepoFixture(t)
+	s := store.NewSourceStore(root)
+	q := NewQueue(nil)
+	defer q.Close()
+	in := writerEpisodeFixture(t)
+	originalText := in.Events[0].Text
+	originalAttachment := append([]byte(nil), in.Events[0].Attachments[0].Data...)
+	entered, release := make(chan struct{}), make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		_, err := Episode(ctx, q, s, root, "synthetic-brain", 0, in, func(context.Context) error { close(entered); <-release; return nil })
+		done <- err
+	}()
+	<-entered
+	in.Events[0].Text = "caller changed after admission"
+	in.Events[0].Attachments[0].Data[0] = 42
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	p, err := store.LoadEpisodes(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := p.SortedEvents()
+	if len(events) != 1 || events[0].Event.Text != originalText || !bytes.Equal(events[0].Event.Attachments[0].Data, originalAttachment) {
+		t.Fatal("queued original retained caller-owned slices")
+	}
+}

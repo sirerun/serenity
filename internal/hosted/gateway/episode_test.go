@@ -3,6 +3,8 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
@@ -93,6 +95,14 @@ func TestEpisodeHTTPExactRoundTripStableRetryAndRestart(t *testing.T) {
 	code, exact, body := episodeHTTPCall(t, g, token, read)
 	if code != 200 || len(exact.Events) != 1 || !reflect.DeepEqual(exact.Events[0].Event, req.Mutation.Events[0]) {
 		t.Fatalf("exact %d %s", code, body)
+	}
+	if exact.Events[0].Host != req.Mutation.Host || exact.Events[0].HostVersion != req.Mutation.HostVersion || !reflect.DeepEqual(exact.Events[0].CaptureGaps, req.Mutation.Gaps) {
+		t.Fatal("host or capture gaps lost")
+	}
+	commandRead := episodeReadRequest(brain, "read")
+	commandRead.CommandKey = receipt.CommandKey
+	if code, got, body := episodeHTTPCall(t, g, token, commandRead); code != 200 || got.Capture == nil || !reflect.DeepEqual(got.Capture.Gaps, req.Mutation.Gaps) {
+		t.Fatalf("capture provenance %d %s", code, body)
 	}
 	status := episodeReadRequest(brain, "status")
 	status.CommandKey = receipt.CommandKey
@@ -326,5 +336,28 @@ func TestEpisodeHTTPUnsettledMeterStatusIsUnknown(t *testing.T) {
 	lookup.CommandKey = receipt.CommandKey
 	if code, res, body := episodeHTTPCall(t, g, token, lookup); code != 200 || res.Status != "unknown" {
 		t.Fatalf("unmetered status %d %s", code, body)
+	}
+}
+
+func TestEpisodeHTTPLargeAdmittedEventRemainsExactlyReadable(t *testing.T) {
+	g, _, brain, token := episodeHTTPSetup(t)
+	req := episodeHTTPFixture(t, brain)
+	req.Mutation.Events[0].Text = strings.Repeat("\x00", store.EpisodeMaxTextBytes)
+	data := make([]byte, store.EpisodeMaxAttachmentBytes)
+	sum := sha256.Sum256(data)
+	req.Mutation.Events[0].Attachments[0].Data = data
+	req.Mutation.Events[0].Attachments[0].SHA256 = hex.EncodeToString(sum[:])
+	code, res, body := episodeHTTPCall(t, g, token, req)
+	if code != 200 {
+		t.Fatalf("large admission %d %s", code, body)
+	}
+	read := episodeReadRequest(brain, "read")
+	read.EventKey = res.Receipt.EventRefs[0].EventKey
+	code, exact, body := episodeHTTPCall(t, g, token, read)
+	if code != 200 || len(exact.Events) != 1 {
+		t.Fatalf("large read %d %s", code, body)
+	}
+	if !reflect.DeepEqual(exact.Events[0].Event, req.Mutation.Events[0]) {
+		t.Fatal("large admitted original not exact")
 	}
 }
