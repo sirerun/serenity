@@ -148,3 +148,16 @@ func TestSchemaShapeAndDigestRefuseUnknownState(t *testing.T) {
 		t.Fatal("missing schema object accepted")
 	}
 }
+
+func TestSchemaRequiresExistingImmutableCheckoutTrigger(t *testing.T) {
+	e := fixture(t)
+	if _, err := schemaDigest(context.Background(), e.store.DB()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.store.DB().Exec(`DROP TRIGGER checkout_attempt_request_immutable`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := schemaDigest(context.Background(), e.store.DB()); err == nil {
+		t.Fatal("missing immutability trigger admitted")
+	}
+}
