@@ -89,7 +89,13 @@ func (s *Service) deletionPreflight(ctx context.Context, accountID string, admit
 }
 
 func (s *Service) recoverDeletions(ctx context.Context, entries []contracts.DeletionEntry) error {
-	return s.Gateway.ReplayDeletions(ctx, filepath.Join(s.cfg.DataDir, "brains"), entries, func(replayCtx context.Context, accountID string) (bool, error) {
+	// The caller passes fullRead, already admitted by startup authority or the
+	// sealed recovery boundary. Never derive episode fences from a snapshot cut.
+	legacy, err := s.Gateway.ReplayEpisodeDeletions(ctx, entries)
+	if err != nil {
+		return err
+	}
+	return s.Gateway.ReplayDeletions(ctx, filepath.Join(s.cfg.DataDir, "brains"), legacy, func(replayCtx context.Context, accountID string) (bool, error) {
 		return s.deletionPreflight(replayCtx, accountID, true)
 	})
 }

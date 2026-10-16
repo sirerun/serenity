@@ -48,8 +48,9 @@ import (
 type DeletionSubjectType string
 
 const (
-	DeletionSubjectAccount DeletionSubjectType = "account"
-	DeletionSubjectBrain   DeletionSubjectType = "brain"
+	DeletionSubjectAccount             DeletionSubjectType = "account"
+	DeletionSubjectBrain               DeletionSubjectType = "brain"
+	DeletionSubjectEpisodeConversation DeletionSubjectType = "episode_conversation"
 )
 
 type DeletionOutcome string
@@ -84,6 +85,13 @@ type DeletionEntry struct {
 // Validate rejects an entry that could leak personal data into the journal or
 // be unreadable later.
 func (e DeletionEntry) Validate() error {
+	if e.SubjectType == DeletionSubjectEpisodeConversation {
+		if e.Outcome != DeletionIntentRequested {
+			return fmt.Errorf("%w: episode physical purge is unsupported", ErrDeletionEntryInvalid)
+		}
+		_, err := ParseEpisodeDeletionIdentity(e.SubjectID)
+		return err
+	}
 	if e.SubjectType != DeletionSubjectAccount && e.SubjectType != DeletionSubjectBrain {
 		return fmt.Errorf("%w: subject type %q", ErrDeletionEntryInvalid, e.SubjectType)
 	}
