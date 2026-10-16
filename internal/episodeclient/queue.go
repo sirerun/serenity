@@ -400,9 +400,13 @@ func (q *Queue) Capture(in Input) (Decision, error) {
 		if err != nil {
 			return err
 		}
+		before := len(s.Items)
 		d, err = q.captureInto(&s, in)
 		if err != nil {
 			return err
+		}
+		if len(s.Items) == before {
+			return nil
 		}
 		return q.write(s)
 	})
