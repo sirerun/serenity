@@ -80,14 +80,18 @@ func jsonValue(dec *json.Decoder, depth int) bool {
 			k, ok := t.(string)
 			if !ok {
 				return false
-			} // Normalize ASCII case; schema keys are ASCII.
-			lower := []byte(k)
-			for i, c := range lower {
-				if c >= 'A' && c <= 'Z' {
-					lower[i] = c + ('a' - 'A')
+			}
+			// Normalized schema keys are lowercase ASCII. Reject Go's
+			// case-folding aliases, including non-ASCII long-s/Kelvin aliases.
+			if k == "" {
+				return false
+			}
+			for _, c := range k {
+				if !(c >= 'a' && c <= 'z' || c == '_') {
+					return false
 				}
 			}
-			k = string(lower)
+
 			if seen[k] {
 				return false
 			}

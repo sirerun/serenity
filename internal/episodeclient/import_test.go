@@ -100,7 +100,7 @@ func TestStrictJSONNoLossyOrAmbiguousNormalization(t *testing.T) {
 			t.Fatalf("valid JSON rejected: %s", s)
 		}
 	}
-	bad := []string{`{"text":"\ud800"}`, `{"text":"\udc00"}`, `{"privacy":"private","privacy":"public"}`, `{"privacy":"private","Privacy":"public"}`, `{"a":{"x":1,"x":2}}`, `{} {}`, `{"a":`}
+	bad := []string{`{"text":"\ud800"}`, `{"text":"\udc00"}`, `{"privacy":"private","privacy":"public"}`, `{"privacy":"private","Privacy":"public"}`, `{"a":{"x":1,"x":2}}`, `{} {}`, `{"a":`, `{"ſequence":1}`, `{"Privacy":"public"}`}
 	for _, s := range bad {
 		if strictJSON([]byte(s)) {
 			t.Fatalf("ambiguous/lossy JSON accepted: %s", s)
