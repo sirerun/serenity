@@ -14,7 +14,11 @@ func TestNormalizedFixture(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	records := []Record{}
 	out, e := Import(f, LogSource{"synthetic-log", "incarnation-1"}, Cursor{}, func(in Input) (Decision, error) {
 		r, d, e := admit(testPolicy(), in)

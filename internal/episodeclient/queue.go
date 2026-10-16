@@ -97,42 +97,42 @@ func OpenQueue(o Options) (*Queue, error) {
 	}
 	opened, err := root.Stat(".")
 	if err != nil || !safeInfo(opened, true) || !os.SameFile(st, opened) {
-		root.Close()
+		_ = root.Close()
 		return nil, ErrStorage
 	}
 	// Persist creation of the queue directory itself, not just its contents.
 	parent, err := os.Open(filepath.Dir(o.Directory))
 	if err != nil {
-		root.Close()
+		_ = root.Close()
 		return nil, ErrStorage
 	}
 	syncErr := parent.Sync()
 	closeErr := parent.Close()
 	if syncErr != nil || closeErr != nil {
-		root.Close()
+		_ = root.Close()
 		return nil, ErrStorage
 	}
 	lock, err := root.OpenFile("queue.lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0600)
 	if err != nil {
-		root.Close()
+		_ = root.Close()
 		return nil, ErrStorage
 	}
 	st, err = lock.Stat()
 	if err != nil || !safeInfo(st, false) {
-		lock.Close()
-		root.Close()
+		_ = lock.Close()
+		_ = root.Close()
 		return nil, ErrStorage
 	}
 	block, err := aes.NewCipher(o.Key)
 	if err != nil {
-		lock.Close()
-		root.Close()
+		_ = lock.Close()
+		_ = root.Close()
 		return nil, ErrInvalid
 	}
 	aead, err := cipher.NewGCM(block)
 	if err != nil {
-		lock.Close()
-		root.Close()
+		_ = lock.Close()
+		_ = root.Close()
 		return nil, ErrInvalid
 	}
 	aad, _ := json.Marshal(struct {
@@ -161,7 +161,7 @@ func OpenQueue(o Options) (*Queue, error) {
 		return q.syncDir()
 	})
 	if err != nil {
-		q.Close()
+		_ = q.Close()
 		return nil, err
 	}
 	return q, nil
@@ -199,7 +199,7 @@ func safeInfo(st os.FileInfo, directory bool) bool {
 	}
 	return st.Mode().IsRegular() && st.Mode().Perm() == 0600 && s.Nlink == 1
 }
-func (q *Queue) withLock(fn func() error) error {
+func (q *Queue) withLock(fn func() error) (result error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.closed {
@@ -208,7 +208,11 @@ func (q *Queue) withLock(fn func() error) error {
 	if e := syscall.Flock(int(q.lock.Fd()), syscall.LOCK_EX); e != nil {
 		return ErrStorage
 	}
-	defer syscall.Flock(int(q.lock.Fd()), syscall.LOCK_UN)
+	defer func() {
+		if syscall.Flock(int(q.lock.Fd()), syscall.LOCK_UN) != nil {
+			result = ErrStorage
+		}
+	}()
 	// Detect replacement of the lock inode and permission changes before touching data.
 	held, e := q.lock.Stat()
 	if e != nil || !safeInfo(held, false) {
@@ -243,8 +247,9 @@ func (q *Queue) syncDir() error {
 	if e != nil {
 		return ErrStorage
 	}
-	defer f.Close()
-	if f.Sync() != nil {
+	syncErr := f.Sync()
+	closeErr := f.Close()
+	if syncErr != nil || closeErr != nil {
 		return ErrStorage
 	}
 	return nil
@@ -258,7 +263,7 @@ func (q *Queue) read() (queueState, error) {
 	if e != nil {
 		return s, ErrStorage
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	st, e := f.Stat()
 	if e != nil || !safeInfo(st, false) || st.Size() > int64(q.maxBytes+maxMetadataBytes) {
 		return s, ErrStorage
