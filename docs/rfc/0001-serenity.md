@@ -1,4 +1,4 @@
-# RFC 0001 — Serenity (v2.2)
+# RFC 0001 — Serenity (v2.3)
 
 **Status:** Draft for implementation — supersedes the v1 draft (pre-repo, not published here).
 v2.1 folded in the accepted findings of a six-model external review council
@@ -12,6 +12,27 @@ rename decision is a blocking acceptance criterion of the launch milestone (M5).
 **License / distribution:** Apache-2.0, standalone open-source project
 **Audience:** Engineering and design, no prior context assumed
 **Definition of done:** Code complete = every P0/P1 milestone below passes its acceptance criteria on commodity hardware (a laptop), with the scale profile verified on a 128GB-class box.
+
+### Changelog (v2.2 → v2.3, shared agent memory design, 2026-10-16)
+
+- Add [RFC 0002](0002-long-horizon-agent-memory.md) for recoverable conversation
+  evidence, bounded historical context and long-horizon memory.
+- Add [RFC 0003](0003-agent-memory-plugins.md) for Zati-first integration and
+  Serenity plugins for Cursor, Codex, Claude Code and Google Antigravity.
+- Record owner-confirmed automatic history import/capture and policy-covered
+  fact saving; hosted default, offline queues, cross-agent continuation,
+  exposed attachments and retention until explicit deletion within visible limits.
+- Reuse existing brain grants, source storage, canonical writer and retrieval
+  components. Project labels organize; separately granted brains isolate.
+- Add proposed ADRs 027–029 for episodic custody, scope/integration and erasure
+  with replay fences. These extensions are design requirements, not shipped
+  capabilities or replacements for existing release qualification.
+
+**Reading the baseline:** Sections describing v1 below retain their historical
+scope. Later accepted ADRs, including the later hosted ADRs, govern changes to that
+baseline. In particular, the original no-hosting non-goal is not a claim that
+hosted source is absent today. RFCs 0002/0003 are proposed additive extensions;
+they do not silently rewrite existing wire protocols or acceptance evidence.
 
 ### Changelog (v2.1 → v2.2, final line review)
 
@@ -340,7 +361,14 @@ Staged: exact/alias match → embedding similarity within type (auto-merge with 
 
 First-run **interview wizard** (~30 questions → draft precepts, each confirmed by one disposition) seeds the direction layer — archaeology of old documents explicitly is not the seeding mechanism. **Decompose** (judgment tier proposes child intents with `derives_from`; one-keystroke confirmations). **Orphan detector** (weekly: activity with no derivation edge to an active intent → briefing Drift section). **Distill queue** (staged capture items age and resurface; dispositions: claim-batch / precept draft / decaying note / trash).
 
-## 11. Retrieval and synthesis (ported, not respecced)
+## 11. Retrieval and synthesis (ported baseline, additive extension)
+
+[RFC 0002](0002-long-horizon-agent-memory.md) proposes episodic evidence and
+budgeted historical retrieval alongside this baseline. Derived hierarchical
+summaries must earn adoption through comparison with direct retrieval; they
+never replace original records. Current governed HTTP recall is lexical and
+must not be represented as already providing this section's generic hybrid
+engine or the proposed episode protocol.
 
 Serenity adopts gbrain's proven retrieval architecture pattern-for-pattern: hybrid lexical + vector search with RRF fusion; multi-query expansion on the cheap tier; 4-layer dedup (source, cosine > 0.85, type cap, per-page max); typed graph edges extracted zero-LLM from entity links and claim `object_entity` references, traversable to answer relational queries embedding search can't reach; synthesis that returns a cited answer plus an explicit **gap statement** (what the brain doesn't know and how stale its newest evidence is). Claims give synthesis one new power: answers can state confidence and cite the supersession chain ("believed X until June, now Y because Z").
 
@@ -363,6 +391,16 @@ Council consensus (6/6) flagged the desktop app as the schedule bomb; v1 ships C
 Binding design principles: provenance ≤ 1 click from any fact; claims never editable in place (repair happens in the file or through reconciliation); the UI states what it omitted; information density over decoration. The app talks to the daemon through the public protocols only — no private paths, enforced by acceptance criterion.
 
 Mobile capture and approvals before the Flutter builds ship: any DISPOSITION v1 client — Blink first.
+
+### 13.3 Shared agent memory plugins (proposed extension)
+
+[RFC 0003](0003-agent-memory-plugins.md) specifies automatic covered-history
+import, lifecycle capture/recall and cross-agent continuation for Cursor, Codex,
+Claude Code and Google Antigravity, with Zati as the first runtime integration.
+The shared hosted personal brain and separate restricted brains reuse current
+binding/grant boundaries. The standalone local product remains supported.
+These are new acceptance obligations; existing MCP tool registration and the
+Claude ExitPlanMode hook do not establish them.
 
 ## 14. Security and privacy (council: 5/6 — expanded from a paragraph to a contract)
 
@@ -410,6 +448,15 @@ Weekly report card: claims by state, corrections per 100 extractions (must trend
 **M6 — Hardening.** 7 consecutive days unattended on both profiles (laptop, 128GB box); chaos test (kill any worker, no lost jobs — job durability semantics documented: WAL-backed queue, idempotent workers); trust-ladder promotion demonstrated on real dispositions with sampled false-acceptance reported; p95 warm search < 400ms; repo-growth and rebuild-time metrics collected over the soak. ✅ AC: all of the above measured, not asserted.
 
 **v1.1 track (post-launch, own sequence):** Flutter desktop app (§13.2, all screens, public protocols only; AC: end-to-end ramble → distill → dispose in app → next morning's briefing references it; A/B disposition from the app writes the correct fence/shard row) → Graph email connector → Flutter mobile (iOS/Android) → finance/health/messaging connectors.
+
+### Long-horizon extension gates
+
+RFC 0002 §11 and RFC 0003 §7 define additional end-to-end qualification for
+archival custody, bounded context, automatic import, attachment coverage,
+revocation/deletion, outage recovery and each requested host. The existing
+M0–M6 gates are preserved. Extension source, local tests, host execution and
+hosted deployment evidence must be reported separately; no new gate is passed
+by this document revision.
 
 ## 18. Risks and mandated mitigations
 
