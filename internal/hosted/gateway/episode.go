@@ -182,7 +182,8 @@ func validateEpisodeRequest(r episodeRequest) error {
 // Enabling it requires an explicit synthetic brain allowlist; no production
 // history, physical erasure, or managed restore qualification is implied.
 func (g *Gateway) ServeEpisodes(w http.ResponseWriter, r *http.Request) {
-	if !episodeArchiveBuildEnabled || !g.EpisodeArchiveEnabled {
+	enabled, enrolledBrains := g.episodeEnrollment()
+	if !enabled {
 		episodeFailure(w, 404, "archive_disabled")
 		return
 	}
@@ -222,7 +223,7 @@ func (g *Gateway) ServeEpisodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	allowed := false
-	for _, brain := range g.EpisodeSyntheticBrains {
+	for _, brain := range enrolledBrains {
 		if brain == binding.BrainID {
 			allowed = true
 		}
@@ -289,6 +290,9 @@ func (g *Gateway) ServeEpisodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	recheck := func(ctx context.Context) error {
+		if !g.episodeBrainAllowed(binding.BrainID) {
+			return ErrEpisodeQualification
+		}
 		current, e := g.Issuer.Verify(ctx, token)
 		if e != nil {
 			return e
