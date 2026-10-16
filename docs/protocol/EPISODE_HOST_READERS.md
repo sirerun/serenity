@@ -45,3 +45,8 @@ reader, installation/rollback and actual execution fixtures. No common hook
 name or transcript-path field establishes identical coverage across hosts.
 Zati remains the required first runtime integration; this decoder does not
 change its context admission or the 200-message boundary.
+
+The synthetic transport reports `tool_identity_and_pairing_not_archived` for
+normalized tool events: its first protocol projection preserves visible text,
+role and kind but does not qualify native tool-call pairing or tool identity.
+No actual host tool coverage is claimed.

@@ -55,7 +55,7 @@ A gap does not claim omitted data was preserved. Post-redaction limits also appl
 | `(*Queue).Stats() (QueueStats, error)` | Reports item count, serialized record bytes and paused-scope count without content. |
 | `(*Queue).Pause(Scope) (int, error)` | Atomically persists a local pause and removes covered unpublished items. Empty scope means all; nonempty workspace/conversation fields are conjunctive. The count is confirmed only when error is nil. |
 | `(*Queue).Resume(Scope) error` | Explicitly removes this exact pause only. Overlapping broader pauses remain. Cannot override a server fence, revoked grant, private state or changed policy. |
-| `(*Queue).Drain(ctx, Reconciler, Publisher, max) (DrainResult, error)` | At most 64 items, with fresh current binding/fences before each publication and exact complete receipt before local removal. No transport implementation is supplied. |
+| `(*Queue).Drain(ctx, Reconciler, Publisher, max) (DrainResult, error)` | At most 64 items, with fresh current binding/fences before each publication and exact complete receipt before local removal. Transport is a separate trusted adapter. |
 | `(*Queue).Close() error` | Releases the handle; does not remove queue state or promise cryptographic key zeroization. |
 | `Import(io.Reader, LogSource, Cursor, emit) (ImportResult, error)` | Bounded generic JSONL import; normally use `Queue.Capture` as `emit`. Returns safe progress and content-free gap counts. |
 | `DeterministicEventID(LogSource, line) string` | Stable fallback identity from a logical log ID, incarnation and physical line number. Invalid arguments return empty. |
@@ -122,7 +122,7 @@ Limits are deliberately conservative and are not measured capacity claims:
 | Pending records | Caller limit, 1–1024 |
 | Pending serialized record bytes | Caller limit, 1 byte–32 MiB |
 | Pause scopes | 1024 |
-| Complete translated fence set | 4096 conversations |
+| Complete opaque fence set | 4096 conversations |
 | Drain batch | 1–64 records |
 | Snapshot metadata/encryption allowance | At most 1 MiB above caller record-byte cap |
 
@@ -143,8 +143,8 @@ coordination with published ranges.
 
 `Reconciler.Reconcile(ctx, ReplayKey)` receives metadata only. The trusted
 integration must resolve current workspace enrollment, policy, privacy and grant;
-verify the current authenticated brain; then fetch and translate the **complete**
-server fence set for this producer. Set `Allowed` only after those checks. A
+verify the current authenticated brain; then fetch the **complete**
+server fence set for the brain, including other producers. Set `Allowed` only after those checks. A
 partial/reset-required/failed response cannot set `Full=true`. The generation
 must be explicitly known (zero can be known); timestamps must be fresh, not in
 the future, with expiry at most one minute after sync. The queue rejects expired,
@@ -155,9 +155,12 @@ admission. A same-generation set change or disappearance of an observed fence
 fails closed; intentional recapture is unsupported. Offline admission before the
 first synchronization is only local staging, never permission to publish.
 
-The `Conversations` map is a local adapter contract, not a wire hash algorithm.
-No archive endpoint, token, hash, receipt format or generation encoding is
-invented here. The parent must adapt these interfaces to the final protocol.
+The `Conversations` map uses lowercase SHA-256 keys from
+`ConversationFenceKey(producer, conversation)`: the hash of the JSON array of
+those two strings, matching the archive protocol. Keep the complete opaque set;
+filtering it to the currently queued conversation would lose observed fences
+after a restart or when draining a different conversation. The synthetic
+`internal/episodecapture` adapter verifies and retains this complete set.
 Fenced records are retained blocked; explicit `Pause` purges covered unpublished
 copies and stops admission. Policy/brain remaps and revocation similarly remain
 blocked, never rerouted. A blocked first record stops the batch visibly.
