@@ -16,7 +16,6 @@ real capture and cross-host continuity remain unqualified.
 | [394](https://github.com/sirerun/serenity/pull/394) | `3b90f59a4ba983d5f8259f9c590a7ed758a620f9` | `25d74ce0c64e0032516b38a6902d579c43eb8c1a` | Codex partial-answer phase through protected synthetic import |
 | [395](https://github.com/sirerun/serenity/pull/395) | `6c06849c9375796bf7b1b7c74db93592097185bf` | `5dcef0a9e5d3b9091ced4e7ab99fe24c2af63bc0` | Offline recovery of correctly verified, recorded revoked fixture keys |
 | [396](https://github.com/sirerun/serenity/pull/396) | `8e753dad3cffdce38e4118d68f82b9eedfb664fe` | `e1f12e3c7ba7ec5e8807adf156a87f3c07793c47` | Actual portable backup/restore with frozen-account and external replay qualification |
-
 | [397](https://github.com/sirerun/serenity/pull/397) | `49a88d7ee5d888f0c7e9fe9ab01a4cf55ff5c4ea` | `f4c091e42fdebc493555093f9e3baf8a0f216a4d` | Explicit offline fixture source adoption; fenced read-only store admission |
 
 Each landed tree equals its independently accepted tree and is reachable from
