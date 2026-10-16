@@ -75,6 +75,16 @@ Acceptance: enrolled histories are captured safely and can continue across quali
 - [x] T2.14 Merge protected import progress  Owner: integration  kind: agent  stage: merge  deps: [T2.13]  acc: [current repository gates permit exact reviewed-head guarded rebase merge]
 - [x] T2.15 Verify protected import progress landing  Owner: integration  kind: agent  stage: verify  deps: [T2.14]  acc: [landed tree matches reviewed source with source-bound synthetic acceptance and no real host completion claim]
 
+### E2c — Version-pinned visible message phase coverage
+fidelity: executable
+Acceptance: documented Codex visible partial answers use the same safe decoder and protected capture path, with exclusions and source-only limits preserved.
+
+- [ ] T2.16 Cover documented Codex partial answers  Owner: codex-phase-lane  kind: agent  stage: implement  deps: [T2.9, T2.15]  acc: [pinned official 0.163.0 message phase is decoded with stable event identity and existing provenance, role, channel, encryption and content exclusions; no discovery, enrollment, upload or native-host claim]
+- [ ] T2.17 Verify partial-answer capture contract  Owner: integration  kind: agent  stage: verify  deps: [T2.16]  acc: [focused decoder and protected import fixtures verify pagination, retry, redaction and excluded metadata and unknown phases on exact source with affected race and required static checks]
+- [ ] T2.18 Independently review partial-answer increment  Owner: independent-reviewer  kind: agent  stage: review  deps: [T2.17]  acc: [separate exact base and head review covers phase semantics and all exclusions with findings resolved]
+- [ ] T2.19 Merge partial-answer increment  Owner: integration  kind: agent  stage: merge  deps: [T2.18]  acc: [current claims, holds and protection gates permit exact reviewed-head guarded rebase merge]
+- [ ] T2.20 Verify partial-answer landing  Owner: integration  kind: agent  stage: verify  deps: [T2.19]  acc: [landed tree equals reviewed source and main ancestry is verified without closing full T2.1 or T2.3 host qualification]
+
 ### E3 — Deployment and operational qualification
 fidelity: executable
 Acceptance: deployed capabilities and versions have live evidence, rollback and explicit incomplete coverage.
@@ -166,3 +176,5 @@ Source merge and live packet sequencing: T3.9 reviews the source and offline cus
 Resume01 additional bounded lane at20:10UTC: parent retains live authority/host recovery ownership; isolated erasure-chain lane owns only new synthetic cross-component qualification and necessary narrow episode-specific helpers. It cannot activate or purge a production source, edit foreign lifecycle/backup interfaces, change capture capabilities or launch helpers. Existing57taskIDs include all prior52 unchanged. No live or managed-restore acceptance is implied.
 
 T1.22–T1.23 source6d599cc3c56eff69d470be00f645b2a9388e99ef: actual isolated Git/writer/journal/gateway restore-to-inactive-candidate chain passes focused race tests, affected gateway vet and lint2.11.4 on existing qualified DGX. The synthetic caller pins a trusted sealed cut; it does not qualify service/provider recovery admission. Mixed hosted repository refusal and retained source copies are explicit. Candidate cancellation is before construction, not power-loss durability. No production implementation changes or physical-erasure completion. Independent exact review and guarded landing remain T1.24–T1.26.
+
+Resume01 additional client increment at20:47UTC: owned shared-memory resource and current PR/claim audit permit isolated internal/episodehost and episodecapture source work. Parent owns deployment and final operational review; one bounded client implementer owns only T2.16. Pinned official Codex0.163.0 enum source identifies partial_answer; its semantics and fixtures must be checked before widening admission. Existing57 task IDs and all unfinished whole-design gates remain intact; five additive task IDs provide scoped delivery evidence. No actual host/capture installation follows from source fixture acceptance.
