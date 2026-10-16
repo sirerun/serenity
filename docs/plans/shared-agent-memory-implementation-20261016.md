@@ -2,7 +2,7 @@
 
 ## Scope and authority
 
-Implement RFC 0002 and RFC 0003 at design base 92b785fe6da569fa537b7ec92fb4a14197c8c3ae, preserving ADR027-029 and all existing memory interfaces. Owner explicitly authorizes implementation, independent review, merge and deployment. This attempt ends 2026-10-16 16:20 UTC with coherent checkpoints; unfinished scope remains open. No new infrastructure, unrelated UI, destructive production migration or provider substitution.
+Implement RFC 0002 and RFC 0003 at design base 92b785fe6da569fa537b7ec92fb4a14197c8c3ae, preserving ADR027-029 and all existing memory interfaces. Owner explicitly authorizes implementation, independent review, merge and deployment. The first attempt checkpointed its default-off foundation. Resume 01 runs 2026-10-16 16:58–22:58 UTC, with helpers stopped by 22:55 UTC; unfinished scope remains open. No new infrastructure, unrelated UI, destructive production migration or provider substitution.
 
 Existing Git/file SourceStore and serialized writer remain canonical; SQLite stays derived. Existing authenticated brains/grants remain the isolation boundary. Capture is gated until erasure/replay/restore qualification. No automatic real-history enrollment during qualification. Use synthetic data and explicit capability limits. No project label can authorize a brain. Hosted capture must not be activated before physical erasure and restore fences qualify.
 
@@ -30,6 +30,12 @@ Acceptance: additive gated archive API has exact evidence, bounded admission, ex
 - [x] T1.9 Independently review gated foundation  Owner: independent-reviewer  kind: agent  stage: review  deps: [T1.8]  acc: [separate reviewer covers exact full candidate including T1.1-T1.2 and T2.0 and T2.9-T2.10 with findings fixed and re-reviewed]
 - [x] T1.10 Merge gated foundation  Owner: integration  kind: agent  stage: merge  deps: [T1.9]  acc: [exact reviewed head merges under current holds and protections and authorized ADR024 fallback without enabling unqualified capture]
 - [x] T1.11 Verify gated foundation landing  Owner: integration  kind: agent  stage: verify  deps: [T1.10]  acc: [landed owned tree matches reviewed candidate and synthetic qualification evidence is source-bound]
+
+- [ ] T1.12 Implement isolated episode erasure and replay primitives  Owner: erasure-lane  kind: agent  stage: implement  deps: [T1.2]  acc: [isolated synthetic repositories prove bounded current and historical episode removal plus derivative invalidation and fail-closed external fence replay; existing account and brain journal formats are unchanged and no production capture is enabled]
+- [ ] T1.13 Verify erasure primitive candidate  Owner: integration  kind: agent  stage: verify  deps: [T1.12]  acc: [affected race and failure-injection checks validate snapshot-before-delete replay, interrupted retry, foreign-brain refusal and retained-copy limits on exact candidate]
+- [ ] T1.14 Independently review erasure primitive candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T1.13]  acc: [independent exact base and head review covers T1.12 and all plan changes with findings resolved]
+- [ ] T1.15 Merge erasure primitive candidate  Owner: integration  kind: agent  stage: merge  deps: [T1.14]  acc: [exact reviewed head passes current holds and protection gates and guarded rebase merge]
+- [ ] T1.16 Verify erasure primitive landing  Owner: integration  kind: agent  stage: verify  deps: [T1.15]  acc: [landed tree equals reviewed source and main reachability and scoped behavior are recorded without claiming T1.3 complete]
 
 ### E2 — Shared client and host continuity
 fidelity: executable
@@ -92,3 +98,9 @@ T1.10-T1.11 evidence: PR386 guarded-rebase merged at 8242459bc6a8689d81c96d0b66e
 Reader follow-up: PR387 independently reviewed 9e48b85320e246123daa2ab2d62d95fc4f4df63f and landed efdaf3da592e6fea9ddda453d08abc163400bc3c with equal tree 04b4efa627d11df9910372f24c10d876273f27a0. Nonempty Codex harness metadata and non-null encrypted-message records are excluded with content-free coverage gaps. Focused race/vet/build/static checks passed; these client libraries are not linked into the hosted command. No real host capture or T2.3 completion is inferred.
 
 T3.1-T3.2 evidence: the [delivery receipt](../launch/shared-agent-memory-delivery-2026-10-16.md) records actual sequence 6/source 8242459bc6a8689d81c96d0b66ed7f751a0de090 installation, root signature/state/pair checks, authority version 7 policy/readback/direct-denial evidence, default-off flags, successful postdeployment backup and root verification of the schema 10 fallback against actual state 6. T3.1 qualifies the observed rollback path; no executed production rollback or authenticated recall is claimed. T3.3 remains open because the authorized synthetic production fixture is unavailable. Full capture, erasure/restore and downstream host tasks remain open.
+
+## Resume 01 admission
+
+Fresh origin/main base is 7033342c15bee75aabec16fe56922f7697440d0a. T23.48 and T23.49 claims still exist as of 16:59 UTC with October 1 purposes; PR273 remains open unchanged since September24. These observations establish reserved scopes, not a running worker. Preserve their exclusive lifecycle/deletion/backup paths and journal bytes. T1.12 proceeds in new internal/episodeerase files plus episode-specific store/writer helpers only, using synthetic isolated repositories. A separate external replay abstraction must not reinterpret existing account/brain journal subjects. Integration into activation and managed copies remains T1.3 and requires a compatible reviewed handoff. Do not treat claim age as permission to steal it.
+
+Resume batch: T1.12, one isolated implementer; T1.13–T1.16 delivery gates. Selection remains gpt-6-astra/low/ChatGPT. Parent owns plan, ownership reconciliation, live target refresh and later integration. Actual production deletion, restore and capture remain blocked until full end-to-end gates pass. All existing 28 task IDs and completion evidence are preserved; five bounded delivery rows are added rather than closing partial T1.3. Parent may advance independent host preparation only after a scoped admission update.
