@@ -193,6 +193,10 @@ func TestHostedControlCommandsDoNotAcquireDefaultBrain(t *testing.T) {
 	for _, command := range []string{"broker", "authority"} {
 		t.Run(command, func(t *testing.T) {
 			rootDir := t.TempDir()
+			// The broker requires a private config parent even for a missing file.
+			if err := os.Chmod(rootDir, 0700); err != nil {
+				t.Fatal(err)
+			}
 			// Ownership acquisition would fail at this sentinel, even as root.
 			sentinel := filepath.Join(rootDir, ".serenity")
 			if err := os.WriteFile(sentinel, []byte("must remain unchanged"), 0600); err != nil {
@@ -214,7 +218,7 @@ func TestHostedControlCommandsDoNotAcquireDefaultBrain(t *testing.T) {
 			if command == "authority" && err.Error() != "explicit owner configuration required" {
 				t.Fatalf("control handler not reached: %v", err)
 			}
-			if command == "broker" && (strings.Contains(err.Error(), ".serenity") || (!strings.Contains(err.Error(), "missing.json") && err.Error() != "broker: root ownership required")) {
+			if command == "broker" && (strings.Contains(err.Error(), ".serenity") || (!errors.Is(err, os.ErrNotExist) && !strings.Contains(err.Error(), "missing.json") && err.Error() != "broker: root ownership required")) {
 				t.Fatalf("broker config error replaced by ownership: %v", err)
 			}
 			data, err := os.ReadFile(sentinel)
