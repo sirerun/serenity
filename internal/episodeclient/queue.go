@@ -58,12 +58,13 @@ func (s Scope) covers(r Record) bool {
 }
 
 type queueState struct {
-	Version         int             `json:"version"`
-	Items           []Record        `json:"items"`
-	Paused          []Scope         `json:"paused"`
-	Generation      uint64          `json:"generation"`
-	GenerationKnown bool            `json:"generation_known"`
-	Fenced          map[string]bool `json:"fenced,omitempty"`
+	Version         int                       `json:"version"`
+	Items           []Record                  `json:"items"`
+	Paused          []Scope                   `json:"paused"`
+	Generation      uint64                    `json:"generation"`
+	GenerationKnown bool                      `json:"generation_known"`
+	Fenced          map[string]bool           `json:"fenced,omitempty"`
+	Imports         map[string]ImportProgress `json:"imports,omitempty"`
 }
 
 // QueueStats does not reveal text, identifiers, filenames or attachment bytes.
@@ -255,7 +256,7 @@ func (q *Queue) syncDir() error {
 	return nil
 }
 func (q *Queue) read() (queueState, error) {
-	s := queueState{Version: 1}
+	s := queueState{Version: 2}
 	f, e := q.root.OpenFile("queue.bin", os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if os.IsNotExist(e) {
 		return s, nil
@@ -276,13 +277,16 @@ func (q *Queue) read() (queueState, error) {
 	if e != nil {
 		return s, ErrStorage
 	}
-	if json.Unmarshal(plain, &s) != nil || s.Version != 1 || len(s.Items) > q.maxItems || len(s.Paused) > maxScopes || len(s.Fenced) > maxFences {
+	if json.Unmarshal(plain, &s) != nil || (s.Version != 1 && s.Version != 2) || len(s.Items) > q.maxItems || len(s.Paused) > maxScopes || len(s.Fenced) > maxFences {
 		return s, ErrStorage
 	}
 	for id, fenced := range s.Fenced {
 		if !validFenceKey(id) || !fenced || !s.GenerationKnown {
 			return s, ErrStorage
 		}
+	}
+	if err := validateImports(s); err != nil {
+		return s, err
 	}
 	total := 0
 	identities := map[string]bool{}
@@ -320,6 +324,7 @@ func (q *Queue) read() (queueState, error) {
 	return s, nil
 }
 func (q *Queue) write(s queueState) error {
+	s.Version = 2
 	plain, e := json.Marshal(s)
 	if e != nil || len(plain)+q.aead.NonceSize()+q.aead.Overhead() > q.maxBytes+maxMetadataBytes {
 		return ErrCapacity
@@ -391,57 +396,68 @@ func paused(s queueState, r Record) bool {
 func (q *Queue) Capture(in Input) (Decision, error) {
 	var d Decision
 	err := q.withLock(func() error {
-		r, decision, e := admit(q.policy, in)
-		d = decision
-		if e != nil {
-			return e
+		s, err := q.read()
+		if err != nil {
+			return err
 		}
-		s, e := q.read()
-		if e != nil {
-			return e
+		d, err = q.captureInto(&s, in)
+		if err != nil {
+			return err
 		}
-		if s.Fenced[ConversationFenceKey(r.Binding.Producer, r.Conversation)] {
-			return ErrBlocked
-		}
-		if paused(s, r) {
-			d.Admitted = false
-			return ErrPaused
-		}
-		for _, old := range s.Items {
-			if old.Conversation == r.Conversation {
-				if old.Event == r.Event {
-					if recordDigest(old) == recordDigest(r) {
-						return nil
-					}
-					d.Admitted = false
-					return ErrConflict
-				}
-				if old.Sequence == r.Sequence {
-					d.Admitted = false
-					return ErrConflict
-				}
-			}
-		}
-		raw, _ := json.Marshal(r)
-		st := stats(s)
-		if st.Items >= q.maxItems || len(raw) > q.maxBytes-st.Bytes {
-			d.Admitted = false
-			return ErrCapacity
-		}
-		s.Items = append(s.Items, r)
-		sort.SliceStable(s.Items, func(i, j int) bool {
-			a, b := s.Items[i], s.Items[j]
-			if a.Conversation == b.Conversation {
-				return a.Sequence < b.Sequence
-			}
-			return a.Conversation < b.Conversation
-		})
 		return q.write(s)
 	})
 	if err != nil {
 		d.Admitted = false
 	}
 	return d, err
+}
+
+// captureInto mutates only detached state; its caller owns the queue lock and
+// publishes the complete state exactly once after all admissions succeed.
+func (q *Queue) captureInto(s *queueState, in Input) (Decision, error) {
+	r, d, err := admit(q.policy, in)
+	if err != nil {
+		return d, err
+	}
+	if s.Fenced[ConversationFenceKey(r.Binding.Producer, r.Conversation)] {
+		d.Admitted = false
+		return d, ErrBlocked
+	}
+	if paused(*s, r) {
+		d.Admitted = false
+		return d, ErrPaused
+	}
+	for _, old := range s.Items {
+		if old.Conversation != r.Conversation {
+			continue
+		}
+		if old.Event == r.Event {
+			if recordDigest(old) == recordDigest(r) {
+				return d, nil
+			}
+			d.Admitted = false
+			return d, ErrConflict
+		}
+		if old.Sequence == r.Sequence {
+			d.Admitted = false
+			return d, ErrConflict
+		}
+	}
+	raw, _ := json.Marshal(r)
+	st := stats(*s)
+	if st.Items >= q.maxItems || len(raw) > q.maxBytes-st.Bytes {
+		d.Admitted = false
+		return d, ErrCapacity
+	}
+	s.Items = append(s.Items, r)
+	sort.SliceStable(s.Items, func(i, j int) bool {
+		a, b := s.Items[i], s.Items[j]
+		if a.Conversation == b.Conversation {
+			return a.Sequence < b.Sequence
+		}
+		return a.Conversation < b.Conversation
+	})
+	return d, nil
 }
 
 // Pause atomically persists the scope and removes matching unpublished records.
