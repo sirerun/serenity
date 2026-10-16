@@ -73,6 +73,7 @@ type codexLine struct {
 	Timestamp string          `json:"timestamp"`
 	Type      string          `json:"type"`
 	Payload   json.RawMessage `json:"payload"`
+	Metadata  json.RawMessage `json:"metadata"`
 }
 
 // ReadCodex reads a bounded transcript snapshot from its beginning. Re-reading
@@ -203,6 +204,18 @@ func decodeCodexLine(row codexLine, line int, session string) ([]Message, []Gap,
 	default:
 		return gap("unknown_record_type")
 	}
+	// Codex persists harness provenance beside payload, not inside it. Until
+	// each metadata-bearing shape is qualified, do not turn copied, compacted,
+	// retained or delivered context into a new visible-message occurrence.
+	if len(row.Metadata) > 0 && !bytes.Equal(bytes.TrimSpace(row.Metadata), []byte("null")) {
+		var metadata map[string]json.RawMessage
+		if json.Unmarshal(row.Metadata, &metadata) != nil {
+			return nil, nil, ErrFormat
+		}
+		if len(metadata) > 0 {
+			return gap("host_provenance_metadata_unsupported")
+		}
+	}
 	var discriminator struct {
 		Type string `json:"type"`
 	}
@@ -216,17 +229,21 @@ func decodeCodexLine(row codexLine, line int, session string) ([]Message, []Gap,
 		return gap("tool_or_response_type_unsupported")
 	}
 	var item struct {
-		Type    string `json:"type"`
-		Role    string `json:"role"`
-		Channel string `json:"channel"`
-		Phase   string `json:"phase"`
-		Content []struct {
+		Type             string          `json:"type"`
+		Role             string          `json:"role"`
+		Channel          string          `json:"channel"`
+		Phase            string          `json:"phase"`
+		EncryptedContent json.RawMessage `json:"encrypted_content"`
+		Content          []struct {
 			Type string  `json:"type"`
 			Text *string `json:"text"`
 		} `json:"content"`
 	}
 	if json.Unmarshal(row.Payload, &item) != nil {
 		return nil, nil, ErrFormat
+	}
+	if len(item.EncryptedContent) > 0 && !bytes.Equal(bytes.TrimSpace(item.EncryptedContent), []byte("null")) {
+		return gap("encrypted_message_excluded")
 	}
 	if item.Type == "reasoning" {
 		return gap("reasoning_excluded")

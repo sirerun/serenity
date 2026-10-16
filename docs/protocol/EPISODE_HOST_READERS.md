@@ -50,3 +50,19 @@ The synthetic transport reports `tool_identity_and_pairing_not_archived` for
 normalized tool events: its first protocol projection preserves visible text,
 role and kind but does not qualify native tool-call pairing or tool identity.
 No actual host tool coverage is claimed.
+
+Codex persists harness provenance as a sibling `metadata` field on response
+items. This reader conservatively excludes every nonempty metadata object with
+`host_provenance_metadata_unsupported`, including compaction, inherited context,
+retained evidence, delivery markers and otherwise neutral host metadata. Absent,
+null and empty metadata remain eligible. This deliberately narrows coverage until
+individual provenance shapes have version-bound fixtures; it never labels a
+compaction result or copied parent context as a new original occurrence.
+Messages with non-null `encrypted_content` are also excluded as a whole, even
+if they contain plaintext blocks. Gap records contain no source text.
+
+The pinned source evidence is Codex commit
+`83086188ae0614bd882818ff1aa23f3194962012`,
+[`CodexHarnessMetadata`](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/history/src/lib.rs)
+and [`RolloutItemWire`](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/history/src/rollout_payload.rs).
+No host installation, real-history import or production capture is enabled.
