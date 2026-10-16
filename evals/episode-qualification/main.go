@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -11,8 +12,21 @@ import (
 // Set to the exact reviewed source commit with -ldflags; an unpinned build refuses.
 var sourceRevision string
 
+var (
+	errAdoptionManifestChanged      = errors.New("source adoption refused: exact old manifest hash no longer matches; no adoption write; reconcile prior publication")
+	errAdoptionNotPublished         = errors.New("source adoption interrupted before publication; old manifest retained; fresh custody required")
+	errAdoptionPublicationUncertain = errors.New("source adoption publication may have committed; retain hold and reconcile manifest; do not replay as success")
+	errAdoptionRefused              = errors.New("source adoption refused before publication; no adoption write; retain hold")
+)
+
 func run(args []string, out io.Writer) int {
-	if executeCustody(args) != nil {
+	if err := executeCustody(args); err != nil {
+		if code, message := adoptionOutcome(err); code != 0 {
+			if _, writeErr := fmt.Fprintln(out, message); writeErr != nil {
+				return 1
+			}
+			return code
+		}
 		if _, err := fmt.Fprintln(out, "REFUSED: fixture custody or operation failed; retain hold for reconciliation"); err != nil {
 			return 1
 		}
@@ -25,3 +39,22 @@ func run(args []string, out io.Writer) int {
 }
 
 func main() { os.Exit(run(os.Args[1:], os.Stderr)) }
+
+// Stable content-free child outcomes. A replacement proof is fresh authority,
+// never evidence that a previous publication did or did not happen.
+func adoptionOutcome(err error) (int, string) {
+	for _, outcome := range []struct {
+		err  error
+		code int
+	}{
+		{errAdoptionRefused, 2},
+		{errAdoptionManifestChanged, 3},
+		{errAdoptionNotPublished, 5},
+		{errAdoptionPublicationUncertain, 6},
+	} {
+		if errors.Is(err, outcome.err) {
+			return outcome.code, outcome.err.Error()
+		}
+	}
+	return 0, ""
+}

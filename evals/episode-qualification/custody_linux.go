@@ -39,6 +39,7 @@ type maintenanceHold struct {
 }
 
 type custodyProof struct {
+	SourceAdoption           *sourceAdoption `json:"source_adoption,omitempty"`
 	Version                  int             `json:"version"`
 	Purpose                  string          `json:"purpose"`
 	Operation                string          `json:"operation"`
@@ -137,7 +138,18 @@ func pinFD(fd int, private bool) (rootPin, []byte, error) {
 	return pin, data, nil
 }
 func (p custodyProof) valid(now int64, source string, uid, gid int) bool {
-	if p.Version != 1 || p.Purpose != "serenity-episode-fixture-offline-v1" || (p.Operation != "prepare" && p.Operation != "reissue" && p.Operation != "revoke") || uid <= 0 || gid <= 0 || p.UID != uid || p.GID != gid || p.ToolSource != source || !sourceID.MatchString(source) || p.AccountCap <= 0 {
+	if p.Version == 1 {
+		if p.Purpose != "serenity-episode-fixture-offline-v1" || p.SourceAdoption != nil || (p.Operation != "prepare" && p.Operation != "reissue" && p.Operation != "revoke") {
+			return false
+		}
+	} else if p.Version == 2 {
+		if p.Purpose != "serenity-episode-fixture-offline-v2" || p.Operation != "adopt-source" || p.SourceAdoption == nil || !p.SourceAdoption.valid(source) {
+			return false
+		}
+	} else {
+		return false
+	}
+	if uid <= 0 || gid <= 0 || p.UID != uid || p.GID != gid || p.ToolSource != source || !sourceID.MatchString(source) || p.AccountCap <= 0 {
 		return false
 	}
 	if p.IssuedAt <= 0 || now < p.IssuedAt || now-p.IssuedAt > 300 || p.ExpiresAt <= now || p.ExpiresAt-p.IssuedAt > 300 || p.ExpiresAt <= p.IssuedAt {
@@ -159,6 +171,32 @@ func (p custodyProof) valid(now int64, source string, uid, gid int) bool {
 		}
 	}
 	return bootPattern.MatchString(p.BootID) && supervisorPattern.MatchString(p.Hold.Supervisor) && strings.HasPrefix(p.Hold.Stage, "/var/lib/serenity-release/") && p.Hold.Timestamp > 0 && p.ConfigPath == "/etc/serenity/hosted.json" && p.Hold.Phase == "maintenance-ready" && p.Hold.BackupTimerPriorState == "active" && p.Hold.Timestamp <= p.IssuedAt && p.StateSHA256 == p.Hold.PreviousStateSHA256 && p.RuntimePath == p.Hold.Stage+"/activation-runtime.py" && sourceID.MatchString(p.ServiceSource) && sourceID.MatchString(p.Hold.Source) && p.LockDevice > 0 && p.LockInode > 0
+}
+
+// Match the Python producer's exact field names/cardinality, including absence
+// of adoption fields on v1. Neither duplicate fields nor JSON null grants a
+// version extension. Existing complete v1 packets retain their wire format.
+func decodeCustodyProof(data []byte, p *custodyProof) error {
+	if uniqueManifestJSON(data) != nil || strictDecode(data, p) != nil {
+		return errRefused
+	}
+	var actual, expected map[string]json.RawMessage
+	encoded, err := json.Marshal(p)
+	if err != nil || json.Unmarshal(data, &actual) != nil || json.Unmarshal(encoded, &expected) != nil || len(actual) != len(expected) {
+		return errRefused
+	}
+	for key := range actual {
+		if _, ok := expected[key]; !ok {
+			return errRefused
+		}
+	}
+	if p.SourceAdoption != nil {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(actual["source_adoption"], &fields) != nil || len(fields) != 2 || fields["old_source"] == nil || fields["old_manifest_sha256"] == nil {
+			return errRefused
+		}
+	}
+	return nil
 }
 
 func newCustody(args []string) (*custody, error) {
@@ -189,7 +227,7 @@ func newCustody(args []string) (*custody, error) {
 		c.pins = append(c.pins, pin)
 		documents[i] = data
 	}
-	if strictDecode(documents[0], &c.proof) != nil || !c.proof.valid(time.Now().Unix(), sourceRevision, os.Geteuid(), os.Getegid()) {
+	if decodeCustodyProof(documents[0], &c.proof) != nil || !c.proof.valid(time.Now().Unix(), sourceRevision, os.Geteuid(), os.Getegid()) {
 		return nil, errRefused
 	}
 	p := c.proof
@@ -412,11 +450,18 @@ func executeCustody(args []string) (result error) {
 	}
 	// Keep descriptor wrappers alive until operation exit; child owns no root paths.
 	defer func() {
-		for _, pin := range c.pins {
-			refuseCleanup(&result, pin.file.Close())
+		cleanup := func(err error) {
+			if err != nil && c.proof.Operation == "adopt-source" {
+				result = errAdoptionPublicationUncertain
+			} else {
+				refuseCleanup(&result, err)
+			}
 		}
-		refuseCleanup(&result, c.probe.Close())
-		refuseCleanup(&result, c.lock.Close())
+		for _, pin := range c.pins {
+			cleanup(pin.file.Close())
+		}
+		cleanup(c.probe.Close())
+		cleanup(c.lock.Close())
 	}()
 	p := c.proof
 	deadline := time.Now().Add(110 * time.Second)
@@ -427,6 +472,12 @@ func executeCustody(args []string) (result error) {
 	defer cancel()
 	if c.check() != nil {
 		return errRefused
+	}
+	if p.Operation == "adopt-source" {
+		// No store.Open/preflight connection that could initialize SQLite or its
+		// sidecars. The separately owned offline opener requires a checkpointed
+		// database and a held cold fence, and refuses all write capability.
+		return executeSourceAdoption(ctx, p, c.check)
 	}
 	dbPath := filepath.Join(p.DataDir, "control.db")
 	before, statErr := os.Lstat(dbPath)
@@ -448,6 +499,46 @@ func executeCustody(args []string) (result error) {
 	e := engine{store: db, privateDir: p.PrivateDir, target: target{DataDir: p.DataDir, ConfigPath: p.ConfigPath, ConfigSHA256: p.ConfigSHA256, Source: p.ToolSource, AccountCap: p.AccountCap}, authorize: c.check, custodyEpoch: p.HoldSHA256}
 	if e.operate(ctx, p.Operation) != nil || c.check() != nil {
 		return errRefused
+	}
+	return nil
+}
+
+// executeSourceAdoption retains every ordinary schema/target/custody gate while
+// avoiding the ordinary store initializer. The parent supplies the cold fence;
+// immutable SQLite is never a substitute for stopping writers.
+func executeSourceAdoption(ctx context.Context, p custodyProof, check func() error) (result error) {
+	if p.Operation != "adopt-source" || p.SourceAdoption == nil || check == nil || check() != nil {
+		return errAdoptionRefused
+	}
+	db, err := store.OpenOfflineReadOnly(ctx, filepath.Join(p.DataDir, "control.db"))
+	if err != nil {
+		return errAdoptionRefused
+	}
+	attempted := false
+	defer func() {
+		if db.Close() != nil {
+			if attempted {
+				result = errAdoptionPublicationUncertain
+			} else {
+				result = errAdoptionRefused
+			}
+		}
+	}()
+	sha, err := schemaDigest(ctx, db.DB())
+	if err != nil || sha != p.SchemaSHA256 || check() != nil {
+		return errAdoptionRefused
+	}
+	e := engine{store: db, privateDir: p.PrivateDir, target: target{DataDir: p.DataDir, ConfigPath: p.ConfigPath, ConfigSHA256: p.ConfigSHA256, Source: p.ToolSource, AccountCap: p.AccountCap}, authorize: check, custodyEpoch: p.HoldSHA256}
+	attempted = true
+	err = e.adoptSource(ctx, *p.SourceAdoption)
+	if err != nil {
+		if errors.Is(err, errAdoptionManifestChanged) || errors.Is(err, errAdoptionNotPublished) || errors.Is(err, errAdoptionPublicationUncertain) {
+			return err
+		}
+		return errAdoptionRefused
+	}
+	if check() != nil {
+		return errAdoptionPublicationUncertain
 	}
 	return nil
 }

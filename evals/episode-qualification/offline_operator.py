@@ -28,6 +28,13 @@ TIMER = 'serenity-backup.timer'
 UNITS = (*WRITERS, BACKUP, TIMER)
 MARKER = '# serenity-release-managed-v1\n'
 PROOF_FIELDS = set('version purpose operation nonce issued_at expires_at boot_id uid gid tool_source tool_path tool_sha256 wrapper_path wrapper_sha256 runtime_path runtime_sha256 service_binary_path service_binary_sha256 service_source config_path config_sha256 data_dir private_dir account_cap hold_sha256 hold state_sha256 ready_sha256 authority_receipt_path authority_receipt_sha256 authority_generator_path authority_generator_sha256 lock_device lock_inode schema_sha256 authority_scope authority_session_id concurrency_target'.split())
+ADOPTION_FIELDS = {'old_source', 'old_manifest_sha256'}
+ADOPTION_OUTCOMES = {
+    2: 'REFUSED: source adoption did not publish; retain hold',
+    3: 'REFUSED: exact old manifest hash no longer matches; no adoption write; reconcile prior publication',
+    5: 'INTERRUPTED: source adoption stopped before publication; old manifest retained; fresh custody required',
+    6: 'UNCERTAIN: source adoption publication may have committed; retain hold and reconcile manifest; do not replay as success',
+}
 HOLD_FIELDS = set('manifest_sha256 executable_sha256 source previous_state_sha256 expected_state_sha256 supervisor stage backup_timer_prior_state phase timestamp'.split())
 AUTHORITY_FIELDS = set('version observed_at status active_leases concurrency session_id scope boot_id hold_sha256 state_sha256 request_ids concurrency_target'.split())
 
@@ -189,9 +196,19 @@ class Adapter:
 
     def validate_proof(self, data):
         p = decode(data)
-        require(isinstance(p, dict) and set(p) == PROOF_FIELDS)
-        require(p['version'] == 1 and type(p['version']) is int and p['purpose'] == 'serenity-episode-fixture-offline-v1')
-        require(p['operation'] in ('prepare', 'reissue', 'revoke'))
+        require(isinstance(p, dict) and type(p.get('version')) is int)
+        if p['version'] == 1:
+            require(set(p) == PROOF_FIELDS)
+            require(p['purpose'] == 'serenity-episode-fixture-offline-v1')
+            require(p['operation'] in ('prepare', 'reissue', 'revoke'))
+        else:
+            require(p['version'] == 2 and set(p) == PROOF_FIELDS | {'source_adoption'})
+            require(p['purpose'] == 'serenity-episode-fixture-offline-v2' and p['operation'] == 'adopt-source')
+            adoption = p['source_adoption']
+            require(type(adoption) is dict and set(adoption) == ADOPTION_FIELDS)
+            require(isinstance(adoption['old_source'], str) and re.fullmatch('[0-9a-f]{40}', adoption['old_source']))
+            require(isinstance(adoption['old_manifest_sha256'], str) and re.fullmatch('[0-9a-f]{64}', adoption['old_manifest_sha256']))
+            require(adoption['old_source'] != p['tool_source'])
         for key in PROOF_FIELDS:
             if key.endswith('_sha256') or key == 'nonce':
                 require(isinstance(p[key], str) and re.fullmatch('[0-9a-f]{64}', p[key]))
@@ -391,6 +408,10 @@ class Adapter:
                 require(time.monotonic() < deadline)
                 self.refresh()
                 time.sleep(0.2)
+            if p['operation'] == 'adopt-source':
+                self.refresh()
+                if child.returncode in ADOPTION_OUTCOMES:
+                    raise AdoptionOutcome(child.returncode)
             require(child.returncode == 0)
             self.refresh()
         finally:
@@ -405,6 +426,13 @@ class Adapter:
                 child.wait(timeout=5)
 
 
+class AdoptionOutcome(RuntimeError):
+    """Recognized child outcome; no retry or replacement proof means success."""
+    def __init__(self, code):
+        self.code = code
+        super().__init__(ADOPTION_OUTCOMES[code])
+
+
 def main(argv):
     adapter = Adapter()
     try:
@@ -415,7 +443,13 @@ def main(argv):
         adapter.execute(argv[1])
         print('fixture operation completed; synthetic accounts/data retained; capture unchanged')
         return 0
+    except AdoptionOutcome as outcome:
+        print(str(outcome) + '; proof consumed', file=sys.stderr)
+        return outcome.code
     except BaseException:
+        if adapter.proof and adapter.proof['operation'] == 'adopt-source':
+            print('UNCERTAIN: source adoption did not complete custody checks; publication not established; retain hold and reconcile before fresh proof', file=sys.stderr)
+            return 6
         print('REFUSED: fixture custody or operation failed; retain hold for reconciliation', file=sys.stderr)
         return 1
     finally:
