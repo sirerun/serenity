@@ -18,26 +18,26 @@ import (
 func (s *Service) configureEpisodeQualification(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.URL.RawQuery != "" || r.Header.Get("Origin") != "" {
-		http.Error(w, "qualification refused", 400)
+		http.Error(w, "qualification refused", http.StatusBadRequest)
 		return
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4096))
 	if err != nil || !episodejson.Valid(raw) {
-		http.Error(w, "qualification refused", 400)
+		http.Error(w, "qualification refused", http.StatusBadRequest)
 		return
 	}
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(raw, &fields) != nil {
-		http.Error(w, "qualification refused", 400)
+		http.Error(w, "qualification refused", http.StatusBadRequest)
 		return
 	}
 	if value, ok := fields["brain_ids"]; !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
-		http.Error(w, "qualification refused", 400)
+		http.Error(w, "qualification refused", http.StatusBadRequest)
 		return
 	}
 	for key := range fields {
 		if key != "brain_ids" && key != "expires_at" {
-			http.Error(w, "qualification refused", 400)
+			http.Error(w, "qualification refused", http.StatusBadRequest)
 			return
 		}
 	}
@@ -48,11 +48,11 @@ func (s *Service) configureEpisodeQualification(w http.ResponseWriter, r *http.R
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()
 	if d.Decode(&req) != nil || d.Decode(new(any)) != io.EOF || len(req.Brains) > 2 {
-		http.Error(w, "qualification refused", 400)
+		http.Error(w, "qualification refused", http.StatusBadRequest)
 		return
 	}
 	if s.cfg.WorkOSEnabled || s.cfg.BillingEnabled || s.cfg.EpisodeArchiveEnabled || len(s.cfg.EpisodeSyntheticBrains) > 0 {
-		http.Error(w, "qualification unavailable", 409)
+		http.Error(w, "qualification unavailable", http.StatusConflict)
 		return
 	}
 	s.Gateway.Maintenance.RLock()
@@ -79,11 +79,11 @@ func (s *Service) configureEpisodeQualification(w http.ResponseWriter, r *http.R
 		return auditErr
 	})
 	if err != nil {
-		http.Error(w, "qualification refused", 403)
+		http.Error(w, "qualification refused", http.StatusForbidden)
 		return
 	}
 	if err = s.Gateway.SetEpisodeQualification(req.Brains, req.Expires); err != nil {
-		http.Error(w, "qualification refused", 400)
+		http.Error(w, "qualification refused", http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
