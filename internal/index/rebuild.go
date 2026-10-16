@@ -171,7 +171,7 @@ func Rebuild(ctx context.Context, root string, cfg *config.Config, eng Engine) e
 	// time, never by omission from the index.
 	for _, src := range sources {
 		switch src.Kind {
-		case store.SourceKindMemoryExpiry, store.SourceKindTombstone:
+		case store.SourceKindMemoryExpiry, store.SourceKindTombstone, store.SourceKindEpisode:
 			continue
 		case store.SourceKindMemoryFact, store.GovernedMemoryKind:
 			rec, ok := memProj.Get(src.SHA256)

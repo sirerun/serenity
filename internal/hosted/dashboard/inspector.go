@@ -1055,6 +1055,11 @@ func readInspectorSourceCatalog(ctx context.Context, root string) (map[string]in
 			} else if !errors.Is(bytesErr, fs.ErrNotExist) || !meta.IndexOnly {
 				return nil, nil, nil, errors.New("inspector: source bytes are unavailable")
 			}
+			// Archive evidence has a separate gated API; generic inspector source
+			// listings must not bypass its exclusion/capability boundary.
+			if meta.Kind == brainstore.SourceKindEpisode {
+				continue
+			}
 			entry := inspectorSource{Source: source}
 			if meta.Kind == brainstore.SourceKindMemoryFact || meta.Kind == brainstore.SourceKindMemoryExpiry || meta.Kind == brainstore.SourceKindTombstone {
 				if bytesErr != nil || bytesInfo.Size() > inspectorMaxMetaFile {

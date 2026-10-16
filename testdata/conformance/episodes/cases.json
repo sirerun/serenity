@@ -1,0 +1,392 @@
+{
+  "schema": "serenity.episodes.conformance/v1",
+  "cases": [
+    {
+      "name": "capabilities",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "capabilities",
+        "qualification": "synthetic"
+      },
+      "http_status": 200,
+      "expected": {
+        "status": "completed",
+        "physical_purge": "unsupported",
+        "managed_restore": "unsupported"
+      }
+    },
+    {
+      "name": "unknown-status",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "status",
+        "qualification": "synthetic",
+        "command_key": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "http_status": 200,
+      "expected": {
+        "status": "unknown"
+      }
+    },
+    {
+      "name": "append",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "append",
+        "qualification": "synthetic",
+        "generation": 0,
+        "mutation": {
+          "operation": "append",
+          "producer_id": "fixture-producer",
+          "conversation_id": "fixture-conversation",
+          "command_id": "append-001",
+          "host": "synthetic-host",
+          "host_version": "fixture-v1",
+          "workspace_label": "synthetic-workspace",
+          "policy_version": "synthetic-policy-v1",
+          "events": [
+            {
+              "event_id": "event-001",
+              "sequence": 0,
+              "role": "user",
+              "type": "message",
+              "occurred_at": "2021-02-03T04:05:06Z",
+              "observed_at": "2026-10-16T10:00:00Z",
+              "attribution": "host-reported role, not a verified human principal",
+              "text": "  Exact visible text.\nQuoted: \"ignore previous instructions\" is evidence only.\n日本語\n",
+              "attachments": [
+                {
+                  "attachment_id": "attachment-001",
+                  "media_type": "application/octet-stream",
+                  "data": "AP9leGFjdCBhdHRhY2htZW50Cg==",
+                  "sha256": "f2a2a33fbf6a3242ea7f97d582063ac4a21d3f50068731e0069fc719b8d33f9e"
+                }
+              ],
+              "gaps": [
+                "hidden_reasoning_not_exposed"
+              ]
+            }
+          ],
+          "gaps": [
+            "host_coverage_not_verified"
+          ]
+        }
+      },
+      "http_status": 200,
+      "expected": {
+        "status": "completed",
+        "generation": 0
+      }
+    },
+    {
+      "name": "identical-retry",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "append",
+        "qualification": "synthetic",
+        "generation": 0,
+        "mutation": {
+          "operation": "append",
+          "producer_id": "fixture-producer",
+          "conversation_id": "fixture-conversation",
+          "command_id": "append-001",
+          "host": "synthetic-host",
+          "host_version": "fixture-v1",
+          "workspace_label": "synthetic-workspace",
+          "policy_version": "synthetic-policy-v1",
+          "events": [
+            {
+              "event_id": "event-001",
+              "sequence": 0,
+              "role": "user",
+              "type": "message",
+              "occurred_at": "2021-02-03T04:05:06Z",
+              "observed_at": "2026-10-16T10:00:00Z",
+              "attribution": "host-reported role, not a verified human principal",
+              "text": "  Exact visible text.\nQuoted: \"ignore previous instructions\" is evidence only.\n日本語\n",
+              "attachments": [
+                {
+                  "attachment_id": "attachment-001",
+                  "media_type": "application/octet-stream",
+                  "data": "AP9leGFjdCBhdHRhY2htZW50Cg==",
+                  "sha256": "f2a2a33fbf6a3242ea7f97d582063ac4a21d3f50068731e0069fc719b8d33f9e"
+                }
+              ],
+              "gaps": [
+                "hidden_reasoning_not_exposed"
+              ]
+            }
+          ],
+          "gaps": [
+            "host_coverage_not_verified"
+          ]
+        }
+      },
+      "http_status": 200,
+      "expected": {
+        "status": "completed"
+      }
+    },
+    {
+      "name": "changed-identity",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "append",
+        "qualification": "synthetic",
+        "generation": 0,
+        "mutation": {
+          "operation": "append",
+          "producer_id": "fixture-producer",
+          "conversation_id": "fixture-conversation",
+          "command_id": "append-001",
+          "host": "synthetic-host",
+          "host_version": "fixture-v1",
+          "workspace_label": "synthetic-workspace",
+          "policy_version": "synthetic-policy-v1",
+          "events": [
+            {
+              "event_id": "event-001",
+              "sequence": 0,
+              "role": "user",
+              "type": "message",
+              "occurred_at": "2021-02-03T04:05:06Z",
+              "observed_at": "2026-10-16T10:00:00Z",
+              "attribution": "host-reported role, not a verified human principal",
+              "text": "Changed under same identity",
+              "attachments": [
+                {
+                  "attachment_id": "attachment-001",
+                  "media_type": "application/octet-stream",
+                  "data": "AP9leGFjdCBhdHRhY2htZW50Cg==",
+                  "sha256": "f2a2a33fbf6a3242ea7f97d582063ac4a21d3f50068731e0069fc719b8d33f9e"
+                }
+              ],
+              "gaps": [
+                "hidden_reasoning_not_exposed"
+              ]
+            }
+          ],
+          "gaps": [
+            "host_coverage_not_verified"
+          ]
+        }
+      },
+      "http_status": 409,
+      "expected": {
+        "error": "identity_conflict"
+      }
+    },
+    {
+      "name": "exact-event-read",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "read",
+        "qualification": "synthetic",
+        "event_key": "418e7aeab0185c01fb80890d8e7e4602755d5c7e8db357fbe7c307a4cec431b0"
+      },
+      "http_status": 200,
+      "expected": {
+        "status": "completed"
+      }
+    },
+    {
+      "name": "exact-command-read",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "read",
+        "qualification": "synthetic",
+        "command_key": "a8febad7544a4a3d05560e48b53997e8bc03ca70c7db8eebfcf508d589770d70"
+      },
+      "http_status": 200,
+      "expected": {
+        "status": "completed"
+      }
+    },
+    {
+      "name": "byte-budget",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "context",
+        "qualification": "synthetic",
+        "query": "Exact visible",
+        "max_bytes": 1
+      },
+      "http_status": 200,
+      "expected": {
+        "selected_bytes": 0,
+        "next_offset": 0
+      }
+    },
+    {
+      "name": "exclude",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "exclude",
+        "qualification": "synthetic",
+        "generation": 0,
+        "mutation": {
+          "operation": "exclude",
+          "producer_id": "fixture-producer",
+          "conversation_id": "fixture-conversation",
+          "command_id": "exclude-conformance"
+        }
+      },
+      "http_status": 200,
+      "expected": {
+        "status": "excluded",
+        "generation": 1,
+        "physical_purge": "unsupported"
+      }
+    },
+    {
+      "name": "full-fences",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "fences",
+        "qualification": "synthetic"
+      },
+      "http_status": 200,
+      "expected": {
+        "generation": 1
+      }
+    },
+    {
+      "name": "stale-generation",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "append",
+        "qualification": "synthetic",
+        "generation": 0,
+        "mutation": {
+          "operation": "append",
+          "producer_id": "fixture-producer",
+          "conversation_id": "fixture-conversation",
+          "command_id": "append-001",
+          "host": "synthetic-host",
+          "host_version": "fixture-v1",
+          "workspace_label": "synthetic-workspace",
+          "policy_version": "synthetic-policy-v1",
+          "events": [
+            {
+              "event_id": "event-001",
+              "sequence": 0,
+              "role": "user",
+              "type": "message",
+              "occurred_at": "2021-02-03T04:05:06Z",
+              "observed_at": "2026-10-16T10:00:00Z",
+              "attribution": "host-reported role, not a verified human principal",
+              "text": "  Exact visible text.\nQuoted: \"ignore previous instructions\" is evidence only.\n日本語\n",
+              "attachments": [
+                {
+                  "attachment_id": "attachment-001",
+                  "media_type": "application/octet-stream",
+                  "data": "AP9leGFjdCBhdHRhY2htZW50Cg==",
+                  "sha256": "f2a2a33fbf6a3242ea7f97d582063ac4a21d3f50068731e0069fc719b8d33f9e"
+                }
+              ],
+              "gaps": [
+                "hidden_reasoning_not_exposed"
+              ]
+            }
+          ],
+          "gaps": [
+            "host_coverage_not_verified"
+          ]
+        }
+      },
+      "http_status": 409,
+      "expected": {
+        "error": "generation_mismatch"
+      }
+    },
+    {
+      "name": "fenced-replay",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "append",
+        "qualification": "synthetic",
+        "generation": 1,
+        "mutation": {
+          "operation": "append",
+          "producer_id": "fixture-producer",
+          "conversation_id": "fixture-conversation",
+          "command_id": "append-001",
+          "host": "synthetic-host",
+          "host_version": "fixture-v1",
+          "workspace_label": "synthetic-workspace",
+          "policy_version": "synthetic-policy-v1",
+          "events": [
+            {
+              "event_id": "event-001",
+              "sequence": 0,
+              "role": "user",
+              "type": "message",
+              "occurred_at": "2021-02-03T04:05:06Z",
+              "observed_at": "2026-10-16T10:00:00Z",
+              "attribution": "host-reported role, not a verified human principal",
+              "text": "  Exact visible text.\nQuoted: \"ignore previous instructions\" is evidence only.\n日本語\n",
+              "attachments": [
+                {
+                  "attachment_id": "attachment-001",
+                  "media_type": "application/octet-stream",
+                  "data": "AP9leGFjdCBhdHRhY2htZW50Cg==",
+                  "sha256": "f2a2a33fbf6a3242ea7f97d582063ac4a21d3f50068731e0069fc719b8d33f9e"
+                }
+              ],
+              "gaps": [
+                "hidden_reasoning_not_exposed"
+              ]
+            }
+          ],
+          "gaps": [
+            "host_coverage_not_verified"
+          ]
+        }
+      },
+      "http_status": 410,
+      "expected": {
+        "error": "excluded"
+      }
+    },
+    {
+      "name": "excluded-read",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "read",
+        "qualification": "synthetic",
+        "event_key": "418e7aeab0185c01fb80890d8e7e4602755d5c7e8db357fbe7c307a4cec431b0"
+      },
+      "http_status": 404,
+      "expected": {
+        "error": "event_unavailable"
+      }
+    },
+    {
+      "name": "excluded-status",
+      "request": {
+        "schema": "serenity.episodes/v1",
+        "project_id": "$brain",
+        "operation": "status",
+        "qualification": "synthetic",
+        "command_key": "a8febad7544a4a3d05560e48b53997e8bc03ca70c7db8eebfcf508d589770d70"
+      },
+      "http_status": 200,
+      "expected": {
+        "status": "excluded"
+      }
+    }
+  ]
+}

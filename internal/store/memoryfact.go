@@ -301,6 +301,8 @@ func LoadMemoryProjection(ss *SourceStore) (*MemoryProjection, error) {
 	for _, src := range sources {
 		p.indexOnly[src.SHA256] = src.IndexOnly
 		switch src.Kind {
+		case SourceKindEpisode:
+			p.lifecycle[src.SHA256] = true // archive is accessible only through its separate API
 		case SourceKindMemoryFact:
 			data, _, err := ss.Read(src.SHA256)
 			if err != nil {

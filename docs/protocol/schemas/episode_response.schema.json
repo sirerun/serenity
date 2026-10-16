@@ -1,0 +1,542 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:serenity:episodes:response:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "project_id",
+    "status",
+    "generation",
+    "revision",
+    "fences",
+    "selected_bytes",
+    "omissions",
+    "physical_purge",
+    "managed_restore",
+    "authority"
+  ],
+  "properties": {
+    "schema": {
+      "const": "serenity.episodes/v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "unknown",
+        "excluded"
+      ]
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 18446744073709551615
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64})?$"
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command_key",
+        "conversation_key",
+        "digest",
+        "source_sha256",
+        "recorded_at",
+        "event_refs"
+      ],
+      "properties": {
+        "command_key": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "conversation_key": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "source_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "recorded_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "event_refs": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/ref"
+          }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "producer_id",
+          "conversation_id",
+          "workspace_label",
+          "policy_version",
+          "source_sha256",
+          "ref",
+          "event"
+        ],
+        "properties": {
+          "producer_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "conversation_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "workspace_label": {
+            "type": "string"
+          },
+          "policy_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:-]+$"
+          },
+          "source_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "ref": {
+            "$ref": "#/$defs/ref"
+          },
+          "event": {
+            "$ref": "#/$defs/event"
+          }
+        }
+      }
+    },
+    "checkpoint": {
+      "$ref": "#/$defs/checkpoint"
+    },
+    "fences": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "maxProperties": 256,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "capabilities": {
+      "type": "object"
+    },
+    "next_offset": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 16384
+    },
+    "selected_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 524288
+    },
+    "omissions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "physical_purge": {
+      "const": "unsupported"
+    },
+    "managed_restore": {
+      "const": "unsupported"
+    },
+    "authority": {
+      "const": "attributed_evidence_not_execution_authority"
+    }
+  },
+  "$defs": {
+    "ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_key",
+        "digest"
+      ],
+      "properties": {
+        "event_key": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "attachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attachment_id",
+        "media_type",
+        "data",
+        "sha256"
+      ],
+      "properties": {
+        "attachment_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$"
+        },
+        "media_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "data": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "maxLength": 43692
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "sequence",
+        "role",
+        "type",
+        "occurred_at",
+        "observed_at",
+        "attribution",
+        "text"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9223372036854775807
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant",
+            "tool",
+            "system",
+            "developer"
+          ]
+        },
+        "type": {
+          "enum": [
+            "message",
+            "tool_call",
+            "tool_result"
+          ]
+        },
+        "occurred_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "observed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "attribution": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "attachments": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/attachment"
+          }
+        },
+        "gaps": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          }
+        }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "sources",
+        "model",
+        "created_at"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 65536
+        },
+        "sources": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/ref"
+          }
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "mutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "producer_id",
+        "conversation_id",
+        "command_id"
+      ],
+      "properties": {
+        "operation": {
+          "enum": [
+            "append",
+            "checkpoint",
+            "exclude"
+          ]
+        },
+        "producer_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$"
+        },
+        "conversation_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$"
+        },
+        "command_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$"
+        },
+        "host": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]*$"
+        },
+        "host_version": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "workspace_label": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "policy_version": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]*$"
+        },
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/event"
+          }
+        },
+        "checkpoint": {
+          "$ref": "#/$defs/checkpoint"
+        },
+        "gaps": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "maxItems": 32,
+          "items": {
+            "type": "string",
+            "maxLength": 128
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "append"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "host",
+              "policy_version",
+              "events"
+            ],
+            "not": {
+              "required": [
+                "checkpoint"
+              ]
+            },
+            "properties": {
+              "host": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "policy_version": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "checkpoint"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "host",
+              "policy_version",
+              "checkpoint"
+            ],
+            "not": {
+              "required": [
+                "events"
+              ]
+            },
+            "properties": {
+              "host": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              },
+              "policy_version": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9._:-]+$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "operation": {
+                "const": "exclude"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "events"
+                  ]
+                },
+                {
+                  "required": [
+                    "checkpoint"
+                  ]
+                }
+              ]
+            },
+            "properties": {
+              "host": {
+                "const": ""
+              },
+              "host_version": {
+                "const": ""
+              },
+              "workspace_label": {
+                "const": ""
+              },
+              "policy_version": {
+                "const": ""
+              },
+              "gaps": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

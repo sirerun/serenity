@@ -43,6 +43,9 @@ type sessionBinding struct {
 	last       time.Time
 }
 type Gateway struct {
+	EpisodeArchiveEnabled  bool
+	EpisodeSyntheticBrains []string
+
 	admission    limiter
 	Maintenance  sync.RWMutex
 	accountLocks [64]sync.Mutex
