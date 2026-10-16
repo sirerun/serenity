@@ -768,7 +768,7 @@ func syncTree(ctx context.Context, root string) error {
 
 func blobID(raw []byte) string {
 	h := sha1.New() // Git SHA1 object identity, not an authorization digest.
-	fmt.Fprintf(h, "blob %d\x00", len(raw))
+	_, _ = fmt.Fprintf(h, "blob %d\x00", len(raw))
 	h.Write(raw)
 	return hex.EncodeToString(h.Sum(nil))
 }
