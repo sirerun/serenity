@@ -122,3 +122,15 @@ func TestCodexAmbiguityAndGapOnlyPages(t *testing.T) {
 		t.Fatalf("unbounded page %+v", p)
 	}
 }
+
+func TestCodexRejectsUnicodeReplacementAndCaseAliases(t *testing.T) {
+	for _, payload := range []string{
+		`{"type":"message","role":"user","ROLE":"assistant","content":[{"type":"output_text","text":"visible"}]}`,
+		`{"type":"message","role":"user","content":[{"type":"output_text","text":"\ud800"}]}`,
+	} {
+		raw := metadata() + `{"timestamp":"2026-10-16T10:00:00Z","type":"response_item","payload":` + payload + "}\n"
+		if _, err := ReadCodex(strings.NewReader(raw), enrolled, Cursor{}, 64); !errors.Is(err, ErrFormat) {
+			t.Fatal(err)
+		}
+	}
+}
