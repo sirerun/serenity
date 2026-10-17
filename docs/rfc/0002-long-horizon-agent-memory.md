@@ -360,3 +360,16 @@ claim; it must not be hidden by a successful smaller run.
   non-resurrection across derived records, imports and offline queues.
 - [Design review record](../reviews/shared-agent-memory-20261016.md): owner
   decisions, Quorum findings and validation boundaries.
+
+## 13. Zati context and skill integration refinement — 2026-10-16
+
+[ADR 030](../adr/030-zati-context-and-gist-boundaries.md) records the owner's UX,
+token-efficiency and performance priorities. Zati owns one bounded context
+assembly path combining relevant Serenity knowledge with exact Gist skills and
+capability requirements. Skills remain authoritative packages rather than memory
+snippets; experience links to their versions. Gist stays reusable and library-first
+without a required Serenity backend. Context reuse must preserve current brain,
+permission, deletion, revocation and freshness checks. Evaluate task correctness,
+full-request tokens/cost and interactive latency together before adopting more
+retrieval infrastructure. E4 in the existing implementation plan adds this
+acceptance without replacing archive, erasure or host qualification gates.

@@ -6,6 +6,63 @@ Implement RFC 0002 and RFC 0003 at design base 92b785fe6da569fa537b7ec92fb4a1419
 
 Existing Git/file SourceStore and serialized writer remain canonical; SQLite stays derived. Existing authenticated brains/grants remain the isolation boundary. Capture is gated until erasure/replay/restore qualification. No automatic real-history enrollment during qualification. Use synthetic data and explicit capability limits. No project label can authorize a brain. Hosted capture must not be activated before physical erasure and restore fences qualify.
 
+## Zati experience and efficiency refinement — 2026-10-16
+
+The owner requires a great Zati experience with token efficiency and responsive
+execution. Zati is the main user-facing system; Serenity supplies durable memory
+and historical evidence; Gist supplies discoverable versioned skills, complete
+packages, exact schemas and capability resolution. See
+[ADR 030](../adr/030-zati-context-and-gist-boundaries.md). This refinement is
+ordinary repository planning, not runtime enrollment, application execution or a
+renewal of the elapsed Resume 01 window. Prior implementation/deployment grants
+remain scoped to their original task and conditions; new cross-repository rows
+require their owning repository's accepted handoff and actual execution binding.
+
+All 79 prior task rows, their authored statuses, acceptance, owners and dependency
+edges are retained unchanged. E4 adds a coordinated acceptance slice; it does not
+replace Zati, Gist or Foundry task state. Existing T2.2 still owns checkpointed
+Zati continuity; T4.2 consumes that result rather than implementing a second
+archive or context scheduler. Each external implementation needs a canonical
+owner/task/receipt mapping before dispatch. Unassigned IDs are genuinely TBD.
+The old Operations/T3 release obligations remain distinct; this refinement
+creates no new release, deployment, provider-spend or enrollment grant.
+
+Executor for this planning artifact: current attended Codex desktop session,
+engineering profile selected for capability discovery; existing loaded desktop
+tools remain unchanged. Helpers inherit the current model, reasoning and account
+route without overrides. Future E4 batches use current-session inheritance at
+execution time, not the earlier attempt's gpt-6-astra/low selection. No unattended
+route is qualified. One author and one independent read-only reviewer suffice.
+No Ajent MCP is exposed; inspect repository coordination and PR comments and
+explicitly disclose that limitation in the planning PR. Existing graph snapshot
+predates this source; use bounded source/caller/test inspection instead.
+
+### User journeys and observable acceptance
+
+| Use case | Zati behavior to qualify |
+| --- | --- |
+| ZUX-01 Fresh conversation or authorized worker | Relevant preferences and project decisions appear without a reminder; unrelated/restricted material does not; a useful no-match remains possible |
+| ZUX-02 Accomplish a task using a skill | Relevant summaries lead to exact package and asset retrieval, capability checks and admitted execution; missing capabilities have a clear next step; an ordinary user need not understand backend product names |
+| ZUX-03 Remember, correct, inspect or stop using information | Natural conversation leads through existing policy to an evidenced save/correction/retraction or explicit unavailable/unknown status; skill version changes use normal Zati bindings |
+| ZUX-04 Continue long-running work | A fresh session, restart and another authorized worker recover cited context and unfinished work with intact tool pairs; historical approvals are never replayed as grants |
+| ZUX-05 Slow/offline dependencies and revocation | Progress is intelligible; bounded retries and queues preserve custody; optional enrichment can be omitted visibly, while required or revoked context prevents unsafe dispatch |
+| ZUX-06 Efficient repeated work | Unchanged context is not repeatedly injected or fetched; exact skill caches and stable prompt prefixes reduce overhead without stale authorization or lower task quality |
+
+Measurement records compare the same task set, authorized catalog, model/version,
+provider, generation settings and environment. Record end-to-end and time-to-first
+useful-response p50/p95, context preparation and dependency latency, tool round
+trips, input/output/cached tokens, and cost per successfully completed task.
+Separate model steps, tool effects, retrieval/embedding and background capture or
+summary costs. Count failures/retries and report unavailable provider billing or
+child usage instead of inferring savings from input-token cache percentage.
+Freeze sample sizes, numerical context/latency/cost budgets and correctness and
+privacy thresholds in T4.0 before candidate runs; no invented baseline or universal
+percentage target. A speed/token improvement cannot compensate for failed task,
+provenance, permission or deletion acceptance. Whole-request accounting includes
+instructions, history/checkpoints, memory, complete selected skill requirements,
+tool schemas, output allowance and provider overhead with tokenizer estimates
+labeled. Required schemas/instructions and call/result pairs are never truncated.
+
 ## Discovery and execution
 
 Existing governed HTTP gateway provides verified binding, maintenance/account/runtime locks, revocation rechecks and canonical writer publication. Existing memory v1 cannot archive conversations or physically erase them. Existing recovery claims and PR273 are foreign ownership; preserve them. PR277 proposes import, not episode implementation. No Ajent tool is available in this scoped session; disclose in candidate PR. No chief.md found in the two inspected Serenity checkouts. Recheck authenticated holds at merge.
@@ -140,6 +197,23 @@ Acceptance: an explicitly reviewed new operator can adopt an exact older fixture
 - [x] T3.24 Merge source adoption increment  Owner: integration  kind: agent  stage: merge  deps: [T3.23]  acc: [current claims, holds and protections permit exact reviewed-head guarded rebase merge]
 - [x] T3.25 Verify source adoption landing  Owner: integration  kind: agent  stage: verify  deps: [T3.24]  acc: [landed tree equals reviewed source and main ancestry is verified; live installation, current cold maintenance, reissue and full API qualification remain separate gates]
 
+### E4 — Unified Zati context, skills and measured experience
+fidelity: executable
+Acceptance: ZUX-01 through ZUX-06 work through Zati with bounded relevant context, exact skills and truthful progress, and measured task quality, tokens, cost and latency. Source acceptance and owner-observed behavior remain separate from T3 deployment.
+
+- [ ] T4.0 Freeze journeys and measure the current baseline  Owner: zati-integration  kind: agent  stage: discover  acc: [ZUX-01 through ZUX-06 have reproducible synthetic fixtures and owner-selected representative tasks; current source and installed app identities, sample sizes, numerical whole-request and p50/p95 latency and cost budgets, correctness thresholds, measurement boundaries and missing telemetry are recorded before candidate comparison; no baseline or savings is fabricated]
+- [ ] T4.1 Freeze the minimal consumer and context contract  Owner: integration  kind: agent  stage: author  deps: [T4.0]  acc: [Zati and Gist owners accept exact repository task and file ownership mappings; select a real skill with a referenced asset and admitted capability; document authorized memory and skill requests, byte and token bounds, cancellation, no-match, required versus optional context, exact version and receipt shapes; reuse RFC0002 and T2.2 plus Gist RFC002 sections17-18 and existing Zati context, skill import, grants and effect engine; material API conflicts are resolved before implementation]
+- [ ] T4.2 Integrate one bounded context preparation path  Owner: zati-integration  kind: agent  stage: implement  deps: [T4.1, T2.2]  acc: [ZUX-01 and ZUX-04 use Zati existing context preparation with scoped relevant Serenity retrieval and Gist selection; independent lookups overlap within deadlines; complete request budget preserves tool pairs, required instructions and output reserve; checkpoint and fresh authorized worker tests pass; no second scheduler or unconditional recent-fact dump is introduced]
+- [ ] T4.3 Deliver the real Gist skill consumer through existing owners  Owner: gist-integration  kind: agent  stage: implement  deps: [T4.1]  acc: [ZUX-02 uses additive public library APIs with authorized-before-exposure discovery, exact immutable complete package and asset digest checks, explicit capability findings and existing Zati skill import and worker binding; existing Gist root library and hosted consumers remain compatible; private use needs no mandatory hosted registry or Serenity service dependency; external execution and credential custody stay with admitted executors; owning Gist and Zati task and source receipts are recorded]
+- [ ] T4.4 Make memory and skill state understandable in Zati  Owner: zati-experience  kind: agent  stage: implement  deps: [T4.2, T4.3]  acc: [ZUX-02 and ZUX-03 and ZUX-05 expose relevant sources and applied skill versions on demand, actionable missing connections/capabilities and bounded progress without backend setup jargon; remember, inspect, correct and stop-using journeys use existing policy and version operations without redundant approvals; saved, queued, blocked and unknown remain distinct; memory exclusion versus physical erasure and chat deletion are truthful; actual native preview acceptance is recorded separately from widget fixtures]
+- [ ] T4.5 Qualify reuse and remove avoidable context overhead  Owner: zati-integration  kind: agent  stage: implement  deps: [T4.2, T4.3]  acc: [ZUX-06 retrieves summaries then exact content on demand, avoids unchanged excerpt reinjection, caches immutable packages by version and digest, and keys any retrieval reuse by authenticated brain, authorized scope and current policy/version/freshness state; revocation, deletion, expiry and changed bindings invalidate reuse before exposure or action; stable prompt ordering supports caching and deterministic checks avoid extra model calls; correctness survives cold cache and cache failure]
+- [ ] T4.6 Compare retrieval strategies within measured need  Owner: serenity-retrieval  kind: agent  stage: verify  deps: [T4.2, T4.3]  acc: [same labeled ZUX tasks compare actual governed/episodic path with BM25 and configured hybrid vector/RRF where implemented, reporting the query-ranking gap and no-match/old-detail cases; actual serving support is checked before any EmbeddingGemma2 trial and no download/provider spend is implied; shared library or optional Serenity search backend is adopted only on measured benefit with exact packages and policy preserved; unqualified variants remain unavailable]
+- [ ] T4.7 Verify the integrated candidate and efficiency budgets  Owner: integration  kind: agent  stage: verify  deps: [T4.4, T4.5, T4.6]  acc: [all T4.1-T4.6 outcomes have owning repository source and test receipts; run existing Zati context/memory/Gist integration and skill tests plus affected Serenity retrieval tests and native preview scenarios on exact versions; wrong brain, malicious skill text, tampering, no-match, stale/revoked bindings, deletion during retrieval, timeout, restart, cancellation and unknown-effect cases pass; frozen T4.0 quality and cost/latency budgets pass or remain explicitly blocked; background capture cannot delay reply admission unnecessarily]
+- [ ] T4.8 Independently review the coordinated candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T4.7]  acc: [independent reviewers record exact base/head and scope for every owning repository implementation including plan changes, tests and ZUX-01 through ZUX-06 coverage; findings have tracked fixes, affected verification and re-review before merge; no author self-approval or transferred execution authority]
+- [ ] T4.9 Merge reviewed owning repository candidates  Owner: integration  kind: agent  stage: merge  deps: [T4.8]  acc: [each owning repository accepts its mapped candidate and current claims, holds, required checks and protection; independent exact-head approval and refreshed base permit guarded rebase merge without cross-repository bypass]
+- [ ] T4.10 Verify source landing and record the operational handoff  Owner: integration  kind: agent  stage: verify  deps: [T4.9]  acc: [all mapped commits are reachable on intended targets and reviewed/landed trees and affected checks agree; exact source, pending installation/live gates, reversible configuration path and prerequisite edges into existing T3.4/T3.5 and owning Zati release tasks are recorded before release dispatch; no source receipt is called deployment]
+- [ ] T4.11 Accept the observed Zati journey and publish comparison evidence  Owner: zati-experience  kind: agent  stage: verify  deps: [T4.10]  acc: [owner observes ZUX-01 through ZUX-06 in the identified native development app with controlled accounts or separately authorized live bindings; task quality and full token/cost/latency comparison meet predeclared budgets; absent installed/live/long-soak evidence is explicit and corresponding release gates stay open; unsupported host behavior and remaining work have an owning task]
+
 ## Batches and gates
 
 | Batch | Members | Owner | Prerequisites | Verification/review/merge/landed | Selection | Requested/actual size |
@@ -150,6 +224,17 @@ Acceptance: an explicitly reviewed new operator can adopt an exact older fixture
 | Operations | T3.1-T3.6 | integration | explicit deployment authority and dependency rows | live receipts | gpt-6-astra / low | 6/6 |
 
 Split a candidate when independent host ownership, unsupported capabilities or review size requires it; preserve task IDs and add distinct delivery gate rows before dispatch. Deploy stages are authored obligations, not ordinary apply admission. Headless helpers stop/checkpoint before the integration deadline. No model polling unchanged jobs. Missing telemetry is unavailable, not estimated savings.
+
+E4 is a coordinated outcome batch proposal, not permission to combine foreign
+writers. Context/efficiency owns T4.2/T4.5; Gist owns T4.3; experience owns T4.4;
+retrieval comparison owns T4.6. Each external candidate must map its own
+verification/review/merge/landing rows under T4.7-T4.10 before dispatch, retaining
+canonical upstream task IDs rather than creating a parallel scheduler. T4.0/T4.1
+freeze the actual batch split and current inherited selection. Use one session
+unless independent ownership justifies helpers. No speculative worker count or
+paid execution route is implied. T4.11 measures a native development experience;
+installed or deployed claims additionally require the applicable existing T3 and
+Zati release gates. E4 does not reopen retired Gist execution or paused hosting.
 
 ## Evidence and handoff
 

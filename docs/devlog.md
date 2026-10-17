@@ -113,3 +113,17 @@ Task: docs/plans/E1-m1-ingest.md T1.31, filed from docs/evals/m1-report.md's fin
 Implemented a bounded, owner-session read projection and the selected rose Book Binder identity on existing templates, with parallel disjoint author lanes and independent source review. Fixed duplicate claim privacy/lifecycle downgrades, canonical validity parsing, orphan entity labels and an unused test import before review closure. Added deterministic neighboring context without changing core pagination/counts, and canonical/HTTP privacy/read-only fixtures.
 
 Draft PR361 remains blocked for actual Go verification; a foreign shared build lease was preserved. Fresh GitHub test/lint jobs on run37189032287 have no runner/steps and an account-billing-lock annotation. Site checks pass; strict MkDocs matches seven pre-existing baseline warnings. Independent source review is not formal verified CLEAR. No merge or production update; frontend and signed existing-host release gates remain open.
+
+## 2026-10-16 — Zati experience and context-efficiency planning refinement
+
+Owner requested refinement after discussing Zati as the main agentic interface,
+Serenity memory and Gist skills. Revalidated Serenity origin/main at466c9269,
+Gist at7ece68b and current Zati context/skill integration source. The existing
+79-task shared-memory plan is retained; E4 adds twelve open coordinated outcomes
+for representative user journeys, numerical baseline/budgets, native UX, exact
+skill integration, cache safety and end-to-end quality/token/cost/latency evidence.
+ADR030 records responsibilities and leaves a mandatory Serenity backend unselected.
+No docs/design.md exists; the existing RFC/ADR design routing is preserved.
+This is documentation delivery only; no runtime task, capture, model endpoint,
+provider spending, installation or deployment was started by this refinement.
+Validation, exact independent review and landing are recorded in the planning PR.
