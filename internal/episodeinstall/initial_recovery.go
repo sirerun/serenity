@@ -142,6 +142,11 @@ func recoverInitialMaintenance(ctx context.Context, ref PreparedRef, admission I
 		if published || !absentAt(ctx, filepath.Join(ref.Directory, initialRecoveryName+".pending")) || hooks.at("initial:before-gate") != nil {
 			return nil, out, ErrUnqualified
 		}
+		// Creation can succeed before a later verifier/sync/cancel failure.
+		// On errors this conservative flag means a gate MAY remain; only a
+		// fresh locked observation can establish actual presence or absence.
+		out.MarkerHeld = true
+		out.State = "incomplete"
 		if err = pending.EnsureGate(ctx, func(_ context.Context, o writer.InitialMaintenanceObservation) error {
 			if o.Present {
 				return ErrUnqualified

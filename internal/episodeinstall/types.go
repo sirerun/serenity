@@ -68,6 +68,8 @@ type ColdAdmission interface {
 }
 
 // Result contains content-free custody state, never physical completion.
+// On a failed attempted gate creation, MarkerHeld conservatively means a marker
+// may remain; fresh locked inspection is required to determine actual presence.
 type Result struct {
 	State          string `json:"state"`
 	HeaderSHA256   string `json:"header_sha256"`
