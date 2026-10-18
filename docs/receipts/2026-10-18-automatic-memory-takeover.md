@@ -56,3 +56,19 @@ serial heavy lanes and bounded watchdogs. No credentials or private operational
 inputs are transferred. Current149-task Wazi reader/schema/semantic gate passed
 before dispatch. This is source work; native UI/provider/installed qualification
 and full-repository evidence remain distinct. Token/cost telemetry is unavailable.
+
+## First qualification and review findings
+
+Initial source474151870907edbc61f20353c5fa462be4100834 archive
+f8d040dce79798ad3a39eb69162d1e71ced7cec90193f552ce9e83d548624687
+passed writer race checks (50.587s). Pool checks exposed an assertion mismatch:
+AcquireExisting refuses cold runtimes with ErrCapacity before ownership; its
+expected result is corrected while preserving exact no-mutation checks.
+
+Independent review accepted two blocking findings before merge: MAINT-R1 requires
+brain-parent directory synchronization so a newly created .serenity entry is
+durable; MAINT-R2 requires Resume to synchronize marker and directory rather
+than trust readable page-cache bytes after a failed Begin sync. Both require
+affected fault-injection checks and exact revised-source re-review. The initial
+source is not approved or landed. Finish post-unlink sync failure remains an
+unknown completion that may conservatively resurrect a gate on restart.

@@ -28,12 +28,22 @@ func AcquireBrain(path string) (*os.File, error) {
 }
 
 func acquireBrainLock(path string) (*os.File, *os.Root, error) {
+	return acquireBrainLockWithSync(path, maintenanceSync)
+}
+
+func acquireBrainLockWithSync(path string, syncRoot func(*os.Root) error) (*os.File, *os.Root, error) {
 	root, err := os.OpenRoot(path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("writer ownership: open brain: %w", err)
 	}
 	defer func() { _ = root.Close() }()
 	if err := root.Mkdir(".serenity", 0700); err != nil && !os.IsExist(err) {
+		return nil, nil, err
+	}
+	// The runtime directory entry must survive a crash, including when it was
+	// created by a prior failed attempt. Sync the brain root on every ownership
+	// acquisition before allowing a durable maintenance gate to be relied on.
+	if err := syncRoot(root); err != nil {
 		return nil, nil, err
 	}
 	info, err := root.Lstat(".serenity")
