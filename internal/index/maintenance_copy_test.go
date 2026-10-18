@@ -281,7 +281,8 @@ func TestMaintenanceCopyRejectsInterleavedFileReplacementOrChange(t *testing.T) 
 				if stage != "closed" {
 					return
 				}
-				if scenario == "directory_replace" {
+				switch scenario {
+				case "directory_replace":
 					parent := filepath.Dir(path)
 					if err := os.Rename(parent, parent+"-previous"); err != nil {
 						t.Fatal(err)
@@ -296,7 +297,7 @@ func TestMaintenanceCopyRejectsInterleavedFileReplacementOrChange(t *testing.T) 
 					if err = os.WriteFile(path, raw, 0600); err != nil {
 						t.Fatal(err)
 					}
-				} else if scenario == "replace" {
+				case "replace":
 					raw, err := os.ReadFile(path)
 					if err != nil {
 						t.Fatal(err)
@@ -312,7 +313,7 @@ func TestMaintenanceCopyRejectsInterleavedFileReplacementOrChange(t *testing.T) 
 					if err = os.Rename(path+"-previous", filepath.Join(t.TempDir(), "retained-original")); err != nil {
 						t.Fatal(err)
 					}
-				} else {
+				default:
 					file, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
 					if err != nil {
 						t.Fatal(err)
