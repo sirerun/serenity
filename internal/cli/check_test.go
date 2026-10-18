@@ -67,6 +67,7 @@ func initBrainRepo(t *testing.T) string {
 	if err := runInit(root, &out); err != nil {
 		t.Fatalf("init: %v\n%s", err, out.String())
 	}
+	canonicalCLIInitialize(t, root)
 	return root
 }
 

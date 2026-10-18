@@ -31,6 +31,7 @@ func TestReportExportCLI(t *testing.T) {
 	if err := runInit(root, &initOut); err != nil {
 		t.Fatalf("init: %v\n%s", err, initOut.String())
 	}
+	canonicalCLIInitialize(t, root)
 
 	ctx := context.Background()
 	eng, err := providers.OpenIndex(root)
