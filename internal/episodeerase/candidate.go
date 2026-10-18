@@ -550,7 +550,7 @@ func qualifyGitMode(ctx context.Context, b *budget, r *gitrun.Runner, root strin
 	if e != nil || strings.TrimSpace(string(top)) != root {
 		return "", ErrUnsafe
 	}
-	status, e := b.git(ctx, r, nil, "status", "--porcelain=v1", "--untracked-files=all", "--ignored")
+	status, e := b.git(ctx, r, nil, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignored")
 	if e != nil {
 		return "", e
 	}
@@ -559,8 +559,25 @@ func qualifyGitMode(ctx context.Context, b *budget, r *gitrun.Runner, root strin
 			return "", e
 		}
 	}
-	if hosted && string(status) == "!! .serenity/\n" {
-		status = nil
+	if hosted {
+		onlyRuntime := true
+		for _, entry := range bytes.Split(status, []byte{0}) {
+			if len(entry) == 0 {
+				continue
+			}
+			if !bytes.HasPrefix(entry, []byte("!! .serenity/")) {
+				onlyRuntime = false
+				break
+			}
+			suffix := strings.TrimPrefix(string(entry), "!! .serenity/")
+			if suffix != "" && !safeSegments(strings.TrimSuffix(suffix, "/")) {
+				onlyRuntime = false
+				break
+			}
+		}
+		if onlyRuntime {
+			status = nil
+		}
 	}
 	if len(status) != 0 {
 		return "", ErrUnsafe
