@@ -198,3 +198,12 @@ configuration is decoded only after ownership. Full service/CLI/gateway races
 and writer component races pass with affected static/build checks. Automatic
 capture stays off; installed reader drain, runtime-state classification, active
 transaction and controlled-copy disposition remain open.
+
+## 2026-10-18 — Qualify maintenance inputs without discarding controls
+
+Added bounded exact-schema qualification of operation-owned closed index copies,
+requiring all database-only control tables empty. Actual pool/WAL tests exposed
+read-only SQLite sidecar creation; only observed empty-WAL/SHM effects are admitted
+and recorded. Added exact live maintenance root/lock/marker validation with a
+retained root descriptor. Full index/writer races and affected static/build checks
+pass; no active installation, original-copy disposal or capture activation occurs.
