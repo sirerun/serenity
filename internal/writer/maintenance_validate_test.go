@@ -95,7 +95,7 @@ func TestMaintenanceValidateForExactOwnerIsReadOnly(t *testing.T) {
 }
 
 func TestMaintenanceValidateForRejectsChangedNamespace(t *testing.T) {
-	for _, mode := range []string{"root-symlink", "runtime-symlink", "runtime-replaced", "writer.lock", "canonical-view.lock", "marker", "view-permissions", "writer-hardlink", "root-permissions"} {
+	for _, mode := range []string{"root-symlink", "runtime-symlink", "runtime-replaced", "writer.lock", "canonical-view.lock", "marker", "view-permissions", "writer-hardlink", "root-permissions", "runtime-moved-to-foreign-root"} {
 		t.Run(mode, func(t *testing.T) {
 			root := maintenanceTestRoot(t)
 			id := maintenanceFixtureID()
@@ -147,6 +147,11 @@ func TestMaintenanceValidateForRejectsChangedNamespace(t *testing.T) {
 				}
 			case "writer-hardlink":
 				if err = os.Link(filepath.Join(state, "writer.lock"), filepath.Join(state, "writer-alias")); err != nil {
+					t.Fatal(err)
+				}
+			case "runtime-moved-to-foreign-root":
+				supplied = t.TempDir()
+				if err = os.Rename(state, filepath.Join(supplied, ".serenity")); err != nil {
 					t.Fatal(err)
 				}
 			case "root-permissions":

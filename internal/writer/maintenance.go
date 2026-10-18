@@ -47,13 +47,15 @@ func maintenanceBytes(id MaintenanceIdentity) ([]byte, error) {
 // never removes a marker. Callers own authority, canonical validation, activation
 // and copy disposition; this primitive only persists a cooperating-writer gate.
 type BrainMaintenance struct {
-	mu       sync.Mutex
-	view     *os.File
-	owner    *os.File
-	state    *os.Root
-	identity MaintenanceIdentity
-	marker   os.FileInfo
-	closed   bool
+	mu           sync.Mutex
+	view         *os.File
+	owner        *os.File
+	state        *os.Root
+	identity     MaintenanceIdentity
+	marker       os.FileInfo
+	rootIdentity os.FileInfo
+	rootOwner    *os.Root
+	closed       bool
 }
 
 // maintenanceSyncs is a per-call fault seam; no global callbacks or authority
@@ -86,6 +88,10 @@ func beginBrainMaintenance(path string, id MaintenanceIdentity, syncs maintenanc
 		return nil, err
 	}
 	m := &BrainMaintenance{view: view, owner: owner, state: state, identity: id}
+	if err = m.pinRoot(path); err != nil {
+		_ = m.Close()
+		return nil, err
+	}
 	success := false
 	defer func() {
 		if !success {
@@ -134,6 +140,10 @@ func resumeBrainMaintenance(path string, expected MaintenanceIdentity, syncs mai
 		return nil, err
 	}
 	m := &BrainMaintenance{view: view, owner: owner, state: state, identity: expected}
+	if err = m.pinRoot(path); err != nil {
+		_ = m.Close()
+		return nil, err
+	}
 	file, err := maintenanceOpen(state, maintenanceMarkerName)
 	if err != nil {
 		_ = m.Close()
@@ -242,5 +252,9 @@ func (m *BrainMaintenance) Close() error {
 		return nil
 	}
 	m.closed = true
-	return errors.Join(m.state.Close(), m.owner.Close(), m.view.Close())
+	var rootErr error
+	if m.rootOwner != nil {
+		rootErr = m.rootOwner.Close()
+	}
+	return errors.Join(m.state.Close(), m.owner.Close(), m.view.Close(), rootErr)
 }
