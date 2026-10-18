@@ -354,8 +354,8 @@ Acceptance: RAM-01 through RAM-06 have separately source-bound and released rece
 - [ ] T5.32 Merge reviewed Google Antigravity adapter  Owner: integration  Est: TBD  kind: agent  stage: merge  deps: [T5.31]  acc: [current repository holds/checks/protections permit guarded rebase of exactly reviewed Google Antigravity head; no runtime enablement or unrelated config changes]
 - [ ] T5.33 Verify landed Google Antigravity adapter  Owner: google-antigravity-adapter  Est: TBD  kind: agent  stage: verify  deps: [T5.32]  acc: [reviewed/landed source correspondence and reachability plus affected Google Antigravity configuration and conformance checks pass; exact distributable version and honest supported-surface matrix are recorded, installation/deployment remaining separate]
 - [x] T5.34 Freeze current-state maintenance and operational source boundary  Owner: integration  Est: TBD  kind: agent  stage: preflight  deps: [T3.25]  acc: [current existing host/release and custody owner confirms the missing same-release maintenance entry/closeout route and exact source/task mapping, rollback and finite authority envelope; no old release6-to8 fields, credentials or expired approval is reused to fabricate current readiness]
-- [ ] T5.35 Complete current-state maintenance through its authoritative owner  Owner: release-owner  Est: TBD  kind: agent  stage: implement  deps: [T5.34]  acc: [existing private release/custody owner implements same-release entry/closeout and safe operator adoption/reissue with preserved journals and cold fences; source receipts and operator schema bind actual current state without manual policy changes or code duplication in Serenity]
-- [ ] T5.36 Verify current-state operational producer and consumer  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.35]  acc: [actual supported producer/consumer fixture exercises current-state entry, interrupted closeout, rollback, wrong source/custody/pair, uncertain outcome and exact recorded credentials; no production mutation or synthetic-source seal is passed off as current authority]
+- [x] T5.35 Complete current-state maintenance through its authoritative owner  Owner: release-owner  Est: TBD  kind: agent  stage: implement  deps: [T5.34]  acc: [existing private release/custody owner implements same-release entry/closeout and safe operator adoption/reissue with preserved journals and cold fences; source receipts and operator schema bind actual current state without manual policy changes or code duplication in Serenity]
+- [x] T5.36 Verify current-state operational producer and consumer  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.35]  acc: [actual supported producer/consumer fixture exercises current-state entry, interrupted closeout, rollback, wrong source/custody/pair, uncertain outcome and exact recorded credentials; no production mutation or synthetic-source seal is passed off as current authority]
 - [ ] T5.37 Independently review maintenance source candidate  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.36]  acc: [separate reviewer records owning repository base/head, T5.34-T5.36 scope and complete custody/recovery contract; fixes and affected re-review close all blockers before source merge]
 - [ ] T5.38 Merge reviewed maintenance owner candidate  Owner: release-owner  Est: TBD  kind: agent  stage: merge  deps: [T5.37]  acc: [owning repository accepts exact reviewed source under current gates without widening scope, keys, policy or live authority]
 - [ ] T5.39 Verify landed operational owner contract  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.38]  acc: [actual owning-source ancestry and tree correspondence plus affected fixture checks are recorded; this is not installed operator adoption, live credential reissue or a runtime permission receipt]
@@ -942,3 +942,15 @@ checks joined actual fixtures and strict v1/v2 regressions; T5.37 independent
 exact final review precedes T5.38 guarded merge and T5.39 landed verification.
 T5.40 and live T3.14 remain gated on a fresh exact operational packet/review,
 actual host/UID/systemd/FD/provider qualifications and finite authority.
+
+T5.35/T5.36 source qualification: codecec1f80d implements the versioned same-release
+owner and distinct v3 producer/consumers. Exact archive/transfer/artifact pins,
+50 Linux maintenance Python tests,24 legacy tests, byte-equivalent operator race
+45.896s, vet/lint/scoped vulnerability/build/cross-build and16 actual synthetic
+UID/GID/six-FD producer-validator-Go cases pass. MAINTOWN-R1–R4 and continuation
+publication/containment gaps are fixed and source re-review is clean. See
+[the owner receipt](../receipts/2026-10-18-maintenance-owner-contract.md).
+This closes implementation/fixture verification only; final evidence review,
+guarded source merge/landed verification and actual T5.40 operational admission
+remain separate. Capture, production credentials/provider state and installation
+are unchanged. No old canonical/binary rollback or unknown-outcome success occurs.
