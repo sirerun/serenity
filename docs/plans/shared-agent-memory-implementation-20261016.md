@@ -1071,3 +1071,16 @@ hosted schema/assembly/gateway owners. Existing synthetic v1 remains unchanged;
 a false-only capability response or callback-only enrollment resolver would not
 satisfy it. Shared schema ownership and T5.42 safety/client dependencies remain
 real gates; this audit does not authorize a schema change or real enrollment.
+
+T4.0 identity followup: both installed controller distribution and desktop-bundled
+runtime manifests declare source643ab5d75f393abda7a70fc4e19026d9d69910af. Their
+controller binaries match recorded SHA256
+828e4bb160b067f6d7dbfb965cf73e05e425e15040eb5c8c66a06691cccee4a4.
+Reading that source's actual generator shows specification47; distribution
+contract_revision2 is a separate version, not source specification2. Publisher
+signature/build provenance was not independently verified here, and Flutter UI
+source remains unverified. This supersedes the earlier metadata-only unknown
+controller-source observation with a manifest-declared identity, not a claim
+that the running UI/controller qualifies current specification61 behavior.
+No app update, restart, native journey, model request or performance comparison
+was performed. T4.0 remains open with the same explicit measurement gaps.
