@@ -281,11 +281,11 @@ func TestEpisodeReplayCanonicalViewRefusesMaintenanceAndMissingGate(t *testing.T
 	if err = os.Remove(filepath.Join(root, ".serenity", "canonical-view.lock")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = g.ReplayEpisodeDeletions(context.Background(), nil); !errors.Is(err, writer.ErrCanonicalViewUnavailable) {
-		t.Fatalf("missing view replay: %v", err)
+	if _, err = g.ReplayEpisodeDeletions(context.Background(), nil); err != nil {
+		t.Fatalf("admitted recovery writer bootstrap: %v", err)
 	}
-	if _, err = os.Stat(filepath.Join(root, ".serenity", "canonical-view.lock")); !os.IsNotExist(err) {
-		t.Fatal("replay repaired missing gate")
+	if _, err = os.Stat(filepath.Join(root, ".serenity", "canonical-view.lock")); err != nil {
+		t.Fatal("recovery writer did not initialize its view lock", err)
 	}
 	// Non-ready, absent roots without episode intents require no canonical read.
 	absent := "AbsentBrain123456"
@@ -294,5 +294,42 @@ func TestEpisodeReplayCanonicalViewRefusesMaintenanceAndMissingGate(t *testing.T
 	}
 	if _, err = os.Stat(filepath.Join(filepath.Dir(root), absent)); !os.IsNotExist(err) {
 		t.Fatal("absent replay created a brain")
+	}
+}
+
+func TestEpisodeReplayViewBootstrapCannotBypassWriterOrMarker(t *testing.T) {
+	for _, pending := range []bool{false, true} {
+		t.Run(map[bool]string{false: "writer", true: "marker"}[pending], func(t *testing.T) {
+			g, _, _, _, brain, root := newLifecycleExportFixture(t)
+			journal, err := deletion.NewFilesystemJournal(t.TempDir(), "replay-bootstrap", 1, time.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			g.Journal = journal
+			owner, err := writer.AcquireBrain(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = owner.Close() }()
+			if err = os.Remove(filepath.Join(root, ".serenity", "canonical-view.lock")); err != nil {
+				t.Fatal(err)
+			}
+			want := writer.ErrBrainOwned
+			if pending {
+				if err = owner.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err = os.WriteFile(filepath.Join(root, ".serenity", "canonical-maintenance.json"), []byte("interrupted"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				want = writer.ErrMaintenancePending
+			}
+			if _, err = g.ReplayEpisodeDeletions(context.Background(), nil); !errors.Is(err, want) {
+				t.Fatalf("bootstrap %s: %v", brain, err)
+			}
+			if _, err = os.Stat(filepath.Join(root, ".serenity", "canonical-view.lock")); !os.IsNotExist(err) {
+				t.Fatal("failed bootstrap repaired view lock")
+			}
+		})
 	}
 }

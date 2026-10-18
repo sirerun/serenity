@@ -37,6 +37,7 @@ func TestReviewReportExportIsStandaloneStdoutJSON(t *testing.T) {
 	if err := runInit(root, io.Discard); err != nil {
 		t.Fatal(err)
 	}
+	canonicalCLIInitialize(t, root)
 	reviewExistingReportIndex(t, root)
 	var out bytes.Buffer
 	cmd := newRootCmd()
@@ -69,6 +70,7 @@ func TestReviewReportHumanOutputPropagatesWriteFailure(t *testing.T) {
 	if err := runInit(root, io.Discard); err != nil {
 		t.Fatal(err)
 	}
+	canonicalCLIInitialize(t, root)
 	reviewExistingReportIndex(t, root)
 	cmd := newRootCmd()
 	cmd.SetArgs([]string{"-C", root, "report"})
@@ -96,6 +98,7 @@ func TestReviewReportRequiresIndexWithoutCreatingIt(t *testing.T) {
 	if err := runInit(root, io.Discard); err != nil {
 		t.Fatal(err)
 	}
+	canonicalCLIInitialize(t, root)
 	path := filepath.Join(root, ".serenity", "index.db")
 	// init owns its metadata; reporting must not add a derived index.
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
@@ -119,6 +122,7 @@ func TestReviewReportDoesNotRecordSizeSamples(t *testing.T) {
 	if err := runInit(root, io.Discard); err != nil {
 		t.Fatal(err)
 	}
+	canonicalCLIInitialize(t, root)
 	reviewExistingReportIndex(t, root)
 	for range 2 {
 		cmd := newRootCmd()
@@ -149,6 +153,7 @@ func TestReviewReportExportPropagatesWriteFailure(t *testing.T) {
 	if err := runInit(root, io.Discard); err != nil {
 		t.Fatal(err)
 	}
+	canonicalCLIInitialize(t, root)
 	reviewExistingReportIndex(t, root)
 	cmd := newRootCmd()
 	cmd.SetArgs([]string{"-C", root, "report", "--export"})
@@ -172,6 +177,7 @@ func TestReviewReportCLIExportNoNetwork(t *testing.T) {
 	if err := runInit(root, io.Discard); err != nil {
 		t.Fatal(err)
 	}
+	canonicalCLIInitialize(t, root)
 	reviewExistingReportIndex(t, root)
 	trap := &reviewReportNetworkTrap{}
 	old := http.DefaultTransport

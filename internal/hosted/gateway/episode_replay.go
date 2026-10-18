@@ -246,7 +246,7 @@ func (g *Gateway) ReplayEpisodeDeletions(ctx context.Context, entries []contract
 
 // replayEpisodeCanonicalView keeps the cross-process read gate through the
 // transition to ordinary writer ownership. A missing legacy gate requires an
-// owner-qualified upgrade; startup must not silently initialize it as a reader.
+// owner-qualified upgrade; admitted recovery can explicitly own this write.
 func (g *Gateway) replayEpisodeCanonicalView(ctx context.Context, account, brain, state string, entries []contracts.DeletionEntry, seen map[string]contracts.DeletionEntry) (err error) {
 	path := filepath.Join(g.Pool.BrainsRoot(), brain)
 	// An absent non-ready brain with no external episode intent has no files
@@ -262,7 +262,23 @@ func (g *Gateway) replayEpisodeCanonicalView(ctx context.Context, account, brain
 	}
 	view, err := writer.AcquireCanonicalRead(root)
 	if err != nil {
-		return err
+		// Restores intentionally omit runtime state. Replay is an admitted
+		// canonical recovery writer, so it may explicitly initialize this one
+		// lock under ordinary writer ownership. No read API performs repair.
+		if _, missing := os.Lstat(filepath.Join(root, ".serenity", "canonical-view.lock")); !errors.Is(missing, os.ErrNotExist) {
+			return err
+		}
+		owner, ownErr := writer.AcquireBrain(root)
+		if ownErr != nil {
+			return ownErr
+		}
+		if closeErr := owner.Close(); closeErr != nil {
+			return closeErr
+		}
+		view, err = writer.AcquireCanonicalRead(root)
+		if err != nil {
+			return err
+		}
 	}
 	defer func() { err = errors.Join(err, view.Close()) }()
 	// Inspect the source namespace without initializing a runtime for unrelated

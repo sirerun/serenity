@@ -165,9 +165,14 @@ func runServeHTTP(cmd *cobra.Command, profile string, hasProfile bool) (runErr e
 		tokenSource = secrets.DaemonToken
 	}
 
-	serverConfig, err := loadServerConfig(flagRoot)
-	if err != nil {
-		return err
+	// A transport-only admission has no canonical owner. Keep its defaults
+	// rather than re-reading config that may have appeared after admission.
+	var serverConfig config.Server
+	if eng != nil {
+		serverConfig, err = loadServerConfig(flagRoot)
+		if err != nil {
+			return err
+		}
 	}
 	if err := refuseNonLoopbackBind(serverConfig, stderr); err != nil {
 		return err
@@ -295,21 +300,35 @@ func refuseNonLoopbackBind(sc config.Server, stderr io.Writer) error {
 // a failure there is a genuine infra problem and is returned as a hard
 // error, the same posture internal/cli/ask.go's own runAsk takes.
 func memoryTools(root string, stderr io.Writer) ([]mcp.Tool, func() error, *index.SQLite, *writer.Queue, error) {
-	_, err := config.Load(filepath.Join(root, config.FileName))
+	// Inspect existence only before ownership. Decoding canonical config before
+	// the lock could expose a partial maintenance replacement or select a false
+	// transport-only fallback. A named config permits ordinary writer upgrade;
+	// malformed config may therefore create minimal lock metadata, never hooks.
+	_, err := os.Lstat(filepath.Join(root, config.FileName))
 	if errors.Is(err, os.ErrNotExist) {
+		if _, stateErr := os.Lstat(filepath.Join(root, ".serenity")); !errors.Is(stateErr, os.ErrNotExist) {
+			read, readErr := writer.AcquireCanonicalRead(root)
+			if readErr != nil {
+				return nil, nil, nil, nil, readErr
+			}
+			defer func() { _ = read.Close() }()
+			// Reconfirm absence under the read gate before emitting fallback.
+			if _, checkErr := os.Lstat(filepath.Join(root, config.FileName)); !errors.Is(checkErr, os.ErrNotExist) {
+				return nil, nil, nil, nil, errors.New("serve: brain configuration changed during admission")
+			}
+		}
 		_, _ = fmt.Fprintf(stderr, "serve: %s is not a brain repo -- serving MCP transport with no MEMORY_VERBS tools\n", root)
 		return nil, nil, nil, nil, nil
 	}
 	if err != nil {
-		// A serenity.yml that exists but fails the strict decode (T24.8)
-		// is a real configuration error; degrading to "no tools" would
-		// hide the named unknown key the operator needs to see.
 		return nil, nil, nil, nil, fmt.Errorf("serve: %w", err)
 	}
-
 	owner, err := writer.AcquireBrain(root)
 	if err != nil {
 		return nil, nil, nil, nil, err
+	}
+	if _, err := config.Load(filepath.Join(root, config.FileName)); err != nil {
+		return nil, nil, nil, nil, errors.Join(fmt.Errorf("serve: %w", err), owner.Close())
 	}
 	// Only a confirmed brain gets a durability hook. A generic Git repo can
 	// serve MCP transport without MEMORY_VERBS and must not be modified.

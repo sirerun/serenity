@@ -811,5 +811,9 @@ writer-exclusive; ordinary writers use their existing writer-exclusive lock
 only, which already excludes maintenance mutation. Readers use view-shared only
 and are not promised snapshots against ordinary writes. View initialization is
 an owner write; missing legacy read state fails closed until a writer-qualified
-upgrade. No reader creates files. Existing readers that bypass this protocol
+upgrade. Ordinary readers create no files. Admitted episode replay is already a recovery
+writer and explicitly initializes an absent view lock only under ordinary writer
+ownership, before any canonical read; unsafe, busy or pending state cannot be
+repaired. This preserves restored runtime-free brain recovery. Existing readers
+that bypass this protocol
 must be drained/qualified before any installation capability can activate.
