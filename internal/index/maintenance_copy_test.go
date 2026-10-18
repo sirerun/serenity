@@ -102,8 +102,25 @@ func TestMaintenanceCopyAllowsCurrentDerivedSchemaAndPreservesOriginal(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Schema != "serenity.index-maintenance-cohort/v1" || len(result.SchemaSHA256) != 64 || len(result.EmptyRuntimeTables) != len(RuntimeTables) || result.SidecarEffects != "owned_copy_shm_may_change" || len(result.Before) == 0 || len(result.After) == 0 {
+	if result.Schema != "serenity.index-maintenance-cohort/v1" || len(result.SchemaSHA256) != 64 || len(result.EmptyRuntimeTables) != len(RuntimeTables) || result.SidecarEffects != "owned_copy_shm_may_change_empty_wal_may_appear" || len(result.Before) == 0 || len(result.After) == 0 {
 		t.Fatalf("bad qualification: %+v", result)
+	}
+	beforeWAL, afterWAL := false, false
+	for _, file := range result.Before {
+		if file.Name == "index.db-wal" {
+			beforeWAL = true
+		}
+	}
+	for _, file := range result.After {
+		if file.Name == "index.db-wal" {
+			afterWAL = true
+			if file.Bytes != 0 || file.SHA256 != "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" {
+				t.Fatal("qualified newly created WAL is not empty")
+			}
+		}
+	}
+	if beforeWAL || !afterWAL {
+		t.Fatal("fixture did not prove absent-to-empty WAL side effect")
 	}
 	encoded, _ := json.Marshal(result)
 	if strings.Contains(string(encoded), "retained derived data") || strings.Contains(string(encoded), path) || strings.Contains(string(encoded), "/independent/source/path") {
@@ -236,7 +253,12 @@ func TestMaintenanceCopyRefusesUnsafeBoundsAndCorruption(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "wal_mode":
-				if err := os.WriteFile(path+"-wal", nil, 0644); err != nil {
+				if err := os.WriteFile(path+"-wal", nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				// Explicit chmod makes the refusal independent of the test
+				// runner's restrictive umask.
+				if err := os.Chmod(path+"-wal", 0644); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -439,6 +461,53 @@ func TestMaintenanceCopyPreOpenRepinRefusesSubstitutedNamespace(t *testing.T) {
 			}
 			maintenanceAssertOriginal(t, original, originalBefore)
 			maintenanceAssertOriginal(t, foreign, foreignBefore)
+		})
+	}
+}
+
+func TestMaintenanceCopyRejectsNewNonemptyOrChangedExistingWAL(t *testing.T) {
+	for _, scenario := range []string{"new_nonempty", "existing_replaced", "existing_removed", "existing_changed"} {
+		t.Run(scenario, func(t *testing.T) {
+			original, engine := maintenanceTestOriginal(t)
+			if err := engine.Close(); err != nil {
+				t.Fatal(err)
+			}
+			before := maintenanceTestFamily(t, original)
+			path := maintenanceTestCopy(t, original)
+			if scenario != "new_nonempty" {
+				if err := os.WriteFile(path+"-wal", nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			observer := func(stage string) {
+				if stage != "closed" {
+					return
+				}
+				wal := path + "-wal"
+				switch scenario {
+				case "new_nonempty", "existing_changed":
+					if err := os.WriteFile(wal, []byte("unexpected WAL frames"), 0600); err != nil {
+						t.Fatal(err)
+					}
+				case "existing_removed":
+					if err := os.Remove(wal); err != nil {
+						t.Fatal(err)
+					}
+				case "existing_replaced":
+					retained := filepath.Join(maintenanceTestDirectory(t), "retained-wal")
+					if err := os.Rename(wal, retained); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(wal, nil, 0600); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			result, err := qualifyMaintenanceCopy(context.Background(), path, observer)
+			if result.Schema != "" || !errors.Is(err, ErrMaintenanceCopyUnqualified) {
+				t.Fatalf("unqualified WAL mutation admitted: %v", err)
+			}
+			maintenanceAssertOriginal(t, original, before)
 		})
 	}
 }
