@@ -660,8 +660,8 @@ resource ownership acquired. Other claims remain unchanged.
 fidelity: executable
 Acceptance: Cooperating CLI and hosted writers refuse a brain with an interrupted canonical maintenance marker while preserving the stable lock namespace; no activation or purge completion follows from this admission primitive.
 
-- [ ] T5.53 Implement persistent canonical maintenance admission  Owner: integration  kind: agent  stage: implement  deps: [T5.1]  acc: [existing writer ownership rejects present or unsafe maintenance markers after acquiring the unchanged stable lock; separately owned maintenance admission may retain the lock and atomically publish a bounded content-free marker; missing parent and symlink/partial marker cases fail closed without removing another owner state; no activation or production caller]
-- [ ] T5.54 Verify maintenance admission and real writer exclusion  Owner: integration  kind: agent  stage: verify  deps: [T5.53]  acc: [real filesystem and cooperating process tests prove ordinary CLI/pool refusal, lock contention, persistent interrupted refusal and exact owned cleanup semantics; affected race/vet/static and full Wazi checks pass]
+- [x] T5.53 Implement persistent canonical maintenance admission  Owner: integration  kind: agent  stage: implement  deps: [T5.1]  acc: [existing writer ownership rejects present or unsafe maintenance markers after acquiring the unchanged stable lock; separately owned maintenance admission may retain the lock and atomically publish a bounded content-free marker; missing parent and symlink/partial marker cases fail closed without removing another owner state; no activation or production caller]
+- [x] T5.54 Verify maintenance admission and real writer exclusion  Owner: integration  kind: agent  stage: verify  deps: [T5.53]  acc: [real filesystem and cooperating process tests prove ordinary CLI/pool refusal, lock contention, persistent interrupted refusal and exact owned cleanup semantics; affected race/vet/static and full Wazi checks pass]
 - [ ] T5.55 Independently review maintenance admission  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.54]  acc: [non-author exact base/head review covers complete implementation callers tests and contract; accepted findings fixed checked and re-reviewed without physical-completion claims]
 - [ ] T5.56 Merge reviewed maintenance admission  Owner: integration  kind: agent  stage: merge  deps: [T5.55]  acc: [current holds protections and checks permit guarded exact-reviewed-head rebase; no runtime activation]
 - [ ] T5.57 Verify landed maintenance admission  Owner: integration  kind: agent  stage: verify  deps: [T5.56]  acc: [reviewed tree correspondence main reachability and affected checks pass; full T5.2/T5.3/T1.3 remain open until integrated authority activation and controlled-copy evidence]
@@ -685,3 +685,27 @@ Second disjoint source batch: actual1 implementation outcome T5.58 under ceiling
 archive-lane owns only episodeerase code. Parent owns shared plan and integration.
 Explicit independent-path pins assert trusted maintenance provenance; this does
 not automatically infer legacy fact dependencies or authenticate external fences.
+
+### E9 — Prevent legacy export from disclosing retained episode history
+fidelity: executable
+Acceptance: The legacy full-Git export refuses archived episode material before emitting bytes, rather than presenting a history-retaining bundle as eligible exact episode export; ordinary episode-free export remains compatible.
+
+- [ ] T5.63 Fence legacy export against archived episode history  Owner: integration  kind: agent  stage: implement  deps: [T5.1]  acc: [actual account-owned legacy export refuses canonical archived episode sources or pending exclusion evidence before writing output, including stale disabled capture mode; no truncated or summary-only substitute, unknown publication or missing authority treated as safe; ordinary episode-free exports retain existing behavior]
+- [ ] T5.64 Verify export disclosure refusal  Owner: integration  kind: agent  stage: verify  deps: [T5.63]  acc: [actual gateway append/exclude and legacy export fixtures prove zero output for episode history before and after restart, no cross-brain effect, compatibility for ordinary brains and exact refusal on invalid episode inventory; affected race/vet/static and Wazi pass]
+- [ ] T5.65 Independently review export refusal  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.64]  acc: [non-author exact source and full caller/test/contract review closes accepted findings with affected checks and re-review; unsupported portable export stays false]
+- [ ] T5.66 Merge reviewed export refusal  Owner: integration  kind: agent  stage: merge  deps: [T5.65]  acc: [current holds protections and checks permit guarded exact-reviewed-head rebase without runtime activation]
+- [ ] T5.67 Verify landed export refusal  Owner: integration  kind: agent  stage: verify  deps: [T5.66]  acc: [reviewed tree equality main reachability and affected checks pass; full portable export and T5.3 remain incomplete]
+
+Third disjoint batch actual1 implementation outcome T5.63 under ceiling3. Existing
+legacy full-bundle export is not an episode-v1 exact-export capability; unsupported
+archive custody must refuse rather than disclose retained excluded history.
+
+T5.53-T5.54 qualification: revised production sourceb13720a1 passes full writer,
+pool and file-first/safety gate race suites on bounded Linux ARM64 Go1.26.9
+(50.023s,5.637s,2.806s), plus affected vet. Test-only cleanup-return correction
+2c61c023 passes focused maintenance race (4.377s), lint zero issues and scoped
+vulnerability analysis with zero called vulnerabilities. Six injected sync-failure
+cases and real subprocess/pool refusal are exercised. Initial pool assertion and
+five unchecked test cleanup returns were corrected; initial failure evidence is
+preserved. Independent MAINT-R1/R2 source re-review acceptedb13720a1; exact
+final documentation review remains required before merge. Full parent gates open.
