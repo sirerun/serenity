@@ -58,6 +58,7 @@ type Result struct {
 	PhysicalPurge             string      `json:"physical_purge"`
 	Derivatives               string      `json:"derivatives"`
 	RetainedSources           []SourcePin `json:"retained_sources,omitempty"`
+	RetainedPaths             []PathPin   `json:"retained_paths,omitempty"`
 }
 
 type budget struct{ used int }
@@ -110,10 +111,10 @@ func (b *budget) git(ctx context.Context, r *gitrun.Runner, input []byte, args .
 // candidate directory. Retry with the same source/fences has the same RetryID;
 // existing destinations are refused rather than trusted or overwritten.
 func Build(ctx context.Context, req Request) (Result, error) {
-	return build(ctx, req, nil)
+	return build(ctx, req, nil, nil)
 }
 
-func build(ctx context.Context, req Request, mixed *mixedSources) (result Result, err error) {
+func build(ctx context.Context, req Request, mixed *mixedSources, hosted *hostedSources) (result Result, err error) {
 	if !store.ValidEpisodeID(req.BrainID) || len(req.CurrentFences) == 0 || len(req.CurrentFences) > store.EpisodeMaxFences {
 		return result, ErrFence
 	}
@@ -162,12 +163,12 @@ func build(ctx context.Context, req Request, mixed *mixedSources) (result Result
 	if _, e = os.Lstat(destination); !errors.Is(e, os.ErrNotExist) {
 		return result, ErrUnsafe
 	}
-	if e = inspectSource(ctx, source); e != nil {
+	if e = inspectSourceMode(ctx, source, hosted != nil); e != nil {
 		return result, e
 	}
 	b := &budget{}
 	read := gitrun.CanonicalReadOnly(source)
-	head, e := qualifyGit(ctx, b, read, source)
+	head, e := qualifyGitMode(ctx, b, read, source, hosted != nil)
 	if e != nil {
 		return result, e
 	}
@@ -245,6 +246,16 @@ func build(ctx context.Context, req Request, mixed *mixedSources) (result Result
 			Pins           []SourcePin
 		}{result.RetryID, result.Schema, mixed.pins})
 	}
+	if hosted != nil {
+		result.Schema = "serenity.hosted-episode-erasure-candidate/v1"
+		result.Derivatives = "candidate_contains_canonical_episodes_and_explicitly_pinned_hosted_material_only"
+		result.RetainedPaths = append([]PathPin(nil), hosted.pins...)
+		result.RetryID = store.EpisodeHash(struct {
+			Prior  string
+			Schema string
+			Pins   []PathPin
+		}{result.RetryID, result.Schema, hosted.pins})
+	}
 	removed := map[string]bool{}
 	attachments := map[string]bool{}
 	oldBlobs := map[string]bool{}
@@ -254,7 +265,7 @@ func build(ctx context.Context, req Request, mixed *mixedSources) (result Result
 		if e = ctx.Err(); e != nil {
 			return Result{}, e
 		}
-		files, e := snapshot(ctx, b, read, commit)
+		files, e := snapshotMode(ctx, b, read, commit, hostedPathIf(hosted))
 		if e != nil {
 			return Result{}, e
 		}
@@ -262,7 +273,7 @@ func build(ctx context.Context, req Request, mixed *mixedSources) (result Result
 		if e != nil {
 			return Result{}, e
 		}
-		if e = materialize(root, files); e != nil {
+		if e = materializeMode(root, files, hostedPathIf(hosted)); e != nil {
 			return Result{}, e
 		}
 		p, e := store.LoadEpisodes(ctx, store.NewSourceStore(root))
@@ -275,7 +286,11 @@ func build(ctx context.Context, req Request, mixed *mixedSources) (result Result
 		if p.BrainID != "" && p.BrainID != req.BrainID {
 			return Result{}, ErrFence
 		}
-		if mixed == nil {
+		if hosted != nil {
+			if e = hosted.validate(root, files, p.SourceIDs, commit == head); e != nil {
+				return Result{}, e
+			}
+		} else if mixed == nil {
 			if len(files) != 2*len(p.SourceIDs) {
 				return Result{}, ErrUnsafe
 			}
@@ -337,7 +352,7 @@ func build(ctx context.Context, req Request, mixed *mixedSources) (result Result
 		if e = os.Mkdir(root, 0700); e != nil {
 			return Result{}, e
 		}
-		if e = materialize(root, files); e != nil {
+		if e = materializeMode(root, files, hostedPathIf(hosted)); e != nil {
 			return Result{}, e
 		}
 		if _, e = store.LoadEpisodes(ctx, store.NewSourceStore(root)); e != nil {
@@ -369,6 +384,9 @@ func build(ctx context.Context, req Request, mixed *mixedSources) (result Result
 			return Result{}, ErrUnsafe
 		}
 	}
+	if hosted != nil && len(hosted.seen) != len(hosted.pins) {
+		return Result{}, ErrUnsafe
+	}
 	if mixed != nil && len(mixed.seen) != len(mixed.pins) {
 		return Result{}, ErrUnsafe
 	}
@@ -383,7 +401,7 @@ func build(ctx context.Context, req Request, mixed *mixedSources) (result Result
 		return Result{}, e
 	}
 	// Recheck source cleanliness and identity before publishing preparation.
-	now, e := qualifyGit(ctx, b, read, source)
+	now, e := qualifyGitMode(ctx, b, read, source, hosted != nil)
 	if e != nil {
 		return Result{}, e
 	}
@@ -460,6 +478,9 @@ func safeDirectory(path string) (string, error) {
 }
 
 func inspectSource(ctx context.Context, root string) error {
+	return inspectSourceMode(ctx, root, false)
+}
+func inspectSourceMode(ctx context.Context, root string, hosted bool) error {
 	count := 0
 	var total int64
 	if st, e := os.Lstat(filepath.Join(root, ".git")); e != nil || !st.IsDir() {
@@ -507,6 +528,11 @@ func inspectSource(ctx context.Context, root string) error {
 		return ErrUnsafe
 	}
 	allowed := map[string]bool{"[core]": true, "repositoryformatversion = 0": true, "filemode = true": true, "filemode = false": true, "bare = false": true, "logallrefupdates = true": true, "ignorecase = true": true, "ignorecase = false": true, "precomposeunicode = true": true, "precomposeunicode = false": true}
+	if hosted {
+		allowed["[user]"] = true
+		allowed["name = Serenity Hosted"] = true
+		allowed["email = hosted@serenity.sire.run"] = true
+	}
 	for _, line := range strings.Split(string(cfg), "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" && !allowed[line] {
@@ -517,6 +543,9 @@ func inspectSource(ctx context.Context, root string) error {
 }
 
 func qualifyGit(ctx context.Context, b *budget, r *gitrun.Runner, root string) (string, error) {
+	return qualifyGitMode(ctx, b, r, root, false)
+}
+func qualifyGitMode(ctx context.Context, b *budget, r *gitrun.Runner, root string, hosted bool) (string, error) {
 	top, e := b.git(ctx, r, nil, "rev-parse", "--show-toplevel")
 	if e != nil || strings.TrimSpace(string(top)) != root {
 		return "", ErrUnsafe
@@ -524,6 +553,14 @@ func qualifyGit(ctx context.Context, b *budget, r *gitrun.Runner, root string) (
 	status, e := b.git(ctx, r, nil, "status", "--porcelain=v1", "--untracked-files=all", "--ignored")
 	if e != nil {
 		return "", e
+	}
+	if hosted {
+		if e = inspectRuntime(ctx, root); e != nil {
+			return "", e
+		}
+	}
+	if hosted && string(status) == "!! .serenity/\n" {
+		status = nil
 	}
 	if len(status) != 0 {
 		return "", ErrUnsafe
@@ -607,6 +644,9 @@ func validPath(path string) bool {
 	return len(parts) == 5 && parts[0] == "brain" && parts[1] == "sources" && store.ValidSourceSHA(parts[3]) && parts[2] == parts[3][:2] && (parts[4] == "bytes" || parts[4] == "meta.yaml")
 }
 func snapshot(ctx context.Context, b *budget, r *gitrun.Runner, commit string) (map[string][]byte, error) {
+	return snapshotMode(ctx, b, r, commit, validPath)
+}
+func snapshotMode(ctx context.Context, b *budget, r *gitrun.Runner, commit string, allowed func(string) bool) (map[string][]byte, error) {
 	tree, e := b.git(ctx, r, nil, "ls-tree", "-rz", "--full-tree", commit)
 	if e != nil {
 		return nil, e
@@ -622,7 +662,7 @@ func snapshot(ctx context.Context, b *budget, r *gitrun.Runner, commit string) (
 		}
 		header, path, ok := strings.Cut(string(entry), "\t")
 		f := strings.Fields(header)
-		if !ok || len(f) != 3 || f[0] != "100644" || f[1] != "blob" || !gitID(f[2]) || !validPath(path) {
+		if !ok || len(f) != 3 || f[0] != "100644" || f[1] != "blob" || !gitID(f[2]) || !allowed(path) {
 			return nil, ErrUnsafe
 		}
 		// A malformed historical tree may list the same full path twice.
@@ -642,8 +682,11 @@ func snapshot(ctx context.Context, b *budget, r *gitrun.Runner, commit string) (
 	return files, nil
 }
 func materialize(root string, files map[string][]byte) error {
+	return materializeMode(root, files, validPath)
+}
+func materializeMode(root string, files map[string][]byte, allowed func(string) bool) error {
 	for path, data := range files {
-		if !validPath(path) {
+		if !allowed(path) {
 			return ErrUnsafe
 		}
 		full := filepath.Join(root, filepath.FromSlash(path))

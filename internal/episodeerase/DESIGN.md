@@ -95,3 +95,30 @@ metadata and current fences are shared with Build. Every candidate is inactive,
 and physical purge remains unsupported. This does not complete T5.2 or T1.3:
 activation, journal authority, mixed hosted brains, controlled copies and restore
 interlocks require separate implementation and qualification.
+
+## Pinned hosted baseline and canonical files (T5.58)
+
+BuildHosted is a distinct inactive preparation API. It requires exact .gitignore
+bytes `.serenity/\n`, an exact serenity.yml pin present at HEAD (permitted absent
+in the initial provision commit), and complete PathPin inventories across all
+history for independently retained brain/entities, brain/claims and .dira/entries
+files. Paths use strict non-dot segments beneath those fixed namespaces. Pins
+are an external trusted independence assertion; ambiguous legacy supports remain
+unsupported without that qualification. Raw sources retain BuildMixed's exact
+content/metadata pin checks. Episode sources cannot become ordinary path pins.
+
+Every tracked file has a qualified per-mode path and non-executable regular Git
+mode. Missing, drifting, duplicate, unused and unknown pins refuse. The only
+additional local Git configuration permitted is provisioning's exact Serenity
+Hosted user identity. Only the root ignored `.serenity/` status entry is filtered;
+all other ignored/untracked state refuses. Runtime contents must be bounded
+regular non-executable files/directories with safe names, no links or devices
+(4096 entries, 32MiB); runtime bytes are never imported. Existing whole-tree
+inspection adds the shared aggregate limits. Runtime safety and source identity
+are rechecked before preparation publication. Exclusive maintenance ownership
+remains the caller's obligation, not a lock acquired by this API.
+
+The hosted manifest/retry schema is distinct and binds sorted path and raw source
+pins. Legacy APIs retain their path and manifest restrictions. There is no active
+pointer change, authoritative fence authentication, production caller or physical
+purge completion. Candidate preparation does not complete hosted cleanup/recovery.
