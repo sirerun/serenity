@@ -1,84 +1,104 @@
-# Same-release maintenance source preflight — T5.34
+# Same-release maintenance owner — T5.34–T5.36 source evidence
 
-The owner explicitly assigned source reconciliation and autonomous delivery.
-That resolves the former unknown-agent/source-ownership wait. It does not grant
-production maintenance, provider freeze/restore, credential reissue or capture.
+The owner assigned source reconciliation and autonomous delivery. The versioned
+owner is now `deploy/hosted/maintenance`: adopted generic mechanisms replace the
+formerly unversioned source boundary without creating a second active controller.
+This is source delivery authority, not production maintenance, provider freeze or
+restore, credential reissue, capture enrollment or a deployment permission.
 
-Fresh read-only observation on the existing host at2026-10-18T12:04:14Z confirms
-installed/highwater8, service source30919c2fe1581ff2c0e31475dc0b49cb2fd0926a,
-the expected executable/broker/config identities, normal hosted/broker services
-and backup timer active, backup service inactive, and no hold or pending state.
-Archive/workos/billing are false and synthetic enrollment is empty. The release
-lock was held shared; no SQLite, provider mutation or service control was used.
-The observation/request/result remain private. This is current identity evidence,
-not drained custody, current CLOSED authority or operational approval.
+## Current identity and provenance
 
-Read-only source reconciliation found no versioned same-release producer under
-deploy/hosted. The historical unrendered CONFIG=None generic runtime, unit/custody
-helpers, collectors and fixture proof renderer are adoptable source mechanisms.
-The selected donor filenames/hashes are recorded in maintenance/provenance.json;
-originals remain preserved. Rendered transition packets, credentials, approval
-files and saved observations are excluded. Any hardcoded private account,
-principal, host, CLI or namespace is parameterized rather than published.
+Read-only existing-host observation at2026-10-18T12:04:14Z found installed/highwater8,
+service source30919c2fe1581ff2c0e31475dc0b49cb2fd0926a, expected executable/broker/
+config identities, normal hosted/broker and timer active, backup inactive, and no
+hold/pending state. Archive/workos/billing are false; synthetic enrollment is
+empty. Observation held the release lock shared and used no SQLite, provider
+mutation or service control. Private inputs/results remain outside Git. This is
+identity evidence, not drained custody, current CLOSED authority or approval.
 
-The new versioned owner is deploy/hosted/maintenance. Its CONTRACT.md freezes
-same-release entry/closeout, exact unchanged service identity, finite root-owner
-packet boundary, typed unit custody, strict authenticated authority collector,
-new hold/readiness and distinct v3 fixture proof. Existing v1/v2 remain strict.
-An expired hold needs an exact fresh closeout-only authorization; restored
-capacity and broker readiness are qualified in explicit phases rather than
-misapplying CLOSED/no-lease checks after restart. Missing/unknown outcomes retain
-the hold. Old canonical data or an older binary are never restored as rollback.
+Generic donor filenames/hashes are in `maintenance/provenance.json`; originals
+remain preserved. Rendered old6-to8 packets, credentials, approvals, saved provider
+observations and private principal/host constants were excluded. CONTRACT.md
+freezes exact same-release identity, finite trusted owner admission, typed unit
+custody, authenticated read-only authority collection and a distinct v3 proof.
+Existing v1/v2 admission remains strict. Operational root code never queries
+SQLite or reads fixture credentials; those actions retain the service UID.
 
-Independent read-only review_maintenance accepted the exact contract before
-implementation dispatch, after expiry-recovery and authority-restoration fixes. Actual
-source/fixture checks, final independent review, guarded merge and landed
-verification follow T5.35–T5.39. Current host/systemd/service-UID/provider
-qualification and an exact fresh independently reviewed private operational
-packet remain required before T5.40/T3.14. No approval is inferred from a local
-manifest, an old release6-to8 field, an old receipt or the autonomous time window.
+## Qualified source
 
-## Source candidate and qualification boundary
+Code source: **cec1f80dddf30a18587aa6859401398a2fffc01e** on reviewed base
+378efd187d4c0871f063096bf2ed15b016036fa4. Exact Git archive SHA256:
+a2c8c0466261d7762e9d0f582896b7f6c2ce12f1b023a92ec031d3651951d8d5.
+Transfer integrity was checked before extracting into an isolated Linux workspace.
+Builds use existing Linux ARM64/Go1.26.9 capacity, GOMAXPROCS2, umask077 and private
+temporary/cache storage. No new runner or paid capacity was provisioned.
 
-Candidate d0b0a10a adds the inert renderer/runtime, read-only authority collector,
-v3 producer/consumers and a service-UID metadata-only snapshot mode. Independent
-review found MAINTOWN-R1/R2/R3 interrupted-entry/containment/torn-renewal gaps and
-MAINTOWN-R4 incomplete reserved-domain custody. The follow-up source includes
-verified no-child abort, durable reholding, hash-bound progress staging and
-immutable admission/completion snapshots, plus whole-domain exact-two custody.
-Final independent re-review and exact-source checks remain required.
+| Check | Observed result |
+| --- | --- |
+| Operator package race suite |45.896s, pass at c6e83342; operator source/tests byte-identical at cec1f80d |
+| Maintenance Python discovery |50 tests pass at cec1f80d,19.791s |
+| Legacy/operator Python discovery |24 tests pass at cec1f80d,0.101s |
+| Vet |Operator and synthetic helper pass |
+| Lint |0 issues after equivalent helper tagged-switch cleanup; exact helper bytes match final source |
+| Scoped vulnerability check |No vulnerabilities found |
+| CLI build |Pass; product Go inputs unchanged by continuation fixes |
+| Darwin arm64 operator cross-build |Pass; compilation only |
+| Real Linux service-UID/FD harness |16 synthetic cases pass against exact source-stamped operator |
+| Systemd transport |Read-only existing harmless service/timer on systemd255 qualified direct typed property shapes, Service.ControlGroup, Conditions ABI and manager envelopes; affected transport code unchanged |
 
-Preliminary Linux source checks: eval operator race44.517s; R4 snapshot-focused
-race4.314s; operator/helper builds pass;37 Python tests pass under owner-only
-temporary storage and umask077. The corrected runtime transport was exercised
-read-only against existing harmless service/timer units on systemd255: direct
-property JSON, Service.ControlGroup, ExecCondition arrays and method envelopes
-were confirmed. This is transport evidence, not installed Serenity unit custody.
-The R1–R3 source regression suite adds25 local runtime tests, all passing;
-final Linux aggregate qualification follows the exact frozen source.
+Exact source-stamped operator SHA256:
+182aa76e483868c03f48b1388c4b8193ce9fe10546d588286d3a914a633a601a.
+Separate synthetic helper SHA256:
+e59fd661806ed5f380092eb762dfbb684c1782b686f6fe6bdd4515916ac5ef0f.
+Harness SHA256:3a32b4898faed36eddc8c3067d91689f526867c9a73c01ca792efb455b2b3e74.
+The helper is never linked into the operational child.
 
-The actual Linux UID1800/GID1800/no-supplementary-group/six-FD harness passed16
-synthetic cases: eight wrong-custody refusals with unchanged data/private trees,
-prepare/replay and revoke/replay, active legacy adoption refused unchanged,
-then externally revoked-with-retained-custody legacy adoption, reissue and revoke.
-It uses the actual pure producer, strict Python proof validator and Go child,
-checks metadata snapshots, exact credential state, retained account/brain IDs,
-and parent lock ownership. The synthetic helper models external revocation only
-inside its new scratch store; operational adoption checks are unchanged. Source
-build identity was explicitly synthetic e40 with exact archive/artifact hashes
-retained privately. It is not a reviewed-release or provider-authority assertion.
-Final exact-source qualification is still pending. Real systemd wrapper/provider
-qualification, installation and all production operations remain separate.
+The actual UID1800/GID1800/no-supplementary-group/six-FD harness uses the real
+pure producer, strict Python proof validator and Go child with synthetic stores.
+It checks wrong source/expiry/lock/UID/schema/hash/boot refusals with unchanged
+data/private trees; prepare/replay, metadata snapshots and revoke/replay; active
+legacy adoption refused unchanged; then externally revoked-with-retained-custody
+legacy adoption, reissue and revoke. It verifies exact credential states, retained
+account/brain identities and parent lock ownership. External revocation is modeled
+only inside new synthetic scratch data; operational adoption checks are unchanged.
+Scratch removal is not a secure-erasure claim. Provider and real systemd wrapper
+qualification remain false in the receipt. The earlier working-tree build used
+explicit synthetic e40 identity; final qualification uses the actual code commit.
 
-Re-review continuation fixes also cover interrupted deterministic readiness,
-supervisor-specific guard prefixes and SHA-bound permit staging with immutable
-progress contexts. Pending permits can only be revoked after exact validation;
-unknown artifacts still refuse, while supervisor-exit containment stops owned
-units even if artifact reconciliation refuses.30 local runtime tests pass.
-At c6e83342, Linux operator race45.896s,45 maintenance Python and24 legacy adapter
-Python tests pass. Vet passes. After the synthetic helper's equivalent tagged-
-switch cleanup, lint reports0 issues, scoped vulnerability check reports none,
-CLI build passes and Darwin arm64 operator cross-compilation passes. These are
-source/fixture observations; final runtime re-review and Linux continuation
-checks are still pending. Go operator sources remain unchanged by continuation
-fixes, so prior relevant checks can carry forward by exact input comparison.
+## Independent review and recovery findings
+
+Non-author review accepted the contract before dispatch, then reviewed complete
+candidate/base diffs. MAINTOWN-R1–R4 are resolved at cec1f80d: verified no-child
+abort covers interrupted hold/readiness publication; late closeout reconstructs
+exact original hold and held startup after supervisor containment; zero/partial
+progress, completion, guard and permit writes reconcile under fresh authority;
+reserved-domain custody includes exactly the two manifest accounts.
+
+Hash-bound progress staging has immutable admission/completion dependencies.
+Readiness prefixes remain inactive. Old guard prefixes never cause an old
+supervisor reload. Permit contexts precede SHA-bound stages; pending grants are
+revoked, never promoted. Unknown artifacts remain untouched/refused, while
+containment still stops owned units. Expired grants never authorize new fixtures.
+R1–R3 continuation tests include real partial writes, renewal, supervisor-exit
+containment, unlink/directory-sync interruption and preserved unknown bytes.
+
+Source re-review cec1f80d is clean. Final evidence/plan review precedes source
+merge. T5.38/T5.39 are not pre-marked; exact guarded merge and landed tree/ancestry
+verification will be recorded in PR412 and the subsequent plan closeout.
+
+## CI and remaining operational gates
+
+PR412 Actions run39130459408 at c6e83342 had14 jobs with zero executed steps
+(13 failed, one cancelled). Test job117684385489 reports: “The job was not started
+because your account is locked due to a billing issue.” Main protection returns404;
+rulesets are empty. Existing ADR024 owner-authorized scoped local/Linux fallback
+applies without retries, paid capacity or policy changes. This is unavailable
+hosted CI, not a hosted pass. Ajent tools are unavailable; GitHub and available
+repository coordination records were checked, and trusted holds remain blocking.
+
+Actual current host/systemd/service-UID/provider qualification and an exact fresh
+independently reviewed finite private operational packet remain required for
+T5.40/T3.14. No old approval, synthetic source stamp, local flag or hash is current
+authority. No production operation occurred. Capture stays off; old binary/data
+is never restored as rollback. Full memory erasure/integration and the wider
+automatic-memory plan remain open.
