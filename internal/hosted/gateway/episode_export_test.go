@@ -194,6 +194,14 @@ func TestLegacyEpisodeExportMissingSourcePairsRemainUnsupported(t *testing.T) {
 				t.Fatal(err)
 			}
 			dir := sources.DirFor(src.SHA256)
+			originalBytes, err := os.ReadFile(filepath.Join(dir, "bytes"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			originalMeta, err := os.ReadFile(filepath.Join(dir, "meta.yaml"))
+			if err != nil {
+				t.Fatal(err)
+			}
 			switch scenario {
 			case "missing_bytes":
 				err = os.Remove(filepath.Join(dir, "bytes"))
@@ -210,6 +218,20 @@ func TestLegacyEpisodeExportMissingSourcePairsRemainUnsupported(t *testing.T) {
 			}
 			chainGit(t, root, "add", "--all")
 			chainGit(t, root, "commit", "-m", "unsupported source inventory")
+			// Keep HEAD valid so Pool.Acquire can open the ordinary brain. The
+			// export guard must still reject the retained invalid revision,
+			// rather than relying on an earlier runtime recovery failure.
+			if scenario == "unknown_kind" {
+				originalMeta = bytes.Replace(originalMeta, []byte("kind: unknown_raw_kind"), []byte("kind: file"), 1)
+			}
+			if err = os.WriteFile(filepath.Join(dir, "bytes"), originalBytes, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if err = os.WriteFile(filepath.Join(dir, "meta.yaml"), originalMeta, 0600); err != nil {
+				t.Fatal(err)
+			}
+			chainGit(t, root, "add", "--all")
+			chainGit(t, root, "commit", "-m", "restore valid current source inventory")
 			assertEpisodeExportDenied(t, g, account, brain)
 		})
 	}
