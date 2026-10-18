@@ -127,3 +127,18 @@ No docs/design.md exists; the existing RFC/ADR design routing is preserved.
 This is documentation delivery only; no runtime task, capture, model endpoint,
 provider spending, installation or deployment was started by this refinement.
 Validation, exact independent review and landing are recorded in the planning PR.
+
+## 2026-10-17 — Realign memory integration to current Gist and Zati owners
+
+Inspected fetched Gist main `b847a18abd5fa53df83a7facf3ccf44bd9998570` and Zati main `7ec4ec724bf4a90c37135cd883e525052d817c7d` against Serenity `7b2901cb38777f0c5432e292f4e451dc60aa1992`.
+Gist now ships public catalog/preparation/composition source and a selected
+versioned inbox consumer, plus a separately authorized hosted Library release.
+Zati's focused-worker RFC and revision49 continuation contracts have landed;
+its bounded runtime owner implementation and qualification remain open.
+Amended ADR027/028/030, RFC0002/0003, roadmap and six open plan rows so Serenity
+consumes current owner receipts rather than implementing a duplicate preparer
+or continuation engine. Preserved all91 task identities, statuses and owners,
+all85 unaffected rows, and full old/new amended rows in the alignment receipt.
+Current-memory UX work can proceed before archive activation; joined continuity
+still waits for the bridge and qualified Zati runtime. No source, enrollment,
+model, provider, installation, release or production mutation was performed.

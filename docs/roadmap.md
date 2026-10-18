@@ -1,5 +1,18 @@
 # Serenity roadmap
 
+## Current shared-memory integration direction — 2026-10-17
+
+Zati owns bounded conversation continuation and current task/effect state;
+Serenity owns acknowledged historical evidence, scoped retrieval and archive
+recovery. Gist supplies already implemented public catalog/preparation/composition
+APIs and has a separately scoped hosted Library release. The
+[shared-memory implementation plan](plans/shared-agent-memory-implementation-20261016.md)
+and [ADR030](adr/030-zati-context-and-gist-boundaries.md) track the bridge and
+UX/token/latency acceptance. The [pinned inspection](receipts/2026-10-17-gist-zati-alignment.md)
+distinguishes source/contract delivery from runtime and live acceptance.
+No capture gate or source task is completed by this documentation alignment.
+
+
 Living status for RFC 0001 (docs/rfc/0001-serenity.md). Plan of record: docs/plan.md (epic files under docs/plans/). Update on every merge, lane claim/finish, blocker, and decision.
 
 ## Current verification follow-up

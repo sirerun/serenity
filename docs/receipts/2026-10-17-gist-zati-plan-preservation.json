@@ -1,0 +1,42 @@
+{
+  "base": "7b2901cb38777f0c5432e292f4e451dc60aa1992",
+  "source": "docs/plans/shared-agent-memory-implementation-20261016.md",
+  "previous_sha256": "465f51de0e19ddc5be9eb77b8f39b5db0c9bc9b21689db8f46d3f10906c61e57",
+  "current_sha256": "dbe5856f8faa927e959f7df7935f3bfdcfed846744fcbc2aa2d1a612d9fafe16",
+  "task_count_before": 91,
+  "task_count_after": 91,
+  "unchanged_rows": 85,
+  "status_and_owner_changes": 0,
+  "changes": [
+    {
+      "id": "T2.2",
+      "before": "- [ ] T2.2 Integrate Zati first  Owner: integration  kind: agent  stage: implement  deps: [T2.1]  acc: [isolated Zati change budgets full requests and preserves intact tool pairs across the 200-message boundary using acknowledged checkpoint ranges with restart and cross-agent continuation tests]",
+      "after": "- [ ] T2.2 Qualify the archive bridge to Zati-owned continuation  Owner: integration  kind: agent  stage: implement  deps: [T2.1]  acc: [owning Zati E-FO0 contract and E-FO1 runtime receipts are pinned without advancing upstream tasks; map authorized canonical history ranges, complete current work and pending snapshots, actual artifact refs and checkpoints to acknowledged Serenity archive bytes with current scope and deletion fences; joined tests preserve whole-request budgets, intact tool pairs, original effect identity and cumulative limits across greater-than-200-message continuation, restart and cross-agent recovery; contract-only or local continuation never proves archive custody]"
+    },
+    {
+      "id": "T4.1",
+      "before": "- [ ] T4.1 Freeze the minimal consumer and context contract  Owner: integration  kind: agent  stage: author  deps: [T4.0]  acc: [Zati and Gist owners accept exact repository task and file ownership mappings; select a real skill with a referenced asset and admitted capability; document authorized memory and skill requests, byte and token bounds, cancellation, no-match, required versus optional context, exact version and receipt shapes; reuse RFC0002 and T2.2 plus Gist RFC002 sections17-18 and existing Zati context, skill import, grants and effect engine; material API conflicts are resolved before implementation]",
+      "after": "- [ ] T4.1 Reconcile current consumer and context contracts  Owner: integration  kind: agent  stage: author  deps: [T4.0]  acc: [pin current public Gist catalog/preparation/composition APIs and Zati revision49 continuation owners with exact repository task/file/receipt mappings; reuse selected zati/inbox-briefing v1.0.0 template and explicit v2.0.0 composition plus supported schemas and real admitted capability rather than rediscovering identity; freeze only uncovered memory/context interfaces, byte/token bounds, cancellation, no-match and required versus optional behavior; no duplicate preparer, archive builder or scheduler]"
+    },
+    {
+      "id": "T4.2",
+      "before": "- [ ] T4.2 Integrate one bounded context preparation path  Owner: zati-integration  kind: agent  stage: implement  deps: [T4.1, T2.2]  acc: [ZUX-01 and ZUX-04 use Zati existing context preparation with scoped relevant Serenity retrieval and Gist selection; independent lookups overlap within deadlines; complete request budget preserves tool pairs, required instructions and output reserve; checkpoint and fresh authorized worker tests pass; no second scheduler or unconditional recent-fact dump is introduced]",
+      "after": "- [ ] T4.2 Integrate one bounded context preparation path  Owner: zati-integration  kind: agent  stage: implement  deps: [T4.1]  acc: [ZUX-01 uses existing Zati context preparation and governed memory with the Gist-prepared complete skill/schema/guide bundle; independent authorized reads overlap within deadlines and whole-request budget preserves required instructions, tool pairs and output reserve; local continuation consumes qualified Zati E-FO1 runtime receipts without requiring archive activation; missing archive/continuation capability is explicit and full ZUX-04 waits for T2.2 and T4.7; no unconditional recent-fact dump or second preparation scheduler]"
+    },
+    {
+      "id": "T4.3",
+      "before": "- [ ] T4.3 Deliver the real Gist skill consumer through existing owners  Owner: gist-integration  kind: agent  stage: implement  deps: [T4.1]  acc: [ZUX-02 uses additive public library APIs with authorized-before-exposure discovery, exact immutable complete package and asset digest checks, explicit capability findings and existing Zati skill import and worker binding; existing Gist root library and hosted consumers remain compatible; private use needs no mandatory hosted registry or Serenity service dependency; external execution and credential custody stay with admitted executors; owning Gist and Zati task and source receipts are recorded]",
+      "after": "- [ ] T4.3 Consume the delivered Gist skill and composition owners  Owner: gist-integration  kind: agent  stage: implement  deps: [T4.1]  acc: [map Gist T-COMPOSE.8-.14 and owning Zati source receipts into ZUX-02 and identify only uncovered Serenity integration deltas; current consumer pin and exact immutable package, template/composition assets, explicit v1/v2 selection and existing Zati import/binding/effect path remain intact; preparation requires current positive task coverage and exact required capabilities, schemas and account/connection affinity, with explicit non-readiness and bounded partial evidence; authorized-before-exposure discovery uses embedded APIs or explicitly selected hosted catalog without mandatory Serenity backend, silent fallback or new Gist executor; source evidence is not real Gmail/provider acceptance]"
+    },
+    {
+      "id": "T4.6",
+      "before": "- [ ] T4.6 Compare retrieval strategies within measured need  Owner: serenity-retrieval  kind: agent  stage: verify  deps: [T4.2, T4.3]  acc: [same labeled ZUX tasks compare actual governed/episodic path with BM25 and configured hybrid vector/RRF where implemented, reporting the query-ranking gap and no-match/old-detail cases; actual serving support is checked before any EmbeddingGemma2 trial and no download/provider spend is implied; shared library or optional Serenity search backend is adopted only on measured benefit with exact packages and policy preserved; unqualified variants remain unavailable]",
+      "after": "- [ ] T4.6 Compare actual memory retrieval against scoped upstream evidence  Owner: serenity-retrieval  kind: agent  stage: verify  deps: [T4.2, T4.3]  acc: [same labeled ZUX tasks measure the actual governed/episodic memory call path with BM25/configured hybrid where implemented; reuse pinned Gist preparation and 10k/100k index receipts only for their named catalog workload, retaining failures and unavailable model/token data; local embedding adapter source qualification does not establish default adoption, cross-modal memory or Zati latency; revalidate runtime and numerical authority before any new trial; shared retrieval backend requires measured benefit and preserves exact packages, current policy and explicit fallback]"
+    },
+    {
+      "id": "T4.7",
+      "before": "- [ ] T4.7 Verify the integrated candidate and efficiency budgets  Owner: integration  kind: agent  stage: verify  deps: [T4.4, T4.5, T4.6]  acc: [all T4.1-T4.6 outcomes have owning repository source and test receipts; run existing Zati context/memory/Gist integration and skill tests plus affected Serenity retrieval tests and native preview scenarios on exact versions; wrong brain, malicious skill text, tampering, no-match, stale/revoked bindings, deletion during retrieval, timeout, restart, cancellation and unknown-effect cases pass; frozen T4.0 quality and cost/latency budgets pass or remain explicitly blocked; background capture cannot delay reply admission unnecessarily]",
+      "after": "- [ ] T4.7 Verify the integrated candidate and efficiency budgets  Owner: integration  kind: agent  stage: verify  deps: [T4.4, T4.5, T4.6, T2.2]  acc: [all T4.1-T4.6 outcomes and T2.2 archive bridge have owning source/test receipts; Zati E-FO1 runtime and source coverage, current full child/pending snapshots and fenced continuation are qualified before ZUX-04 acceptance; run existing context/memory/Gist composition/skill tests plus affected Serenity retrieval tests and native preview journeys; wrong brain, tampering, no-match, stale/revoked bindings, deletion, timeout, restart, cancellation and unknown effects pass; fixed T4.0 quality/cost/latency budgets pass or remain blocked; background capture does not unnecessarily delay replies]"
+    }
+  ]
+}

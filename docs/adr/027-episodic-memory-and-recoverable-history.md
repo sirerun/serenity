@@ -74,6 +74,17 @@ acceptance evidence. Source-linked summaries can be rebuilt, but stochastic
 model regeneration must not promise byte-identical output: preserve exact
 checkpoint bytes and model/source provenance when replaying a saved checkpoint.
 
+## Zati alignment — 2026-10-17
+
+For the first consumer, Zati RFC002/contracts revision49 owns live canonical
+history, bounded history ranges, complete work/pending snapshots and checkpoint
+installation. Serenity owns its separately acknowledged archive copies and can
+retain exact checkpoint bytes and coverage provenance. A stored summary cannot
+advance Zati work or prove current child/effect completeness. Local continuation
+and cross-host recovery are distinct acceptance gates; the latter needs actual
+archive custody and receiver qualification. [ADR030](030-zati-context-and-gist-boundaries.md)
+records this integration refinement without changing retention or erasure rules.
+
 ## Related decisions
 
 [RFC 0002](../rfc/0002-long-horizon-agent-memory.md),
