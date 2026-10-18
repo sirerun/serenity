@@ -368,10 +368,28 @@ Acceptance: RAM-01 through RAM-06 have separately source-bound and released rece
 - [ ] T5.46 Review exact client host and capture activation release  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.45, T2.8, T3.3, T4.10]  acc: [source-pinned signed service and qualified host/client artifacts, current erasure/restore/copy evidence, measured limits, existing target/cost/expiry grants, enrollment policy, canary bounds, pause and rollback are independently accepted before T3.4; absent permission blocks only the dependent operation and no new account/infrastructure is assumed]
 - [ ] T5.47 Verify enrolled automatic-memory and origin-loss recovery canary  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T3.4]  acc: [at actual released versions the scoped synthetic canary proves import plus concurrent capture, exact read/export, origin-loss receiver continuation, correction, pause/private, outage replay, deletion and cleanup; any subsequent real enrollment uses current owner-covered standing policy and qualified scope, never qualification data; consent, queued versus acknowledged/derived and unknown states are visible and failed canary parks the capability without silently replaying work]
 
+### E6 — Bounded mixed-source preparation increment
+fidelity: executable
+Acceptance: An additive inactive candidate can preserve explicitly pinned independent raw file/email/voice sources while removing excluded episode history; unsupported hosted config/derivatives/activation remain refused and full T5.2/T1.3 stay open.
+
+- [ ] T5.48 Implement pinned mixed raw-source candidate  Owner: mixed-source-lane  kind: agent  stage: implement  deps: [T5.1]  acc: [additive BuildMixed preserves exact content and metadata of explicitly trusted SHA256-pinned independent raw sources across actual Git history, refuses missing/duplicate/mismatched/unsupported pins, foreign brain and unknown derivatives, removes excluded episode/checkpoint objects, and keeps Build legacy refusal and no-activation/purge semantics]
+- [ ] T5.49 Verify mixed-source candidate increment  Owner: integration  kind: agent  stage: verify  deps: [T5.48]  acc: [meaningful real-Git tests cover mixed retained/deleted history, raw metadata identity and changed/missing/unused pins, unlisted/derived sources, preservation and object closure; focused package race/vet, format and Wazi checks pass on exact source under qualified bounds]
+- [ ] T5.50 Independently review mixed-source increment  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.49]  acc: [non-author exact base/head review covers full source/tests/contract/plan diff and no false authority or physical completion; accepted findings have tracked fixes and affected checks and re-review]
+- [ ] T5.51 Merge reviewed mixed-source increment  Owner: integration  kind: agent  stage: merge  deps: [T5.50]  acc: [current holds/protections/checks permit guarded exact-head rebase of the reviewed inactive-source candidate]
+- [ ] T5.52 Verify mixed-source source landing  Owner: integration  kind: agent  stage: verify  deps: [T5.51]  acc: [reviewed/landed tree and main reachability plus affected checks pass; broader mixed-derivative activation and managed-copy purge remain explicitly incomplete]
+
+This bounded source increment is one implementation member under ceiling3. It
+adds no production caller. Independent-source pins are a trusted maintenance
+caller assertion bound to exact data/metadata, not automatic provenance or fence
+authentication. Full T5.2 still requires active-pointer integration and controlled
+old-copy cleanup; T5.3 owns backup/export/device handling. A prepared candidate
+must never open reads, enable capture or become a physical erasure receipt.
+
 ## Batches and gates
 
 | Batch | Members | Owner | Prerequisites | Verification/review/merge/landed | Selection | Requested/actual size |
 | --- | --- | --- | --- | --- | --- | --- |
+| Pinned mixed raw-source preparation | T5.48 | mixed-source-lane, isolated source worktree | T5.1; explicit trusted pins, no hosted owner mutation | T5.49 / T5.50 / T5.51 / T5.52 | inherited current session | ceiling3 / actual1 implementation member |
 | Gated foundation | T1.1-T1.2, T2.0, T2.9-T2.10 | integration plus two completed implementation lanes | validated plan and frozen protocol | T1.8-T1.11 | gpt-6-astra / low | 5/5 |
 | Archive | T1.1-T1.3 | integration plus isolated archive-lane | validated plan and protocol freeze | T1.4-T1.7 | gpt-6-astra / low | 3/3 |
 | Client and hosts | T2.1-T2.4 | integration plus isolated client-lane | T1.7 | T2.5-T2.8 | gpt-6-astra / low | 4/4 |
