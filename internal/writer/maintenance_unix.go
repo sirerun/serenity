@@ -15,10 +15,19 @@ func maintenanceOpen(state *os.Root, name string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+	if !safeMaintenanceMarker(info) {
 		return nil, ErrMaintenancePending
 	}
-	return state.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	file, err := state.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	opened, err := file.Stat()
+	if err != nil || !safeMaintenanceMarker(opened) || !os.SameFile(info, opened) {
+		_ = file.Close()
+		return nil, ErrMaintenancePending
+	}
+	return file, nil
 }
 func maintenanceSync(state *os.Root) error {
 	dir, err := state.Open(".")

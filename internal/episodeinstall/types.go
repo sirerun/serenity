@@ -127,3 +127,19 @@ var componentNames = [...]string{".git", "brain", ".dira", "serenity.yml", ".git
 // filenames or disposable cleanup stages are admitted. Original/candidate/
 // old-index/inspection remain untouched by Install; replacement/new-index
 // entries move forward to canonical slots and old slots move to retained/.
+
+// InitialRecoveryAdmission explicitly authorizes current reconciliation of an
+// unattributed initial gate. It is never implied by ordinary cold admission.
+type InitialRecoveryAdmission interface {
+	ColdAdmission
+	CheckInitialRecovery(context.Context, InitialRecoveryPins) error
+}
+
+type InitialRecoveryPins struct {
+	AdmissionPins
+	Purpose      string                               `json:"purpose"`
+	Phase        string                               `json:"phase"`
+	RecordSHA256 string                               `json:"record_sha256"`
+	Original     writer.InitialMaintenanceObservation `json:"original"`
+	Current      writer.InitialMaintenanceObservation `json:"current"`
+}

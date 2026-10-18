@@ -208,7 +208,7 @@ func (m *BrainMaintenance) checkLocked(expected []byte) error {
 		return errors.Join(ErrMaintenancePending, err)
 	}
 	info, statErr := file.Stat()
-	if statErr != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
+	if statErr != nil || !safeMaintenanceMarker(info) {
 		return errors.Join(ErrMaintenancePending, statErr, file.Close())
 	}
 	raw, readErr := io.ReadAll(io.LimitReader(file, maintenanceMaxBytes+1))
@@ -216,7 +216,7 @@ func (m *BrainMaintenance) checkLocked(expected []byte) error {
 	if err = errors.Join(statErr, readErr, closeErr); err != nil {
 		return errors.Join(ErrMaintenancePending, err)
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || !os.SameFile(info, m.marker) || !bytes.Equal(raw, expected) {
+	if !safeMaintenanceMarker(info) || !os.SameFile(info, m.marker) || !bytes.Equal(raw, expected) {
 		return ErrMaintenanceIdentity
 	}
 	return nil

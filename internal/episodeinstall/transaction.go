@@ -445,7 +445,10 @@ func renameTransaction(ctx context.Context, from, to, label string, want invento
 	return nil
 }
 func transactionLayout(ctx context.Context, ref PreparedRef) error {
-	if checkChildren(ctx, ref.Directory, map[string]bool{"original": true, "old-index": true, "inspection": true, "candidate": true, "replacement": true, "new-index": true, "retained": true, headerName: true, progressName: true, installedName: true, progressName + ".pending": true, installedName + ".pending": true}) != nil {
+	if validateInitialRecordForInstall(ctx, ref) != nil {
+		return ErrUnqualified
+	}
+	if checkChildren(ctx, ref.Directory, map[string]bool{"original": true, "old-index": true, "inspection": true, "candidate": true, "replacement": true, "new-index": true, "retained": true, headerName: true, progressName: true, installedName: true, progressName + ".pending": true, installedName + ".pending": true, initialRecoveryName: true}) != nil {
 		return ErrUnqualified
 	}
 	for _, dir := range []string{"retained", "retained/.serenity"} {
