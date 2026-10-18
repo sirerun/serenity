@@ -985,8 +985,8 @@ issuer, arbitrary-marker takeover or physical-completion claim is introduced.
 - [x] T5.96 Integrate admitted prepared-install initial reconciliation  Owner: integration  kind: agent  stage: implement  deps: [T5.94]  acc: [pre-existing complete PreparedRef all copies and entire old canonical runtime index family are checked under locks with no transaction or retained progress; distinct fresh initial admission binds actual original current marker and header; deterministic durable record precedes append survives interruption and remains non-authority; subsequent ordinary Install compatibility and residual state are explicit]
 - [x] T5.97 Qualify full initial failure and caller integration  Owner: integration  kind: agent  stage: verify  deps: [T5.95, T5.96]  acc: [actual writer pool and installer tests cover absent zero partial full sync errors process death record interruption authority expiry A/B ambiguity unsafe metadata changed source index current fences and no-progress fences; no canonical mutation payload-copy disposal or physical-completion claim]
 - [x] T5.98 Independently review initial recovery candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.97]  acc: [non-author exact base head complete candidate review covers authority predecessor ambiguity crash phases lock and inode custody compatibility source tests and limitations; all findings fixed checked and re-reviewed]
-- [ ] T5.99 Merge reviewed initial recovery source  Owner: integration  kind: agent  stage: merge  deps: [T5.98]  acc: [current holds protections checks and qualified fallback permit exact-head guarded rebase without operational enrollment or authority widening]
-- [ ] T5.100 Verify landed initial recovery source  Owner: integration  kind: agent  stage: verify  deps: [T5.99]  acc: [reviewed landed tree correspondence main ancestry and affected source behavior are evidenced; full T5.2 T5.3 T1.3 physical cleanup current cold issuer and live qualification remain open]
+- [x] T5.99 Merge reviewed initial recovery source  Owner: integration  kind: agent  stage: merge  deps: [T5.98]  acc: [current holds protections checks and qualified fallback permit exact-head guarded rebase without operational enrollment or authority widening]
+- [x] T5.100 Verify landed initial recovery source  Owner: integration  kind: agent  stage: verify  deps: [T5.99]  acc: [reviewed landed tree correspondence main ancestry and affected source behavior are evidenced; full T5.2 T5.3 T1.3 physical cleanup current cold issuer and live qualification remain open]
 
 E14 is one coherent outcome, batch ceiling3, with disjoint writer primitive and
 prepared-install wrapper plus root-owned integration/qualification. T5.94/Wazi
@@ -1004,3 +1004,44 @@ conservative attempted-creation custody reporting is fixed and independently
 re-reviewed; final evidence review/merge/landed remain separate. See
 [the E14 receipt](../receipts/2026-10-18-initial-maintenance-recovery.md).
 Full T5.2/T5.3/T1.3 and operational cold issuer/live qualification remain open.
+
+E14 landed: PR413 guarded rebase merged2026-10-18T14:23:55Z at
+5fe6048e60bfb2c06a29cc8eced5047f0f95cf13. Reviewed377d8ee3 and landed full
+trees equal0d8a8ffbe8fa940ba1ec45a90d515bfa16c33ff3; main ancestry and unchanged
+qualified source/test inputs verified. Final independent review is clean.
+Actions39135703776 had14 failed jobs/0steps with explicitbillinglock annotation;
+ADR024 local/DGX fallback used without override. Exact-token E14 task/resource
+claims released; capture/production remain unchanged. Trusted CLOSED history
+issuance/non-test installer admission and controlled-copy disposition are still
+source gaps, alongside actual operational qualification; full T5.2/T5.3 stayopen.
+
+## E15 — Authenticated complete CLOSED deletion history
+
+Full T5.2/T5.3 requires current authoritative history while the namespace is
+CLOSED. Existing historical cuts do not cover no-cut or newer-exclusion cases,
+and Current/Inspect may mutate pending recovery. Proposed contract:
+[closed-maintenance-admission-v1](../contracts/closed-maintenance-admission-v1.md).
+E15 is the real history producer; dependent E16 must supply a non-test root-to-
+service-UID installer admission channel/caller. It does not substitute historical
+cuts, callback-only assertions or transport success for host coldness/installation.
+The foreign R-hosted-authority claim must be coordinated before protocol edits.
+
+- [ ] T5.101 Freeze complete CLOSED history and actual caller boundary  Owner: integration  kind: agent  stage: preflight  deps: [T5.100]  acc: [independent design review accepts strict no-mutation kernel and owner-only exact CLOSED observation and bounded history reader without requiring old cuts; exact API and ownership are frozen; E16 actual root-child fresh admission and full controlled-copy scope remain explicit]
+- [ ] T5.102 Implement observational kernel and existing-owner CLOSED protocol  Owner: authority-lane  kind: agent  stage: implement  deps: [T5.101]  acc: [resource ownership is verified before edits; actual independent witness body binds exact stable META state without resolving pending; owner-only closed_current and exclusive closed-position get list route before mutation or receipt recovery and recheck exact state before any response; old roles selectors and flows retain compatibility]
+- [ ] T5.103 Implement authenticated complete CLOSED history source  Owner: integration  kind: agent  stage: implement  deps: [T5.102]  acc: [existing authenticated owner client and trusted CLOSED source verify full bounded deletion history against exact current position epoch witness anchor with detached snapshot and fresh recheck; no cut or live lease required and no host coldness authority is invented]
+- [ ] T5.104 Qualify joined CLOSED current-history source  Owner: integration  kind: agent  stage: verify  deps: [T5.103]  acc: [real server client observer tests cover no-cut empty CLOSED newer exclusions historical expired cuts generations zero-mutation pending and state witness mismatch restored metadata role and phase refusal strict bounds missing malformed extra-tail objects paging and final drift cancellation; existing authority and maintenance regressions race static and Wazi pass]
+- [ ] T5.105 Independently review CLOSED history candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.104]  acc: [non-author exact complete base head review covers actual auth path kernel provider mutation counters data bounds complete history freshness downstream limits and all source evidence; findings fixed verified and re-reviewed]
+- [ ] T5.106 Merge reviewed CLOSED history source  Owner: integration  kind: agent  stage: merge  deps: [T5.105]  acc: [current exact head base holds protections required checks or qualified fallback allow guarded rebase without operational deployment or permission widening]
+- [ ] T5.107 Verify landed CLOSED history source  Owner: integration  kind: agent  stage: verify  deps: [T5.106]  acc: [reviewed landed tree equality main ancestry and affected source behavior evidenced; dependent E16 actual custody admission caller controlled copies full T5.2 T5.3 and live qualification remain open]
+
+E15 batch ceiling3: one authority kernel/wire/client owner and one CLOSED source
+owner with root-owned joined acceptance; resource/claims/Wazi/design gate precede
+implementation. Existing SDK/auth/authority infrastructure is reused. No provider
+mutation, live inspection, enrollment or installation is authorized by this plan.
+
+E15 design review accepts the complete current CLOSED observational producer,
+exact API and downstream actual-caller separation. Current resource read confirms
+R-hosted-authority=e3fdea936bf4432ecd08386facb833ceefa2ab0c, held for episode
+subject validation/gateway rollout (PR391 merged2026-10-16). The claim remains
+preserved; prior merge/timestamp does not establish ownership handoff. T5.101
+ownership admission stays open and protocol implementation has not started.
