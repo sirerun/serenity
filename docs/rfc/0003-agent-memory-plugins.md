@@ -86,7 +86,7 @@ per qualified host/version/surface; CLI, IDE, desktop and cloud may differ.
 | Cursor | Plugins/MCP; session, prompt, tool, response and preCompact hooks | Verify which events permit context injection and which expose complete history; event names do not establish identical semantics |
 | Codex | Plugin packaging, MCP and lifecycle hooks | Verify supported events, hook trust, transcript coverage and compact/resume behavior for each target surface/version |
 | Google Antigravity | Plugin hooks including SessionStart, PreInvocation, PostInvocation, tool hooks and Stop; documented transcript path | Verify full history/attachment access and restore injection; do not assume a dedicated PreCompact hook |
-| Zati | Runtime-owned context assembly and governed memory dispatch | Implement explicit checkpoint/archive/context consumption; existing 200-message refusal remains until replaced and tested |
+| Zati | Native context/effect owners and governed memory; revision49 continuation contract landed | Consume owned history/work/checkpoint boundaries and qualify Serenity archive bridge; E-FO1 runtime and greater-than-200-message behavior remain unqualified |
 
 References: [Claude hooks](https://code.claude.com/docs/en/hooks),
 [Cursor hooks](https://cursor.com/docs/hooks),
@@ -187,3 +187,23 @@ Required scenarios:
 Documents and packages can land incrementally, but the requested four-host
 coverage and cross-agent continuation remain explicit unfinished requirements
 until their receipts exist.
+
+## Native runtime and Gist alignment — 2026-10-17
+
+Zati is the native reference consumer, with its own authoritative continuation
+and composition owners, rather than a plugin host needing another model loop.
+The shared client handles only Serenity policy, stable event/archive identity,
+transport, queueing and diagnostics. Zati's existing context preparation combines
+bounded relevant memory with the Gist-prepared skill/tool bundle; callbacks and
+checkpoint commits retain actual runtime task/effect identity. Hooks for other
+hosts preserve their separate capability profiles and acceptance; Zati's contract
+does not establish their behavior or native thread restoration.
+
+A continuation handoff carries evidence, not activated worker staffing, current
+mandates, credentials, execution readiness or approvals. The receiver re-reads
+current work and required exact skill/composition pins through its own authority.
+Fresh unrelated chats remain distinct from linked segments of one conversation.
+Memory scopes still use authenticated brains/grants, not the Zati hierarchy.
+Capture, erasure and restart gates remain unchanged. See
+[ADR030](../adr/030-zati-context-and-gist-boundaries.md) and the
+[pinned alignment record](../receipts/2026-10-17-gist-zati-alignment.md).

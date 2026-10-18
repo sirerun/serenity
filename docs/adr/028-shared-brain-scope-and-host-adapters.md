@@ -62,6 +62,16 @@ IDE and cloud surfaces. One plugin working does not qualify the others.
 Rejected: per-agent permanent memory stores, installing MCP alone and calling
 it automatic memory, or an agent-selected project string as authorization.
 
+## Native Zati adapter refinement — 2026-10-17
+
+Zati consumes the shared Serenity policy/queue/archive protocol from its existing
+native context and effect owners. Do not install host hooks into Zati or make the
+shared client a continuation scheduler. Zati's own history/checkpoint contract
+provides source identity and current work state; export of those records is still
+subject to archive policy, scope and deletion qualification. Organizational
+reporting hierarchy, staffing and mandates never imply a broader brain grant.
+See [ADR030](030-zati-context-and-gist-boundaries.md).
+
 ## References
 
 [RFC 0003](../rfc/0003-agent-memory-plugins.md),

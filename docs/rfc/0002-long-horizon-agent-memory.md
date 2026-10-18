@@ -60,9 +60,11 @@ retains history, and cannot substitute for archive erasure. Current hosted
 backup/export limitations remain as documented in
 [operator forget notes](../operator/forget.md).
 
-Zati's current source rejects histories exceeding its 200-message admission
-bound. The host runtime must consume checkpointed context to remove that
-limit; a Serenity server or MCP connection alone does not change it.
+The initial Zati baseline rejects histories exceeding its 200-message admission
+bound. As of2026-10-17, Zati has landed a bounded continuation contract, not full
+runtime qualification. Its own messaging/tasks/execution owners implement that
+path; Serenity archive/context integration consumes the owner contract. Neither
+contract publication nor a Serenity MCP connection removes the limit. See §14.
 
 ## 3. Responsibilities and boundaries
 
@@ -373,3 +375,41 @@ permission, deletion, revocation and freshness checks. Evaluate task correctness
 full-request tokens/cost and interactive latency together before adopting more
 retrieval infrastructure. E4 in the existing implementation plan adds this
 acceptance without replacing archive, erasure or host qualification gates.
+
+## 14. Current upstream ownership and preparation — 2026-10-17
+
+[ADR030](../adr/030-zati-context-and-gist-boundaries.md) and the
+[pinned alignment record](../receipts/2026-10-17-gist-zati-alignment.md) supersede
+older first-consumer discovery assumptions. Zati's focused-worker organization
+RFC and revision49 continuation contract own incremental history ranges, complete
+work and pending snapshots, bounded checkpoint-model calls, validated source
+coverage and atomically fenced segment transitions. These preserve the same
+turn/task/run and effect identities, cumulative budgets and unknown outcomes.
+Source reauthorization and current owner snapshots precede summary disclosure
+and installation. Canonical live messages stay with Zati; Serenity archive
+copies become durable only after its own canonical acknowledgment.
+
+Keep local continuation and archive recovery separately usable and qualified.
+A runtime may compact its authorized local context while unqualified Serenity
+capture stays off. Loss-of-host recovery, cross-agent continuation and retained
+originals still require archive/import/export and receiver evidence. T2.2 now
+owns that bridge and consumes Zati's eventual E-FO1 runtime receipts. No second
+checkpoint builder or task scheduler is implemented in Serenity. Host summaries
+remain attributed evidence and cannot become current approved knowledge simply
+because a hierarchy or worker title says so.
+
+Gist's public preparation/composition packages already provide selected exact
+skills, required tool contracts, admitted bounded dataflow and derived guides.
+Zati verifies current task fit, schemas, account/connection affinity and effects;
+Serenity contributes relevant knowledge and source-linked experience about those
+exact versions. Catalog similarity never establishes task fit or memory access.
+Do not archive provider secrets or use old mailbox output to fake current tool
+readiness. Mail/content retention follows the actual producer consent and archive
+policy; using Gist does not itself authorize capture.
+
+Gist's hosted Library has separately scoped deployment receipts. It remains
+optional for this architecture and contributes no execution authority. Reuse its
+existing bounded catalog/index evaluation only within its published workload;
+Serenity episodic hybrid quality, full-request tokens, native latency and
+cross-agent safety require their own measurements. Optional embedding adapters
+stay caller-selected and evaluated, with no new adoption or launch from this RFC.
