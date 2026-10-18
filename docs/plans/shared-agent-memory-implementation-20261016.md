@@ -1045,3 +1045,29 @@ R-hosted-authority=e3fdea936bf4432ecd08386facb833ceefa2ab0c, held for episode
 subject validation/gateway rollout (PR391 merged2026-10-16). The claim remains
 preserved; prior merge/timestamp does not establish ownership handoff. T5.101
 ownership admission stays open and protocol implementation has not started.
+
+### Current Zati baseline discovery (T4.0 remains open)
+
+Read-only2026-10-18 discovery verifies Zati GitHub main and local main at
+8be54aedefa4c7dede2563854bb01bee79dea0e4, generated specification61. TaskContext
+and worker-origin catalog activation are source declarations, not fresh installed
+runtime permission or UX qualification. The owning focused-worker plan is r87
+and still distinguishes independently reviewed retirement from its remaining
+merge/landed gates; Serenity does not advance those foreign tasks. Older bridge
+revision50/56 notes are historical and cannot pin a future candidate unchanged.
+
+The standard installed desktop bundle reports1.0.5/build6, with no running desktop
+process observed. A controller process is present but its source revision is not
+proven by available binary build metadata. No Zati process, account, credential,
+configuration or file was changed. Historical native/demo/source receipts do not
+establish a current matched app/controller/source baseline. Representative task
+selection, samples, whole-request token/cost boundaries, quality thresholds and
+p50/p95 measurements remain unqualified; no performance savings is claimed and
+T4.0 stays open.
+
+Ready-set audit also confirms T5.41 needs a durable server-owned v2 enrollment
+record/evidence resolver and actual serialized HTTP publication checks across
+hosted schema/assembly/gateway owners. Existing synthetic v1 remains unchanged;
+a false-only capability response or callback-only enrollment resolver would not
+satisfy it. Shared schema ownership and T5.42 safety/client dependencies remain
+real gates; this audit does not authorize a schema change or real enrollment.
