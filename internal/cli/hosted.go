@@ -15,6 +15,7 @@ import (
 
 	"github.com/sirerun/serenity/internal/hosted/admintransport"
 	"github.com/sirerun/serenity/internal/hosted/backup"
+	"github.com/sirerun/serenity/internal/hosted/episodemaintenance"
 	"github.com/sirerun/serenity/internal/hosted/plans"
 	"github.com/sirerun/serenity/internal/hosted/runtimebroker"
 	"github.com/sirerun/serenity/internal/hosted/service"
@@ -127,7 +128,11 @@ func runHosted(ctx context.Context, configPath, socket string) (resultErr error)
 			resultErr = errors.Join(resultErr, admission.Close(cleanup))
 		}
 	}()
-	deps := service.LifecycleDependencies{Journal: admission.Journal(), BuildSHA: admission.BuildSHA(), Startup: admission, JournalReader: admission.Reader(), StartupLease: admission, AuthorizedBackup: func(ctx context.Context, destination string) error {
+	maintenance, err := episodemaintenance.NewSource(admission.Authority(), admission.Lease)
+	if err != nil {
+		return err
+	}
+	deps := service.LifecycleDependencies{EpisodeMaintenance: maintenance, Journal: admission.Journal(), BuildSHA: admission.BuildSHA(), Startup: admission, JournalReader: admission.Reader(), StartupLease: admission, AuthorizedBackup: func(ctx context.Context, destination string) error {
 		return backup.CreateAuthorized(ctx, cfg.DataDir, destination, admission.BuildSHA(), admission.Authority(), admission.Lease())
 	}}
 	s, err = service.NewWithDependencies(ctx, cfg, false, os.Stderr, deps)
