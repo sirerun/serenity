@@ -177,3 +177,13 @@ and existing restore integration race checks, affected vet, lint and scoped
 vulnerability checks pass on bounded Linux ARM64 Go1.26.9. Full mixed hosted
 activation, authoritative fences, managed copies and real capture remain open.
 Independent source review and guarded landing are tracked by T5.50-T5.52.
+
+## 2026-10-18 — Authority-bound inactive preparation
+
+Connected the existing authenticated authority cut to an internal hosted
+preparation operation. Exact external/local fence matching, fresh authority
+checks and owned staging remain inactive. Review corrections make residual
+copies attributable and pool/queue cancellation retain ownership until work
+drains. Bounded Linux ARM64 race, vet, lint, vulnerability and CLI build checks
+pass; no production, installed-runtime or physical-purge acceptance is claimed.
+See the authority-bound preparation receipt for evidence and remaining gates.
