@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/sirerun/serenity/internal/writer"
 	"github.com/spf13/cobra"
 
 	"github.com/sirerun/serenity/internal/config"
@@ -161,6 +162,11 @@ func runCheckClaudeHook(ctx context.Context, root string, in io.Reader, stderr i
 	if strings.TrimSpace(input.Plan) == "" {
 		return claudeGateResult("", fmt.Errorf("ExitPlanMode requires nonblank tool_input.plan"), stderr)
 	}
+	read, err := writer.AcquireCanonicalRead(root)
+	if err != nil {
+		return claudeGateResult("", err, stderr)
+	}
+	defer func() { _ = read.Close() }()
 	var output bytes.Buffer
 	checkErr := runCheck(ctx, root, input.Plan, "", true, &output)
 	var result struct {

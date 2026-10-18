@@ -50,6 +50,14 @@ func installBrainOwnership(cmd *cobra.Command) {
 	run := cmd.RunE
 	cmd.RunE = func(c *cobra.Command, args []string) (runErr error) {
 		if commandReadsBrain(c) {
+			// Hook envelopes may describe unrelated events and must no-op without
+			// touching a brain. Their actual check acquires its own read lease.
+			if c.CommandPath() == "serenity check" {
+				hook, _ := c.Flags().GetBool("claude-hook")
+				if hook {
+					return run(c, args)
+				}
+			}
 			read, err := writer.AcquireCanonicalRead(flagRoot)
 			if err != nil {
 				return err

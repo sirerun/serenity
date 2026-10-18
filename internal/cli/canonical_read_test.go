@@ -147,3 +147,36 @@ func TestMemoryToolsConfigAdmissionDoesNotBypassMaintenance(t *testing.T) {
 		})
 	}
 }
+
+func TestCanonicalHookUnrelatedEventNeedsNoBrain(t *testing.T) {
+	brain := t.TempDir()
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"-C", brain, "check", "--claude-hook"})
+	cmd.SetIn(strings.NewReader(`{"hook_event_name":"SessionStart"}`))
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	if err := cmd.Execute(); err != nil || out.Len() != 0 {
+		t.Fatalf("unrelated hook: %v %q", err, out.String())
+	}
+	if _, err := os.Stat(filepath.Join(brain, ".serenity")); !os.IsNotExist(err) {
+		t.Fatal("unrelated hook initialized state")
+	}
+	canonicalCLIInitialize(t, brain)
+	maintenance, err := writer.BeginBrainMaintenance(brain, canonicalCLIIdentity())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = maintenance.Close() }()
+	cmd = newRootCmd()
+	cmd.SetArgs([]string{"-C", brain, "check", "--claude-hook"})
+	cmd.SetIn(strings.NewReader(`{"hook_event_name":"PreToolUse","tool_name":"ExitPlanMode","tool_input":{"plan":"private"}}`))
+	out.Reset()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	err = cmd.Execute()
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != 2 || !strings.Contains(out.String(), "canonical brain repo view unavailable") {
+		t.Fatalf("hook maintenance refusal: %v %q", err, out.String())
+	}
+}
