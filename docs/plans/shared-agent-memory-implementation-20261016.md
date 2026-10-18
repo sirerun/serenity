@@ -353,7 +353,7 @@ Acceptance: RAM-01 through RAM-06 have separately source-bound and released rece
 - [ ] T5.31 Independently review Google Antigravity adapter  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.30]  acc: [non-author reviews exact base/head and complete Google Antigravity installer/adapter/shared-client diff, actual host evidence and exclusions; findings are fixed, checked and re-reviewed before merge]
 - [ ] T5.32 Merge reviewed Google Antigravity adapter  Owner: integration  Est: TBD  kind: agent  stage: merge  deps: [T5.31]  acc: [current repository holds/checks/protections permit guarded rebase of exactly reviewed Google Antigravity head; no runtime enablement or unrelated config changes]
 - [ ] T5.33 Verify landed Google Antigravity adapter  Owner: google-antigravity-adapter  Est: TBD  kind: agent  stage: verify  deps: [T5.32]  acc: [reviewed/landed source correspondence and reachability plus affected Google Antigravity configuration and conformance checks pass; exact distributable version and honest supported-surface matrix are recorded, installation/deployment remaining separate]
-- [ ] T5.34 Freeze current-state maintenance and operational source boundary  Owner: integration  Est: TBD  kind: agent  stage: preflight  deps: [T3.25]  acc: [current existing host/release and custody owner confirms the missing same-release maintenance entry/closeout route and exact source/task mapping, rollback and finite authority envelope; no old release6-to8 fields, credentials or expired approval is reused to fabricate current readiness]
+- [x] T5.34 Freeze current-state maintenance and operational source boundary  Owner: integration  Est: TBD  kind: agent  stage: preflight  deps: [T3.25]  acc: [current existing host/release and custody owner confirms the missing same-release maintenance entry/closeout route and exact source/task mapping, rollback and finite authority envelope; no old release6-to8 fields, credentials or expired approval is reused to fabricate current readiness]
 - [ ] T5.35 Complete current-state maintenance through its authoritative owner  Owner: release-owner  Est: TBD  kind: agent  stage: implement  deps: [T5.34]  acc: [existing private release/custody owner implements same-release entry/closeout and safe operator adoption/reissue with preserved journals and cold fences; source receipts and operator schema bind actual current state without manual policy changes or code duplication in Serenity]
 - [ ] T5.36 Verify current-state operational producer and consumer  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.35]  acc: [actual supported producer/consumer fixture exercises current-state entry, interrupted closeout, rollback, wrong source/custody/pair, uncertain outcome and exact recorded credentials; no production mutation or synthetic-source seal is passed off as current authority]
 - [ ] T5.37 Independently review maintenance source candidate  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.36]  acc: [separate reviewer records owning repository base/head, T5.34-T5.36 scope and complete custody/recovery contract; fixes and affected re-review close all blockers before source merge]
@@ -888,9 +888,9 @@ Acceptance: An internal bounded library prepares complete inactive original/cand
 - [x] T5.88 Install and resume the fixed component transaction  Owner: archive-integration  kind: agent  stage: implement  deps: [T5.86, T5.85]  acc: [actual root/marker/header/ref ownership and fresh cold admission revalidate entire source after handoff, durable intents precede each fixed canonical/index rename and parent sync, actual old/new/staged slot inventories reconcile interrupted progress forward only, unknown or stale states retain gate and copies; completion rechecks installed Git/fences/index/authority, persists evidence and leaves marker held without physical receipt]
 - [x] T5.89 Join prepared candidate and transaction custody  Owner: integration  kind: agent  stage: implement  deps: [T5.87, T5.88]  acc: [exact shared types and actual hosted episode/provision/pool fixtures join durable preparation to marker acquisition installation and fresh-authority resume; changed source or relevant fence state cannot be adopted, independent retained bytes and lexical search remain usable, private copy inventory and all default-off capabilities remain truthful without production owner wiring]
 - [x] T5.90 Verify prepared installation and recovery  Owner: integration  kind: agent  stage: verify  deps: [T5.89]  acc: [real Git/filesystem and process death around every rename and critical fsync prove held reader/writer fences idempotent actual-slot reconciliation stable inodes no rollback resurrection or unknown-copy deletion; stale pins roots header namespace controls authority cancellation bounds and cleanup failures refuse; bounded affected race vet lint build secret/full Wazi checks pass with source and host evidence separated]
-- [ ] T5.91 Independently review full installation candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.90]  acc: [non-author exact candidate review covers preparation original proof Git/index reconstruction cold-admission contract component phases forward recovery crash/copy tests and partial-marker limitations; accepted findings fixed checked and re-reviewed before merge]
-- [ ] T5.92 Merge reviewed installation library  Owner: integration  kind: agent  stage: merge  deps: [T5.91]  acc: [current holds protections and checks permit exact-reviewed-head guarded rebase with no production capability or capture activation]
-- [ ] T5.93 Verify landed installation library  Owner: integration  kind: agent  stage: verify  deps: [T5.92]  acc: [reviewed tree equality and main reachability with affected checks are recorded; unknown partial markers actual cold owner integration derivative/control expansion all managed copies and full T5.2/T5.3/T1.3 remain open]
+- [x] T5.91 Independently review full installation candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.90]  acc: [non-author exact candidate review covers preparation original proof Git/index reconstruction cold-admission contract component phases forward recovery crash/copy tests and partial-marker limitations; accepted findings fixed checked and re-reviewed before merge]
+- [x] T5.92 Merge reviewed installation library  Owner: integration  kind: agent  stage: merge  deps: [T5.91]  acc: [current holds protections and checks permit exact-reviewed-head guarded rebase with no production capability or capture activation]
+- [x] T5.93 Verify landed installation library  Owner: integration  kind: agent  stage: verify  deps: [T5.92]  acc: [reviewed tree equality and main reachability with affected checks are recorded; unknown partial markers actual cold owner integration derivative/control expansion all managed copies and full T5.2/T5.3/T1.3 remain open]
 
 Batch ceiling3, three compatible implementation outcomes with disjoint preparation,
 transaction and root-owned shared types/integration. T5.86 must freeze those seams
@@ -916,3 +916,29 @@ The existing consumer is transition-shaped and needs an explicit same-release
 contract. Exact current host/pair identity, finite authority, independent contract
 review and owning source qualification remain required before T5.34 completion
 or T5.35 implementation. No live maintenance or authority is inferred.
+
+E13 T5.91–T5.93 completed: independent non-author final review7acd56f8 on7f93325
+is clean; guarded rebase PR411 landed378efd187d4c0871f063096bf2ed15b016036fa4.
+Exact full-tree equality and origin/main reachability pass. Actions39125402030
+was billing-locked14jobs/zero steps; protection404/rulesets[] and ADR024 fallback
+recorded without policy/capacity changes. No runtime activation or copy disposal.
+All E13 task claims released by exact token after landing.
+
+T5.34 source boundary frozen on378efd18: owner assignment resolves source
+reconciliation; fresh read-only existing-host observation12:04:14UTC verifies
+release/highwater8/service30919 with unchanged default-off arrangement and no
+hold/pending. Independent review_maintenance accepts exact versioned
+deploy/hosted/maintenance/CONTRACT.md after closing expiry-renewal and provider-
+restore phase gaps. Generic donor hashes preserve provenance; no rendered
+private packet or live authority is adopted. This closes source preflight only.
+
+T5.35 outcome batch (ceiling3; one owning implementation task with three disjoint
+source assignments): runtime/unit/authority collector; v3 producer and existing
+Python/Go consumers; root renderer/provenance/joined integration. Root is the
+owner-assigned release/source integration owner; adopted generic mechanisms in
+the versioned hosted subtree replace the formerly unversioned source boundary,
+without a second active controller or copied private deployment packet. T5.36
+checks joined actual fixtures and strict v1/v2 regressions; T5.37 independent
+exact final review precedes T5.38 guarded merge and T5.39 landed verification.
+T5.40 and live T3.14 remain gated on a fresh exact operational packet/review,
+actual host/UID/systemd/FD/provider qualifications and finite authority.

@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "purpose": "generic-source-adoption-provenance",
+  "donors": [
+    {
+      "donor": "activation_runtime.py",
+      "sha256": "d6043280ce0e9d43ad11e57d032dab319f43bf9b12c8594bdcb0ffa99c3de418",
+      "status": "historical generic source; selected mechanisms only; no rendered private inputs"
+    },
+    {
+      "donor": "test_activation_runtime.py",
+      "sha256": "1cbc5eb0e8bfc563e5b6d71615ed309fc2bf129c0dec668c2c3245fe64c64ba4",
+      "status": "historical generic source; selected mechanisms only; no rendered private inputs"
+    },
+    {
+      "donor": "collect_fixture_binding.py",
+      "sha256": "d54dd58efbb274ed68c79cc6ba086aba816dfcd666f196836b24f46a2a50e9a9",
+      "status": "historical generic source; selected mechanisms only; no rendered private inputs"
+    },
+    {
+      "donor": "collect_cold_ready.py",
+      "sha256": "c31f6a3e037eec18f423d5d127010716c0d4425e62482d44bd07eb4e49ed7985",
+      "status": "historical generic source; selected mechanisms only; no rendered private inputs"
+    },
+    {
+      "donor": "render_fixture_proof.py",
+      "sha256": "2de722528b94ef1d26cafc5e0c8236dfb1592c1ed86b8f95962085cfa67ab4e9",
+      "status": "historical generic source; selected mechanisms only; no rendered private inputs"
+    },
+    {
+      "donor": "test_fixture_proof.py",
+      "sha256": "c37ab1ad0b4350cb81763df5440f74ba5b5104686b06b76a2c3a532690517287",
+      "status": "historical generic source; selected mechanisms only; no rendered private inputs"
+    },
+    {
+      "donor": "observe_closed_authority.py",
+      "sha256": "ebe324d541e9b799fa08698c8553c8e3824e4ec138e4cdf98cd2a0e3db71589a",
+      "status": "historical generic source; selected mechanisms only; no rendered private inputs"
+    },
+    {
+      "donor": "test_closed_observer.py",
+      "sha256": "c7e3c3aa8729811473a1f3b19eb9c8e7980478899fa87dcb4ccd8a97a6542260",
+      "status": "historical generic source; selected mechanisms only; no rendered private inputs"
+    },
+    {
+      "donor": "fixture-release-linux/helper.go",
+      "sha256": "7bd3525161fbc6d1abe13af8f2ca2905ee42dfc5a54a2c151931f5a3c722e17f",
+      "status": "Synthetic source only; adapted read-only verification supports reissued credentials; no private artifacts imported."
+    },
+    {
+      "donor": "fixture-release-linux/qualify_linux.py",
+      "sha256": "7e962a89843b812b60224c82c81e776d9138e39dabc9df59765608ecb10fabcf",
+      "status": "Synthetic source only; adapted explicit source identities and v3 producer/Python/Go child qualification; no live authority."
+    }
+  ],
+  "source_authority": "Owner assigned current integration session; historical originals preserved outside repository. This receipt is not deployment or live authority."
+}
