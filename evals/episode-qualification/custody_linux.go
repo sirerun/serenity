@@ -38,46 +38,84 @@ type maintenanceHold struct {
 	Timestamp             int64  `json:"timestamp"`
 }
 
+type sameReleaseHold struct {
+	Version               int    `json:"version"`
+	Purpose               string `json:"purpose"`
+	OperationID           string `json:"operation_id"`
+	ManifestSHA256        string `json:"manifest_sha256"`
+	ServiceSource         string `json:"service_source"`
+	ExecutableSHA256      string `json:"executable_sha256"`
+	StateSHA256           string `json:"state_sha256"`
+	BrokerSHA256          string `json:"broker_sha256"`
+	ConfigSHA256          string `json:"config_sha256"`
+	Supervisor            string `json:"supervisor"`
+	Stage                 string `json:"stage"`
+	BackupTimerPriorState string `json:"backup_timer_prior_state"`
+	Phase                 string `json:"phase"`
+	Timestamp             int64  `json:"timestamp"`
+	ExpiresAt             int64  `json:"expires_at"`
+}
+
 type custodyProof struct {
-	SourceAdoption           *sourceAdoption `json:"source_adoption,omitempty"`
-	Version                  int             `json:"version"`
-	Purpose                  string          `json:"purpose"`
-	Operation                string          `json:"operation"`
-	Nonce                    string          `json:"nonce"`
-	IssuedAt                 int64           `json:"issued_at"`
-	ExpiresAt                int64           `json:"expires_at"`
-	BootID                   string          `json:"boot_id"`
-	UID                      int             `json:"uid"`
-	GID                      int             `json:"gid"`
-	ToolSource               string          `json:"tool_source"`
-	ToolPath                 string          `json:"tool_path"`
-	ToolSHA256               string          `json:"tool_sha256"`
-	WrapperPath              string          `json:"wrapper_path"`
-	WrapperSHA256            string          `json:"wrapper_sha256"`
-	RuntimePath              string          `json:"runtime_path"`
-	RuntimeSHA256            string          `json:"runtime_sha256"`
-	ServiceBinaryPath        string          `json:"service_binary_path"`
-	ServiceBinarySHA256      string          `json:"service_binary_sha256"`
-	ServiceSource            string          `json:"service_source"`
-	ConfigPath               string          `json:"config_path"`
-	ConfigSHA256             string          `json:"config_sha256"`
-	DataDir                  string          `json:"data_dir"`
-	PrivateDir               string          `json:"private_dir"`
-	AccountCap               int             `json:"account_cap"`
-	HoldSHA256               string          `json:"hold_sha256"`
-	Hold                     maintenanceHold `json:"hold"`
-	StateSHA256              string          `json:"state_sha256"`
-	ReadySHA256              string          `json:"ready_sha256"`
-	AuthorityReceiptPath     string          `json:"authority_receipt_path"`
-	AuthorityReceiptSHA256   string          `json:"authority_receipt_sha256"`
-	AuthorityGeneratorPath   string          `json:"authority_generator_path"`
-	AuthorityGeneratorSHA256 string          `json:"authority_generator_sha256"`
-	LockDevice               uint64          `json:"lock_device"`
-	LockInode                uint64          `json:"lock_inode"`
-	AuthorityScope           string          `json:"authority_scope"`
-	AuthoritySessionID       string          `json:"authority_session_id"`
-	ConcurrencyTarget        string          `json:"concurrency_target"`
-	SchemaSHA256             string          `json:"schema_sha256"`
+	MaintenanceHold          *sameReleaseHold `json:"maintenance_hold,omitempty"`
+	SourceAdoption           *sourceAdoption  `json:"source_adoption,omitempty"`
+	Version                  int              `json:"version"`
+	Purpose                  string           `json:"purpose"`
+	Operation                string           `json:"operation"`
+	Nonce                    string           `json:"nonce"`
+	IssuedAt                 int64            `json:"issued_at"`
+	ExpiresAt                int64            `json:"expires_at"`
+	BootID                   string           `json:"boot_id"`
+	UID                      int              `json:"uid"`
+	GID                      int              `json:"gid"`
+	ToolSource               string           `json:"tool_source"`
+	ToolPath                 string           `json:"tool_path"`
+	ToolSHA256               string           `json:"tool_sha256"`
+	WrapperPath              string           `json:"wrapper_path"`
+	WrapperSHA256            string           `json:"wrapper_sha256"`
+	RuntimePath              string           `json:"runtime_path"`
+	RuntimeSHA256            string           `json:"runtime_sha256"`
+	ServiceBinaryPath        string           `json:"service_binary_path"`
+	ServiceBinarySHA256      string           `json:"service_binary_sha256"`
+	ServiceSource            string           `json:"service_source"`
+	ConfigPath               string           `json:"config_path"`
+	ConfigSHA256             string           `json:"config_sha256"`
+	DataDir                  string           `json:"data_dir"`
+	PrivateDir               string           `json:"private_dir"`
+	AccountCap               int              `json:"account_cap"`
+	HoldSHA256               string           `json:"hold_sha256"`
+	Hold                     maintenanceHold  `json:"hold"`
+	StateSHA256              string           `json:"state_sha256"`
+	ReadySHA256              string           `json:"ready_sha256"`
+	AuthorityReceiptPath     string           `json:"authority_receipt_path"`
+	AuthorityReceiptSHA256   string           `json:"authority_receipt_sha256"`
+	AuthorityGeneratorPath   string           `json:"authority_generator_path"`
+	AuthorityGeneratorSHA256 string           `json:"authority_generator_sha256"`
+	LockDevice               uint64           `json:"lock_device"`
+	LockInode                uint64           `json:"lock_inode"`
+	AuthorityScope           string           `json:"authority_scope"`
+	AuthoritySessionID       string           `json:"authority_session_id"`
+	ConcurrencyTarget        string           `json:"concurrency_target"`
+	SchemaSHA256             string           `json:"schema_sha256"`
+}
+
+// V3 has a distinct hold wire shape; no legacy previous/target fields are
+// accepted or manufactured. Legacy marshaling remains byte-shape compatible.
+func (p custodyProof) MarshalJSON() ([]byte, error) {
+	type wire custodyProof
+	raw, err := json.Marshal(wire(p))
+	if err != nil {
+		return nil, err
+	}
+	if p.Version != 3 {
+		return raw, nil
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil {
+		return nil, errRefused
+	}
+	delete(fields, "hold")
+	return json.Marshal(fields)
 }
 
 var bootPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
@@ -140,11 +178,28 @@ func pinFD(fd int, private bool) (rootPin, []byte, error) {
 func (p custodyProof) valid(now int64, source string, uid, gid int) bool {
 	switch p.Version {
 	case 1:
+		if p.MaintenanceHold != nil {
+			return false
+		}
 		if p.Purpose != "serenity-episode-fixture-offline-v1" || p.SourceAdoption != nil || (p.Operation != "prepare" && p.Operation != "reissue" && p.Operation != "revoke") {
 			return false
 		}
 	case 2:
+		if p.MaintenanceHold != nil {
+			return false
+		}
 		if p.Purpose != "serenity-episode-fixture-offline-v2" || p.Operation != "adopt-source" || p.SourceAdoption == nil || !p.SourceAdoption.valid(source) {
+			return false
+		}
+	case 3:
+		if p.Purpose != "serenity-episode-fixture-offline-v3" || p.MaintenanceHold == nil || p.Hold != (maintenanceHold{}) {
+			return false
+		}
+		if p.Operation == "adopt-source" {
+			if p.SourceAdoption == nil || !p.SourceAdoption.valid(source) {
+				return false
+			}
+		} else if p.SourceAdoption != nil || (p.Operation != "prepare" && p.Operation != "reissue" && p.Operation != "revoke") {
 			return false
 		}
 	default:
@@ -161,15 +216,33 @@ func (p custodyProof) valid(now int64, source string, uid, gid int) bool {
 			return false
 		}
 	}
-	for _, s := range []string{p.Nonce, p.ToolSHA256, p.WrapperSHA256, p.RuntimeSHA256, p.ServiceBinarySHA256, p.ConfigSHA256, p.HoldSHA256, p.StateSHA256, p.ReadySHA256, p.AuthorityReceiptSHA256, p.AuthorityGeneratorSHA256, p.SchemaSHA256, p.Hold.ManifestSHA256, p.Hold.ExecutableSHA256, p.Hold.PreviousStateSHA256, p.Hold.ExpectedStateSHA256} {
+	for _, s := range []string{p.Nonce, p.ToolSHA256, p.WrapperSHA256, p.RuntimeSHA256, p.ServiceBinarySHA256, p.ConfigSHA256, p.HoldSHA256, p.StateSHA256, p.ReadySHA256, p.AuthorityReceiptSHA256, p.AuthorityGeneratorSHA256, p.SchemaSHA256} {
 		if !hexDigest.MatchString(s) {
 			return false
 		}
 	}
-	for _, s := range []string{p.ToolPath, p.WrapperPath, p.RuntimePath, p.ServiceBinaryPath, p.ConfigPath, p.DataDir, p.PrivateDir, p.AuthorityReceiptPath, p.AuthorityGeneratorPath, p.Hold.Stage} {
+	for _, s := range []string{p.ToolPath, p.WrapperPath, p.RuntimePath, p.ServiceBinaryPath, p.ConfigPath, p.DataDir, p.PrivateDir, p.AuthorityReceiptPath, p.AuthorityGeneratorPath} {
 		if !filepath.IsAbs(s) || filepath.Clean(s) != s || strings.ContainsAny(s, "\x00\r\n\t ") {
 			return false
 		}
+	}
+
+	if p.Version == 3 {
+		h := p.MaintenanceHold
+		for _, hash := range []string{h.OperationID, h.ManifestSHA256, h.ExecutableSHA256, h.StateSHA256, h.BrokerSHA256, h.ConfigSHA256} {
+			if !hexDigest.MatchString(hash) {
+				return false
+			}
+		}
+		return bootPattern.MatchString(p.BootID) && h.Version == 1 && h.Purpose == "serenity.fixture-maintenance/v1" && h.Stage == "/var/lib/serenity-release/maintenance-"+h.OperationID && h.Supervisor == "serenity-release-"+h.OperationID+".service" && h.Phase == "maintenance-ready" && h.BackupTimerPriorState == "active" && h.Timestamp > 0 && h.Timestamp <= p.IssuedAt && h.ExpiresAt >= p.ExpiresAt && h.ExpiresAt-h.Timestamp <= 3600 && h.ServiceSource == p.ServiceSource && sourceID.MatchString(h.ServiceSource) && h.ExecutableSHA256 == p.ServiceBinarySHA256 && h.StateSHA256 == p.StateSHA256 && h.ConfigSHA256 == p.ConfigSHA256 && p.RuntimePath == h.Stage+"/runtime.py" && p.ConfigPath == "/etc/serenity/hosted.json" && p.LockDevice > 0 && p.LockInode > 0
+	}
+	for _, hash := range []string{p.Hold.ManifestSHA256, p.Hold.ExecutableSHA256, p.Hold.PreviousStateSHA256, p.Hold.ExpectedStateSHA256} {
+		if !hexDigest.MatchString(hash) {
+			return false
+		}
+	}
+	if !filepath.IsAbs(p.Hold.Stage) || filepath.Clean(p.Hold.Stage) != p.Hold.Stage || strings.ContainsAny(p.Hold.Stage, "\x00\r\n\t ") {
+		return false
 	}
 	return bootPattern.MatchString(p.BootID) && supervisorPattern.MatchString(p.Hold.Supervisor) && strings.HasPrefix(p.Hold.Stage, "/var/lib/serenity-release/") && p.Hold.Timestamp > 0 && p.ConfigPath == "/etc/serenity/hosted.json" && p.Hold.Phase == "maintenance-ready" && p.Hold.BackupTimerPriorState == "active" && p.Hold.Timestamp <= p.IssuedAt && p.StateSHA256 == p.Hold.PreviousStateSHA256 && p.RuntimePath == p.Hold.Stage+"/activation-runtime.py" && sourceID.MatchString(p.ServiceSource) && sourceID.MatchString(p.Hold.Source) && p.LockDevice > 0 && p.LockInode > 0
 }
@@ -232,10 +305,22 @@ func newCustody(args []string) (*custody, error) {
 		return nil, errRefused
 	}
 	p := c.proof
-	var h maintenanceHold
-	if strictDecode(documents[1], &h) != nil || h != p.Hold || hashBytes(documents[1]) != p.HoldSHA256 || hashBytes(documents[2]) != p.StateSHA256 || hashBytes(documents[3]) != p.ConfigSHA256 {
+
+	if hashBytes(documents[1]) != p.HoldSHA256 || hashBytes(documents[2]) != p.StateSHA256 || hashBytes(documents[3]) != p.ConfigSHA256 {
 		return nil, errRefused
 	}
+	if p.Version == 3 {
+		var h sameReleaseHold
+		if uniqueManifestJSON(documents[1]) != nil || strictDecode(documents[1], &h) != nil || p.MaintenanceHold == nil || h != *p.MaintenanceHold {
+			return nil, errRefused
+		}
+	} else {
+		var h maintenanceHold
+		if strictDecode(documents[1], &h) != nil || h != p.Hold {
+			return nil, errRefused
+		}
+	}
+
 	var config struct {
 		DataDir    string   `json:"data_dir"`
 		AccountCap int      `json:"account_cap"`
@@ -496,9 +581,17 @@ func executeCustody(args []string) (result error) {
 	if err != nil {
 		return errRefused
 	}
-	defer func() { refuseCleanup(&result, db.Close()) }()
+	defer func() {
+		refuseCleanup(&result, db.Close())
+		if p.Version == 3 {
+			refuseCleanup(&result, c.check())
+		}
+	}()
 	e := engine{store: db, privateDir: p.PrivateDir, target: target{DataDir: p.DataDir, ConfigPath: p.ConfigPath, ConfigSHA256: p.ConfigSHA256, Source: p.ToolSource, AccountCap: p.AccountCap}, authorize: c.check, custodyEpoch: p.HoldSHA256}
 	if e.operate(ctx, p.Operation) != nil || c.check() != nil {
+		return errRefused
+	}
+	if p.Version == 3 && p.Operation == "revoke" && e.verifyFinalRevoke(ctx) != nil {
 		return errRefused
 	}
 	return nil

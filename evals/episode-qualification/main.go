@@ -1,5 +1,6 @@
 // Command episode-qualification is a separate offline operator child. It is not
-// linked into the hosted binary. Only inherited root custody enables execution.
+// linked into the hosted binary. Fixture mutation requires inherited root custody;
+// the separate metadata-only mode produces observations without mutation authority.
 package main
 
 import (
@@ -38,7 +39,12 @@ func run(args []string, out io.Writer) int {
 	return 0
 }
 
-func main() { os.Exit(run(os.Args[1:], os.Stderr)) }
+func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--fixture-custody-snapshot" {
+		os.Exit(snapshotCLI(os.Args[1:], os.Stdout))
+	}
+	os.Exit(run(os.Args[1:], os.Stderr))
+}
 
 // Stable content-free child outcomes. A replacement proof is fresh authority,
 // never evidence that a previous publication did or did not happen.

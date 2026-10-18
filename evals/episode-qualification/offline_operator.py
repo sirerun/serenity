@@ -36,6 +36,8 @@ ADOPTION_OUTCOMES = {
     6: 'UNCERTAIN: source adoption publication may have committed; retain hold and reconcile manifest; do not replay as success',
 }
 HOLD_FIELDS = set('manifest_sha256 executable_sha256 source previous_state_sha256 expected_state_sha256 supervisor stage backup_timer_prior_state phase timestamp'.split())
+V3_HOLD_FIELDS = set('version purpose operation_id manifest_sha256 service_source executable_sha256 state_sha256 broker_sha256 config_sha256 supervisor stage backup_timer_prior_state phase timestamp expires_at'.split())
+V3_PROOF_FIELDS = PROOF_FIELDS - {'hold'} | {'maintenance_hold'}
 AUTHORITY_FIELDS = set('version observed_at status active_leases concurrency session_id scope boot_id hold_sha256 state_sha256 request_ids concurrency_target'.split())
 
 
@@ -188,11 +190,16 @@ class Adapter:
         finally:
             bus.close()
 
+    def hold(self):
+        return self.proof['maintenance_hold' if self.proof['version'] == 3 else 'hold']
+
     def check_time(self):
         p, now = self.proof, int(self.clock())
         require(type(p['issued_at']) is int and type(p['expires_at']) is int)
         require(0 <= now - p['issued_at'] <= 300 and 0 < p['expires_at'] - now <= 300)
         require(0 < p['expires_at'] - p['issued_at'] <= 300)
+        if p['version'] == 3:
+            require(now < self.hold()['expires_at'] and p['expires_at'] <= self.hold()['expires_at'])
 
     def validate_proof(self, data):
         p = decode(data)
@@ -201,14 +208,23 @@ class Adapter:
             require(set(p) == PROOF_FIELDS)
             require(p['purpose'] == 'serenity-episode-fixture-offline-v1')
             require(p['operation'] in ('prepare', 'reissue', 'revoke'))
-        else:
-            require(p['version'] == 2 and set(p) == PROOF_FIELDS | {'source_adoption'})
+        elif p['version'] == 2:
+            require(set(p) == PROOF_FIELDS | {'source_adoption'})
             require(p['purpose'] == 'serenity-episode-fixture-offline-v2' and p['operation'] == 'adopt-source')
             adoption = p['source_adoption']
             require(type(adoption) is dict and set(adoption) == ADOPTION_FIELDS)
             require(isinstance(adoption['old_source'], str) and re.fullmatch('[0-9a-f]{40}', adoption['old_source']))
             require(isinstance(adoption['old_manifest_sha256'], str) and re.fullmatch('[0-9a-f]{64}', adoption['old_manifest_sha256']))
             require(adoption['old_source'] != p['tool_source'])
+        else:
+            adoption = p.get('source_adoption')
+            require(p['version'] == 3 and p['purpose'] == 'serenity-episode-fixture-offline-v3')
+            require(p['operation'] in ('prepare', 'reissue', 'revoke', 'adopt-source'))
+            require(set(p) == (V3_PROOF_FIELDS | {'source_adoption'} if p['operation'] == 'adopt-source' else V3_PROOF_FIELDS))
+            if p['operation'] == 'adopt-source':
+                require(type(adoption) is dict and set(adoption) == ADOPTION_FIELDS)
+                require(isinstance(adoption['old_source'], str) and re.fullmatch('[0-9a-f]{40}', adoption['old_source']) and adoption['old_source'] != p['tool_source'])
+                require(isinstance(adoption['old_manifest_sha256'], str) and re.fullmatch('[0-9a-f]{64}', adoption['old_manifest_sha256']))
         for key in PROOF_FIELDS:
             if key.endswith('_sha256') or key == 'nonce':
                 require(isinstance(p[key], str) and re.fullmatch('[0-9a-f]{64}', p[key]))
@@ -223,18 +239,34 @@ class Adapter:
             require(type(p[key]) is int and p[key] > 0)
         require(p['config_path'] == HOSTED and p['private_dir'] != p['data_dir'])
         require(not p['private_dir'].startswith(p['data_dir'].rstrip('/') + '/brains/'))
-        h = p['hold']
-        require(isinstance(h, dict) and set(h) == HOLD_FIELDS)
-        require(h['phase'] == 'maintenance-ready' and h['backup_timer_prior_state'] == 'active')
-        require(type(h['timestamp']) is int and 0 < h['timestamp'] <= p['issued_at'])
-        for key in HOLD_FIELDS:
-            if key.endswith('_sha256'):
-                require(isinstance(h[key], str) and re.fullmatch('[0-9a-f]{64}', h[key]))
-        require(re.fullmatch('[0-9a-f]{40}', h['source']))
-        require(absolute(h['stage']) and h['stage'].startswith('/var/lib/serenity-release/'))
-        require(re.fullmatch('serenity-release-[a-zA-Z0-9_.-]+\\.service', h['supervisor']))
-        require(p['runtime_path'] == h['stage'] + '/activation-runtime.py')
-        require(p['state_sha256'] == h['previous_state_sha256'])
+        h = p['maintenance_hold' if p['version'] == 3 else 'hold']
+        if p['version'] == 3:
+            require(type(h) is dict and set(h) == V3_HOLD_FIELDS)
+            require(type(h['version']) is int and h['version'] == 1 and h['purpose'] == 'serenity.fixture-maintenance/v1')
+            require(isinstance(h['operation_id'], str) and re.fullmatch('[0-9a-f]{64}', h['operation_id']))
+            for key in V3_HOLD_FIELDS:
+                if key.endswith('_sha256'):
+                    require(isinstance(h[key], str) and re.fullmatch('[0-9a-f]{64}', h[key]))
+            require(h['stage'] == '/var/lib/serenity-release/maintenance-' + h['operation_id'])
+            require(h['supervisor'] == 'serenity-release-' + h['operation_id'] + '.service')
+            require(h['phase'] == 'maintenance-ready' and h['backup_timer_prior_state'] == 'active')
+            require(type(h['timestamp']) is int and 0 < h['timestamp'] <= p['issued_at'])
+            require(type(h['expires_at']) is int and 0 < h['expires_at'] - h['timestamp'] <= 3600 and p['expires_at'] <= h['expires_at'])
+            require(h['service_source'] == p['service_source'] and h['executable_sha256'] == p['service_binary_sha256'])
+            require(h['state_sha256'] == p['state_sha256'] and h['config_sha256'] == p['config_sha256'])
+            require(p['runtime_path'] == h['stage'] + '/runtime.py')
+        else:
+            require(isinstance(h, dict) and set(h) == HOLD_FIELDS)
+            require(h['phase'] == 'maintenance-ready' and h['backup_timer_prior_state'] == 'active')
+            require(type(h['timestamp']) is int and 0 < h['timestamp'] <= p['issued_at'])
+            for key in HOLD_FIELDS:
+                if key.endswith('_sha256'):
+                    require(isinstance(h[key], str) and re.fullmatch('[0-9a-f]{64}', h[key]))
+            require(re.fullmatch('[0-9a-f]{40}', h['source']))
+            require(absolute(h['stage']) and h['stage'].startswith('/var/lib/serenity-release/'))
+            require(re.fullmatch('serenity-release-[a-zA-Z0-9_.-]+\\.service', h['supervisor']))
+            require(p['runtime_path'] == h['stage'] + '/activation-runtime.py')
+            require(p['state_sha256'] == h['previous_state_sha256'])
         self.proof = p
         self.check_time()
         return p
@@ -248,15 +280,38 @@ class Adapter:
         module = importlib.util.module_from_spec(spec)
         exec(compile(data, p['runtime_path'], 'exec'), module.__dict__)
         self.module = module
-        c, h = module.CONFIG, p['hold']
-        for key in ('manifest_sha256', 'executable_sha256', 'previous_state_sha256', 'expected_state_sha256', 'supervisor', 'stage'):
-            require(c[key] == h[key])
-        require(c['commit'] == h['source'] and c['previous_commit'] == p['service_source'])
-        require(c['previous_executable_sha256'] == p['service_binary_sha256'])
-        require(c['hosted_config_sha256'] == p['config_sha256'])
+        c, h = module.CONFIG, self.hold()
+        if p['version'] == 3:
+            require(type(c) is dict and c['manifest_sha256'] == h['manifest_sha256'])
+            require(c['operation_id'] == h['operation_id'] and c['stage'] == h['stage'] and c['supervisor'] == h['supervisor'])
+            require(c['purpose'] == h['purpose'] and c['version'] == h['version'] and c['expires_at'] == h['expires_at'])
+            service, fixture = c['service'], c['fixture']
+            require(service['source'] == p['service_source'] == h['service_source'])
+            require(service['binary_path'] == p['service_binary_path'] and service['binary_sha256'] == p['service_binary_sha256'] == h['executable_sha256'])
+            require(service['state_sha256'] == p['state_sha256'] and service['config_sha256'] == p['config_sha256'] and service['broker_sha256'] == h['broker_sha256'])
+            for key in ('tool_source', 'tool_path', 'tool_sha256', 'wrapper_path', 'wrapper_sha256', 'uid', 'gid', 'data_dir', 'private_dir', 'account_cap', 'schema_sha256'):
+                require(fixture[key] == p[key])
+            require(c['authority']['generator_path'] == p['authority_generator_path'] and c['authority']['generator_sha256'] == p['authority_generator_sha256'])
+            require(c['boot_id'] == p['boot_id'] and c['issued_at'] <= p['issued_at'])
+            self.open_pin('/etc/serenity-authority/broker.json', h['broker_sha256'])
+        else:
+            for key in ('manifest_sha256', 'executable_sha256', 'previous_state_sha256', 'expected_state_sha256', 'supervisor', 'stage'):
+                require(c[key] == h[key])
+            require(c['commit'] == h['source'] and c['previous_commit'] == p['service_source'])
+            require(c['previous_executable_sha256'] == p['service_binary_sha256'])
+            require(c['hosted_config_sha256'] == p['config_sha256'])
+
+    def validate_v3_runtime(self):
+        transaction = self.module.Transaction(self.module.CONFIG, root=self.root, uid=self.owner, gid=os.getegid(), clock=self.clock)
+        transaction.authority()
+        transaction.pair()
+        require(decode(transaction.matching_hold()) == self.hold())
+        transaction.qualified_guards(self.hold()['supervisor'])
 
     def check_units(self):
-        p, h = self.proof, self.proof['hold']
+        p, h = self.proof, self.hold()
+        if p['version'] == 3:
+            self.validate_v3_runtime()
         for unit in UNITS:
             v = self.systemctl(unit)
             require(v['LoadState'] == 'loaded' and v['ActiveState'] == 'inactive' and v['SubState'] == 'dead')
@@ -296,7 +351,7 @@ class Adapter:
         for unit in WRITERS:
             self.absent(RUN + '/' + unit + '.permit')
         self.absent(STATE + '.pending')
-        self.absent(self.proof['hold']['stage'] + '/closeout-pending.json')
+        self.absent(self.hold()['stage'] + '/closeout-pending.json')
         link = self.path('/usr/local/bin/serenity')
         if self.proof['service_binary_path'] != '/usr/local/bin/serenity':
             require(link.is_symlink() and link.lstat().st_uid == self.owner and os.readlink(link) == self.proof['service_binary_path'])
@@ -320,12 +375,14 @@ class Adapter:
         self.pins[STATE + '.lock'] = (lock, snapshot(os.fstat(lock)), digest(os.pread(lock, 65537, 0)), 65536)
         self.trusted(str(Path(proof_path).parent), private=True, directory=True)
         hold_fd, hold_bytes = self.open_pin(HOLD, p['hold_sha256'])
-        require(decode(hold_bytes) == p['hold'])
+        require(decode(hold_bytes) == self.hold())
         state_fd, _ = self.open_pin(STATE, p['state_sha256'])
         config_fd, config_bytes = self.open_pin(HOSTED, p['config_sha256'], private=False)
         config = decode(config_bytes)
         require(config['data_dir'] == p['data_dir'] and type(config['account_cap']) is int and config['account_cap'] == p['account_cap'])
         require(config.get('episode_archive_enabled', False) is False and config.get('episode_synthetic_brains', []) == [])
+        if p['version'] == 3:
+            require(config.get('workos_enabled', False) is False and config.get('billing_enabled', False) is False)
         self.open_pin(p['wrapper_path'], p['wrapper_sha256'], private=False, limit=262144)
         self.open_pin(p['tool_path'], p['tool_sha256'], private=False, limit=268435456)
         self.open_pin(p['service_binary_path'], p['service_binary_sha256'], private=False, limit=268435456)
@@ -336,10 +393,14 @@ class Adapter:
             self.trusted('/usr/local/bin', directory=True)
         else:
             require(p['service_binary_path'] == '/usr/local/bin/serenity')
-        self.trusted(p['hold']['stage'], private=True, directory=True)
+        self.trusted(self.hold()['stage'], private=True, directory=True)
         self.load_runtime()
-        _, ready_bytes = self.open_pin(p['hold']['stage'] + '/maintenance-ready.json', p['ready_sha256'])
-        require(decode(ready_bytes) == dict(manifest_sha256=p['hold']['manifest_sha256'], state_sha256=p['state_sha256'], installed_pair='previous-unmodified', held=True, services_started=False))
+        _, ready_bytes = self.open_pin(self.hold()['stage'] + '/maintenance-ready.json', p['ready_sha256'])
+        if p['version'] == 3:
+            expected_ready = dict(version=2, purpose='serenity.fixture-maintenance/v1', operation_id=self.hold()['operation_id'], manifest_sha256=self.hold()['manifest_sha256'], state_sha256=p['state_sha256'], hold_sha256=p['hold_sha256'], service_source=p['service_source'], executable_sha256=p['service_binary_sha256'], held=True, services_started=False)
+        else:
+            expected_ready = dict(manifest_sha256=p['hold']['manifest_sha256'], state_sha256=p['state_sha256'], installed_pair='previous-unmodified', held=True, services_started=False)
+        require(decode(ready_bytes) == expected_ready)
         self.open_pin(p['authority_generator_path'], p['authority_generator_sha256'], private=False, limit=262144)
         _, receipt_bytes = self.open_pin(p['authority_receipt_path'], p['authority_receipt_sha256'])
         a = decode(receipt_bytes)
@@ -360,7 +421,7 @@ class Adapter:
             require(data == expected.encode())
             if unit in WRITERS:
                 _, data = self.open_pin(base + '91-serenity-release-maintenance.conf', private=False)
-                require(data == (MARKER + '[Unit]\nBindsTo=' + p['hold']['supervisor'] + '\nAfter=' + p['hold']['supervisor'] + '\n[Service]\nRestart=no\n').encode())
+                require(data == (MARKER + '[Unit]\nBindsTo=' + self.hold()['supervisor'] + '\nAfter=' + self.hold()['supervisor'] + '\n[Service]\nRestart=no\n').encode())
         for path in (p['data_dir'], p['data_dir'] + '/brains', p['private_dir']):
             self.trusted(path, private=True, directory=True, owner=p['uid'])
         for suffix in ('', '-wal', '-shm'):
@@ -374,7 +435,7 @@ class Adapter:
 
     def consume(self, proof_path):
         # Durable one-use packet. Even a failed child needs a fresh proof/receipt.
-        path = str(Path(self.proof['hold']['stage']) / ('.fixture-used-' + self.proof['nonce']))
+        path = str(Path(self.hold()['stage']) / ('.fixture-used-' + self.proof['nonce']))
         fd = os.open(self.path(path), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         try:
             os.write(fd, b'consumed\n')
@@ -387,13 +448,91 @@ class Adapter:
         finally:
             os.close(directory)
 
+    def save_v3_proof(self, proof_path):
+        if self.proof['version'] != 3:
+            return
+        fd, _, expected, limit = self.pins[proof_path]
+        raw = os.pread(fd, limit + 1, 0)
+        require(len(raw) <= limit and digest(raw) == expected)
+        self.publish_private_record('fixture-proof-' + self.proof['nonce'] + '.json', raw)
+
+    def publish_private_record(self, name, raw):
+        final = self.path(self.hold()['stage'] + '/' + name)
+        pending = Path(str(final) + '.pending')
+        require(not os.path.lexists(final))
+        fd = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        try:
+            require(os.write(fd, raw) == len(raw)); os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.link(pending, final, follow_symlinks=False)
+        os.unlink(pending)
+        directory = os.open(final.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try: os.fsync(directory)
+        finally: os.close(directory)
+
+    def outcome_sequence(self, current_nonce=None):
+        """Validate the complete prior bijection while the actual EX lock is held.
+        Historical proof expiry is not renewed; its recorded completion was inside
+        its own window. Unknown/refused/uncertain history blocks the next child.
+        """
+        p, h = self.proof, self.hold()
+        used, proofs, outcomes = set(), set(), set()
+        with os.scandir(self.path(h['stage'])) as entries:
+            for count, entry in enumerate(entries, 1):
+                require(count <= 4096)
+                for prefix, suffix, target in (('.fixture-used-', '', used), ('fixture-proof-', '.json', proofs), ('fixture-outcome-', '.json', outcomes)):
+                    if entry.name.startswith(prefix):
+                        nonce = entry.name[len(prefix):len(entry.name)-len(suffix) if suffix else None]
+                        require((not suffix or entry.name.endswith(suffix)) and re.fullmatch('[0-9a-f]{64}', nonce))
+                        target.add(nonce)
+        if current_nonce is not None:
+            require(current_nonce in used and current_nonce in proofs and current_nonce not in outcomes)
+            used.remove(current_nonce); proofs.remove(current_nonce)
+        require(used == proofs == outcomes)
+        sequences = set()
+        for nonce in used:
+            _, consumed = self.open_pin(h['stage'] + '/.fixture-used-' + nonce)
+            require(consumed == b'consumed\n')
+            _, proof_raw = self.open_pin(h['stage'] + '/fixture-proof-' + nonce + '.json')
+            previous = decode(proof_raw)
+            validator = Adapter(root=self.root, owner=self.owner, clock=lambda: previous['issued_at'])
+            validator.validate_proof(proof_raw)
+            require(previous['version'] == 3 and previous['maintenance_hold'] == h and previous['hold_sha256'] == p['hold_sha256'])
+            require(previous['nonce'] == nonce and previous['tool_source'] == p['tool_source'] and previous['tool_sha256'] == p['tool_sha256'])
+            _, raw = self.open_pin(h['stage'] + '/fixture-outcome-' + nonce + '.json')
+            outcome = decode(raw)
+            require(type(outcome) is dict and set(outcome) == set('version purpose operation_id nonce operation proof_sha256 tool_source tool_sha256 completed_at result sequence'.split()))
+            require(type(outcome['version']) is int and outcome['version'] == 1 and outcome['purpose'] == p['purpose'] and outcome['operation_id'] == h['operation_id'])
+            require(outcome['nonce'] == nonce and outcome['operation'] == previous['operation'] and outcome['proof_sha256'] == digest(proof_raw))
+            require(outcome['tool_source'] == p['tool_source'] and outcome['tool_sha256'] == p['tool_sha256'] and outcome['result'] == 'success')
+            require(type(outcome['completed_at']) is int and previous['issued_at'] <= outcome['completed_at'] < previous['expires_at'] and outcome['completed_at'] <= int(self.clock()))
+            require(type(outcome['sequence']) is int and outcome['sequence'] > 0 and outcome['sequence'] not in sequences)
+            sequences.add(outcome['sequence'])
+        require(sequences == set(range(1, len(used) + 1)))
+        return len(used) + 1
+
+    def publish_outcome(self, result):
+        p = self.proof
+        if p['version'] != 3:
+            return
+        require(result in ('success', 'refused', 'uncertain'))
+        self.refresh()
+        value = dict(version=1, purpose=p['purpose'], operation_id=self.hold()['operation_id'], nonce=p['nonce'], operation=p['operation'], proof_sha256=self.pins[self.proof_path][2], tool_source=p['tool_source'], tool_sha256=p['tool_sha256'], completed_at=int(self.clock()), result=result, sequence=self.outcome_sequence(p['nonce']))
+        raw = json.dumps(value, sort_keys=True, separators=(',', ':')).encode()
+        self.publish_private_record('fixture-outcome-' + p['nonce'] + '.json', raw)
+
     def execute(self, proof_path):
         require(os.geteuid() == 0 and sys.flags.isolated == 1 and self.root == Path('/') and self.owner == 0)
+        self.proof_path = proof_path
         fds = self.prepare(proof_path)
         p = self.proof
         account = pwd.getpwnam('serenity')
         require(account.pw_uid == p['uid'] and account.pw_gid == p['gid'] and account.pw_uid != 0)
         require(str(Path(__file__).absolute()) == p['wrapper_path'])
+        if p['version'] == 3:
+            self.outcome_sequence()
+        self.save_v3_proof(proof_path)
         self.consume(proof_path)
         self.refresh()
         child = None
@@ -411,9 +550,13 @@ class Adapter:
             if p['operation'] == 'adopt-source':
                 self.refresh()
                 if child.returncode in ADOPTION_OUTCOMES:
+                    self.publish_outcome('uncertain' if child.returncode == 6 else 'refused')
                     raise AdoptionOutcome(child.returncode)
+            if child.returncode != 0:
+                self.publish_outcome('uncertain')
             require(child.returncode == 0)
             self.refresh()
+            self.publish_outcome('success')
         finally:
             if child is not None:
                 # A still-running/unreaped child anchors its process-group ID;
