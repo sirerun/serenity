@@ -69,6 +69,107 @@ Existing governed HTTP gateway provides verified binding, maintenance/account/ru
 
 Executor: current engineering session with bounded headless Codex helpers. Selection: gpt-6-astra, low reasoning, ChatGPT account authentication, approval never, danger-full-access. Maximum two concurrent implementation/review lanes; no recursive dispatch. Shared Mac load exceeds 10: no heavy local builds until load gate and owned lease. Existing Spark reports four available CPUs; qualify source transfer/image/toolchain before remote checks. Wazi reader, frozen schema and semantic validator gate this plan before subordinate implementation dispatch. No docs/design.md exists; authoritative design is the RFC/ADRs named above.
 
+## Reliable automatic memory and recovery delivery — 2026-10-17
+
+This is the current delivery refinement of the same authoritative plan, identity
+`serenity:shared-agent-memory`, authority `github:sirerun/serenity`, revision
+`automatic-memory-r3`. It implements the owner's existing RFC0002/0003 outcomes:
+automatic enrolled-history import/capture and policy-covered durable knowledge,
+useful bounded recall, acknowledged archive recovery, and four qualified host
+adapters with Zati first. This planning invocation delivers documents only;
+it does not renew Resume01, launch workers, enroll real histories, spend on
+providers, install, release or deploy. Existing grants are reused only within
+current target, scope, budget and expiry; missing live authority blocks that
+operation, not all source work. No new infrastructure is selected.
+
+Use the existing Git/file writer, hosted brain grants, operation identity and
+external deletion journal. The synthetic API at this source explicitly reports
+real_history_capture=false, physical_purge=false, managed_restore=false,
+portable_export=false and automatic_extraction=false. `episodeerase.Build`
+produces an inactive standalone episode-only candidate; mixed brains and unknown
+derivatives are refused. `episodeclient` supplies encrypted queue/policy/import
+primitives, and `episodecapture` supplies synthetic HTTP/decoder composition;
+neither is a complete enrolled service. Generic FTS/vector/RRF exists, but the
+actual episode API searches a bounded direct lexical scan. Extend these owners;
+source presence is not service/host acceptance. No shared write engine, task
+scheduler, second Gist preparer or mandatory inference service is introduced.
+
+### Delivery sequence and useful increments
+
+1. T5.0-T5.3 complete the erasure/restore/copy design and implementation feeding
+   the existing T1.3-T1.7 safety gates. No real-history endpoint becomes available
+   on inactive-candidate or exclusion-only evidence.
+2. T5.4-T5.11 deliver the enrolled shared client, policy-covered facts and bounded
+   retrieval through one source candidate. Covered import and new capture share
+   stable event identity; background processing cannot recursively archive its
+   own recall or block replies unnecessarily. Failures preserve bounded progress.
+3. T5.12 and T2.2 consume actual Zati continuation owner receipts and qualify the
+   archive bridge. SDK fixtures and existing governed-memory UX can proceed
+   before that external runtime gate; full cross-host recovery cannot.
+4. T5.13-T5.33 freeze actual host/version/surface profiles and deliver Codex,
+   Claude Code, Cursor and Antigravity independently. Each has its own source
+   checks, independent review and landing. Capability gaps remain visible;
+   no host receives a complete-support claim from another host's receipt.
+5. T5.34-T5.40 and existing T3.14/T3.15 complete the current-state maintenance
+   and bounded synthetic release exercise. T5.41-T5.45 deliver separately gated
+   production-enrollment code; T5.46 reviews the actual release/activation packet,
+   T3.4 deploys only under current scoped authority, T5.47 verifies enrollment,
+   and T3.5/T3.6 retain operations/soak and honest final delivery.
+
+Real-history capture is a capability transition requiring source, exact current
+release, erasure/restore qualification and an enrolled policy. Never remove the
+synthetic request marker or widen its allowlist to fake that transition. The
+extension design must version/negotiate new semantics while preserving old clients.
+If mixed-brain purge or a required managed copy cannot be qualified, keep capture
+unavailable for that scope and expose the limitation rather than weakening the
+accepted retention/deletion requirement. Explicit residual user-held exports or
+unreachable devices are reported; controlled service copies need actual cleanup
+or a frozen disclosed deadline and proof. New file/blob formats and unsupported
+large attachments require measured need, not speculative implementation.
+
+### Acceptance and measurements
+
+| Outcome | Completion evidence |
+| --- | --- |
+| RAM-01 Automatic enrolled import/capture | Covered old events plus concurrent new events survive crash/restart and rotation without duplicate publication; policy/private/pause/exclusions and unsupported fields are visible |
+| RAM-02 Useful durable knowledge | Explicitly covered facts retain exact source, time, scope and uncertainty; correction and withdrawal affect dependent facts; repeated summaries/speculation do not become corroboration |
+| RAM-03 Relevant bounded recall | The actually called API returns authorized cited evidence or truthful no-match/incomplete/degraded state within complete response/request budgets; old rare facts remain findable |
+| RAM-04 Recoverable work | Exact acknowledged events, attachment bytes and checkpoints can be exported/read and consumed after origin loss by a qualified receiver; pending effects and approvals are revalidated, never replayed |
+| RAM-05 Safe deletion and queues | Exclusion wins races with reads/uploads, controlled purge is evidenced, current deletion history fences rebuild/restore/offline rejoin, residual copies are disclosed |
+| RAM-06 Operable host integration | Supported install/upgrade/removal preserves unrelated config; status distinguishes locally queued, remotely acknowledged, deriving, paused, partial, failed and unknown |
+
+T5.0 and T4.0 freeze actual numerical storage, queue, attachment, import/capture,
+retrieval and provider budgets before qualification. T4.0 continues to own shared
+Zati end-to-end token/cost/latency comparison; do not create another scoring harness.
+Use RFC0002's declared 10k/100k/1M synthetic event workloads with text/attachment
+bytes and supported envelope recorded; bounded failures narrow support claims,
+not labels or thresholds. Measure p50/p95 reply/context latency, retrieval quality,
+continuation correctness, source coverage, token input/output/cache and full task
+cost including extraction/recovery, CPU/RAM, queue lag, repository growth and
+purge/rebuild/restore duration. Unavailable provider billing is unavailable.
+No speedup is inferred from task counts, model caches or a catalog benchmark.
+
+### Source ownership and verification recipes
+
+| Slice | Existing owners and proportional recipe to qualify at preflight |
+| --- | --- |
+| Archive safety | `internal/episodeerase`, `store`, `writer`, hosted gateway/journal/backup; actual Git synthetic mixed-history and real HTTP status/body tests, focused race/vet and existing replay/restore fixtures |
+| Shared client | `episodeclient`, `episodecapture`, `episodehost`; policy/queue/import/receipt and controlled HTTP tests with fsync failure, stable retry, outage, rotation and redaction |
+| Facts/retrieval | Existing extraction/reconciliation, source eligibility, index/search and actual gateway; source-linked extraction and deletion fixtures, exact read/export and actual-path lexical/hybrid comparison |
+| Zati bridge | Owning Zati focused-worker E-FO0/E-FO1 and memory/execution/controller contracts; no sibling SQL or checkpoint implementation in Serenity; consume independently landed owner tests |
+| Host packages | One shared client plus thin separately owned host adapters; official installed-version evidence, controlled native hooks/import/injection/compaction and config rollback tests; missing recipes frozen in T5.13 |
+| Release/operations | Existing signed release and private custody owner; actual current-state maintenance entry/closeout, cold restore, scoped API/capability denial and credential cleanup receipts |
+
+No docs/design.md exists; RFC0002/0003 and ADR027-030 remain design authority.
+The stale graph is not refreshed for document work; bounded source and direct
+caller/test inspection supplies discovery. Executor is current attended engineering
+session; future batches and independent reviewers inherit actual session model,
+reasoning and account route, not the historical Resume01 selection. Task owners
+are role assignments, not new service authority. `stage: deploy` remains an
+explicit blocked operational obligation until its existing owner route qualifies.
+The current plan's 91 original IDs/statuses/owners/evidence remain; additive rows
+and strengthened dependencies are recorded in the preservation receipt.
+
 ## Checkable work
 
 ### E1 — Archive service and safety foundation
@@ -77,9 +178,9 @@ Acceptance: additive gated archive API has exact evidence, bounded admission, ex
 
 - [x] T1.1 Freeze bounded protocol and preflight  Owner: integration  kind: agent  stage: implement  acc: [schema and capability limits are documented with canonical writer binding and current ownership and build route evidence]
 - [x] T1.2 Implement archive service foundation  Owner: archive-lane  kind: agent  stage: implement  deps: [T1.1]  acc: [synthetic HTTP fixtures verify exact event and attachment reads, stable retry conflicts, publication acknowledgment, bounded quotas, current brain authorization, fences and checkpoint context without changing v1]
-- [ ] T1.3 Qualify exclusion and physical erasure recovery  Owner: integration  kind: agent  stage: implement  deps: [T1.2]  acc: [tests distinguish immediate exclusion from physical purge and prevent stale imports, indexes, derivatives and restored backups from resurrecting deleted content; capture remains disabled for unqualified paths]
-- [ ] T1.4 Verify archive candidate  Owner: integration  kind: agent  stage: verify  deps: [T1.3]  acc: [affected tests and race checks, format and file-first checks pass on exact candidate with redaction, quota, retry, isolation and restart evidence; Wazi plan validates]
-- [ ] T1.5 Independently review archive candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T1.4]  acc: [separate reviewer records exact base and head, full T1.1 through T1.4 diff, findings and resolved re-review evidence]
+- [ ] T1.3 Qualify exclusion and physical erasure recovery  Owner: integration  kind: agent  stage: implement  deps: [T1.2, T5.2, T5.3]  acc: [tests distinguish immediate exclusion from physical purge and prevent stale imports, indexes, derivatives and restored backups from resurrecting deleted content; capture remains disabled for unqualified paths Complete original mixed-brain, controlled-copy and activation coverage from T5.0-T5.3; unsupported required safety paths keep capture unavailable.]
+- [ ] T1.4 Verify archive candidate  Owner: integration  kind: agent  stage: verify  deps: [T1.3]  acc: [affected tests and race checks, format and file-first checks pass on exact candidate with redaction, quota, retry, isolation and restart evidence; Wazi plan validates Coverage includes T5.0-T5.3 and actual API/export/restore responses, preserved unrelated sources and interrupted physical cleanup.]
+- [ ] T1.5 Independently review archive candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T1.4]  acc: [separate reviewer records exact base and head, full T1.1 through T1.4 diff, findings and resolved re-review evidence Review scope explicitly includes T5.0-T5.3, all current erasure/backup/copy contracts and the complete candidate.]
 - [ ] T1.6 Guarded archive merge  Owner: integration  kind: agent  stage: merge  deps: [T1.5]  acc: [current holds and protections permit exact reviewed head rebase merge with hosted CI or explicitly labeled authorized local fallback]
 - [ ] T1.7 Verify archive landing  Owner: integration  kind: agent  stage: verify  deps: [T1.6]  acc: [landed commit is reachable from main and owned tree matches reviewed candidate with behavior checks]
 
@@ -127,12 +228,12 @@ Acceptance: enrolled histories are captured safely and can continue across quali
 - [x] T2.0 Implement independent capture-policy and queue primitives  Owner: client-lane  kind: agent  stage: implement  deps: [T1.1]  acc: [synthetic fixtures verify pre-staging redaction, explicit workspace enrollment, private and pause controls, bounded encrypted queue, stable visible-event identity and content-free gaps; no host enrollment or upload is enabled]
 - [x] T2.9 Prepare version-pinned visible-history reader  Owner: integration  kind: agent  stage: implement  deps: [T1.1]  acc: [Codex 0.163.0 public-source fixtures preserve covered visible messages, reject rewrites and unknown versions, exclude reasoning and report unsupported tool or attachment coverage without reading real histories]
 - [x] T2.10 Connect synthetic queue transport  Owner: integration  kind: agent  stage: implement  deps: [T1.1]  acc: [TLS HTTP synthetic fixtures verify current binding and complete fence synchronization before queued publication, exact canonical receipt validation and retry retention; no production enrollment is enabled]
-- [ ] T2.1 Implement protected shared client and import  Owner: client-lane  kind: agent  stage: implement  deps: [T1.7, T2.0]  acc: [bounded protected queue redacts before staging, preserves stable history identities and progress, pauses private or unmapped sessions, verifies brain and fences before drain, and reports attachment and format gaps]
-- [ ] T2.2 Qualify the archive bridge to Zati-owned continuation  Owner: integration  kind: agent  stage: implement  deps: [T2.1]  acc: [owning Zati E-FO0 contract and E-FO1 runtime receipts are pinned without advancing upstream tasks; map authorized canonical history ranges, complete current work and pending snapshots, actual artifact refs and checkpoints to acknowledged Serenity archive bytes with current scope and deletion fences; joined tests preserve whole-request budgets, intact tool pairs, original effect identity and cumulative limits across greater-than-200-message continuation, restart and cross-agent recovery; contract-only or local continuation never proves archive custody]
-- [ ] T2.3 Qualify requested host adapters  Owner: client-lane  kind: agent  stage: implement  deps: [T2.2]  acc: [Cursor, Codex, Claude Code and Antigravity each have official current capability evidence, configuration-preserving installation, actual host capture and import receipts, pause controls and honest unsupported fields]
-- [ ] T2.4 Qualify durable facts and bounded recall  Owner: integration  kind: agent  stage: implement  deps: [T2.3]  acc: [standing-policy source-linked facts exclude recursive recall evidence and retain uncertainty; bounded historical retrieval and handoff retain originals and report measured coverage]
-- [ ] T2.5 Verify client and host candidates  Owner: integration  kind: agent  stage: verify  deps: [T2.4]  acc: [all T2 implementation acceptance fixtures pass including revoked grants, rotation, interruption, queue capacity and malicious quoted instructions; actual host gaps are recorded]
-- [ ] T2.6 Independently review client and host candidates  Owner: independent-reviewer  kind: agent  stage: review  deps: [T2.5]  acc: [separate exact-revision review covers T2.1 through T2.5 and accepted findings are fixed and re-reviewed]
+- [ ] T2.1 Implement protected shared client and import  Owner: client-lane  kind: agent  stage: implement  deps: [T1.7, T2.0, T5.5]  acc: [bounded protected queue redacts before staging, preserves stable history identities and progress, pauses private or unmapped sessions, verifies brain and fences before drain, and reports attachment and format gaps T5.5 supplies the complete enrolled client; local queue acknowledgment, remote canonical acknowledgment and derived knowledge remain distinct.]
+- [ ] T2.2 Qualify the archive bridge to Zati-owned continuation  Owner: integration  kind: agent  stage: implement  deps: [T2.1, T5.11, T5.12]  acc: [owning Zati E-FO0 contract and E-FO1 runtime receipts are pinned without advancing upstream tasks; map authorized canonical history ranges, complete current work and pending snapshots, actual artifact refs and checkpoints to acknowledged Serenity archive bytes with current scope and deletion fences; joined tests preserve whole-request budgets, intact tool pairs, original effect identity and cumulative limits across greater-than-200-message continuation, restart and cross-agent recovery; contract-only or local continuation never proves archive custody Any Zati code follows its owning canonical review/merge/landed lifecycle; this row consumes those receipts and qualifies the archive bridge rather than advancing foreign tasks.]
+- [ ] T2.3 Qualify requested host adapters  Owner: client-lane  kind: agent  stage: implement  deps: [T2.2, T5.18, T5.23, T5.28, T5.33]  acc: [Cursor, Codex, Claude Code and Antigravity each have official current capability evidence, configuration-preserving installation, actual host capture and import receipts, pause controls and honest unsupported fields Aggregate all four T5.14-T5.33 host receipts without substituting one version or surface for another.]
+- [ ] T2.4 Qualify durable facts and bounded recall  Owner: integration  kind: agent  stage: implement  deps: [T2.3, T5.11]  acc: [standing-policy source-linked facts exclude recursive recall evidence and retain uncertainty; bounded historical retrieval and handoff retain originals and report measured coverage T5.6-T5.7 own the fact/retrieval source delivered at T5.11; this original row closes aggregate host and handoff coverage, not duplicate implementation.]
+- [ ] T2.5 Verify client and host candidates  Owner: integration  kind: agent  stage: verify  deps: [T2.4]  acc: [all T2 implementation acceptance fixtures pass including revoked grants, rotation, interruption, queue capacity and malicious quoted instructions; actual host gaps are recorded Include independently landed SDK and host receipts plus the actual Zati bridge owner candidate; a new joined code change must be reviewed before T2.7.]
+- [ ] T2.6 Independently review client and host candidates  Owner: independent-reviewer  kind: agent  stage: review  deps: [T2.5]  acc: [separate exact-revision review covers T2.1 through T2.5 and accepted findings are fixed and re-reviewed Review original joined scope and any T2.2 bridge changes plus all E5 source receipts; never self-approve prior shared or host code.]
 - [ ] T2.7 Merge client and host candidates  Owner: integration  kind: agent  stage: merge  deps: [T2.6]  acc: [each scoped candidate passes current repository gates and exact reviewed-head guarded merge]
 - [ ] T2.8 Verify client and host landing  Owner: integration  kind: agent  stage: verify  deps: [T2.7]  acc: [each landed tree matches reviewed source and narrow end-to-end continuity checks pass]
 
@@ -161,9 +262,9 @@ Acceptance: deployed capabilities and versions have live evidence, rollback and 
 
 - [x] T3.1 Qualify existing deployment target and rollback  Owner: integration  kind: agent  stage: verify  deps: [T1.1]  acc: [current service revision, signing and release authority, backup and rollback path are observed through existing runbooks without credentials in evidence]
 - [x] T3.2 Deploy qualified archive increment  Owner: integration  kind: agent  stage: deploy  deps: [T1.11, T3.1]  acc: [existing release process installs reviewed signed version with explicit capability gate, preserves WorkOS and billing defaults and records rollback receipt]
-- [ ] T3.3 Verify live archive behavior  Owner: integration  kind: agent  stage: verify  deps: [T3.2]  acc: [actual deployed revision passes synthetic authenticated narrow API and isolation checks; unqualified capture and erasure remain unavailable]
-- [ ] T3.4 Deploy qualified client and host release  Owner: integration  kind: agent  stage: deploy  deps: [T2.8, T3.3]  acc: [qualified host packages and Zati release have version-bound deployment receipts without unrelated UI changes]
-- [ ] T3.5 Measure continuity and operations  Owner: integration  kind: agent  stage: verify  deps: [T3.4]  acc: [live recovery and continuation receipts, predeclared capacity workloads, purge and rebuild evidence distinguish measured limits from pending scale and soak coverage]
+- [ ] T3.3 Verify live archive behavior  Owner: integration  kind: agent  stage: verify  deps: [T3.2, T3.15, T1.7]  acc: [actual deployed revision passes synthetic authenticated narrow API and isolation checks; unqualified capture and erasure remain unavailable Actual synthetic API acceptance includes current safety source and cleanup receipts; source deployment alone does not close this gate.]
+- [ ] T3.4 Deploy qualified client and host release  Owner: integration  kind: agent  stage: deploy  deps: [T2.8, T3.3, T5.46]  acc: [qualified host packages and Zati release have version-bound deployment receipts without unrelated UI changes Use the current T5.46 reviewed release and qualified capability/enrollment envelope; no old synthetic gate is used as a real-history bypass.]
+- [ ] T3.5 Measure continuity and operations  Owner: integration  kind: agent  stage: verify  deps: [T3.4, T5.47]  acc: [live recovery and continuation receipts, predeclared capacity workloads, purge and rebuild evidence distinguish measured limits from pending scale and soak coverage Include cold restore and origin-loss recovery, RAM-01 through RAM-06, per-host supported limits and RFC0002 scale/soak receipts; failure leaves the affected support claim open.]
 - [ ] T3.6 Checkpoint final delivery evidence  Owner: integration  kind: agent  stage: author  deps: [T3.5]  acc: [result records completed and pending scope, exact PR and landed and deployed versions, tests, live checks, rollback and blockers; all helper processes have stopped]
 
 - [x] T3.7 Prepare scoped synthetic production qualification tooling  Owner: fixture-lane  kind: agent  stage: implement  deps: [T1.1]  acc: [reviewable offline operator fixture uses existing store and provisioner and issuer for exactly two dedicated synthetic identities with private credentials, explicit maintenance guards, no email assertions or sends and no real-user credential reuse]
@@ -173,7 +274,7 @@ Acceptance: deployed capabilities and versions have live evidence, rollback and 
 - [x] T3.11 Verify qualification tooling landing  Owner: integration  kind: agent  stage: verify  deps: [T3.10]  acc: [landed tree equals reviewed source and live execution remains contingent on refreshed target and signed deployment and rollback qualification]
 - [x] T3.12 Implement expiring private synthetic qualification gate  Owner: integration  kind: agent  stage: implement  deps: [T1.17]  acc: [existing private admin transport can temporarily allow at most two dedicated synthetic fixture brains for at most fifteen minutes, public transport cannot set it, expiry or disable closes access, safety build refuses enablement, private cleanup revokes only explicitly named dedicated fixture credentials, and permanent config is unchanged]
 - [x] T3.13 Independently review bounded synthetic deployment packet  Owner: independent-reviewer  kind: agent  stage: review  deps: [T1.21, T3.11]  acc: [exact landed source and signed feature and compatible safety artifacts, actual authority code change set and policies, root custody producer and consumer, target pins and cleanup and recovery packet are independently accepted before execution]
-- [ ] T3.14 Deploy and exercise bounded synthetic replay increment  Owner: integration  kind: agent  stage: deploy  deps: [T3.13]  acc: [fresh verified target and rollback authorization permit guarded existing-capacity authority and host deployment plus exactly two scoped synthetic fixtures; no real capture or customer-data migration is enabled]
+- [ ] T3.14 Deploy and exercise bounded synthetic replay increment  Owner: integration  kind: agent  stage: deploy  deps: [T3.13, T5.40]  acc: [fresh verified target and rollback authorization permit guarded existing-capacity authority and host deployment plus exactly two scoped synthetic fixtures; no real capture or customer-data migration is enabled T5.40 is the new exact operational review; the earlier T3.13 approval is retained as historical evidence and cannot authorize changed current-state packets.]
 - [ ] T3.15 Verify synthetic replay release and cleanup receipts  Owner: integration  kind: agent  stage: verify  deps: [T3.14]  acc: [exact deployed authority and host versions, public health and disabled defaults, scoped authenticated API and restart replay checks, revoked fixture keys, retained synthetic data, rollback compatibility and all unqualified coverage are recorded; full T3.3 remains open until its original coverage passes]
 
 ### E3b — Recovery of already-revoked synthetic fixture credentials
@@ -213,6 +314,59 @@ Acceptance: ZUX-01 through ZUX-06 work through Zati with bounded relevant contex
 - [ ] T4.9 Merge reviewed owning repository candidates  Owner: integration  kind: agent  stage: merge  deps: [T4.8]  acc: [each owning repository accepts its mapped candidate and current claims, holds, required checks and protection; independent exact-head approval and refreshed base permit guarded rebase merge without cross-repository bypass]
 - [ ] T4.10 Verify source landing and record the operational handoff  Owner: integration  kind: agent  stage: verify  deps: [T4.9]  acc: [all mapped commits are reachable on intended targets and reviewed/landed trees and affected checks agree; exact source, pending installation/live gates, reversible configuration path and prerequisite edges into existing T3.4/T3.5 and owning Zati release tasks are recorded before release dispatch; no source receipt is called deployment]
 - [ ] T4.11 Accept the observed Zati journey and publish comparison evidence  Owner: zati-experience  kind: agent  stage: verify  deps: [T4.10]  acc: [owner observes ZUX-01 through ZUX-06 in the identified native development app with controlled accounts or separately authorized live bindings; task quality and full token/cost/latency comparison meet predeclared budgets; absent installed/live/long-soak evidence is explicit and corresponding release gates stay open; unsupported host behavior and remaining work have an owning task]
+
+### E5 — Complete automatic memory and recovery
+fidelity: executable
+Acceptance: RAM-01 through RAM-06 have separately source-bound and released receipts, all four qualified host profiles and the Zati bridge preserve scoped evidence and current authority, and incomplete or unsupported capabilities stay visibly unavailable.
+
+- [ ] T5.0 Reconcile remaining capabilities and freeze qualification envelope  Owner: integration  Est: TBD  kind: agent  stage: preflight  acc: [RAM-01 through RAM-06 have exact source and owner/task mappings, supported brain/attachment/host scopes, numerical capacity and purge/restore/latency limits and controlled API test recipes; active claims, current deployment capability and pending maintenance prerequisites are recorded; no provider or real-history admission follows]
+- [ ] T5.1 Freeze safe erasure and production capability extension  Owner: archive-lane  Est: TBD  kind: agent  stage: author  deps: [T5.0]  acc: [versioned API/capability, complete authoritative deletion-history producer/consumer, mixed-brain and shared-attachment handling, bounded maintenance activation/rollback, exact export/restore and controlled-copy deadlines are frozen before code; synthetic-only compatibility remains and unsupported paths stay unavailable]
+- [ ] T5.2 Complete canonical purge and derivative-safe activation  Owner: archive-lane  Est: TBD  kind: agent  stage: implement  deps: [T5.1]  acc: [under existing writer/maintenance locks actual mixed-brain candidates preserve unrelated canonical bytes and remove excluded original/history/derivative content; trusted current external fences bind activation and crash recovery; all controlled stages and old object copies have bounded cleanup or explicit residual state; exclusion-only and inactive stages never emit physical-complete receipts]
+- [ ] T5.3 Fence controlled backups exports restores and device rejoin  Owner: archive-lane  Est: TBD  kind: agent  stage: implement  deps: [T5.1]  acc: [actual supported backup/export/restore APIs apply current independently admitted deletion history before disclosure or publication; content-free receipt identity survives erasure without payload retention; shared references and controlled copy lifecycle have exact evidence; old snapshots, queues and stale derivatives cannot resurrect content and unsupported custody refuses readiness]
+- [ ] T5.4 Freeze enrolled-client and factual-retrieval source assignment  Owner: client-lane  Est: TBD  kind: agent  stage: preflight  deps: [T1.7]  acc: [existing queue/import/HTTP decoder components, credential/key custody and versioned archive API are mapped to exact owned files with safe installation/enrollment inputs; fact policy, query-relevance and incomplete-budget semantics and required checks are fixed; current SDK and legacy interfaces remain compatible]
+- [ ] T5.5 Deliver automatic import continuous capture and recovery client  Owner: client-lane  Est: TBD  kind: agent  stage: implement  deps: [T5.4]  acc: [RAM-01 and RAM-06 use explicit stable enrolled brain/policy/workspace identities and existing secure custody; import and live events share durable encrypted dedup/progress, redact before staging, pause private/unmapped work and bound queues/retries; HTTP binding/fence synchronization precedes each drain and exact remote receipts precede removal; timeout/absence is unknown and restart/rotation cannot skip evidence]
+- [ ] T5.6 Derive and correct policy-covered durable knowledge  Owner: memory-lane  Est: TBD  kind: agent  stage: implement  deps: [T5.4]  acc: [RAM-02 uses existing extraction/reconciliation outside writer commits under explicit current policy and provider limits; exact event provenance and historical time survive with uncertainty; repeated speculative/model/recall content is not independent evidence; correction, withdrawal and deletion invalidate dependent derivatives while uncovered or sensitive saves retain existing consent requirements]
+- [ ] T5.7 Deliver bounded actual-path recall exact export and continuation evidence  Owner: memory-lane  Est: TBD  kind: agent  stage: implement  deps: [T5.4]  acc: [RAM-03 and RAM-04 use the actual hosted memory/episode route with current brain/expiry/deletion eligibility, source citations and whole-response budgets; relevant older facts beat unrelated recent ones; lexical fallback is explicit and hybrid remains configured/evaluated; exact export preserves admitted original and attachment bytes or refuses unsupported size, with incomplete scans distinct from true no-match and no summary-only recovery claim]
+- [ ] T5.8 Verify shared-client and knowledge candidate  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T2.1, T5.6, T5.7]  acc: [T5.5-T5.7 and T2.1 pass source-bound policy/queue/import, actual HTTP status/body, extraction and actual-path retrieval/export fixtures plus affected race/vet/static checks; tests cover no-match, wrong brain, malicious text, deletion/revocation during I/O, quota/fsync failure and restart; default real capture remains off]
+- [ ] T5.9 Independently review shared-client and knowledge candidate  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.8]  acc: [non-author records exact base/head and complete T5.4-T5.8 plus T2.1 scope including new protocols and custody boundaries; accepted findings have tracked fix, affected checks and current re-review without weakening capture gates]
+- [ ] T5.10 Merge reviewed shared-client candidate  Owner: integration  Est: TBD  kind: agent  stage: merge  deps: [T5.9]  acc: [current claims/holds/protections and required checks permit exact-reviewed-head guarded rebase with source and verification provenance]
+- [ ] T5.11 Verify landed shared-client candidate  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.10]  acc: [landed source is reachable and tree-equivalent to reviewed candidate with focused client/knowledge checks; exported integration package and capability limits are recorded without installing a host or enabling capture]
+- [ ] T5.12 Bind the Zati archive consumer to current runtime owners  Owner: integration  Est: TBD  kind: agent  stage: preflight  deps: [T5.11]  acc: [exact Zati E-FO0 contract and independently reviewed E-FO1 runtime receipt identify history ranges, complete work/pending snapshots, checkpoint artifacts and source coverage; owning tasks and bridge file assignments are accepted before T2.2 implementation; absent runtime receipts block joined recovery rather than start a second scheduler]
+- [ ] T5.13 Freeze four actual host profiles and install contracts  Owner: client-lane  Est: TBD  kind: agent  stage: preflight  deps: [T5.11, T2.2]  acc: [Codex, Claude Code, Cursor and Antigravity each name installed product/version/surface, supported lifecycle/history/attachment/injection/compaction access, native trust and secure custody, preserve/rollback/remove manifest and synthetic conformance recipe; no guessed hooks, arbitrary app-db scraping or unsupported full-history claim]
+- [ ] T5.14 Implement Codex shared-memory adapter  Owner: codex-adapter  Est: TBD  kind: agent  stage: implement  deps: [T5.13]  acc: [RAM-01 and RAM-06 use the frozen Codex profile and shared client for enrollment, covered historical import, incremental capture, bounded relevant injection and checkpoint/handoff; installer owns only declared config, respects native trust, pause/private/redaction and secure custody; unsupported tool/attachment/native-resume fields produce visible gaps]
+- [ ] T5.15 Qualify actual Codex adapter  Owner: codex-adapter  Est: TBD  kind: agent  stage: verify  deps: [T5.14]  acc: [actual frozen Codex surface runs controlled synthetic install/import/live capture/compaction/stop/restart and configuration-preserving upgrade/removal; stable event identity, queue overflow, credentials/revocation, deletion-before-rejoin and receiver handoff have source-bound receipts; native trust unavailable leaves qualification open and no real history is enrolled]
+- [ ] T5.16 Independently review Codex adapter  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.15]  acc: [non-author reviews exact base/head and complete Codex installer/adapter/shared-client diff, actual host evidence and exclusions; findings are fixed, checked and re-reviewed before merge]
+- [ ] T5.17 Merge reviewed Codex adapter  Owner: integration  Est: TBD  kind: agent  stage: merge  deps: [T5.16]  acc: [current repository holds/checks/protections permit guarded rebase of exactly reviewed Codex head; no runtime enablement or unrelated config changes]
+- [ ] T5.18 Verify landed Codex adapter  Owner: codex-adapter  Est: TBD  kind: agent  stage: verify  deps: [T5.17]  acc: [reviewed/landed source correspondence and reachability plus affected Codex configuration and conformance checks pass; exact distributable version and honest supported-surface matrix are recorded, installation/deployment remaining separate]
+- [ ] T5.19 Implement Claude Code shared-memory adapter  Owner: claude-code-adapter  Est: TBD  kind: agent  stage: implement  deps: [T5.13]  acc: [RAM-01 and RAM-06 use the frozen Claude Code profile and shared client for enrollment, covered historical import, incremental capture, bounded relevant injection and checkpoint/handoff; installer owns only declared config, respects native trust, pause/private/redaction and secure custody; unsupported tool/attachment/native-resume fields produce visible gaps]
+- [ ] T5.20 Qualify actual Claude Code adapter  Owner: claude-code-adapter  Est: TBD  kind: agent  stage: verify  deps: [T5.19]  acc: [actual frozen Claude Code surface runs controlled synthetic install/import/live capture/compaction/stop/restart and configuration-preserving upgrade/removal; stable event identity, queue overflow, credentials/revocation, deletion-before-rejoin and receiver handoff have source-bound receipts; native trust unavailable leaves qualification open and no real history is enrolled]
+- [ ] T5.21 Independently review Claude Code adapter  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.20]  acc: [non-author reviews exact base/head and complete Claude Code installer/adapter/shared-client diff, actual host evidence and exclusions; findings are fixed, checked and re-reviewed before merge]
+- [ ] T5.22 Merge reviewed Claude Code adapter  Owner: integration  Est: TBD  kind: agent  stage: merge  deps: [T5.21]  acc: [current repository holds/checks/protections permit guarded rebase of exactly reviewed Claude Code head; no runtime enablement or unrelated config changes]
+- [ ] T5.23 Verify landed Claude Code adapter  Owner: claude-code-adapter  Est: TBD  kind: agent  stage: verify  deps: [T5.22]  acc: [reviewed/landed source correspondence and reachability plus affected Claude Code configuration and conformance checks pass; exact distributable version and honest supported-surface matrix are recorded, installation/deployment remaining separate]
+- [ ] T5.24 Implement Cursor shared-memory adapter  Owner: cursor-adapter  Est: TBD  kind: agent  stage: implement  deps: [T5.13]  acc: [RAM-01 and RAM-06 use the frozen Cursor profile and shared client for enrollment, covered historical import, incremental capture, bounded relevant injection and checkpoint/handoff; installer owns only declared config, respects native trust, pause/private/redaction and secure custody; unsupported tool/attachment/native-resume fields produce visible gaps]
+- [ ] T5.25 Qualify actual Cursor adapter  Owner: cursor-adapter  Est: TBD  kind: agent  stage: verify  deps: [T5.24]  acc: [actual frozen Cursor surface runs controlled synthetic install/import/live capture/compaction/stop/restart and configuration-preserving upgrade/removal; stable event identity, queue overflow, credentials/revocation, deletion-before-rejoin and receiver handoff have source-bound receipts; native trust unavailable leaves qualification open and no real history is enrolled]
+- [ ] T5.26 Independently review Cursor adapter  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.25]  acc: [non-author reviews exact base/head and complete Cursor installer/adapter/shared-client diff, actual host evidence and exclusions; findings are fixed, checked and re-reviewed before merge]
+- [ ] T5.27 Merge reviewed Cursor adapter  Owner: integration  Est: TBD  kind: agent  stage: merge  deps: [T5.26]  acc: [current repository holds/checks/protections permit guarded rebase of exactly reviewed Cursor head; no runtime enablement or unrelated config changes]
+- [ ] T5.28 Verify landed Cursor adapter  Owner: cursor-adapter  Est: TBD  kind: agent  stage: verify  deps: [T5.27]  acc: [reviewed/landed source correspondence and reachability plus affected Cursor configuration and conformance checks pass; exact distributable version and honest supported-surface matrix are recorded, installation/deployment remaining separate]
+- [ ] T5.29 Implement Google Antigravity shared-memory adapter  Owner: google-antigravity-adapter  Est: TBD  kind: agent  stage: implement  deps: [T5.13]  acc: [RAM-01 and RAM-06 use the frozen Google Antigravity profile and shared client for enrollment, covered historical import, incremental capture, bounded relevant injection and checkpoint/handoff; installer owns only declared config, respects native trust, pause/private/redaction and secure custody; unsupported tool/attachment/native-resume fields produce visible gaps]
+- [ ] T5.30 Qualify actual Google Antigravity adapter  Owner: google-antigravity-adapter  Est: TBD  kind: agent  stage: verify  deps: [T5.29]  acc: [actual frozen Google Antigravity surface runs controlled synthetic install/import/live capture/compaction/stop/restart and configuration-preserving upgrade/removal; stable event identity, queue overflow, credentials/revocation, deletion-before-rejoin and receiver handoff have source-bound receipts; native trust unavailable leaves qualification open and no real history is enrolled]
+- [ ] T5.31 Independently review Google Antigravity adapter  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.30]  acc: [non-author reviews exact base/head and complete Google Antigravity installer/adapter/shared-client diff, actual host evidence and exclusions; findings are fixed, checked and re-reviewed before merge]
+- [ ] T5.32 Merge reviewed Google Antigravity adapter  Owner: integration  Est: TBD  kind: agent  stage: merge  deps: [T5.31]  acc: [current repository holds/checks/protections permit guarded rebase of exactly reviewed Google Antigravity head; no runtime enablement or unrelated config changes]
+- [ ] T5.33 Verify landed Google Antigravity adapter  Owner: google-antigravity-adapter  Est: TBD  kind: agent  stage: verify  deps: [T5.32]  acc: [reviewed/landed source correspondence and reachability plus affected Google Antigravity configuration and conformance checks pass; exact distributable version and honest supported-surface matrix are recorded, installation/deployment remaining separate]
+- [ ] T5.34 Freeze current-state maintenance and operational source boundary  Owner: integration  Est: TBD  kind: agent  stage: preflight  deps: [T3.25]  acc: [current existing host/release and custody owner confirms the missing same-release maintenance entry/closeout route and exact source/task mapping, rollback and finite authority envelope; no old release6-to8 fields, credentials or expired approval is reused to fabricate current readiness]
+- [ ] T5.35 Complete current-state maintenance through its authoritative owner  Owner: release-owner  Est: TBD  kind: agent  stage: implement  deps: [T5.34]  acc: [existing private release/custody owner implements same-release entry/closeout and safe operator adoption/reissue with preserved journals and cold fences; source receipts and operator schema bind actual current state without manual policy changes or code duplication in Serenity]
+- [ ] T5.36 Verify current-state operational producer and consumer  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.35]  acc: [actual supported producer/consumer fixture exercises current-state entry, interrupted closeout, rollback, wrong source/custody/pair, uncertain outcome and exact recorded credentials; no production mutation or synthetic-source seal is passed off as current authority]
+- [ ] T5.37 Independently review maintenance source candidate  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.36]  acc: [separate reviewer records owning repository base/head, T5.34-T5.36 scope and complete custody/recovery contract; fixes and affected re-review close all blockers before source merge]
+- [ ] T5.38 Merge reviewed maintenance owner candidate  Owner: release-owner  Est: TBD  kind: agent  stage: merge  deps: [T5.37]  acc: [owning repository accepts exact reviewed source under current gates without widening scope, keys, policy or live authority]
+- [ ] T5.39 Verify landed operational owner contract  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.38]  acc: [actual owning-source ancestry and tree correspondence plus affected fixture checks are recorded; this is not installed operator adoption, live credential reissue or a runtime permission receipt]
+- [ ] T5.40 Review refreshed bounded synthetic release packet  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.39, T1.7]  acc: [exact current host/operator/authority versions, cold custody, finite grant, synthetic identities, historical/current credential inventory, signed feature/safety pair, cleanup and rollback are reviewed before T3.14; unknown old commands are reconciled rather than replayed and current authority is never inferred from source checks]
+- [ ] T5.41 Implement explicit production enrollment and truthful capabilities  Owner: integration  Est: TBD  kind: agent  stage: implement  deps: [T5.1]  acc: [additive negotiated protocol distinguishes unsupported, synthetic and qualified enrolled production capability using existing brain authority and policy; allowlisted synthetic API is not silently widened; default remains off, declared scope/quotas and pause/revocation/rollback persist, and full safety receipts are required before real data admission]
+- [ ] T5.42 Verify production-enrollment capability transition  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.41, T1.7, T5.11]  acc: [controlled actual API fixtures deny missing safety evidence, stale release/policy, wrong brain and removed consent; supported opt-in and rollback preserve receipts/fences and bounded queue without upload to unqualified paths; affected source/race/static and compatibility checks pass with default off]
+- [ ] T5.43 Independently review production-enrollment candidate  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.42]  acc: [non-author exact base/head review covers full T5.41-T5.42 source and protocol/capability transition with findings fixed and re-reviewed; no deploy or enrollment authority is minted]
+- [ ] T5.44 Merge reviewed production-enrollment source  Owner: integration  Est: TBD  kind: agent  stage: merge  deps: [T5.43]  acc: [current holds/protections/checks permit guarded exact-head rebase of default-off production-enrollment source]
+- [ ] T5.45 Verify production-enrollment source landing  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.44]  acc: [landed source equals reviewed tree, is reachable and passes affected capability checks; release artifact identity remains separate and real-history activation is not claimed]
+- [ ] T5.46 Review exact client host and capture activation release  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.45, T2.8, T3.3, T4.10]  acc: [source-pinned signed service and qualified host/client artifacts, current erasure/restore/copy evidence, measured limits, existing target/cost/expiry grants, enrollment policy, canary bounds, pause and rollback are independently accepted before T3.4; absent permission blocks only the dependent operation and no new account/infrastructure is assumed]
+- [ ] T5.47 Verify enrolled automatic-memory and origin-loss recovery canary  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T3.4]  acc: [at actual released versions the scoped synthetic canary proves import plus concurrent capture, exact read/export, origin-loss receiver continuation, correction, pause/private, outage replay, deletion and cleanup; any subsequent real enrollment uses current owner-covered standing policy and qualified scope, never qualification data; consent, queued versus acknowledged/derived and unknown states are visible and failed canary parks the capability without silently replaying work]
 
 ## Batches and gates
 
@@ -366,3 +520,44 @@ acceptance, with old/new rows and dependency delta preserved in the sibling
 preservation receipt. No previous completed row changes and no task is marked
 complete from another repository. This task delivers documentation only; elapsed
 Resume01 authority is not renewed and no external runtime task is advanced.
+
+## Automatic-memory batch proposal and handoff — revision r3
+
+These batches refine the historical table above. Default source member ceiling
+is3; gate rows do not pad it. One attended coordinator owns plan/integration;
+one independent reviewer handles each frozen candidate. Future implementation
+workers inherit the actual current selection without model/provider fallback.
+Dispatch is not performed by this planning task. Split only at actual package,
+repository, trust or independently releasable boundaries and give each resulting
+candidate its own gate chain before dispatch.
+
+| Batch / intended result | Implementation members | Prerequisites | Owner | Verify / review / merge / landed | Size / split |
+| --- | --- | --- | --- | --- | --- |
+| Safe archive | T5.2-T5.3, original T1.3 closure | T5.0-T5.1 | archive-lane | T1.4 / T1.5 / T1.6 / T1.7 | 3 members; serialized existing writer/backup ownership |
+| Shared automatic client and knowledge | T5.5-T5.7, T2.1 aggregate closure | T5.4 | client/memory roles under one integration owner | T5.8 / T5.9 / T5.10 / T5.11 | 3 implementation members; T2.1 is aggregate evidence, not fourth dispatch |
+| Zati bridge | original T2.2 | T5.11-T5.12 | existing Zati and Serenity owners | canonical Zati gates plus joined T2.5 / T2.6 / T2.7 / T2.8 | 1 outcome; no second runtime scheduler |
+| Codex | T5.14 | T5.13 | codex-adapter | T5.15 / T5.16 / T5.17 / T5.18 | 1; target version/surface fixed |
+| Claude Code | T5.19 | T5.13 | claude-code-adapter | T5.20 / T5.21 / T5.22 / T5.23 | 1; target version/surface fixed |
+| Cursor | T5.24 | T5.13 | cursor-adapter | T5.25 / T5.26 / T5.27 / T5.28 | 1; target version/surface fixed |
+| Antigravity | T5.29 | T5.13 | google-antigravity-adapter | T5.30 / T5.31 / T5.32 / T5.33 | 1; target version/surface fixed |
+| Same-release operational prerequisite | T5.35 | T5.34 | existing private release owner | T5.36 / T5.37 / T5.38 / T5.39 | 1; separate source owner and no live action |
+| Default-off production enrollment | T5.41 | T5.1 | integration | T5.42 / T5.43 / T5.44 / T5.45 | 1; no activation at source landing |
+| Controlled release and real-use envelope | existing T3.14, T3.4 operational transitions | T5.40, T5.46 and current recorded authority | existing release owner | T3.15, T3.3, T5.47, T3.5, T3.6 | distinct synthetic and real capture gates, not a source PR |
+
+T5.0 and T4.0 can start with read-only source/fixture work; T5.1 follows T5.0.
+Current-state maintenance preflight T5.34 can proceed independently from archive
+implementation using existing T3.25 source, but no physical operation follows.
+Existing governed-memory UX and Gist consumption remain available through E4;
+archive custody and cross-host recovery remain gated. A missing host hook/trust,
+Zati runtime receipt, authenticated fence producer, current-state maintenance
+contract or finite activation envelope is an explicit blocker for its dependent
+row, not a reason to retry unsafe alternatives or invent success.
+
+Before/after identity/status/dependency/criteria inventory is retained in
+[the preservation receipt](../receipts/2026-10-17-automatic-memory-plan-preservation.json).
+All91 original task rows survive; amended open gates retain their prior acceptance
+verbatim with additional coverage and prerequisites. No original completed row
+changes. Review/merge/landed evidence for this planning artifact is recorded in
+its PR; source implementation, provider behavior, installation and deployment
+remain future receipts. The primary checkout and foreign PR273/277 work are
+preserved; no lifecycle is enrolled by this document.
