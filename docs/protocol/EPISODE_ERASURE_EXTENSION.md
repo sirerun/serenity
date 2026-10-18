@@ -93,3 +93,82 @@ required when actual routes change. Canonical unrelated bytes, source identity,
 unknown outcomes and immutable operation accounting must remain inspectable.
 Full T1.3 waits for these real owner integrations and controlled-copy evidence;
 a narrower preparer increment retains its unsupported flags and open parent.
+
+## Frozen v2 negotiation and admission shapes
+
+The additive route is `POST /episodes/v2`, schema `serenity.episodes/v2`, with
+existing bearer authentication, exact authenticated `project_id` brain binding,
+JSON duplicate-key/unknown-field rejection and existing response byte limits.
+It neither changes nor silently upgrades `/episodes/v1`. No redirect or URL
+fallback is permitted. An old server's404/405 is unsupported, not enrollment.
+
+The capability request has required `schema`, `project_id`, `operation` equal to
+`capabilities`, and `producer_id` (existing opaque EpisodeID grammar), plus only
+optional `workspace_id` as defined below. It requires
+memory:read. The response contains exactly `schema`, `project_id`,
+`service_revision` (immutable source/release identifier), `supported_schemas`
+(array of exact schema strings), `mode` (`disabled`, `synthetic`, `enrolled`),
+`admission` (null or the reference below), `operations` (explicit operation names),
+`limits` (the existing v1 numerical capability keys), and `capture_ready` boolean.
+A successful negotiation is not authority to capture. A client must recognize
+v2, compare brain and producer, require enrolled mode, current non-null admission,
+append in operations, capture_ready true and adequate finite limits. Any absent,
+unknown, inconsistent or unsupported field refuses collection/upload; never infer
+support from a healthy service or another client’s negotiation.
+
+Admission reference has exactly `enrollment_id`, `enrollment_version`, `policy_id`,
+`policy_version`, `producer_id`, `workspace_id`, `release_id`, `valid_from` and
+`valid_until`. IDs use the existing opaque EpisodeID grammar, versions are
+positive integers, and times are UTC RFC3339 timestamps. The selected reference
+is the exact one server-authorized mapping for that producer/workspace; ambiguous
+or absent mappings return mode disabled/admission null. A producer with several
+mappings negotiates separately with an additional optional `workspace_id` field;
+when omitted it is accepted only if there is exactly one authorized mapping.
+
+The server-owned record `serenity.episode-enrollment/v1` contains that exact
+reference plus `project_id`, `enabled`, `policy_digest` (canonical lowercase
+SHA256), `allowed_operations` (subset of v1 operation names), `limits` (only
+finite values at or below qualified service bounds), and `qualification_digest`
+(exact verified safety/release/copy evidence). It is written only by the existing
+trusted configuration/maintenance owner through its reviewed change path and
+never created by an agent request, repository config, capability negotiation or
+model field. Policy bytes resolving that digest are an existing trusted client
+policy/mapping version; records do not embed credentials. New administrative
+transport is not introduced by this protocol. No record is effective without
+current verified release/safety evidence and existing brain/grant authority.
+
+Every v2 operation uses the exact existing v1 body for that operation, replacing
+schema with v2, removing qualification and adding required `admission` with the
+reference above. There is no qualification override in v2. Append/checkpoint
+mutation producer/workspace and brain must match admission, current policy and
+current bearer grant. The server re-resolves the record and validates the exact
+reference, release, current scope, enabled flag, policy digest, validity and
+safety state before every request and inside serialized publication. A successful
+capability response is not cached write authority. Existing generation, command
+identity, quota, read eligibility, unknown outcome and exclusion replay semantics
+remain; retries retain their exact old identity and cannot bypass revoked policy.
+
+Only existing v1 operations may be listed at initial v2 negotiation. Production
+export and physical purge routes are not invented by listing feature names:
+they require their own implemented qualified contract and are absent until then.
+Automatic extraction uses the exact policy outside the append transaction; no
+model provider is implied by a capability response. Qualification must still
+prove the export/purge/restore safety prerequisites before capture_ready is true.
+
+Unsupported schema/operation is400 `unsupported_version`/`unsupported_operation`;
+malformed/duplicate/unknown fields are400 `invalid_request`; missing grant or
+wrong authenticated brain is403 `forbidden`; absent/disabled/expired/revoked
+admission is403 `enrollment_unavailable`; a changed reference, policy or release
+is409 `admission_changed`; missing current safety/replay evidence is503
+`capability_unavailable`. All deny without collecting/publishing new content or
+revealing another brain. Malformed and incomplete negotiation fails closed.
+No original payload or credentials appear in failure bodies. Existing ambiguous
+post-send outcomes require status/reconciliation and never mean nonexecution.
+
+Disconnect/pause/revoke changes the server record version or enabled state
+through its existing owner; there is no model-callable enablement endpoint.
+Clients stop capture on denied renewal and retain only policy-permitted queued
+bytes until their governed disposition. Re-enrollment is a new owner-approved
+reference, not silent reassignment of old queued evidence. Tests must cover old
+clients, unknown future schema, foreign/mismatched mapping, version drift,
+expiry, disablement between negotiate/publish and changed release safety state.
