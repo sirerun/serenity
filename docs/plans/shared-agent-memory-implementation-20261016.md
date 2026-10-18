@@ -374,9 +374,9 @@ Acceptance: An additive inactive candidate can preserve explicitly pinned indepe
 
 - [x] T5.48 Implement pinned mixed raw-source candidate  Owner: mixed-source-lane  kind: agent  stage: implement  deps: [T5.1]  acc: [additive BuildMixed preserves exact content and metadata of explicitly trusted SHA256-pinned independent raw sources across actual Git history, refuses missing/duplicate/mismatched/unsupported pins, foreign brain and unknown derivatives, removes excluded episode/checkpoint objects, and keeps Build legacy refusal and no-activation/purge semantics]
 - [x] T5.49 Verify mixed-source candidate increment  Owner: integration  kind: agent  stage: verify  deps: [T5.48]  acc: [meaningful real-Git tests cover mixed retained/deleted history, raw metadata identity and changed/missing/unused pins, unlisted/derived sources, preservation and object closure; focused package race/vet, format and Wazi checks pass on exact source under qualified bounds]
-- [ ] T5.50 Independently review mixed-source increment  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.49]  acc: [non-author exact base/head review covers full source/tests/contract/plan diff and no false authority or physical completion; accepted findings have tracked fixes and affected checks and re-review]
-- [ ] T5.51 Merge reviewed mixed-source increment  Owner: integration  kind: agent  stage: merge  deps: [T5.50]  acc: [current holds/protections/checks permit guarded exact-head rebase of the reviewed inactive-source candidate]
-- [ ] T5.52 Verify mixed-source source landing  Owner: integration  kind: agent  stage: verify  deps: [T5.51]  acc: [reviewed/landed tree and main reachability plus affected checks pass; broader mixed-derivative activation and managed-copy purge remain explicitly incomplete]
+- [x] T5.50 Independently review mixed-source increment  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.49]  acc: [non-author exact base/head review covers full source/tests/contract/plan diff and no false authority or physical completion; accepted findings have tracked fixes and affected checks and re-review]
+- [x] T5.51 Merge reviewed mixed-source increment  Owner: integration  kind: agent  stage: merge  deps: [T5.50]  acc: [current holds/protections/checks permit guarded exact-head rebase of the reviewed inactive-source candidate]
+- [x] T5.52 Verify mixed-source source landing  Owner: integration  kind: agent  stage: verify  deps: [T5.51]  acc: [reviewed/landed tree and main reachability plus affected checks pass; broader mixed-derivative activation and managed-copy purge remain explicitly incomplete]
 
 This bounded source increment is one implementation member under ceiling3. It
 adds no production caller. Independent-source pins are a trusted maintenance
@@ -613,3 +613,31 @@ exact status/criteria; five additive source-delivery rows cover this inactive
 increment. Legacy Build still refuses mixed sources. Full T5.2/T5.3/T1.3 stay
 open; no authenticated activation, hosted derivative/copy purge or live recovery
 claim follows. See the mixed-source preparation receipt for the exact boundary.
+
+T5.50-T5.52 completed: independent full-diff review accepted exact
+5e976a132176be830d9e5cf42e747c90854a44ca against49989123 with no actionable
+findings. PR403 guarded rebase landed6446a8b41c3b926aee3ee237978a708648de90e0;
+full reviewed-tree equality, origin/main reachability and unchanged tested source
+were verified. Actions39102917319 was billing-blocked before steps; ADR024
+scoped fallback applies without protection changes. No runtime activation.
+
+### Next eligible work and actual blockers
+
+- Full T5.2/T5.3 integration requires the preserved hosted deletion/backup owner
+  handoff. Foreign T23.48/T23.49 claims remain active, and PR273 remains open;
+  claim age does not authorize takeover. The current owner was asked to choose
+  reconciliation/takeover or preservation; no answer is treated as permission.
+- T5.34 requires the existing private release/custody owner to confirm the
+  same-release maintenance entry/closeout source and finite authority boundary.
+  No current operational packet or missing producer is fabricated from old6-to8
+  fields. T5.35-T5.40 and their live dependents remain gated.
+- Shared-client/host work waits for T1.7; joined continuation waits for qualified
+  Zati runtime receipts. T4.0 still needs the specified representative-task,
+  installed-app and whole-request measurements before budget acceptance.
+- T5.41 production-enrollment work must reconcile the shared hosted-schema/
+  assembly owners before touching those contracts; T5.42 cannot qualify the
+  transition until T1.7/T5.11. No capture or deployment is enabled by source work.
+
+Current-session source delivery is attended. No persistent supervisor/refill
+service was installed or claimed. Preserve source candidates and exact claim
+receipts; only this session's owned claims may be released on handoff.
