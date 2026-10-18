@@ -18,6 +18,7 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/credential"
 	"github.com/sirerun/serenity/internal/hosted/pool"
 	hoststore "github.com/sirerun/serenity/internal/hosted/store"
+	"github.com/sirerun/serenity/internal/writer"
 )
 
 func TestExportBundleUsesOwnedGitEnvironmentAndAllRefs(t *testing.T) {
@@ -200,6 +201,13 @@ func newLifecycleExportFixture(t *testing.T) (*Gateway, *pool.Pool, *hoststore.S
 	brainsRoot := filepath.Join(dir, "brains")
 	brainRoot := filepath.Join(brainsRoot, brainID)
 	if err = os.MkdirAll(brainRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	owner, err := writer.AcquireBrain(brainRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := owner.Close(); err != nil {
 		t.Fatal(err)
 	}
 	cfg := config.Default()

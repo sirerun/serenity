@@ -19,7 +19,7 @@ func maintenanceFixtureID() MaintenanceIdentity {
 func markerPath(root string) string { return filepath.Join(root, ".serenity", maintenanceMarkerName) }
 
 func TestMaintenancePersistsAndReconcilesExactOwner(t *testing.T) {
-	root := t.TempDir()
+	root := maintenanceTestRoot(t)
 	original, err := AcquireBrain(root)
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestMaintenancePersistsAndReconcilesExactOwner(t *testing.T) {
 func TestMaintenancePartialUnsafeAndReplacedMarkersFailClosed(t *testing.T) {
 	for _, scenario := range []string{"partial", "symlink", "directory", "mode", "unknown_field", "duplicate_key", "oversized", "replacement", "lock_replacement"} {
 		t.Run(scenario, func(t *testing.T) {
-			root := t.TempDir()
+			root := maintenanceTestRoot(t)
 			id := maintenanceFixtureID()
 			m, err := BeginBrainMaintenance(root, id)
 			if err != nil {
@@ -234,7 +234,7 @@ func TestMaintenanceProcessExitRetainsGate(t *testing.T) {
 			os.Exit(5)
 		}
 	}
-	root := t.TempDir()
+	root := maintenanceTestRoot(t)
 	run := func(action string) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -274,7 +274,7 @@ func TestMaintenanceDurabilityFailuresNeverReturnUsableOwner(t *testing.T) {
 	for _, action := range []string{"begin", "resume"} {
 		for _, boundary := range []string{"brain_root", "marker_file", "runtime_directory"} {
 			t.Run(action+"_"+boundary, func(t *testing.T) {
-				root := t.TempDir()
+				root := maintenanceTestRoot(t)
 				id := maintenanceFixtureID()
 				if action == "resume" {
 					m, err := BeginBrainMaintenance(root, id)
@@ -341,4 +341,19 @@ func TestMaintenanceDurabilityFailuresNeverReturnUsableOwner(t *testing.T) {
 			})
 		}
 	}
+}
+
+// A canonical view is initialized only by the ordinary writer owner. Maintenance
+// deliberately refuses missing legacy view state instead of bootstrapping it.
+func maintenanceTestRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	owner, err := AcquireBrain(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = owner.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }

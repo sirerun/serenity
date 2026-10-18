@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sirerun/serenity/internal/hosted/pool"
+	"github.com/sirerun/serenity/internal/writer"
 )
 
 // InspectorReadView is a short-lived, fenced view of one already-owned brain.
@@ -30,7 +31,7 @@ var ErrInspectorReadCapacity = errors.New("hosted: inspector read capacity reach
 // fences used by hosted writes and deletion while a read-only inspector query
 // runs. A cold brain is read directly from its validated canonical directory;
 // it is never opened through Pool.Acquire, which can initialize or recover it.
-func (g *Gateway) WithInspectorRead(ctx context.Context, accountID, brainID string, read func(InspectorReadView) error) error {
+func (g *Gateway) WithInspectorRead(ctx context.Context, accountID, brainID string, read func(InspectorReadView) error) (readErr error) {
 	if g == nil || g.Issuer == nil || g.Issuer.Store == nil || read == nil {
 		return errors.New("hosted: inspector read is unavailable")
 	}
@@ -83,6 +84,14 @@ func (g *Gateway) WithInspectorRead(ctx context.Context, accountID, brainID stri
 	if err != nil {
 		return err
 	}
+
+	// Root is owner-validated before opening the existing read barrier. This
+	// shared lease spans both warm and cold callbacks and never initializes state.
+	view, err := writer.AcquireCanonicalRead(root)
+	if err != nil {
+		return err
+	}
+	defer func() { readErr = errors.Join(readErr, view.Close()) }()
 
 	runtime, release, acquireErr := g.Pool.AcquireExistingForRead(ctx, brainID)
 	if acquireErr == nil {

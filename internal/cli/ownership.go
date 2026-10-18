@@ -21,11 +21,22 @@ func commandOwnsBrain(cmd *cobra.Command) bool {
 	}
 }
 
+// commandReadsBrain names actual canonical CLI entry points. Connector status
+// prints static documentation and deliberately needs no brain or runtime files.
+func commandReadsBrain(cmd *cobra.Command) bool {
+	switch cmd.CommandPath() {
+	case "serenity check", "serenity doctor", "serenity status", "serenity search", "serenity ask", "serenity report":
+		return true
+	default:
+		return false
+	}
+}
+
 func installBrainOwnership(cmd *cobra.Command) {
 	for _, child := range cmd.Commands() {
 		installBrainOwnership(child)
 	}
-	if !commandOwnsBrain(cmd) {
+	if !commandOwnsBrain(cmd) && !commandReadsBrain(cmd) {
 		return
 	}
 	if cmd.Run != nil {
@@ -38,6 +49,14 @@ func installBrainOwnership(cmd *cobra.Command) {
 	}
 	run := cmd.RunE
 	cmd.RunE = func(c *cobra.Command, args []string) (runErr error) {
+		if commandReadsBrain(c) {
+			read, err := writer.AcquireCanonicalRead(flagRoot)
+			if err != nil {
+				return err
+			}
+			defer func() { runErr = errors.Join(runErr, read.Close()) }()
+			return run(c, args)
+		}
 		// init alone may create the minimal root needed to acquire ownership.
 		if c.CommandPath() == "serenity init" {
 			if err := os.MkdirAll(flagRoot, 0755); err != nil {

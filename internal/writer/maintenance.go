@@ -48,6 +48,7 @@ func maintenanceBytes(id MaintenanceIdentity) ([]byte, error) {
 // and copy disposition; this primitive only persists a cooperating-writer gate.
 type BrainMaintenance struct {
 	mu       sync.Mutex
+	view     *os.File
 	owner    *os.File
 	state    *os.Root
 	identity MaintenanceIdentity
@@ -68,7 +69,9 @@ func durableMaintenanceSyncs() maintenanceSyncs {
 
 // BeginBrainMaintenance acquires writer ownership and exclusively creates a
 // durable marker. Failure may leave a partial marker; ordinary writers refuse it.
-// Existing markers are never adopted or overwritten.
+// Existing markers are never adopted or overwritten. The permanent canonical
+// view must already have been initialized by an ordinary AcquireBrain owner.
+// Maintenance acquires exclusive view ownership before exclusive writer ownership.
 func BeginBrainMaintenance(path string, id MaintenanceIdentity) (*BrainMaintenance, error) {
 	return beginBrainMaintenance(path, id, durableMaintenanceSyncs())
 }
@@ -78,11 +81,11 @@ func beginBrainMaintenance(path string, id MaintenanceIdentity, syncs maintenanc
 	if err != nil {
 		return nil, err
 	}
-	owner, state, err := acquireBrainLockWithSync(path, syncs.directory)
+	view, owner, state, err := acquireMaintenanceLocks(path, syncs.directory)
 	if err != nil {
 		return nil, err
 	}
-	m := &BrainMaintenance{owner: owner, state: state, identity: id}
+	m := &BrainMaintenance{view: view, owner: owner, state: state, identity: id}
 	success := false
 	defer func() {
 		if !success {
@@ -116,6 +119,7 @@ func beginBrainMaintenance(path string, id MaintenanceIdentity, syncs maintenanc
 // ResumeBrainMaintenance acquires the same writer lock, accepting an existing
 // marker only if its canonical bytes equal independently supplied expected pins.
 // Matching local pins never establish journal authority or authorize activation.
+// The existing canonical view is acquired exclusively before writer ownership.
 func ResumeBrainMaintenance(path string, expected MaintenanceIdentity) (*BrainMaintenance, error) {
 	return resumeBrainMaintenance(path, expected, durableMaintenanceSyncs())
 }
@@ -125,11 +129,11 @@ func resumeBrainMaintenance(path string, expected MaintenanceIdentity, syncs mai
 	if err != nil {
 		return nil, err
 	}
-	owner, state, err := acquireBrainLockWithSync(path, syncs.directory)
+	view, owner, state, err := acquireMaintenanceLocks(path, syncs.directory)
 	if err != nil {
 		return nil, err
 	}
-	m := &BrainMaintenance{owner: owner, state: state, identity: expected}
+	m := &BrainMaintenance{view: view, owner: owner, state: state, identity: expected}
 	file, err := maintenanceOpen(state, maintenanceMarkerName)
 	if err != nil {
 		_ = m.Close()
@@ -173,8 +177,13 @@ func resumeBrainMaintenance(path string, expected MaintenanceIdentity, syncs mai
 }
 
 func (m *BrainMaintenance) checkLocked(expected []byte) error {
-	if m.closed || m.owner == nil || m.state == nil || m.marker == nil {
+	if m.closed || m.view == nil || m.owner == nil || m.state == nil || m.marker == nil {
 		return ErrMaintenancePending
+	}
+	viewInfo, err := m.view.Stat()
+	currentView, statErr := m.state.Lstat(canonicalViewLockName)
+	if err != nil || statErr != nil || !os.SameFile(viewInfo, currentView) {
+		return ErrCanonicalViewUnavailable
 	}
 	lockInfo, err := m.owner.Stat()
 	if err != nil {
@@ -233,5 +242,5 @@ func (m *BrainMaintenance) Close() error {
 		return nil
 	}
 	m.closed = true
-	return errors.Join(m.state.Close(), m.owner.Close())
+	return errors.Join(m.state.Close(), m.owner.Close(), m.view.Close())
 }

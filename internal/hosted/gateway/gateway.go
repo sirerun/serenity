@@ -649,6 +649,8 @@ func (g *Gateway) CallForAccount(ctx context.Context, account, brain, name strin
 type Inventory struct{ Brains, Memories, StorageBytes int64 }
 
 func (g *Gateway) Inventory(ctx context.Context, account, root string) (Inventory, error) {
+	g.Maintenance.RLock()
+	defer g.Maintenance.RUnlock()
 	hash := sha256.Sum256([]byte(account))
 	lock := &g.accountLocks[int(hash[0])%len(g.accountLocks)]
 	lock.Lock()
@@ -672,31 +674,47 @@ func (g *Gateway) inventory(ctx context.Context, account, root string) (out Inve
 			return out, errors.New("invalid stored brain path")
 		}
 		path := filepath.Join(root, brain.PathKey)
-		projection, e := brainstore.LoadMemoryProjection(brainstore.NewSourceStore(path))
+		part, e := inventoryCanonicalBrain(ctx, path)
 		if e != nil {
 			return out, e
 		}
-		for _, fact := range projection.All() {
-			if !fact.Expired(time.Now()) {
-				out.Memories++
-			}
-		}
-		err = filepath.WalkDir(path, func(_ string, entry fs.DirEntry, walkErr error) error {
-			if walkErr != nil {
-				return walkErr
-			}
-			if !entry.IsDir() {
-				info, e := entry.Info()
-				if e != nil {
-					return e
-				}
-				out.StorageBytes += info.Size()
-			}
-			return nil
-		})
-		if err != nil {
-			return out, err
-		}
+		out.Memories += part.Memories
+		out.StorageBytes += part.StorageBytes
 	}
 	return out, nil
+}
+
+// inventoryCanonicalBrain releases each lease before advancing to another brain.
+func inventoryCanonicalBrain(ctx context.Context, path string) (out Inventory, err error) {
+	view, err := writerpkg.AcquireCanonicalRead(path)
+	if err != nil {
+		return out, err
+	}
+	defer func() { err = errors.Join(err, view.Close()) }()
+	projection, err := brainstore.LoadMemoryProjection(brainstore.NewSourceStore(path))
+	if err != nil {
+		return out, err
+	}
+	for _, fact := range projection.All() {
+		if !fact.Expired(time.Now()) {
+			out.Memories++
+		}
+	}
+	err = filepath.WalkDir(path, func(_ string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !entry.IsDir() {
+			info, e := entry.Info()
+			if e != nil {
+				return e
+			}
+			out.StorageBytes += info.Size()
+		}
+		return nil
+	})
+	return out, err
 }
