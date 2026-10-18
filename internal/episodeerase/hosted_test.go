@@ -4,13 +4,15 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/sirerun/serenity/internal/gitrun"
-	"github.com/sirerun/serenity/internal/hosted/provision"
-	hostedstore "github.com/sirerun/serenity/internal/hosted/store"
-	"github.com/sirerun/serenity/internal/store"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/sirerun/serenity/internal/gitrun"
+	"github.com/sirerun/serenity/internal/hosted/pool"
+	"github.com/sirerun/serenity/internal/hosted/provision"
+	hostedstore "github.com/sirerun/serenity/internal/hosted/store"
+	"github.com/sirerun/serenity/internal/store"
 )
 
 func hostedFixture(t *testing.T) (*fixture, HostedRequest) {
@@ -192,9 +194,44 @@ func TestHostedActualProvisionedBaseline(t *testing.T) {
 	}
 	root := filepath.Join(p.BrainsRoot, brain.PathKey)
 	f := &fixture{t: t, root: root, parent: parent, s: store.NewSourceStore(root)}
-	config := []byte("version: 1\n")
-	if err := os.WriteFile(filepath.Join(root, "serenity.yml"), config, 0600); err != nil {
+	runtimePool, err := pool.New(pool.Config{BrainsRoot: p.BrainsRoot, MaxOpen: 1, MaxInFlight: 1, Embedder: hostedFixtureEmbedder{}})
+	if err != nil {
 		t.Fatal(err)
+	}
+	_, release, err := runtimePool.AcquireCanonical(ctx, brain.ID)
+	if err != nil {
+		_ = runtimePool.Close()
+		t.Fatal(err)
+	}
+	release()
+	if err := runtimePool.Close(); err != nil {
+		t.Fatal(err)
+	}
+	config, err := os.ReadFile(filepath.Join(root, "serenity.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimePaths := []string{}
+	if err := filepath.WalkDir(filepath.Join(root, ".serenity"), func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				return err
+			}
+			runtimePaths = append(runtimePaths, filepath.ToSlash(rel))
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(runtimePaths) == 0 {
+		t.Fatal("pool produced no retained runtime files")
+	}
+	if _, err := os.Stat(filepath.Join(root, ".serenity/writer.lock")); err != nil {
+		t.Fatal("stable writer lock absent", err)
 	}
 	rec := appendRecord("delete", "delete-command", "PROVISIONED-SECRET", false)
 	rec.BrainID = brain.ID
@@ -207,10 +244,26 @@ func TestHostedActualProvisionedBaseline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Commits != 2 || result.Activation != "not_activated" {
+	if result.Commits != 3 || result.Activation != "not_activated" {
 		t.Fatalf("unexpected result %+v", result)
 	}
-	if string(candidateGit(t, req.Request, "show", "main~1:.gitignore")) != ".serenity/\n" {
+	if string(candidateGit(t, req.Request, "show", "main:serenity.yml")) != string(config) {
+		t.Fatal("actual pool config changed")
+	}
+	tracked := candidateGit(t, req.Request, "ls-tree", "-r", "--name-only", "main")
+	for _, path := range runtimePaths {
+		if bytes.Contains(tracked, []byte(path)) {
+			t.Fatalf("runtime copied: %s", path)
+		}
+	}
+	if string(candidateGit(t, req.Request, "show", "main~2:.gitignore")) != ".serenity/\n" {
 		t.Fatal("provisioning baseline changed")
 	}
+}
+
+type hostedFixtureEmbedder struct{}
+
+func (hostedFixtureEmbedder) ModelVersion() string { return "hosted-fixture@v1" }
+func (hostedFixtureEmbedder) Embed(context.Context, string) ([]float32, error) {
+	return []float32{1, 2, 3}, nil
 }

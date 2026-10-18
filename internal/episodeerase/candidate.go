@@ -477,9 +477,6 @@ func safeDirectory(path string) (string, error) {
 	return a, nil
 }
 
-func inspectSource(ctx context.Context, root string) error {
-	return inspectSourceMode(ctx, root, false)
-}
 func inspectSourceMode(ctx context.Context, root string, hosted bool) error {
 	count := 0
 	var total int64

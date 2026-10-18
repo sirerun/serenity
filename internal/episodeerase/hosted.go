@@ -44,7 +44,7 @@ func safeSegments(path string) bool {
 			return false
 		}
 		for _, c := range s {
-			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-' || c == '.') {
+			if (c < 'a' || c > 'z') && (c < 'A' || c > 'Z') && (c < '0' || c > '9') && c != '_' && c != '-' && c != '.' {
 				return false
 			}
 		}
@@ -83,7 +83,7 @@ func BuildHosted(ctx context.Context, req HostedRequest) (Result, error) {
 	}
 	h := &hostedSources{pins: append([]PathPin(nil), req.IndependentPaths...), byPath: map[string]string{}, seen: map[string]bool{}}
 	for _, p := range h.pins {
-		if !(p.Path == ".gitignore" || p.Path == "serenity.yml" || canonicalHostedPath(p.Path)) || !store.ValidSourceSHA(p.SHA256) || h.byPath[p.Path] != "" {
+		if (p.Path != ".gitignore" && p.Path != "serenity.yml" && !canonicalHostedPath(p.Path)) || !store.ValidSourceSHA(p.SHA256) || h.byPath[p.Path] != "" {
 			return Result{}, ErrUnsafe
 		}
 		h.byPath[p.Path] = p.SHA256
