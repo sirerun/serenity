@@ -199,7 +199,7 @@ func TestEpisodeErasurePreparationCancelledMaintenanceWait(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("maintenance wait: %v", err)
 	}
-	if _, err := svc.PrepareEpisodeErasure(nil, req); err == nil {
+	if _, err := svc.PrepareEpisodeErasure(nil, req); err == nil { //nolint:staticcheck // Exercise explicit nil-context rejection.
 		t.Fatal("nil context accepted")
 	}
 }
