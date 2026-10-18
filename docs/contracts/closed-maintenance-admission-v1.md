@@ -102,6 +102,16 @@ interface does not authenticate an arbitrary implementation. Nil/typed-nil input
 cancelled contexts and malformed closed positions refuse. Snapshot data is detached
 from the private position used by Recheck; no historical CutID is invented.
 
+The actual runtimebroker.OpenOwner path must also support these calls. Extend
+ownerTransport only for closed_current and get/list with a nonnil closed_position
+and no lease/reservation/cut selector. Preserve its refusal of historical get/list
+and other runtime writer actions. operatorTransport must explicitly refuse the
+new closed selector/action, preserving its historical-reader-only contract even
+if accidentally configured with owner credentials. Server principal checks repeat
+these gates. Test the actual transport/signed-request path with private synthetic
+configuration and fixture credentials, plus no-remote-invocation refusal counters;
+this does not qualify deployed IAM or provider permission.
+
 A trusted episodemaintenance CLOSED source factory uses the authenticated client,
 ClosedReader and deletion.NewJournalReader(...).Observe to verify ALL current
 history, followed by fresh equality recheck. Its detached snapshot supplies an
