@@ -82,12 +82,18 @@ func (g *Gateway) Export(ctx context.Context, account, brain string, out io.Writ
 	defer release()
 	runtime.Mutations.Lock()
 	defer runtime.Mutations.Unlock()
+	if err = g.checkLegacyEpisodeExport(ctx, brain, runtime); err != nil {
+		return err
+	}
 	temp, err := os.MkdirTemp("", "serenity-export-")
 	if err != nil {
 		return err
 	}
 	defer func() { err = errors.Join(err, os.RemoveAll(temp)) }()
 	if err = runtime.Flush(); err != nil {
+		return err
+	}
+	if err = g.checkLegacyEpisodeExport(ctx, brain, runtime); err != nil {
 		return err
 	}
 	bundle := filepath.Join(temp, "brain.bundle")
