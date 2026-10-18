@@ -68,7 +68,9 @@ review found INIT-R1: creation could leave a persistent gate while an error resu
 reported marker_held=false. The corrected source conservatively reports that a
 gate may remain after any attempted creation, documents uncertainty and tests
 precreation rejection without asserting actual presence. Independent re-review
-resolved INIT-R1; final evidence/head review remains pending.
+resolved INIT-R1. Final independent evidence/full-candidate review accepted
+5c5eb34581a29fa6acb440979a0f242920780b3a with no outstanding findings.
+Guarded merge and landed verification remain separate.
 
 Batch ceiling3 used two disjoint implementers and root integration, with a
 separate non-author reviewer. All inherited the current selected model/effort;
