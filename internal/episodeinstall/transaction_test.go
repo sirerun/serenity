@@ -136,7 +136,12 @@ func TestTransactionProcessDeathForwardRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	points := []string{"before-record:" + progressName, "after-record-file-sync:" + progressName, "after-record-directory-sync:" + progressName, "before-record:" + installedName, "after-record-file-sync:" + installedName, "after-record-directory-sync:" + installedName}
+	var points []string
+	for _, name := range []string{progressName, installedName} {
+		for _, event := range []string{"before-record:", "after-record-create:", "after-record-midwrite:", "before-record-file-sync:", "after-record-file-sync:", "before-record-rename:", "after-record-rename:", "before-record-directory-sync:", "after-record-directory-sync:"} {
+			points = append(points, event+name)
+		}
+	}
 	for _, c := range h.Components {
 		for _, action := range []string{"retain", "publish"} {
 			if action == "retain" && !present(c.Old) || action == "publish" && !present(c.New) {
@@ -253,5 +258,49 @@ func TestTransactionNeverReplacesUnexpectedRenameDestination(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(ref.Source, ".git")); err != nil {
 		t.Fatal("old canonical repository moved despite conflict")
+	}
+}
+
+func TestTransactionRejectsUnknownOrDuplicatedPendingRecords(t *testing.T) {
+	for _, name := range []string{"unknown_prefix", "duplicate_intent", "premature_completion"} {
+		t.Run(name, func(t *testing.T) {
+			ref := transactionPrepared(t)
+			m := transactionOwner(t, ref)
+			header, err := loadHeader(context.Background(), ref)
+			if err != nil {
+				t.Fatal(err)
+			}
+			intent, err := transactionRecord(ref, header, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			completion, err := transactionRecord(ref, header, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			write := func(name string, raw []byte) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(ref.Directory, name), raw, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			switch name {
+			case "unknown_prefix":
+				write(progressName+".pending", []byte("not-the-expected-record"))
+			case "duplicate_intent":
+				write(progressName, intent)
+				write(progressName+".pending", intent[:len(intent)/2])
+			case "premature_completion":
+				write(progressName, intent)
+				write(installedName+".pending", completion[:len(completion)/2])
+			}
+			if _, err := Resume(context.Background(), ref, m, transactionAdmissionFor(t, ref)); err == nil {
+				t.Fatal("unknown or impossible pending state was accepted")
+			}
+			if owner, err := writer.AcquireBrain(ref.Source); err == nil {
+				_ = owner.Close()
+				t.Fatal("failure removed writer maintenance fence")
+			}
+		})
 	}
 }

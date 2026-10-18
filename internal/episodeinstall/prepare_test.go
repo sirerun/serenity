@@ -305,3 +305,84 @@ func TestPrepareNoOldIndexAndQuarantinedPageRefusal(t *testing.T) {
 		}
 	})
 }
+
+func TestPrepareLeavesCallerSliceValuesAndOrderUnchanged(t *testing.T) {
+	req := prepareFixture(t)
+	first := req.CurrentFences[0]
+	second := first
+	second.Generation = 2
+	second.CommandKey = hashBytes([]byte("second independent exclusion command"))
+	second.ConversationKey = hashBytes([]byte("second independent exclusion conversation"))
+	second.RequestDigest = hashBytes([]byte("second independent exclusion request"))
+	req.CurrentFences = []store.EpisodeRecord{second, first}
+	before, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := Prepare(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatal("preparation changed caller-owned input values/order")
+	}
+	header, err := loadHeader(context.Background(), ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(header.CurrentFences) != 2 || header.CurrentFences[0].Generation != 1 || header.CurrentFences[1].Generation != 2 {
+		t.Fatal("private fence copy was not canonically sorted")
+	}
+}
+
+func TestPrepareDetachesInputsBeforeOwnedWork(t *testing.T) {
+	for _, at := range []string{"operation-created", "original-copied"} {
+		t.Run(at, func(t *testing.T) {
+			req := prepareFixture(t)
+			fencesJSON, err := json.Marshal(req.CurrentFences)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sourcesJSON, err := json.Marshal(req.IndependentSources)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pathsJSON, err := json.Marshal(req.IndependentPaths)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expectedDigest := store.EpisodeHash(req.CurrentFences)
+			mutated := false
+			ref, err := prepare(context.Background(), req, func(stage string) {
+				if stage != at {
+					return
+				}
+				mutated = true
+				req.CurrentFences[0].CommandKey = "caller changed command"
+				req.CurrentFences[0].Generation = 999
+				req.IndependentSources[0].MetadataSHA256 = "caller changed metadata"
+				req.IndependentPaths[0].SHA256 = "caller changed path"
+			})
+			if err != nil {
+				t.Fatal("caller mutation affected detached preparation", err)
+			}
+			if !mutated {
+				t.Fatal("fixture did not reach input interleaving")
+			}
+			header, err := loadHeader(context.Background(), ref)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actualFences, _ := json.Marshal(header.CurrentFences)
+			actualSources, _ := json.Marshal(header.IndependentSources)
+			actualPaths, _ := json.Marshal(header.IndependentPaths)
+			if !bytes.Equal(fencesJSON, actualFences) || !bytes.Equal(sourcesJSON, actualSources) || !bytes.Equal(pathsJSON, actualPaths) || header.Identity.FenceDigest != expectedDigest || ref.Identity.FenceDigest != expectedDigest {
+				t.Fatal("caller backing arrays changed prepared identity or preservation inputs")
+			}
+		})
+	}
+}

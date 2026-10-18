@@ -99,11 +99,22 @@ func transact(ctx context.Context, ref PreparedRef, owner *writer.BrainMaintenan
 	if err != nil || completeExists && !intentExists {
 		return out, ErrUnqualified
 	}
-	if !resume && intentExists {
+	intentPending, _, pendingErr := readPendingRecord(filepath.Join(ref.Directory, progressName+".pending"), intent)
+	if pendingErr != nil || intentPending && intentExists {
+		return out, ErrUnqualified
+	}
+	completePending, _, pendingErr := readPendingRecord(filepath.Join(ref.Directory, installedName+".pending"), completion)
+	if pendingErr != nil || completePending && completeExists || (completePending || completeExists) && !intentExists {
+		return out, ErrUnqualified
+	}
+	if !resume && (intentExists || intentPending || completePending || completeExists) {
 		return out, ErrUnqualified
 	}
 	states, err := transactionStates(ctx, ref, h)
 	if err != nil {
+		return out, ErrUnqualified
+	}
+	if completePending && !allFinal(states) {
 		return out, ErrUnqualified
 	}
 	if !intentExists {
@@ -289,24 +300,113 @@ func readTransactionRecord(path string, want []byte) (bool, error) {
 	}
 	return true, nil
 }
+
+// Pending records contain only a deterministic opaque record. A strict byte
+// prefix can be completed append-only; no unknown bytes are truncated or erased.
+func readPendingRecord(path string, want []byte) (bool, []byte, error) {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return false, nil, nil
+	}
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 || !ownedInfo(info) || !singleLink(info) || info.Size() < 0 || info.Size() > int64(len(want)) {
+		return false, nil, ErrUnqualified
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false, nil, ErrUnqualified
+	}
+	opened, statErr := f.Stat()
+	if statErr != nil || !os.SameFile(info, opened) {
+		_ = f.Close()
+		return false, nil, ErrUnqualified
+	}
+	raw, readErr := io.ReadAll(io.LimitReader(f, int64(len(want))+1))
+	closeErr := f.Close()
+	if readErr != nil || closeErr != nil || !bytes.HasPrefix(want, raw) {
+		return false, nil, ErrUnqualified
+	}
+	return true, raw, nil
+}
 func writeTransactionRecord(directory, name string, raw []byte, hooks transactionHooks) error {
-	if hooks.at("before-record:"+name) != nil {
+	if hooks.at("before-record:"+name) != nil || canonicalDirectory(directory, true) != nil {
 		return ErrIncomplete
 	}
-	f, err := os.OpenFile(filepath.Join(directory, name), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	final := filepath.Join(directory, name)
+	pending := final + ".pending"
+	if _, err := os.Lstat(final); !os.IsNotExist(err) {
+		return ErrIncomplete
+	}
+	exists, prefix, err := readPendingRecord(pending, raw)
 	if err != nil {
 		return ErrIncomplete
 	}
-	_, writeErr := f.Write(raw)
+	var f *os.File
+	if !exists {
+		f, err = os.OpenFile(pending, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if err != nil {
+			return ErrIncomplete
+		}
+		if err = hooks.at("after-record-create:" + name); err != nil {
+			_ = f.Close()
+			return ErrIncomplete
+		}
+	} else {
+		before, statErr := os.Lstat(pending)
+		if statErr != nil {
+			return ErrIncomplete
+		}
+		f, err = os.OpenFile(pending, os.O_WRONLY|os.O_APPEND, 0)
+		if err != nil {
+			return ErrIncomplete
+		}
+		opened, statErr := f.Stat()
+		if statErr != nil || !os.SameFile(before, opened) {
+			_ = f.Close()
+			return ErrIncomplete
+		}
+	}
+	midpoint := len(raw) / 2
+	if len(prefix) < midpoint {
+		if _, err = f.Write(raw[len(prefix):midpoint]); err != nil {
+			_ = f.Close()
+			return ErrIncomplete
+		}
+		prefix = raw[:midpoint]
+	}
+	if hooks.at("after-record-midwrite:"+name) != nil {
+		_ = f.Close()
+		return ErrIncomplete
+	}
+	if _, err = f.Write(raw[len(prefix):]); err != nil {
+		_ = f.Close()
+		return ErrIncomplete
+	}
+	if hooks.at("before-record-file-sync:"+name) != nil {
+		_ = f.Close()
+		return ErrIncomplete
+	}
 	syncErr := f.Sync()
 	closeErr := f.Close()
-	if writeErr != nil || syncErr != nil || closeErr != nil {
+	if syncErr != nil || closeErr != nil {
 		return ErrIncomplete
 	}
 	if hooks.at("after-record-file-sync:"+name) != nil {
 		return ErrIncomplete
 	}
-	if syncDirectory(directory) != nil {
+	valid, persisted, err := readPendingRecord(pending, raw)
+	if err != nil || !valid || !bytes.Equal(persisted, raw) {
+		return ErrIncomplete
+	}
+	if hooks.at("before-record-rename:"+name) != nil {
+		return ErrIncomplete
+	}
+	if err = renameExclusive(pending, final); err != nil {
+		return ErrIncomplete
+	}
+	if hooks.at("after-record-rename:"+name) != nil {
+		return ErrIncomplete
+	}
+	if hooks.at("before-record-directory-sync:"+name) != nil || syncDirectory(directory) != nil {
 		return ErrIncomplete
 	}
 	return hooks.at("after-record-directory-sync:" + name)
@@ -345,7 +445,7 @@ func renameTransaction(ctx context.Context, from, to, label string, want invento
 	return nil
 }
 func transactionLayout(ctx context.Context, ref PreparedRef) error {
-	if checkChildren(ctx, ref.Directory, map[string]bool{"original": true, "old-index": true, "inspection": true, "candidate": true, "replacement": true, "new-index": true, "retained": true, headerName: true, progressName: true, installedName: true}) != nil {
+	if checkChildren(ctx, ref.Directory, map[string]bool{"original": true, "old-index": true, "inspection": true, "candidate": true, "replacement": true, "new-index": true, "retained": true, headerName: true, progressName: true, installedName: true, progressName + ".pending": true, installedName + ".pending": true}) != nil {
 		return ErrUnqualified
 	}
 	for _, dir := range []string{"retained", "retained/.serenity"} {
@@ -385,6 +485,9 @@ func checkChildren(ctx context.Context, path string, allowed map[string]bool) er
 	return nil
 }
 func resyncTransactionParents(ref PreparedRef, h preparedHeader, hooks transactionHooks) error {
+	if hooks.at("before-recovery-operation-sync") != nil || syncDirectory(ref.Directory) != nil || hooks.at("after-recovery-operation-sync") != nil {
+		return ErrIncomplete
+	}
 	seen := map[string]bool{}
 	for _, c := range h.Components {
 		for _, path := range []string{filepath.Dir(filepath.Join(ref.Source, c.Name)), filepath.Dir(filepath.Join(ref.Directory, "retained", c.Name)), filepath.Dir(componentStage(ref, c.Name))} {
