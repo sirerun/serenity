@@ -336,7 +336,18 @@ def qualify(tool, helper, report, legacy_tool=None, legacy_source=None):
             before=(case.private/'manifest.json').read_bytes()
             case.tool=tool;case.version=3
             case.proof.update(tool_source=SOURCE,tool_path=str(tool),tool_sha256=sha(tool.read_bytes()))
-            for operation,mode in [('adopt-source','active'),('reissue','reissued'),('revoke','revoked')]:
+            refused_adoption=dict(old_source=legacy_source,old_manifest_sha256=sha(before))
+            rc,out,err,unchanged=case.call('adopt-source',adoption=refused_adoption)
+            require(rc==2 and out==b'' and err==b'source adoption refused before publication; no adoption write; retain hold\n' and unchanged, 'active legacy adoption refused unchanged')
+            results.append(dict(case='active-legacy-adoption-refused',passed=True,data_and_private_unchanged=True))
+            # Existing adoption requires known externally revoked credentials
+            # WITH retained old private custody. An active legacy key must refuse.
+            case.helper_call('externally-revoke')
+            require(before==(case.private/'manifest.json').read_bytes(), 'external revoke retained private custody')
+            case.helper_call('retained-revoked')
+            case.tool=tool;case.version=3
+            case.proof.update(tool_source=SOURCE,tool_path=str(tool),tool_sha256=sha(tool.read_bytes()))
+            for operation,mode in [('adopt-source','retained-revoked'),('reissue','reissued'),('revoke','revoked')]:
                 adoption=dict(old_source=legacy_source,old_manifest_sha256=sha(before)) if operation=='adopt-source' else None
                 brains=snapshot(case.data/'brains')
                 rc,out,err,_=case.call(operation,adoption=adoption)

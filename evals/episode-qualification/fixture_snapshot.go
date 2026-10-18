@@ -191,6 +191,23 @@ func readFixtureSnapshot(ctx context.Context, dataDir, privateDir, configHash st
 		if m.Accounts[0].AccountID == m.Accounts[1].AccountID || m.Accounts[0].BrainID == m.Accounts[1].BrainID {
 			return result, errRefused
 		}
+		reserved, queryErr := db.QueryContext(ctx, "SELECT id FROM accounts WHERE lower(email) LIKE '%@serenity-episode-fixture.invalid' ORDER BY id")
+		if queryErr != nil {
+			return result, errRefused
+		}
+		reservedIDs := []string{}
+		for reserved.Next() {
+			var id string
+			if reserved.Scan(&id) != nil || len(reservedIDs) >= 2 {
+				_ = reserved.Close()
+				return result, errRefused
+			}
+			reservedIDs = append(reservedIDs, id)
+		}
+		if errors.Join(reserved.Err(), reserved.Close()) != nil || len(reservedIDs) != 2 || !slices.Contains(reservedIDs, m.Accounts[0].AccountID) || !slices.Contains(reservedIDs, m.Accounts[1].AccountID) {
+			return result, errRefused
+		}
+		scope = append(scope, reservedIDs)
 		scope = append(scope, hashBytes(raw))
 		for i, a := range m.Accounts {
 			if a.Email != email(m.Namespace, i) || !generatedID.MatchString(a.AccountID) || !generatedID.MatchString(a.BrainID) || a.Pending != "" || len(a.CredentialIDs) == 0 || len(a.CredentialIDs) > 128 {

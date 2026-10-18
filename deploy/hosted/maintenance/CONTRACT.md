@@ -203,13 +203,17 @@ not proof that historical renamed/deleted fixture aliases or credentials never
 existed. Existing fresh namespace and email-hash collision checks still govern
 prepare independently; no cleanup or revocation is inferred from absence.
 
-A crash before hold publication can resume after expiry only with fresh closeout-
-only authorization binding `entry_baseline_sha256` and the exact deterministic
+A crash before hold publication, or after exact hold publication but before
+maintenance readiness, can resume after expiry only with fresh closeout-only
+authorization binding `entry_baseline_sha256` and the exact deterministic
 expected original hold hash. Under the existing lock, require the durable baseline,
 unchanged declaration/current service pair, only known old/new owned guards, no
-proof/consumed/outcome/child history, and an unchanged service-UID custody snapshot.
-Persist closeout intent BEFORE publishing only the deterministic EXPIRED original
-hold. The old expiry and closeout intent both deny new fixture admission. This
+request/proof/consumed/outcome/child history, no readiness record (including
+symlink/partial ambiguity), and an unchanged service-UID custody snapshot.
+For an absent hold, persist closeout intent BEFORE publishing only the
+deterministic EXPIRED original hold. A matching already-published original hold
+is preserved byte-for-byte; this adjacent interrupted-entry path requires the
+same fresh closeout-only authority and nonexecution proof. The old expiry and closeout intent both deny new fixture admission. This
 entry-abort path may omit a final revoke only after proving nonexecution and
 unchanged baseline fixture custody; preexisting fixture credentials are preserved,
 not opportunistically revoked. Unknown custody stays held for separate explicit
@@ -324,3 +328,21 @@ a successful revoke outcome. Root never reads keys or queries SQLite itself.
 The existing capacity-one authority is this source cohort's only accepted
 restore_concurrency; another capacity needs its own qualification, not an input
 that silently expands this operational envelope.
+
+Reviewed recovery refinements (MAINTOWN-R1/R2/R3): a matching published hold
+without readiness uses the same strictly verified no-child abort boundary as
+pre-hold interruption. Late closeout resumes must account for supervisor-exit
+containment stopping normal units: a durable `reholding` phase, exact saved
+release identity and fresh authority precede republication of the original hold,
+owned guards, held permits, restart and actual readiness. Missing hold never
+implies completion.
+
+Before auth-bearing progress records, publish immutable content-addressed
+admission snapshots. Pending progress staging names bind their expected canonical
+record hash (or exact prior/phase/admission reconstruction tuple), so zero-byte
+and partial writes remain uniquely recoverable after renewal. Reconstruct only
+bounded finite legal transitions from exact durable records and complete
+admissions under FRESH authority; completing old bytes never executes an expired
+grant. Incomplete admission stages remain retained, ineligible evidence; a fresh
+complete admission may proceed only when no dependent progress binds the
+incomplete one. Unknown bytes are never truncated or silently deleted.

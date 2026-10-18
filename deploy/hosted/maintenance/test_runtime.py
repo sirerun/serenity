@@ -52,11 +52,25 @@ class FakeRunner:
 
 
 class SyntheticTransaction(m.Transaction):
-    def __init__(self, *args, crash=None, **kwargs):
+    def __init__(self, *args, crash=None, partial=None, partial_after=1, **kwargs):
         self.crash = crash
+        self.partial = partial
+        self.partial_after = partial_after
+        self.partial_seen = 0
         self.stalled = set()
         super().__init__(*args, **kwargs)
         self.runner.transaction = self
+
+    def write_record(self, fd, data, name):
+        if self.partial is not None and name.startswith(self.partial[0]):
+            self.partial_seen += 1
+            if self.partial_seen == self.partial_after:
+                cutoff = min(self.partial[1], len(data))
+                if cutoff:
+                    os.write(fd, data[:cutoff])
+                self.partial = None
+                raise Crash('actual partial record: ' + name)
+        return os.write(fd, data)
 
     def checkpoint(self, name):
         if name == self.crash:
@@ -383,6 +397,179 @@ class RuntimeTests(unittest.TestCase):
         closed = f.transaction().closeout(f.receipt(t), auth)
         self.assertTrue(closed['services_started'])
         self.assertFalse(any('fixture-outcome-' in p.name for p in t.p(t.stage).iterdir()))
+
+    def test_torn_pending_records_reconcile_by_sha_under_new_admission(self):
+        for write_number, cutoff in ((1, 0), (1, 120), (2, 200), (3, 300), (4, 500), (5, 700), (6, 150)):
+            with self.subTest(write_number=write_number, cutoff=cutoff), tempfile.TemporaryDirectory() as directory:
+                f = Fixture(directory)
+                t = f.transaction()
+                t.enter()
+                f.final_revoke(t)
+                interrupted = f.transaction(partial=('closeout-pending.json', cutoff), partial_after=write_number)
+                with self.assertRaises(Crash):
+                    interrupted.closeout(f.receipt(t))
+                stages = list(interrupted.p(t.stage).glob('.closeout-pending.json-*.maintenance-write'))
+                self.assertEqual(len(stages), 1)
+                self.assertEqual(stages[0].stat().st_size, cutoff)
+                f.now = 1600
+                auth = f.authorization(t)
+                closed = f.transaction().closeout(f.receipt(t), auth)
+                self.assertTrue(closed['services_started'])
+                self.assertFalse(stages[0].exists())
+                self.assertEqual(m.digest(t.read(m.STATE)), t.s['state_sha256'])
+
+    def test_torn_admission_is_inactive_and_new_admission_preserves_it(self):
+        f = self.fixture
+        t = f.transaction()
+        t.enter()
+        f.final_revoke(t)
+        interrupted = f.transaction(partial=('closeout-admission-', 100))
+        with self.assertRaises(Crash):
+            interrupted.closeout(f.receipt(t))
+        stages = list(t.p(t.stage).glob('.closeout-admission-*.maintenance-write'))
+        self.assertEqual(len(stages), 1)
+        old = stages[0].read_bytes()
+        self.assertFalse(t.p(t.stage + '/closeout-pending.json').exists())
+        f.now = 1600
+        self.assertTrue(f.transaction().closeout(f.receipt(t), f.authorization(t))['services_started'])
+        self.assertEqual(stages[0].read_bytes(), old)
+
+    def test_partial_completion_never_promoted_after_containment(self):
+        f = self.fixture
+        t = f.transaction()
+        t.enter()
+        f.final_revoke(t)
+        interrupted = f.transaction(partial=('closed.json', 100))
+        with self.assertRaises(Crash):
+            interrupted.closeout(f.receipt(t))
+        stages = list(t.p(t.stage).glob('.closed.json-*.maintenance-write'))
+        self.assertEqual(len(stages), 1)
+        prefix = stages[0].read_bytes()
+        interrupted.supervisor_exit()
+        f.now = 1600
+        closed = f.transaction().closeout(f.receipt(t), f.authorization(t))
+        self.assertTrue(closed['services_started'])
+        self.assertEqual(stages[0].read_bytes(), prefix)
+        self.assertNotEqual(m.digest(t.read(t.stage + '/closed.json')), stages[0].name.split('-')[1].split('.')[0])
+        self.assertTrue(all(f.runner.states[unit] == 'active' for unit in (*m.WRITERS, m.TIMER)))
+
+    def test_unknown_pending_hash_or_prefix_is_preserved_and_refused(self):
+        for corruption in ('hash', 'prefix'):
+            with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as directory:
+                f = Fixture(directory)
+                t = f.transaction()
+                t.enter()
+                f.final_revoke(t)
+                interrupted = f.transaction(partial=('closeout-pending.json', 120))
+                with self.assertRaises(Crash):
+                    interrupted.closeout(f.receipt(t))
+                path = next(t.p(t.stage).glob('.closeout-pending.json-*.maintenance-write'))
+                if corruption == 'hash':
+                    replacement = path.with_name('.closeout-pending.json-' + 'f'*64 + '.maintenance-write')
+                    path.rename(replacement)
+                    path = replacement
+                else:
+                    path.write_bytes(b'unknown')
+                old = path.read_bytes()
+                f.now = 1600
+                with self.assertRaises(RuntimeError):
+                    f.transaction().closeout(f.receipt(t), f.authorization(t))
+                self.assertEqual(path.read_bytes(), old)
+                self.assertTrue(t.p(m.HOLD).exists())
+
+    def test_containment_after_release_reholds_and_restarts_under_fresh_owner(self):
+        for boundary in ('closeout:guards-restored', 'closeout:hold-released', 'hold-released',
+                         'timer-started', 'closeout:timer-restored', 'record-created:closed.json', 'record-synced:closed.json'):
+            with self.subTest(boundary=boundary), tempfile.TemporaryDirectory() as directory:
+                f = Fixture(directory)
+                t = f.transaction()
+                t.enter()
+                f.final_revoke(t)
+                hold = t.matching_hold()
+                interrupted = f.transaction(crash=boundary)
+                with self.assertRaises(Crash):
+                    interrupted.closeout(f.receipt(t))
+                interrupted.supervisor_exit()
+                self.assertTrue(all(f.runner.states[unit] == 'inactive' for unit in (*m.WRITERS, m.TIMER)))
+                f.now = 1600
+                fresh = f.transaction(crash='closeout:reholding')
+                auth = f.authorization(fresh)
+                with self.assertRaises(Crash):
+                    fresh.closeout(f.receipt(fresh), auth)
+                self.assertEqual(fresh.closeout_record()['phase'], 'reholding')
+                closed = f.transaction().closeout(f.receipt(t), auth)
+                self.assertTrue(closed['services_started'])
+                self.assertEqual(closed['hold_sha256'], m.digest(hold))
+                self.assertTrue(all(f.runner.states[unit] == 'active' for unit in (*m.WRITERS, m.TIMER)))
+
+    def test_held_but_not_ready_expiry_abort_preserves_hold(self):
+        for boundary in ('hold-published', 'before-stop', 'during-stop'):
+            with self.subTest(boundary=boundary), tempfile.TemporaryDirectory() as directory:
+                f = Fixture(directory)
+                t = f.transaction(crash='hold-published' if boundary == 'hold-published' else None)
+                original_run = f.runner.run
+                def interrupted_stop(argv, **kwargs):
+                    if argv[:3] == ['/usr/bin/systemctl', 'stop', m.TIMER]:
+                        if boundary == 'during-stop':
+                            original_run(argv, **kwargs)
+                        raise Crash(boundary)
+                    return original_run(argv, **kwargs)
+                if boundary != 'hold-published':
+                    f.runner.run = interrupted_stop
+                with self.assertRaises(Crash):
+                    t.enter()
+                f.runner.run = original_run
+                hold = t.matching_hold()
+                self.assertFalse(t.p(f.stage + '/maintenance-ready.json').exists())
+                f.now = 1600
+                resumed = f.transaction(crash='closeout:authority-restored')
+                auth = f.authorization(t)
+                with self.assertRaises(Crash):
+                    resumed.closeout(f.receipt(t), auth)
+                self.assertEqual(resumed.matching_hold(), hold)
+                self.assertTrue(resumed.closeout_record()['entry_abort'])
+                with self.assertRaises(RuntimeError):
+                    f.transaction().cold_ready()
+                self.assertTrue(f.transaction().closeout(f.receipt(t), auth)['services_started'])
+                self.assertFalse(any(p.name.startswith('fixture-outcome-') for p in t.p(t.stage).iterdir()))
+
+    def test_abort_cannot_bypass_ready_or_any_child_history(self):
+        for history in ('ready', 'nonce', 'request', 'proof', 'child', 'snapshot', 'ready-symlink', 'partial-ready'):
+            with self.subTest(history=history), tempfile.TemporaryDirectory() as directory:
+                f = Fixture(directory)
+                t = f.transaction(crash='hold-published' if history != 'ready' else None)
+                if history == 'ready':
+                    t.enter()
+                else:
+                    with self.assertRaises(Crash):
+                        t.enter()
+                original_run = f.runner.run
+                if history == 'nonce':
+                    f.put(f.stage + '/.fixture-used-' + '8'*64, b'consumed\n')
+                elif history in ('request', 'proof'):
+                    f.put(f.stage + '/fixture-' + history + '-' + '8'*64 + '.json', b'unknown')
+                elif history == 'partial-ready':
+                    f.put(f.stage + '/.maintenance-ready.json.maintenance-write', b'{')
+                elif history == 'ready-symlink':
+                    t.p(f.stage + '/maintenance-ready.json').symlink_to('/missing')
+                elif history == 'snapshot':
+                    def changed(argv, **kwargs):
+                        result = original_run(argv, **kwargs)
+                        if len(argv) > 1 and argv[1] == '--fixture-custody-snapshot':
+                            data = m.decoded(result.stdout)
+                            data['private_inventory_sha256'] = 'c'*64
+                            result.stdout = m.encoded(data).decode()
+                        return result
+                    f.runner.run = changed
+                f.now = 1600
+                resumed = f.transaction()
+                if history == 'child':
+                    resumed.stalled.add(resumed.f['unit'])
+                hold = resumed.matching_hold()
+                with self.assertRaises(RuntimeError):
+                    resumed.closeout(f.receipt(t), f.authorization(t))
+                self.assertEqual(resumed.matching_hold(), hold)
+                self.assertFalse(t.p(f.stage + '/closeout-pending.json').exists())
 
     def test_prehold_unknown_custody_or_child_history_parks(self):
         for unknown in ('snapshot', 'nonce'):

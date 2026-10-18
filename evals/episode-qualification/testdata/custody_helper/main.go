@@ -97,7 +97,7 @@ func execute() {
 		_, err = db.ExecContext(ctx, "CREATE TABLE supplemental_unknown_object (value TEXT)")
 		must(err)
 	} else {
-		require(mode == "active" || mode == "reissued" || mode == "revoked")
+		require(mode == "active" || mode == "reissued" || mode == "revoked" || mode == "externally-revoke" || mode == "retained-revoked")
 		m := readManifest(filepath.Join(private, "manifest.json"))
 		original := readManifest(filepath.Join(root, "original-manifest.json"))
 		require(count("SELECT count(*) FROM accounts") == 2)
@@ -122,9 +122,19 @@ func execute() {
 			must(err)
 			require(info.IsDir())
 			binding, err := issuer.Verify(ctx, o.Key)
-			if mode == "active" {
+			if mode == "active" || mode == "externally-revoke" {
 				must(err)
 				require(a.Key == o.Key && binding.AccountID == a.AccountID && binding.BrainID == a.BrainID && binding.CredentialID == a.CredentialIDs[0])
+				if mode == "externally-revoke" {
+					// Synthetic helper only: model the established externally revoked
+					// custody precondition; the operational child still cannot bypass it.
+					require(len(a.CredentialIDs) == 1)
+					must(issuer.RevokeKey(ctx, a.CredentialIDs[0]))
+					_, revokedErr := issuer.Verify(ctx, o.Key)
+					require(errors.Is(revokedErr, credential.ErrRevoked))
+				}
+			} else if mode == "retained-revoked" {
+				require(a.Key == o.Key && errors.Is(err, credential.ErrRevoked))
 			} else if mode == "reissued" {
 				require(len(a.CredentialIDs) == 2 && a.Key != "" && a.Key != o.Key && errors.Is(err, credential.ErrRevoked))
 				current, verifyErr := issuer.Verify(ctx, a.Key)

@@ -77,3 +77,31 @@ func TestFixtureSnapshotUnknownAndPartialRefuse(t *testing.T) {
 		})
 	}
 }
+
+func TestFixtureSnapshotReservedDomainExactCohort(t *testing.T) {
+	for _, extraEmail := range []string{"third@SERENITY-EPISODE-FIXTURE.INVALID", "not-episode-prefix@serenity-episode-fixture.invalid"} {
+		t.Run(extraEmail, func(t *testing.T) {
+			e := fixture(t)
+			mustOperate(t, e, "prepare")
+			baseline, err := readFixtureSnapshot(context.Background(), e.target.DataDir, e.privateDir, e.target.ConfigSHA256, e.target.AccountCap)
+			if err != nil {
+				t.Fatal("baseline refused")
+			}
+			if _, err = e.store.CreateAccount(context.Background(), "unrelated@example.invalid"); err != nil {
+				t.Fatal(err)
+			}
+			unrelated, err := readFixtureSnapshot(context.Background(), e.target.DataDir, e.privateDir, e.target.ConfigSHA256, e.target.AccountCap)
+			if err != nil || unrelated != baseline {
+				t.Fatal("unrelated account affected scoped snapshot")
+			}
+			if _, err = e.store.CreateAccount(context.Background(), extraEmail); err != nil {
+				t.Fatal(err)
+			}
+			for attempt := 0; attempt < 2; attempt++ {
+				if _, err = readFixtureSnapshot(context.Background(), e.target.DataDir, e.privateDir, e.target.ConfigSHA256, e.target.AccountCap); err == nil {
+					t.Fatal("extra reserved account accepted before/between observations")
+				}
+			}
+		})
+	}
+}
