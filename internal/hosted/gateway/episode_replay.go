@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/sirerun/serenity/internal/hosted/contracts"
@@ -236,40 +237,67 @@ func (g *Gateway) ReplayEpisodeDeletions(ctx context.Context, entries []contract
 		if deletedBrains[contracts.EpisodeDeletionBrainHash(b.id)] || deletedAccounts[b.account] {
 			continue
 		}
-		// Inspect the source namespace without initializing a runtime for unrelated
-		// empty/provisioning brains. This also detects foundation-only local fences.
-		p, err := store.LoadEpisodesForReplay(ctx, store.NewSourceStore(filepath.Join(g.Pool.BrainsRoot(), b.id)))
-		if err != nil {
-			return nil, err
-		}
-		if p.BrainID != "" && p.BrainID != b.id {
-			return nil, store.ErrEpisodeConflict
-		}
-		if len(byBrain[b.id]) == 0 && len(p.Fences) == 0 {
-			continue
-		}
-		if b.state == "deleted" {
-			return nil, ErrEpisodeReplayPending
-		}
-		for _, e := range byBrain[b.id] {
-			id, _ := contracts.ParseEpisodeDeletionIdentity(e.SubjectID)
-			g.setEpisodeIntent(b.id, id.CommandHash, episodeReplayIntent{entry: e, confirmed: true, published: true})
-		}
-		// Refuse unjournaled local fences BEFORE writing more canonical state.
-		for _, r := range p.Records {
-			if r.Kind != "exclude" {
-				continue
-			}
-			e, ok := seen[contracts.EpisodeDeletionBrainHash(b.id)+":"+r.CommandKey]
-			if !ok || e.SubjectID != episodeDeletionIdentity(b.id, r).String() || !e.RecordedAt.Equal(r.RecordedAt) {
-				return nil, ErrEpisodeReplayPending
-			}
-		}
-		if err = g.replayEpisodeBrain(ctx, b.account, b.id, byBrain[b.id]); err != nil {
+		if err = g.replayEpisodeCanonicalView(ctx, b.account, b.id, b.state, byBrain[b.id], seen); err != nil {
 			return nil, err
 		}
 	}
 	return legacy, ctx.Err()
+}
+
+// replayEpisodeCanonicalView keeps the cross-process read gate through the
+// transition to ordinary writer ownership. A missing legacy gate requires an
+// owner-qualified upgrade; startup must not silently initialize it as a reader.
+func (g *Gateway) replayEpisodeCanonicalView(ctx context.Context, account, brain, state string, entries []contracts.DeletionEntry, seen map[string]contracts.DeletionEntry) (err error) {
+	path := filepath.Join(g.Pool.BrainsRoot(), brain)
+	// An absent non-ready brain with no external episode intent has no files
+	// to disclose. Do not create a directory or runtime merely to inspect it.
+	if state != "ready" && len(entries) == 0 {
+		if _, statErr := os.Lstat(path); errors.Is(statErr, os.ErrNotExist) {
+			return nil
+		}
+	}
+	root, err := canonicalInspectorBrainRoot(g.Pool.BrainsRoot(), brain)
+	if err != nil {
+		return err
+	}
+	view, err := writer.AcquireCanonicalRead(root)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, view.Close()) }()
+	// Inspect the source namespace without initializing a runtime for unrelated
+	// empty/provisioning brains. This also detects foundation-only local fences.
+	p, err := store.LoadEpisodesForReplay(ctx, store.NewSourceStore(root))
+	if err != nil {
+		return err
+	}
+	if p.BrainID != "" && p.BrainID != brain {
+		return store.ErrEpisodeConflict
+	}
+	if len(entries) == 0 && len(p.Fences) == 0 {
+		return nil
+	}
+	if state == "deleted" {
+		return ErrEpisodeReplayPending
+	}
+	for _, e := range entries {
+		id, _ := contracts.ParseEpisodeDeletionIdentity(e.SubjectID)
+		g.setEpisodeIntent(brain, id.CommandHash, episodeReplayIntent{entry: e, confirmed: true, published: true})
+	}
+	// Refuse unjournaled local fences BEFORE writing more canonical state.
+	for _, r := range p.Records {
+		if r.Kind != "exclude" {
+			continue
+		}
+		e, ok := seen[contracts.EpisodeDeletionBrainHash(brain)+":"+r.CommandKey]
+		if !ok || e.SubjectID != episodeDeletionIdentity(brain, r).String() || !e.RecordedAt.Equal(r.RecordedAt) {
+			return ErrEpisodeReplayPending
+		}
+	}
+	if err = g.replayEpisodeBrain(ctx, account, brain, entries); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (g *Gateway) replayEpisodeBrain(ctx context.Context, account, brain string, entries []contracts.DeletionEntry) error {

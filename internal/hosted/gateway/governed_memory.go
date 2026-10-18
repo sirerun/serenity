@@ -191,6 +191,12 @@ func (g *Gateway) ServeGovernedMemory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if lookup {
+		view, err := writer.AcquireCanonicalRead(filepath.Join(g.Pool.BrainsRoot(), binding.BrainID))
+		if err != nil {
+			governedFailure(w, 503, "canonical_unavailable")
+			return
+		}
+		defer func() { _ = view.Close() }()
 		if _, present, err := validateBrainTree(r.Context(), g.Pool.BrainsRoot(), binding.BrainID); err != nil || !present {
 			governedFailure(w, 503, "canonical_unavailable")
 			return

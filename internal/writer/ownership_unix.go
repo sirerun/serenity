@@ -24,6 +24,9 @@ func AcquireBrain(path string) (*os.File, error) {
 	if _, err = state.Lstat(maintenanceMarkerName); !errors.Is(err, os.ErrNotExist) {
 		return nil, errors.Join(ErrMaintenancePending, err, file.Close())
 	}
+	if err = ensureCanonicalView(state); err != nil {
+		return nil, errors.Join(err, file.Close())
+	}
 	return file, nil
 }
 

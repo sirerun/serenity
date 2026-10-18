@@ -243,3 +243,56 @@ func TestEpisodeReplayHTTPExclusionAtQuotaAndAuthorityBoundaries(t *testing.T) {
 		t.Fatal("revoked retry reached journal")
 	}
 }
+
+func TestEpisodeReplayCanonicalViewRefusesMaintenanceAndMissingGate(t *testing.T) {
+	g, _, _, account, brain, root := newLifecycleExportFixture(t)
+	journal, err := deletion.NewFilesystemJournal(t.TempDir(), "view-replay", 1, time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g.Journal = journal
+	if _, err = g.ReplayEpisodeDeletions(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	id := writer.MaintenanceIdentity{Schema: "serenity.canonical-maintenance/v1", OperationID: strings.Repeat("a", 64), BrainID: brain, SourceHead: strings.Repeat("b", 40), FenceDigest: strings.Repeat("c", 64)}
+	maintenance, err := writer.BeginBrainMaintenance(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = g.ReplayEpisodeDeletions(context.Background(), nil); !errors.Is(err, writer.ErrCanonicalViewUnavailable) {
+		t.Fatalf("live maintenance replay: %v", err)
+	}
+	if err = maintenance.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = g.ReplayEpisodeDeletions(context.Background(), nil); !errors.Is(err, writer.ErrMaintenancePending) {
+		t.Fatalf("persisted maintenance replay: %v", err)
+	}
+	maintenance, err = writer.ResumeBrainMaintenance(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = maintenance.Finish(id); err != nil {
+		t.Fatal(err)
+	}
+	if err = maintenance.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(filepath.Join(root, ".serenity", "canonical-view.lock")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = g.ReplayEpisodeDeletions(context.Background(), nil); !errors.Is(err, writer.ErrCanonicalViewUnavailable) {
+		t.Fatalf("missing view replay: %v", err)
+	}
+	if _, err = os.Stat(filepath.Join(root, ".serenity", "canonical-view.lock")); !os.IsNotExist(err) {
+		t.Fatal("replay repaired missing gate")
+	}
+	// Non-ready, absent roots without episode intents require no canonical read.
+	absent := "AbsentBrain123456"
+	if err = g.replayEpisodeCanonicalView(context.Background(), account, absent, "allocating", nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = os.Stat(filepath.Join(filepath.Dir(root), absent)); !os.IsNotExist(err) {
+		t.Fatal("absent replay created a brain")
+	}
+}
