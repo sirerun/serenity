@@ -41,7 +41,8 @@ binds source HEAD and canonical current fences. Successful candidates are
 synced and atomically renamed with a content-free manifest; caller must use a
 fresh absent destination. No destructive cleanup of previous attempts occurs.
 
-Unsupported: mixed ordinary brains, merges/multiple branches/tags, live mutation,
+Unsupported by Build: mixed ordinary brains. Both entry points refuse
+merges/multiple branches/tags, live mutation,
 activation, external fence persistence/replay compatibility, backup/export/device
 purge, queue reconciliation, extracting/rebuilding independent-support facts,
 physical disk sanitization, arbitrary content-wide removal. Parent must qualify
@@ -62,3 +63,35 @@ independently verify that inactive candidate or choose a fresh destination.
 Existing destinations are always refused, never adopted based on a manifest.
 Abandoned stages may contain source bytes and require parent-owned cleanup;
 they are residual controlled copies, not a completed-purge claim.
+
+
+## Pinned independent raw-source increment (T5.48)
+
+BuildMixed is a separate additive preparation entry point. It accepts an exact,
+complete caller-supplied inventory of independent raw source pairs occurring in
+any historical revision. SourcePin binds both the data SHA256 and the exact
+metadata SHA256. Pins are sorted for retry identity and the content-free manifest;
+duplicate, invalid, unused, missing and mismatched pins fail closed. The inventory
+is bounded to 2048 identities by the existing 4096-file snapshot qualification.
+Pins may identify sources absent at HEAD but present in historical snapshots.
+Each pair remains byte-identical in precisely the revisions where it occurred.
+Metadata changes for a source identity across revisions are unsupported.
+
+The caller's pin is an explicit trusted maintenance assertion of independent
+retention. Hash verification and the raw kind do not authenticate provenance or
+prove independence. Only file/email/voice sources encoded with SourceStore's
+canonical kind/uri/occurred_at metadata are accepted. Unknown fields, duplicate
+keys, aliases, dependency metadata, index-only content, facts, tombstones and
+unknown derivatives are refused. SourceStore.Read independently validates the
+payload hash and ordinary source metadata. Hosted configuration files and foreign
+episode brains remain refused. No production caller or admission route is added.
+
+The mixed manifest uses serenity.mixed-episode-erasure-candidate/v1 and lists the
+retained source/metadata identities. Retry identity additionally binds that schema
+and the sorted complete pins. Original episode-only Build schema, identity and
+refusal remain unchanged; retained_sources is omitted from legacy manifests.
+Episode exclusion/checkpoint closure, all-object verification, fixed commit
+metadata and current fences are shared with Build. Every candidate is inactive,
+and physical purge remains unsupported. This does not complete T5.2 or T1.3:
+activation, journal authority, mixed hosted brains, controlled copies and restore
+interlocks require separate implementation and qualification.

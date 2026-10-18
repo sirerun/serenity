@@ -1,4 +1,4 @@
-// Package episodeerase constructs inactive, isolated episode-only Git candidates.
+// Package episodeerase constructs inactive, isolated Git erasure candidates.
 // It provides no activation or physical-purge receipt. See DESIGN.md.
 package episodeerase
 
@@ -44,19 +44,20 @@ type Request struct {
 // Result is preparation evidence only. Destination is an inert directory
 // containing repository.git and manifest.json, never an active brain.
 type Result struct {
-	Schema                    string   `json:"schema"`
-	RetryID                   string   `json:"retry_id"`
-	BrainID                   string   `json:"brain_id"`
-	SourceHead                string   `json:"source_head"`
-	CandidateHead             string   `json:"candidate_head"`
-	FenceDigest               string   `json:"fence_digest"`
-	Generation                uint64   `json:"generation"`
-	Commits                   int      `json:"commits"`
-	RemovedSources            []string `json:"removed_sources"`
-	RetainedAttachmentDigests []string `json:"retained_attachment_digests"`
-	Activation                string   `json:"activation"`
-	PhysicalPurge             string   `json:"physical_purge"`
-	Derivatives               string   `json:"derivatives"`
+	Schema                    string      `json:"schema"`
+	RetryID                   string      `json:"retry_id"`
+	BrainID                   string      `json:"brain_id"`
+	SourceHead                string      `json:"source_head"`
+	CandidateHead             string      `json:"candidate_head"`
+	FenceDigest               string      `json:"fence_digest"`
+	Generation                uint64      `json:"generation"`
+	Commits                   int         `json:"commits"`
+	RemovedSources            []string    `json:"removed_sources"`
+	RetainedAttachmentDigests []string    `json:"retained_attachment_digests"`
+	Activation                string      `json:"activation"`
+	PhysicalPurge             string      `json:"physical_purge"`
+	Derivatives               string      `json:"derivatives"`
+	RetainedSources           []SourcePin `json:"retained_sources,omitempty"`
 }
 
 type budget struct{ used int }
@@ -108,7 +109,11 @@ func (b *budget) git(ctx context.Context, r *gitrun.Runner, input []byte, args .
 // Build constructs, verifies, syncs and atomically publishes an INACTIVE
 // candidate directory. Retry with the same source/fences has the same RetryID;
 // existing destinations are refused rather than trusted or overwritten.
-func Build(ctx context.Context, req Request) (result Result, err error) {
+func Build(ctx context.Context, req Request) (Result, error) {
+	return build(ctx, req, nil)
+}
+
+func build(ctx context.Context, req Request, mixed *mixedSources) (result Result, err error) {
 	if !store.ValidEpisodeID(req.BrainID) || len(req.CurrentFences) == 0 || len(req.CurrentFences) > store.EpisodeMaxFences {
 		return result, ErrFence
 	}
@@ -230,6 +235,16 @@ func Build(ctx context.Context, req Request) (result Result, err error) {
 	}
 	result = Result{Schema: "serenity.episode-erasure-candidate/v1", BrainID: req.BrainID, SourceHead: head, FenceDigest: store.EpisodeHash(fences), Generation: uint64(len(fences)), Activation: "not_activated", PhysicalPurge: "unsupported", Derivatives: "candidate_contains_canonical_episode_sources_only", RemovedSources: []string{}, RetainedAttachmentDigests: []string{}}
 	result.RetryID = store.EpisodeHash([]string{result.Schema, req.BrainID, head, result.FenceDigest})
+	if mixed != nil {
+		result.Schema = "serenity.mixed-episode-erasure-candidate/v1"
+		result.Derivatives = "candidate_contains_canonical_episodes_and_pinned_independent_raw_sources_only"
+		result.RetainedSources = append([]SourcePin(nil), mixed.pins...)
+		result.RetryID = store.EpisodeHash(struct {
+			EpisodeRetryID string
+			Schema         string
+			Pins           []SourcePin
+		}{result.RetryID, result.Schema, mixed.pins})
+	}
 	removed := map[string]bool{}
 	attachments := map[string]bool{}
 	oldBlobs := map[string]bool{}
@@ -260,8 +275,12 @@ func Build(ctx context.Context, req Request) (result Result, err error) {
 		if p.BrainID != "" && p.BrainID != req.BrainID {
 			return Result{}, ErrFence
 		}
-		if len(files) != 2*len(p.SourceIDs) {
-			return Result{}, ErrUnsafe
+		if mixed == nil {
+			if len(files) != 2*len(p.SourceIDs) {
+				return Result{}, ErrUnsafe
+			}
+		} else if e = mixed.validateSnapshot(root, files, p.SourceIDs); e != nil {
+			return Result{}, e
 		}
 		// Historical fences must be a byte-identical subset of current authority.
 		for _, r := range p.Records {
@@ -349,6 +368,9 @@ func Build(ctx context.Context, req Request) (result Result, err error) {
 		if !gitID(previous) {
 			return Result{}, ErrUnsafe
 		}
+	}
+	if mixed != nil && len(mixed.seen) != len(mixed.pins) {
+		return Result{}, ErrUnsafe
 	}
 	if _, e = b.git(ctx, write, nil, "update-ref", "refs/heads/main", previous); e != nil {
 		return Result{}, e
