@@ -15,6 +15,7 @@ import (
 	"github.com/sirerun/serenity/internal/gitrun"
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/hosted/episodemaintenance"
+	"github.com/sirerun/serenity/internal/hosted/pool"
 	"github.com/sirerun/serenity/internal/store"
 	"github.com/sirerun/serenity/internal/writer"
 )
@@ -200,5 +201,190 @@ func TestEpisodeErasurePreparationCancelledMaintenanceWait(t *testing.T) {
 	}
 	if _, err := svc.PrepareEpisodeErasure(nil, req); err == nil {
 		t.Fatal("nil context accepted")
+	}
+}
+
+func TestEpisodeErasurePreparationRetainsAttributedFailedStage(t *testing.T) {
+	svc, req, _, _ := episodePreparationFixture(t)
+	secret := "PRIVATE-STAGE-SENTINEL"
+	failed := errors.New("synthetic interrupted preparation")
+	result, err := svc.prepareEpisodeErasure(context.Background(), req, func(_ context.Context, b episodeerase.HostedRequest) (episodeerase.Result, error) {
+		container := filepath.Dir(b.Destination)
+		if filepath.Base(container) != req.OperationID || filepath.Base(b.Destination) != "candidate" {
+			t.Fatal("stage is not operation-owned")
+		}
+		stage := filepath.Join(container, ".episode-erase-stage-retained")
+		if err := os.Mkdir(stage, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(stage, "bytes"), []byte(secret), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return episodeerase.Result{}, failed
+	})
+	if !errors.Is(err, failed) || !result.ResidualInactive || result.OperationID != req.OperationID || result.CutID == "" || result.HistorySHA256 == "" || result.Candidate.CandidateHead != "" {
+		t.Fatalf("lost conservative residual evidence: %+v %v", result, err)
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatal("failure disclosed staged payload")
+	}
+	container := filepath.Join(svc.cfg.DataDir, ".episode-erasure", req.OperationID)
+	if info, err := os.Stat(container); err != nil || info.Mode().Perm() != 0700 {
+		t.Fatal("operation container absent or not private")
+	}
+	if _, err := os.Stat(filepath.Join(container, ".episode-erase-stage-retained", "bytes")); err != nil {
+		t.Fatal("unknown stage was silently discarded")
+	}
+	if _, err := os.Stat(filepath.Join(container, "candidate")); !os.IsNotExist(err) {
+		t.Fatal("fixture unexpectedly published final candidate")
+	}
+	if _, err := svc.PrepareEpisodeErasure(context.Background(), req); err == nil {
+		t.Fatal("retried/adopted incomplete operation")
+	}
+}
+
+func TestEpisodeErasurePreparationCancelsAtRuntimeCommitGate(t *testing.T) {
+	svc, req, _, root := episodePreparationFixture(t)
+	runtime, releaseUser, err := svc.Pool.AcquireCanonical(context.Background(), req.BrainID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	releaseGate, err := runtime.Fence(context.Background(), req.BrainID)
+	if err != nil {
+		releaseUser()
+		t.Fatal(err)
+	}
+	held := true
+	defer func() {
+		if held {
+			releaseGate()
+		}
+	}()
+	releaseUser()
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	result, err := svc.PrepareEpisodeErasure(ctx, req)
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(started) > time.Second {
+		t.Fatalf("commit gate did not cancel promptly: %v", err)
+	}
+	if result.ResidualInactive || result.OperationID != "" {
+		t.Fatal("cancelled before preparation but claimed copy")
+	}
+	if _, err := os.Stat(filepath.Join(svc.cfg.DataDir, ".episode-erasure", req.OperationID)); !os.IsNotExist(err) {
+		t.Fatal("cancelled flush created operation")
+	}
+	if !svc.Gateway.Maintenance.TryLock() {
+		t.Fatal("maintenance lock leaked")
+	}
+	svc.Gateway.Maintenance.Unlock()
+	if owner, err := writer.AcquireBrain(root); err == nil {
+		_ = owner.Close()
+		t.Fatal("cancelled flush lost runtime writer ownership")
+	}
+	if _, release, err := svc.Pool.AcquireCanonical(context.Background(), req.BrainID); !errors.Is(err, pool.ErrRuntimeClosing) {
+		if err == nil {
+			release()
+		}
+		t.Fatalf("cancelled target must remain parked: %v", err)
+	}
+	releaseGate()
+	held = false
+	if _, err := svc.PrepareEpisodeErasure(context.Background(), req); err != nil {
+		t.Fatalf("retry after gate release: %v", err)
+	}
+}
+
+func TestEpisodeErasurePreparationJoinsActualHTTPArchiveAndJournal(t *testing.T) {
+	ctx := context.Background()
+	db, cfg, account, brain := episodeReplayServiceFixture(t)
+	source := &preparationSource{}
+	deps := testLifecycleDependencies(t)
+	deps.EpisodeMaintenance = source
+	svc, err := AssembleWithDependencies(ctx, cfg, true, db, nil, deletionEmbedding{}, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = svc.Close() })
+	token, err := svc.Gateway.Issuer.Issue(ctx, brain, account, []string{"memory:read", "memory:write"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := episodeReplayAppend(t, brain)
+	const originalSecret = "JOINED-ORIGINAL-ERASURE-SENTINEL"
+	const checkpointSecret = "JOINED-CHECKPOINT-ERASURE-SENTINEL"
+	original.Mutation.Events[0].Text = originalSecret
+	code, appended, _ := episodeReplayCall(t, svc, token, original)
+	if code != 200 || appended.Receipt == nil {
+		t.Fatalf("append failed HTTP%d", code)
+	}
+	checkpoint := episodeReplayAppend(t, brain)
+	checkpoint.Operation = "checkpoint"
+	checkpoint.Mutation.Operation = "checkpoint"
+	checkpoint.Mutation.CommandID = "joined-checkpoint"
+	checkpoint.Mutation.ConversationID = "joined-dependent"
+	checkpoint.Mutation.Events = nil
+	checkpoint.Mutation.Checkpoint = &store.EpisodeCheckpoint{Text: checkpointSecret, Model: "synthetic-fixture", CreatedAt: original.Mutation.Events[0].ObservedAt, Sources: appended.Receipt.EventRefs}
+	code, checkpointed, _ := episodeReplayCall(t, svc, token, checkpoint)
+	if code != 200 || checkpointed.Receipt == nil {
+		t.Fatalf("checkpoint failed HTTP%d", code)
+	}
+	exclude := episodeReplayAppend(t, brain)
+	exclude.Operation = "exclude"
+	exclude.Mutation = &store.EpisodeInput{Operation: "exclude", ProducerID: original.Mutation.ProducerID, ConversationID: original.Mutation.ConversationID, CommandID: "joined-exclude"}
+	code, excluded, _ := episodeReplayCall(t, svc, token, exclude)
+	if code != 200 || excluded.Status != "excluded" {
+		t.Fatalf("exclusion failed HTTP%d", code)
+	}
+	history, err := deps.Journal.ReadThrough(ctx, contracts.DeletionWatermark{})
+	if err != nil || len(history.Entries) != 1 {
+		t.Fatalf("actual journal unavailable: %v", err)
+	}
+	source.snapshot = episodemaintenance.Snapshot{CutID: strings.Repeat("d", 64), Observation: contracts.JournalObservation{Read: history, HistorySHA256: strings.Repeat("b", 64)}, Recheck: func(context.Context) error { return nil }}
+	root := filepath.Join(cfg.DataDir, "brains", brain)
+	head := preparationHead(t, root)
+	config, err := os.ReadFile(filepath.Join(root, "serenity.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := EpisodeErasureRequest{AccountID: account, BrainID: brain, OperationID: strings.Repeat("e", 64), ExpectedSourceHead: head, IndependentPaths: []episodeerase.PathPin{{Path: ".gitignore", SHA256: preparationHash([]byte(".serenity/\n"))}, {Path: "serenity.yml", SHA256: preparationHash(config)}}}
+	result, err := svc.PrepareEpisodeErasure(ctx, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	removed := map[string]bool{}
+	for _, sha := range result.Candidate.RemovedSources {
+		removed[sha] = true
+	}
+	if !removed[appended.Receipt.SourceSHA256] || !removed[checkpointed.Receipt.SourceSHA256] {
+		t.Fatal("original/checkpoint closure missing")
+	}
+	repo := filepath.Join(cfg.DataDir, ".episode-erasure", req.OperationID, "candidate", "repository.git")
+	reader := gitrun.CanonicalReadOnly(repo)
+	objects, err := reader.Output(ctx, "cat-file", "--batch-all-objects", "--batch-check=%(objectname) %(objecttype)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(objects)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			t.Fatal("invalid object inventory")
+		}
+		raw, err := reader.Output(ctx, "cat-file", fields[1], fields[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), originalSecret) || strings.Contains(string(raw), checkpointSecret) {
+			t.Fatal("excluded source or derivative survived candidate history")
+		}
+	}
+	if preparationHead(t, root) != head {
+		t.Fatal("preparation changed active canonical history")
+	}
+	if !svc.cfg.EpisodeArchiveEnabled || len(svc.cfg.EpisodeSyntheticBrains) != 1 || svc.cfg.EpisodeSyntheticBrains[0] != brain {
+		t.Fatal("preparation changed capture policy")
+	}
+	if result.Candidate.Activation != "not_activated" || result.Candidate.PhysicalPurge != "unsupported" || result.ResidualInactive {
+		t.Fatal("wrong inactive preparation boundary")
 	}
 }

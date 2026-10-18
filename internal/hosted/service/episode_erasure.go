@@ -46,7 +46,13 @@ type EpisodeErasurePreparation struct {
 
 // PrepareEpisodeErasure owns one maintenance interval and stable writer lock.
 // It refuses unreconciled history rather than replaying or modifying deletion.
-func (s *Service) PrepareEpisodeErasure(ctx context.Context, req EpisodeErasureRequest) (out EpisodeErasurePreparation, err error) {
+func (s *Service) PrepareEpisodeErasure(ctx context.Context, req EpisodeErasureRequest) (EpisodeErasurePreparation, error) {
+	return s.prepareEpisodeErasure(ctx, req, episodeerase.BuildHosted)
+}
+
+// The per-call builder seam permits isolated failure injection without mutable
+// globals or caller-provided authority. The exported path always uses BuildHosted.
+func (s *Service) prepareEpisodeErasure(ctx context.Context, req EpisodeErasureRequest, build func(context.Context, episodeerase.HostedRequest) (episodeerase.Result, error)) (out EpisodeErasurePreparation, err error) {
 	if isNilDependency(ctx) || s == nil || s.Gateway == nil || s.Pool == nil || s.Store == nil || isNilDependency(s.episodeMaintenance) || !store.ValidEpisodeID(req.AccountID) || !store.ValidEpisodeID(req.BrainID) || !store.ValidSourceSHA(req.OperationID) || !sourceHeadValid(req.ExpectedSourceHead) {
 		return out, ErrEpisodePreparationUnavailable
 	}
@@ -73,10 +79,12 @@ func (s *Service) PrepareEpisodeErasure(ctx context.Context, req EpisodeErasureR
 	if err != nil {
 		return out, err
 	}
-	if err = s.Pool.FlushAll(); err != nil {
+	// Retry the target's context-aware close before inspecting other runtimes:
+	// a cancelled close deliberately leaves this target in closing state.
+	if err = s.Pool.DropContext(ctx, req.BrainID); err != nil {
 		return out, err
 	}
-	if err = s.Pool.Drop(req.BrainID); err != nil {
+	if err = s.Pool.FlushAllContext(ctx); err != nil {
 		return out, err
 	}
 	owner, err := writer.AcquireBrain(root)
@@ -135,16 +143,25 @@ func (s *Service) PrepareEpisodeErasure(ctx context.Context, req EpisodeErasureR
 	if err != nil {
 		return out, err
 	}
-	destination := filepath.Join(parent, req.OperationID)
-	if _, e := os.Lstat(destination); !errors.Is(e, os.ErrNotExist) {
+	container := filepath.Join(parent, req.OperationID)
+	// Exclusive operation ownership makes every builder stage attributable even
+	// when its own cleanup fails. Never adopt, overwrite or remove an old attempt.
+	if err = os.Mkdir(container, 0700); err != nil {
 		return out, ErrEpisodePreparationUnavailable
 	}
-	result, err := episodeerase.BuildHosted(ctx, episodeerase.HostedRequest{Request: episodeerase.Request{Source: root, Destination: destination, BrainID: req.BrainID, CurrentFences: fences}, IndependentPaths: req.IndependentPaths, IndependentSources: req.IndependentSources})
+	out = EpisodeErasurePreparation{OperationID: req.OperationID, CutID: snapshot.CutID, HistorySHA256: snapshot.Observation.HistorySHA256, ResidualInactive: true}
+	d, err := os.Open(parent)
 	if err != nil {
-		if _, statErr := os.Lstat(destination); statErr == nil {
-			out = EpisodeErasurePreparation{OperationID: req.OperationID, CutID: snapshot.CutID, HistorySHA256: snapshot.Observation.HistorySHA256, ResidualInactive: true}
-		}
 		return out, err
+	}
+	err = errors.Join(d.Sync(), d.Close())
+	if err != nil {
+		return out, err
+	}
+	destination := filepath.Join(container, "candidate")
+	result, err := build(ctx, episodeerase.HostedRequest{Request: episodeerase.Request{Source: root, Destination: destination, BrainID: req.BrainID, CurrentFences: fences}, IndependentPaths: req.IndependentPaths, IndependentSources: req.IndependentSources})
+	if err != nil {
+		return out, fmt.Errorf("inactive operation retained for reconciliation: %w", err)
 	}
 	out = EpisodeErasurePreparation{OperationID: req.OperationID, CutID: snapshot.CutID, HistorySHA256: snapshot.Observation.HistorySHA256, Candidate: result, ResidualInactive: true}
 	if err = recheck(); err != nil {
