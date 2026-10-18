@@ -82,8 +82,8 @@ containment still stops owned units. Expired grants never authorize new fixtures
 R1–R3 continuation tests include real partial writes, renewal, supervisor-exit
 containment, unlink/directory-sync interruption and preserved unknown bytes.
 
-Source re-review cec1f80d is clean. Final evidence/plan review precedes source
-merge. T5.38/T5.39 are not pre-marked; exact guarded merge and landed tree/ancestry
+Source re-review cec1f80d and final evidence/plan review
+d75cc3d168012b2c62fc4f10d32debbc89ca16ab on378efd18 are clean. T5.38/T5.39 are not pre-marked; exact guarded merge and landed tree/ancestry
 verification will be recorded in PR412 and the subsequent plan closeout.
 
 ## CI and remaining operational gates
