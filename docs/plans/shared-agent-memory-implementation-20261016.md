@@ -357,8 +357,8 @@ Acceptance: RAM-01 through RAM-06 have separately source-bound and released rece
 - [x] T5.35 Complete current-state maintenance through its authoritative owner  Owner: release-owner  Est: TBD  kind: agent  stage: implement  deps: [T5.34]  acc: [existing private release/custody owner implements same-release entry/closeout and safe operator adoption/reissue with preserved journals and cold fences; source receipts and operator schema bind actual current state without manual policy changes or code duplication in Serenity]
 - [x] T5.36 Verify current-state operational producer and consumer  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.35]  acc: [actual supported producer/consumer fixture exercises current-state entry, interrupted closeout, rollback, wrong source/custody/pair, uncertain outcome and exact recorded credentials; no production mutation or synthetic-source seal is passed off as current authority]
 - [x] T5.37 Independently review maintenance source candidate  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.36]  acc: [separate reviewer records owning repository base/head, T5.34-T5.36 scope and complete custody/recovery contract; fixes and affected re-review close all blockers before source merge]
-- [ ] T5.38 Merge reviewed maintenance owner candidate  Owner: release-owner  Est: TBD  kind: agent  stage: merge  deps: [T5.37]  acc: [owning repository accepts exact reviewed source under current gates without widening scope, keys, policy or live authority]
-- [ ] T5.39 Verify landed operational owner contract  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.38]  acc: [actual owning-source ancestry and tree correspondence plus affected fixture checks are recorded; this is not installed operator adoption, live credential reissue or a runtime permission receipt]
+- [x] T5.38 Merge reviewed maintenance owner candidate  Owner: release-owner  Est: TBD  kind: agent  stage: merge  deps: [T5.37]  acc: [owning repository accepts exact reviewed source under current gates without widening scope, keys, policy or live authority]
+- [x] T5.39 Verify landed operational owner contract  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.38]  acc: [actual owning-source ancestry and tree correspondence plus affected fixture checks are recorded; this is not installed operator adoption, live credential reissue or a runtime permission receipt]
 - [ ] T5.40 Review refreshed bounded synthetic release packet  Owner: independent-reviewer  Est: TBD  kind: agent  stage: review  deps: [T5.39, T1.7]  acc: [exact current host/operator/authority versions, cold custody, finite grant, synthetic identities, historical/current credential inventory, signed feature/safety pair, cleanup and rollback are reviewed before T3.14; unknown old commands are reconciled rather than replayed and current authority is never inferred from source checks]
 - [ ] T5.41 Implement explicit production enrollment and truthful capabilities  Owner: integration  Est: TBD  kind: agent  stage: implement  deps: [T5.1]  acc: [additive negotiated protocol distinguishes unsupported, synthetic and qualified enrolled production capability using existing brain authority and policy; allowlisted synthetic API is not silently widened; default remains off, declared scope/quotas and pause/revocation/rollback persist, and full safety receipts are required before real data admission]
 - [ ] T5.42 Verify production-enrollment capability transition  Owner: integration  Est: TBD  kind: agent  stage: verify  deps: [T5.41, T1.7, T5.11]  acc: [controlled actual API fixtures deny missing safety evidence, stale release/policy, wrong brain and removed consent; supported opt-in and rollback preserve receipts/fences and bounded queue without upload to unqualified paths; affected source/race/static and compatibility checks pass with default off]
@@ -959,3 +959,37 @@ T5.37 final independent non-author review is clean at d75cc3d1 on378efd18,
 including exact source/fixture qualification and final evidence/plan scope.
 MAINTOWN-R1–R4 and continuation findings are resolved; no operational gate is
 closed. T5.38/T5.39 await exact-head guarded merge and landed verification.
+
+T5.38/T5.39 completed: guarded rebase PR412 landed468f30bf0b5ada74a3fd98303a06cccf3bdee888
+at2026-10-18T13:31:17Z. Reviewed130d6f55 on378efd18 has exact full-tree equality
+f8b8be5820964ef49c0152785faa83afaf7a1d18 and main reachability. Landed runtime and
+UID/FD harness hashes match qualified source. Non-author final exact-head review
+is clean; current Actions39131727688 has14jobs/zero steps under the recorded
+billing lock and ADR024 fallback, without protection or capacity changes.
+Task claims T5.34–T5.39 were exact-token CAS-released. No install, production
+mutation, capture change or live qualification occurred; T5.40 remains gated.
+
+## E14 — Complete initial maintenance-gate failure recovery
+
+PR412 closes the same-release owner source prerequisite. The next T5.2 gap is
+initial BeginBrainMaintenance failure: exclusive final-marker creation can leave
+absent/zero/partial/full-but-unsynced bytes, while exact-full Resume refuses
+partial markers. A known-prefix-only solution would leave the zero/ambiguous
+failure class unresolved. Matching prepared copies do not identify historical
+intent; fresh explicit initial-reconciliation authority is required instead.
+Frozen contract: internal/episodeinstall/INITIAL_RECOVERY.md (independent design review accepted 2026-10-18 including SyncGate durability correction). No production
+issuer, arbitrary-marker takeover or physical-completion claim is introduced.
+
+- [x] T5.94 Freeze complete initial marker reconciliation boundary  Owner: integration  kind: agent  stage: preflight  deps: [T5.39]  acc: [independent read-only design review accepts full initial absent zero prefix and durability failure coverage with explicit fresh admission prior-intent uncertainty stable locks complete prepared and canonical custody no install progress and absence-to-created crash identity; contract and API ownership split are frozen before implementation]
+- [ ] T5.95 Implement restricted writer initial-gate reconciliation  Owner: writer-lane  kind: agent  stage: implement  deps: [T5.94]  acc: [restricted pending owner holds existing EX view and writer locks pins root runtime locks marker and exact expected prefix including zero; only fresh verified completion appends to same inode or qualified exclusive creation and durably returns normal owner; no Finish or canonical mutation and full owners reject unsafe marker metadata]
+- [ ] T5.96 Integrate admitted prepared-install initial reconciliation  Owner: integration  kind: agent  stage: implement  deps: [T5.94]  acc: [pre-existing complete PreparedRef all copies and entire old canonical runtime index family are checked under locks with no transaction or retained progress; distinct fresh initial admission binds actual original current marker and header; deterministic durable record precedes append survives interruption and remains non-authority; subsequent ordinary Install compatibility and residual state are explicit]
+- [ ] T5.97 Qualify full initial failure and caller integration  Owner: integration  kind: agent  stage: verify  deps: [T5.95, T5.96]  acc: [actual writer pool and installer tests cover absent zero partial full sync errors process death record interruption authority expiry A/B ambiguity unsafe metadata changed source index current fences and no-progress fences; no canonical mutation payload-copy disposal or physical-completion claim]
+- [ ] T5.98 Independently review initial recovery candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.97]  acc: [non-author exact base head complete candidate review covers authority predecessor ambiguity crash phases lock and inode custody compatibility source tests and limitations; all findings fixed checked and re-reviewed]
+- [ ] T5.99 Merge reviewed initial recovery source  Owner: integration  kind: agent  stage: merge  deps: [T5.98]  acc: [current holds protections checks and qualified fallback permit exact-head guarded rebase without operational enrollment or authority widening]
+- [ ] T5.100 Verify landed initial recovery source  Owner: integration  kind: agent  stage: verify  deps: [T5.99]  acc: [reviewed landed tree correspondence main ancestry and affected source behavior are evidenced; full T5.2 T5.3 T1.3 physical cleanup current cold issuer and live qualification remain open]
+
+E14 is one coherent outcome, batch ceiling3, with disjoint writer primitive and
+prepared-install wrapper plus root-owned integration/qualification. T5.94/Wazi
+must freeze exact seams and claims before implementation dispatch. Generic local
+hashes never grant reconciliation. Existing-marker presence continues fencing
+all cooperating readers/writers; no new unrecognized runtime gate is substituted.
