@@ -576,3 +576,11 @@ and foreign backup/import ownership remain preserved. Continue with T5.2/T5.3
 within the frozen scope and keep partial source increments and operational
 blockers explicit. Actual checks and exact review/merge/landing are recorded
 in this candidate PR before delivery is claimed.
+
+Accepted review finding AM-CR01 required a concrete production negotiation and
+admission contract before T5.1 could unlock production-capability source. The
+extension now freezes v2 route/schema, exact capability/reference/owner-record
+fields, policy/release/version/expiry bindings, current publication rechecks,
+legacy/unknown-client refusal and sanitized denial semantics. This is a contract
+correction only; no endpoint is implemented or enabled. Existing T5.41-T5.45
+remain the code/check/review/landing owners.
