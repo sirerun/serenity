@@ -319,8 +319,8 @@ Acceptance: ZUX-01 through ZUX-06 work through Zati with bounded relevant contex
 fidelity: executable
 Acceptance: RAM-01 through RAM-06 have separately source-bound and released receipts, all four qualified host profiles and the Zati bridge preserve scoped evidence and current authority, and incomplete or unsupported capabilities stay visibly unavailable.
 
-- [ ] T5.0 Reconcile remaining capabilities and freeze qualification envelope  Owner: integration  Est: TBD  kind: agent  stage: preflight  acc: [RAM-01 through RAM-06 have exact source and owner/task mappings, supported brain/attachment/host scopes, numerical capacity and purge/restore/latency limits and controlled API test recipes; active claims, current deployment capability and pending maintenance prerequisites are recorded; no provider or real-history admission follows]
-- [ ] T5.1 Freeze safe erasure and production capability extension  Owner: archive-lane  Est: TBD  kind: agent  stage: author  deps: [T5.0]  acc: [versioned API/capability, complete authoritative deletion-history producer/consumer, mixed-brain and shared-attachment handling, bounded maintenance activation/rollback, exact export/restore and controlled-copy deadlines are frozen before code; synthetic-only compatibility remains and unsupported paths stay unavailable]
+- [x] T5.0 Reconcile remaining capabilities and freeze qualification envelope  Owner: integration  Est: TBD  kind: agent  stage: preflight  acc: [RAM-01 through RAM-06 have exact source and owner/task mappings, supported brain/attachment/host scopes, numerical capacity and purge/restore/latency limits and controlled API test recipes; active claims, current deployment capability and pending maintenance prerequisites are recorded; no provider or real-history admission follows]
+- [x] T5.1 Freeze safe erasure and production capability extension  Owner: archive-lane  Est: TBD  kind: agent  stage: author  deps: [T5.0]  acc: [versioned API/capability, complete authoritative deletion-history producer/consumer, mixed-brain and shared-attachment handling, bounded maintenance activation/rollback, exact export/restore and controlled-copy deadlines are frozen before code; synthetic-only compatibility remains and unsupported paths stay unavailable]
 - [ ] T5.2 Complete canonical purge and derivative-safe activation  Owner: archive-lane  Est: TBD  kind: agent  stage: implement  deps: [T5.1]  acc: [under existing writer/maintenance locks actual mixed-brain candidates preserve unrelated canonical bytes and remove excluded original/history/derivative content; trusted current external fences bind activation and crash recovery; all controlled stages and old object copies have bounded cleanup or explicit residual state; exclusion-only and inactive stages never emit physical-complete receipts]
 - [ ] T5.3 Fence controlled backups exports restores and device rejoin  Owner: archive-lane  Est: TBD  kind: agent  stage: implement  deps: [T5.1]  acc: [actual supported backup/export/restore APIs apply current independently admitted deletion history before disclosure or publication; content-free receipt identity survives erasure without payload retention; shared references and controlled copy lifecycle have exact evidence; old snapshots, queues and stale derivatives cannot resurrect content and unsupported custody refuses readiness]
 - [ ] T5.4 Freeze enrolled-client and factual-retrieval source assignment  Owner: client-lane  Est: TBD  kind: agent  stage: preflight  deps: [T1.7]  acc: [existing queue/import/HTTP decoder components, credential/key custody and versioned archive API are mapped to exact owned files with safe installation/enrollment inputs; fact policy, query-relevance and incomplete-budget semantics and required checks are fixed; current SDK and legacy interfaces remain compatible]
@@ -561,3 +561,18 @@ changes. Review/merge/landed evidence for this planning artifact is recorded in
 its PR; source implementation, provider behavior, installation and deployment
 remain future receipts. The primary checkout and foreign PR273/277 work are
 preserved; no lifecycle is enrolled by this document.
+
+## First current-session source batch — 2026-10-17
+
+T5.0/T5.1 completed their source inspection and design deliverables in
+[the preflight receipt](../receipts/2026-10-17-automatic-memory-preflight.md) and
+[erasure extension contract](../protocol/EPISODE_ERASURE_EXTENSION.md). All prior
+acceptance and source gates remain; this closes no implementation, purge,
+production capability or installed host. Requested --batch-size omitted N, so
+use default ceiling3; this batch has2 members. Current attended engineering
+executor and independent reviewers inherit actual session selection; no paid
+fallback, resumed prior deadline or unattended service admission. R-shared-memory
+and foreign backup/import ownership remain preserved. Continue with T5.2/T5.3
+within the frozen scope and keep partial source increments and operational
+blockers explicit. Actual checks and exact review/merge/landing are recorded
+in this candidate PR before delivery is claimed.

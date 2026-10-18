@@ -156,3 +156,13 @@ gates retain original acceptance with strengthened prerequisites. All60 complete
 rows, IDs, owners and evidence remain. Existing Zati/Gist owners and no mandatory
 Serenity backend are preserved; no task was implemented, no real history enrolled,
 and no release/production action performed by this planning invocation.
+
+## 2026-10-17 — Automatic-memory execution starts
+
+Completed T5.0 capability/custody inventory and T5.1 erasure/production extension
+design against db49d7a0. Frozen source cohort reuses existing bounds and refuses
+unsupported mixed derivatives or managed-copy authority rather than advertising
+purge. Prior Resume01 claim and clean worktrees preserved; foreign PR273/277
+untouched. Mac load blocks heavy local builds; existing ARM64 host has cached
+Go1.26.9 for bounded isolated source checks. This receipt is design/preflight,
+not implementation, production activation or host acceptance.
