@@ -677,9 +677,9 @@ Acceptance: Actual provisioned canonical config and explicitly pinned independen
 
 - [x] T5.58 Implement hosted canonical erasure preparation  Owner: archive-lane  kind: agent  stage: implement  deps: [T5.1]  acc: [separate additive preparer accepts actual hosted baseline/config plus exact caller-trusted independent canonical path pins across qualified history, preserves unrelated bytes and removes excluded episodes/checkpoints; reserved source paths cannot be relabeled as arbitrary pins, unsafe paths/modes/unknown dependencies refuse, ignored runtime is never copied and legacy builders remain unchanged]
 - [x] T5.59 Verify actual hosted canonical preparation  Owner: integration  kind: agent  stage: verify  deps: [T5.58]  acc: [actual hosted provisioning and runtime initialization fixture plus real Git history prove config/raw/independent canonical preservation, excluded object closure, pin drift/refusal, runtime isolation and legacy compatibility under bounded race/vet/static and Wazi checks]
-- [ ] T5.60 Independently review hosted preparation  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.59]  acc: [non-author exact base/head full source callers tests and contract review closes accepted findings with affected verification and re-review; no authority or activation inference]
-- [ ] T5.61 Merge reviewed hosted preparation  Owner: integration  kind: agent  stage: merge  deps: [T5.60]  acc: [current holds protections and checks permit guarded exact-reviewed-head rebase of inactive source]
-- [ ] T5.62 Verify landed hosted preparation  Owner: integration  kind: agent  stage: verify  deps: [T5.61]  acc: [reviewed tree correspondence main reachability and affected source checks pass; active transaction copy accounting and full T5.2/T5.3/T1.3 remain open]
+- [x] T5.60 Independently review hosted preparation  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.59]  acc: [non-author exact base/head full source callers tests and contract review closes accepted findings with affected verification and re-review; no authority or activation inference]
+- [x] T5.61 Merge reviewed hosted preparation  Owner: integration  kind: agent  stage: merge  deps: [T5.60]  acc: [current holds protections and checks permit guarded exact-reviewed-head rebase of inactive source]
+- [x] T5.62 Verify landed hosted preparation  Owner: integration  kind: agent  stage: verify  deps: [T5.61]  acc: [reviewed tree correspondence main reachability and affected source checks pass; active transaction copy accounting and full T5.2/T5.3/T1.3 remain open]
 
 Second disjoint source batch: actual1 implementation outcome T5.58 under ceiling3,
 archive-lane owns only episodeerase code. Parent owns shared plan and integration.
@@ -690,8 +690,8 @@ not automatically infer legacy fact dependencies or authenticate external fences
 fidelity: executable
 Acceptance: The legacy full-Git export refuses archived episode material before emitting bytes, rather than presenting a history-retaining bundle as eligible exact episode export; ordinary episode-free export remains compatible.
 
-- [ ] T5.63 Fence legacy export against archived episode history  Owner: integration  kind: agent  stage: implement  deps: [T5.1]  acc: [actual account-owned legacy export refuses canonical archived episode sources or pending exclusion evidence before writing output, including stale disabled capture mode; no truncated or summary-only substitute, unknown publication or missing authority treated as safe; ordinary episode-free exports retain existing behavior]
-- [ ] T5.64 Verify export disclosure refusal  Owner: integration  kind: agent  stage: verify  deps: [T5.63]  acc: [actual gateway append/exclude and legacy export fixtures prove zero output for episode history before and after restart, no cross-brain effect, compatibility for ordinary brains and exact refusal on invalid episode inventory; affected race/vet/static and Wazi pass]
+- [x] T5.63 Fence legacy export against archived episode history  Owner: integration  kind: agent  stage: implement  deps: [T5.1]  acc: [actual account-owned legacy export refuses canonical archived episode sources or pending exclusion evidence before writing output, including stale disabled capture mode; no truncated or summary-only substitute, unknown publication or missing authority treated as safe; ordinary episode-free exports retain existing behavior]
+- [x] T5.64 Verify export disclosure refusal  Owner: integration  kind: agent  stage: verify  deps: [T5.63]  acc: [actual gateway append/exclude and legacy export fixtures prove zero output for episode history before and after restart, no cross-brain effect, compatibility for ordinary brains and exact refusal on invalid episode inventory; affected race/vet/static and Wazi pass]
 - [ ] T5.65 Independently review export refusal  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.64]  acc: [non-author exact source and full caller/test/contract review closes accepted findings with affected checks and re-review; unsupported portable export stays false]
 - [ ] T5.66 Merge reviewed export refusal  Owner: integration  kind: agent  stage: merge  deps: [T5.65]  acc: [current holds protections and checks permit guarded exact-reviewed-head rebase without runtime activation]
 - [ ] T5.67 Verify landed export refusal  Owner: integration  kind: agent  stage: verify  deps: [T5.66]  acc: [reviewed tree equality main reachability and affected checks pass; full portable export and T5.3 remain incomplete]
@@ -732,3 +732,50 @@ config and verifies runtime lock/files stay outside the candidate. Legacy APIs
 remain strict; explicit caller-trusted pins do not infer derivative independence
 or authenticate fences. Full T5.2/T5.3/T1.3 remain open. Final exact review and
 landing are T5.60-T5.62.
+
+T5.60-T5.62 completed: exact independent final review accepted5d662ed3 on
+7fe9b463 with HOST-Q1 actual runtime qualification resolved. PR406 rebase
+landed54e321b843ae75dd11edba2482477adad42d6354; full reviewed-tree equality
+and main ancestry verified, tested production source unchanged. Actions39117508661
+remains billing-blocked before steps under ADR024 fallback. Parent gates stay open.
+
+### Fresh Zati owner dependency — 2026-10-18
+
+Fetched Zati df25450365c735f4df001b65503236deebc6e7c7 proves the old
+E-FO1-missing blocker is stale: reviewed continuation PR53 landed506e94ec and
+TaskContext PR59 landed280b8426, both ancestors. Existing internal messaging
+history-range/validation/pending/link, task continuation snapshot and execution
+checkpoint/commit owners are now implemented with source/synthetic205-message
+acceptance. Revision50 requires exact pending turn_id; revisions51/52 add and
+activate TaskContext; current document is56. T5.12 must use these actual shapes
+rather than old49. Worker-origin ongoing qualification is distinct. This does
+not close T2.2, T5.12 dependency T5.11, installed/provider acceptance or Serenity
+archive custody. Preserve canonical Zati owners and freeze a scoped owner adapter
+before joined archive/recovery qualification.
+
+### E10 — Authority-bound inactive hosted preparation
+fidelity: executable
+Acceptance: Existing service maintenance ownership and actual broker authority cuts bind an inactive hosted candidate to complete current external exclusions and exact canonical source; no canonical activation or deletion is performed.
+
+- [ ] T5.68 Bind maintenance preparation to actual authority cuts  Owner: authority-integration  kind: agent  stage: implement  deps: [T5.57, T5.62]  acc: [existing authenticated authority client and live lease produce a complete cut observation; exact cut lease position history and expiry are validated, immutable closure rechecks fresh Current epoch/position/expiry before consumption, and malformed/expired/changed/foreign responses fail closed without a second deletion journal or caller-supplied seal]
+- [ ] T5.69 Prepare one hosted candidate under service ownership  Owner: archive-integration  kind: agent  stage: implement  deps: [T5.68]  acc: [internal service operation uses existing maintenance exclusion, account-brain lookup, pool closure and stable writer ownership; exact expected source HEAD and complete admitted external entries match every local fence both directions before BuildHosted; caller-trusted independent pins and owned private destination stay bounded, current authority/source rechecked before prepared result and any residual inactive copy is explicit; no active publication or physical receipt]
+- [ ] T5.70 Verify authority-bound preparation  Owner: integration  kind: agent  stage: verify  deps: [T5.69]  acc: [actual authority server/client cut and service/provision/pool/Git fixtures prove source/fence binding, stale/foreign/missing history, lease expiry/change, wrong brain, writer contention, failure/cancellation and inactive-copy outcome; focused race/vet/static and full Wazi pass]
+- [ ] T5.71 Independently review authority-bound preparation  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.70]  acc: [non-author exact full candidate review covers authority producer/consumer service locks tests protocols and plan; accepted findings fixed checked and re-reviewed, no caller boolean or snapshot becomes authority]
+- [ ] T5.72 Merge reviewed authority-bound preparation  Owner: integration  kind: agent  stage: merge  deps: [T5.71]  acc: [current holds protections and checks permit exact-reviewed-head guarded rebase without production activation]
+- [ ] T5.73 Verify landed authority-bound preparation  Owner: integration  kind: agent  stage: verify  deps: [T5.72]  acc: [reviewed tree correspondence main reachability and affected checks pass; T5.2/T5.3/T1.3 remain open for active installation crash recovery and controlled-copy disposition]
+
+Batch ceiling3, actual2 compatible implementation outcomes T5.68/T5.69 in
+disjoint authority helper and service files. Owner-private source API only; no
+HTTP route or model-callable maintenance capability is added. Existing authority
+Cut/CutReader/Current and service startup owner remain canonical. The producer
+returns observation plus a fresh recheck closure; caller cannot mint admission
+from request fields. Source preparation is inactive, so its lock can close
+without inventing active transaction recovery.
+
+T5.63-T5.64 revised export sourceb9570f54081d19f34c5c07537ca1ce9f32f4f99d
+on54e321b8 passes the full gateway race suite39.693s, affected vet, lint zero
+and zero called vulnerabilities on bounded Linux ARM64 Go1.26.9. EXP-R1
+legitimate ordinary index-only imports is corrected with actual SourceStore/Git
+coverage; malformed historical pairs are tested with repaired valid HEAD so the
+export guard itself refuses without output. Two module-level advisories are not
+called by scoped code. Full portable export and T5.3 remain open.
