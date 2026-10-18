@@ -72,3 +72,26 @@ than trust readable page-cache bytes after a failed Begin sync. Both require
 affected fault-injection checks and exact revised-source re-review. The initial
 source is not approved or landed. Finish post-unlink sync failure remains an
 unknown completion that may conservatively resurrect a gate on restart.
+
+## Corrected source qualification
+
+Revised production sourceb13720a1c506605c64922ade5cec08f2997c5c29 archive
+3c6f5a3180a6620da1ace355cb32de9fe45b65ec7277515d08d98f91187609f8
+passes `go test -race -count=1 -p=1 -timeout=360s` for internal/writer,
+internal/hosted/pool and internal/gate (50.023s,5.637s,2.806s), plus
+`go vet -p=1 ./internal/writer ./internal/hosted/pool`.
+
+Lint first found five unchecked test cleanup returns. Test-only correction
+2c61c0231d0beea624d3a273434a2ac282fd7604 was transferred by exact file hash
+485fdfbdf2108f99e2befa1af3f1c08905a86cb232f3e85d08b0175bb90bb644;
+production source is unchanged. Focused maintenance race passes (4.377s),
+affected lint reports zero issues, and scoped govulncheck finds zero called
+vulnerabilities. Two module-level advisories are outside called code; this is
+not a claim every required module is vulnerability-free. Formatting/diff pass.
+
+Separate reviewer `/root/review_maintenance` accepts MAINT-R1/R2 fixes at exact
+b13720a1 after checking all changed source and callers. Final test-only cleanup
+and documentation delta still needs exact-head review. Full repository suite,
+physical power-loss experiments, native host acceptance and production are not
+qualified. The per-call injected fsync failures verify refusal/retry behavior;
+they do not reproduce a physical power cut.
