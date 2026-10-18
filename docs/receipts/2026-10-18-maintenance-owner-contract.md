@@ -69,3 +69,16 @@ build identity was explicitly synthetic e40 with exact archive/artifact hashes
 retained privately. It is not a reviewed-release or provider-authority assertion.
 Final exact-source qualification is still pending. Real systemd wrapper/provider
 qualification, installation and all production operations remain separate.
+
+Re-review continuation fixes also cover interrupted deterministic readiness,
+supervisor-specific guard prefixes and SHA-bound permit staging with immutable
+progress contexts. Pending permits can only be revoked after exact validation;
+unknown artifacts still refuse, while supervisor-exit containment stops owned
+units even if artifact reconciliation refuses.30 local runtime tests pass.
+At c6e83342, Linux operator race45.896s,45 maintenance Python and24 legacy adapter
+Python tests pass. Vet passes. After the synthetic helper's equivalent tagged-
+switch cleanup, lint reports0 issues, scoped vulnerability check reports none,
+CLI build passes and Darwin arm64 operator cross-compilation passes. These are
+source/fixture observations; final runtime re-review and Linux continuation
+checks are still pending. Go operator sources remain unchanged by continuation
+fixes, so prior relevant checks can carry forward by exact input comparison.

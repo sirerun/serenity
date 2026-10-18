@@ -391,7 +391,8 @@ class Transaction:
                 self.sync_dir(path.parent)
                 return
             require(prior is not None and existing == prior)
-        staging_identity = '-' + digest(data) if path.name in ('closeout-pending.json', 'closed.json') else ''
+        hash_staged = path.name in ('closeout-pending.json', 'closed.json') or name in {RUN + '/' + unit + '.permit' for unit in WRITERS}
+        staging_identity = '-' + digest(data) if hash_staged else ''
         temporary = path.with_name('.' + path.name + staging_identity + '.maintenance-write')
         if temporary.exists() or temporary.is_symlink():
             prefix = self.read('/' + str(temporary.relative_to(self.root)), private=(mode == 0o600))
@@ -738,9 +739,13 @@ class Transaction:
 
     def entry_nonexecution(self):
         require(not self.p(self.stage + '/maintenance-ready.json').exists() and
-                not self.p(self.stage + '/maintenance-ready.json').is_symlink() and
-                not self.p(self.stage + '/.maintenance-ready.json.maintenance-write').exists() and
-                not self.p(self.stage + '/.maintenance-ready.json.maintenance-write').is_symlink())
+                not self.p(self.stage + '/maintenance-ready.json').is_symlink())
+        ready_stage = self.stage + '/.maintenance-ready.json.maintenance-write'
+        if self.p(ready_stage).exists() or self.p(ready_stage).is_symlink():
+            prefix = self.read(ready_stage, private=True, limit=16384)
+            require(encoded(self.expected_ready()).startswith(prefix))
+        # A known readiness prefix is retained inactive, never completed or
+        # published by closeout. The closing intent/original expiry deny grants.
         self.child_drained()
         with os.scandir(self.p(self.stage)) as entries:
             for count, entry in enumerate(entries, 1):
@@ -748,13 +753,7 @@ class Transaction:
                     '.fixture-used-', 'fixture-proof-', 'fixture-outcome-', 'fixture-request-')))
         require(self.fixture_snapshot() == self.baseline()['fixture_snapshot'])
         original = self.baseline()['files']
-        desired = {name: [raw] for name, raw in {**self.guard_names(), **self.transient_names(self.c['supervisor'])}.items()}
-        if self.p(self.stage + '/closeout-pending.json').exists():
-            record = self.closeout_record()
-            require(record['entry_abort'] is True)
-            for supervisor in (record['supervisor'], record['guard_supervisor']):
-                for name, raw in self.transient_names(supervisor).items():
-                    desired.setdefault(name, []).append(raw)
+        desired = self.guard_candidates()
         for name, candidates in desired.items():
             temporary = str(Path(name).with_name('.' + Path(name).name + '.maintenance-write'))
             if self.p(temporary).exists() or self.p(temporary).is_symlink():
@@ -832,19 +831,54 @@ class Transaction:
             else:
                 require(supervisor not in state['BindsTo'])
 
+    def guard_candidates(self, prior_supervisor=None):
+        original = self.baseline()['files']
+        result = {name: {base64.b64decode(row['data'])} for name, row in original.items()}
+        for name, raw in self.guard_names().items():
+            result.setdefault(name, set()).add(raw)
+        supervisors = {self.c['supervisor']}
+        if prior_supervisor is not None:
+            supervisors.add(prior_supervisor)
+        known, _ = self.admissions()
+        supervisors.update(admission['supervisor'] for admission in known.values())
+        for supervisor in supervisors:
+            for name, raw in self.transient_names(supervisor).items():
+                result.setdefault(name, set()).add(raw)
+        return result
+
+    def reconcile_guard_stage(self, name, data, candidates, prior):
+        temporary = str(Path(name).with_name('.' + Path(name).name + '.maintenance-write'))
+        if not self.p(temporary).exists() and not self.p(temporary).is_symlink():
+            return prior
+        prefix = self.read(temporary, limit=262144)
+        require(stat.S_IMODE(self.p(temporary).stat().st_mode) == 0o644)
+        if data.startswith(prefix):
+            return prior
+        matching = {candidate for candidate in candidates if candidate.startswith(prefix)}
+        require(len(matching) == 1)
+        old = next(iter(matching))
+        # Complete only uniquely identified owned bytes under fresh admission.
+        # Never reload this historical supervisor: immediately replace its bytes
+        # with the new reviewed guard before the single daemon-reload below.
+        self.atomic(name, old, 0o644, prior=prior)
+        self.checkpoint('guard-stage-reconciled:' + Path(name).name)
+        return old
+
     def install_guards(self, supervisor, prior_supervisor=None):
         original = self.baseline()['files']
         desired = {**self.guard_names(), **self.transient_names(supervisor)}
-        allowed = {**self.guard_names(), **self.transient_names(prior_supervisor or self.c['supervisor'])}
+        allowed = self.guard_candidates(prior_supervisor)
+        for name, data in desired.items():
+            allowed.setdefault(name, set()).add(data)
         require(self.unit_inventory(allow_pending=True) <= set(original) | set(desired))
         for name, data in desired.items():
             prior = None
             if self.p(name).exists():
                 current = self.read(name)
-                baseline = base64.b64decode(original[name]['data']) if name in original else None
-                require(current in (data, baseline, allowed.get(name)))
+                require(current in allowed[name])
                 prior = current
             self.mkdir(str(Path(name).parent))
+            prior = self.reconcile_guard_stage(name, data, allowed[name], prior)
             self.atomic(name, data, 0o644, prior=prior)
         self.systemctl('daemon-reload')
         self.qualified_guards(supervisor)
@@ -856,20 +890,70 @@ class Transaction:
             with os.scandir(path) as entries:
                 require(next(entries, None) is None)
 
+    def permit_contexts(self):
+        result, incomplete = {}, 0
+        with os.scandir(self.p(self.stage)) as entries:
+            for count, entry in enumerate(entries, 1):
+                require(count <= 4096)
+                match = re.fullmatch(r'closeout-permit-([0-9a-f]{64})\.json', entry.name)
+                pending = re.fullmatch(r'\.closeout-permit-([0-9a-f]{64})\.json\.maintenance-write', entry.name)
+                if pending:
+                    self.read(self.stage + '/' + entry.name, private=True, limit=65536)
+                    incomplete += 1
+                    continue
+                if entry.name.startswith(('closeout-permit-', '.closeout-permit-')):
+                    require(match is not None)
+                if match is None:
+                    continue
+                raw = self.read(self.stage + '/' + entry.name, private=True, limit=65536)
+                require(digest(raw) == match.group(1))
+                record = self.validate_closeout_record(decoded(raw))
+                require(encoded(record) == raw and record['phase'] == 'authority-restored')
+                result[match.group(1)] = record
+        require(len(result) <= 32 and incomplete <= 32)
+        return result
+
+    def permit_value(self, unit, record):
+        return dict(version=1, operation_id=self.c['operation_id'], manifest_sha256=self.c['manifest_sha256'],
+            boot_id=self.c['boot_id'], hold_sha256=digest(encoded(record['hold'])),
+            closeout_sha256=digest(encoded(record)), unit=unit)
+
     def revoke_permits(self):
         path = self.p(RUN)
-        if not path.exists():
+        if not path.exists() and not path.is_symlink():
             return
+        require(self.fd is not None)
+        self.pair()
         self.trusted(path, private=True, directory=True)
-        with os.scandir(path) as entries:
-            names = [entry.name for _, entry in zip(range(4), entries)]
-        require(set(names) <= {unit + '.permit' for unit in WRITERS})
-        for name in names:
-            raw = self.read(RUN + '/' + name, private=True)
-            value = decoded(raw)
-            require(value.get('operation_id') == self.c['operation_id'] and
-                    value.get('manifest_sha256') == self.c['manifest_sha256'])
+        contexts = self.permit_contexts()
+        entries = []
+        with os.scandir(path) as listing:
+            for count, entry in enumerate(listing, 1):
+                require(count <= 16)
+                entries.append(entry.name)
+        owned = []
+        # Validate the complete namespace before revoking any grant. Partial
+        # contexts cannot authorize cleanup of dependent pending/final permits.
+        for name in entries:
+            pending = re.fullmatch(r'\.(serenity-(?:hosted|broker)\.service)\.permit-([0-9a-f]{64})\.maintenance-write', name)
+            final = re.fullmatch(r'(serenity-(?:hosted|broker)\.service)\.permit', name)
+            require(pending is not None or final is not None)
+            unit = (pending or final).group(1)
+            raw = self.read(RUN + '/' + name, private=True, limit=16384)
+            candidates = set()
+            for record in contexts.values():
+                expected = encoded(self.permit_value(unit, record))
+                if pending is not None:
+                    if digest(expected) == pending.group(2) and expected.startswith(raw):
+                        candidates.add(expected)
+                elif expected == raw:
+                    candidates.add(expected)
+            require(len(candidates) == 1)
+            owned.append((name, raw))
+        for name, raw in owned:
             self.unlink_exact(RUN + '/' + name, raw)
+        self.sync_dir(path)
+        self.checkpoint('permits-revoked-durable')
 
     def stop_all(self):
         self.systemctl('stop', TIMER)
@@ -920,9 +1004,12 @@ class Transaction:
         self.authority()
         self.pair()
         require(self.matching_hold() == raw)
+        return self.expected_ready()
+
+    def expected_ready(self):
         return dict(version=2, purpose=PURPOSE, operation_id=self.c['operation_id'],
                     manifest_sha256=self.c['manifest_sha256'], state_sha256=self.s['state_sha256'],
-                    hold_sha256=digest(raw), service_source=self.s['source'],
+                    hold_sha256=digest(encoded(self.expected_hold())), service_source=self.s['source'],
                     executable_sha256=self.s['binary_sha256'], held=True, services_started=False)
 
     def fixture_outcomes(self):
@@ -1242,13 +1329,17 @@ class Transaction:
         return record
 
     def permit(self, unit, record):
+        require(unit in WRITERS and record['phase'] == 'authority-restored' and self.closeout_record() == record)
         self.closeout_authority(record)
         self.pair()
         self.mkdir(RUN)
-        self.atomic(RUN + '/' + unit + '.permit', encoded(dict(
-            version=1, operation_id=self.c['operation_id'], manifest_sha256=self.c['manifest_sha256'],
-            boot_id=self.c['boot_id'], hold_sha256=digest(encoded(record['hold'])),
-            closeout_sha256=digest(encoded(record)), unit=unit)))
+        self.permits_absent()
+        contexts = self.permit_contexts()
+        identity = digest(encoded(record))
+        require(identity in contexts or len(contexts) < 32)
+        self.atomic(self.stage + '/closeout-permit-' + identity + '.json', encoded(record))
+        require(identity in self.permit_contexts())
+        self.atomic(RUN + '/' + unit + '.permit', encoded(self.permit_value(unit, record)))
 
     def guard(self, unit):
         require(unit in WRITERS)
@@ -1259,6 +1350,11 @@ class Transaction:
         record = self.closeout_record()
         require(record['phase'] in ('authority-restored', 'writers-ready'))
         self.closeout_authority(record)
+        require(digest(encoded(record)) in self.permit_contexts())
+        self.trusted(self.p(RUN), private=True, directory=True)
+        with os.scandir(self.p(RUN)) as entries:
+            names = [entry.name for _, entry in zip(range(3), entries)]
+        require(names == [unit + '.permit'])
         self._authorization, self._authorization_hold, self._gate = record['authorization_path'], encoded(record['hold']), True
         name = RUN + '/' + unit + '.permit'
         raw = self.read(name, private=True, limit=16384)
@@ -1485,6 +1581,7 @@ class Transaction:
             else:
                 if not self.p(self.stage + '/closeout-pending.json').exists():
                     self.baseline()
+                    self.pair()
                     self.systemctl('stop', TIMER, *WRITERS)
                     return
                 record = self.closeout_record()
@@ -1492,8 +1589,13 @@ class Transaction:
                         (record['phase'] == 'reholding' and record['rehold_from'] in ('hold-released', 'timer-restored')))
                 if self.p(self.stage + '/closed.json').exists():
                     return
-            self.revoke_permits()
-            self.systemctl('stop', TIMER, *WRITERS)
+            self.pair()
+            try:
+                self.revoke_permits()
+            finally:
+                # Unknown or incomplete artifacts never prevent containment.
+                # They remain untouched for fresh owner reconciliation.
+                self.systemctl('stop', TIMER, *WRITERS)
 
 
 def main():
