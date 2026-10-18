@@ -55,15 +55,30 @@ type BrainMaintenance struct {
 	closed   bool
 }
 
+// maintenanceSyncs is a per-call fault seam; no global callbacks or authority
+// are replaced. A failed durability boundary must never return a usable owner.
+type maintenanceSyncs struct {
+	file      func(*os.File) error
+	directory func(*os.Root) error
+}
+
+func durableMaintenanceSyncs() maintenanceSyncs {
+	return maintenanceSyncs{file: func(f *os.File) error { return f.Sync() }, directory: maintenanceSync}
+}
+
 // BeginBrainMaintenance acquires writer ownership and exclusively creates a
 // durable marker. Failure may leave a partial marker; ordinary writers refuse it.
 // Existing markers are never adopted or overwritten.
 func BeginBrainMaintenance(path string, id MaintenanceIdentity) (*BrainMaintenance, error) {
+	return beginBrainMaintenance(path, id, durableMaintenanceSyncs())
+}
+
+func beginBrainMaintenance(path string, id MaintenanceIdentity, syncs maintenanceSyncs) (*BrainMaintenance, error) {
 	raw, err := maintenanceBytes(id)
 	if err != nil {
 		return nil, err
 	}
-	owner, state, err := acquireBrainLock(path)
+	owner, state, err := acquireBrainLockWithSync(path, syncs.directory)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +96,7 @@ func BeginBrainMaintenance(path string, id MaintenanceIdentity) (*BrainMaintenan
 	// No failure path deletes a partial marker: a crash or failed fsync must
 	// remain unavailable, never silently resume canonical writes.
 	_, writeErr := file.Write(raw)
-	syncErr := file.Sync()
+	syncErr := syncs.file(file)
 	info, statErr := file.Stat()
 	closeErr := file.Close()
 	if err = errors.Join(writeErr, syncErr, statErr, closeErr); err != nil {
@@ -91,7 +106,7 @@ func BeginBrainMaintenance(path string, id MaintenanceIdentity) (*BrainMaintenan
 	if err = m.checkLocked(raw); err != nil {
 		return nil, err
 	}
-	if err = maintenanceSync(state); err != nil {
+	if err = syncs.directory(state); err != nil {
 		return nil, errors.Join(ErrMaintenancePending, err)
 	}
 	success = true
@@ -102,11 +117,15 @@ func BeginBrainMaintenance(path string, id MaintenanceIdentity) (*BrainMaintenan
 // marker only if its canonical bytes equal independently supplied expected pins.
 // Matching local pins never establish journal authority or authorize activation.
 func ResumeBrainMaintenance(path string, expected MaintenanceIdentity) (*BrainMaintenance, error) {
+	return resumeBrainMaintenance(path, expected, durableMaintenanceSyncs())
+}
+
+func resumeBrainMaintenance(path string, expected MaintenanceIdentity, syncs maintenanceSyncs) (*BrainMaintenance, error) {
 	raw, err := maintenanceBytes(expected)
 	if err != nil {
 		return nil, err
 	}
-	owner, state, err := acquireBrainLock(path)
+	owner, state, err := acquireBrainLockWithSync(path, syncs.directory)
 	if err != nil {
 		return nil, err
 	}
@@ -126,6 +145,29 @@ func ResumeBrainMaintenance(path string, expected MaintenanceIdentity) (*BrainMa
 	if err = m.checkLocked(raw); err != nil {
 		_ = m.Close()
 		return nil, err
+	}
+	// Matching page-cache bytes after an interrupted Begin do not prove durable
+	// publication. Re-sync the exact pinned marker and runtime directory before
+	// returning ownership that could authorize subsequent canonical maintenance.
+	file, err = maintenanceOpen(state, maintenanceMarkerName)
+	if err != nil {
+		_ = m.Close()
+		return nil, errors.Join(ErrMaintenancePending, err)
+	}
+	current, statErr := file.Stat()
+	if statErr != nil || !os.SameFile(current, m.marker) {
+		_ = file.Close()
+		_ = m.Close()
+		return nil, errors.Join(ErrMaintenanceIdentity, statErr)
+	}
+	syncErr := syncs.file(file)
+	closeErr = file.Close()
+	if err = errors.Join(syncErr, closeErr); err == nil {
+		err = syncs.directory(state)
+	}
+	if err != nil {
+		_ = m.Close()
+		return nil, errors.Join(ErrMaintenancePending, err)
 	}
 	return m, nil
 }

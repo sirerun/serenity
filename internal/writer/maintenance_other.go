@@ -13,3 +13,7 @@ func maintenanceCreate(*os.Root, string) (*os.File, error) {
 }
 func maintenanceOpen(*os.Root, string) (*os.File, error) { return nil, ErrMaintenancePending }
 func maintenanceSync(*os.Root) error                     { return ErrMaintenancePending }
+
+func acquireBrainLockWithSync(string, func(*os.Root) error) (*os.File, *os.Root, error) {
+	return nil, nil, ErrMaintenancePending
+}

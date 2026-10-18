@@ -48,7 +48,12 @@ func TestPoolRefusesPersistentCanonicalMaintenance(t *testing.T) {
 		if release != nil {
 			release()
 		}
-		if !errors.Is(err, writer.ErrMaintenancePending) {
+		expected := writer.ErrMaintenancePending
+		if mode == "existing" {
+			// AcquireExisting never opens a cold runtime, so admission ends earlier.
+			expected = pool.ErrCapacity
+		}
+		if !errors.Is(err, expected) {
 			t.Fatalf("%s admitted pending brain: %v", mode, err)
 		}
 		if after := snapshotTree(t, root); !reflect.DeepEqual(before, after) {

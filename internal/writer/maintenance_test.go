@@ -268,3 +268,77 @@ func TestMaintenanceProcessExitRetainsGate(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMaintenanceDurabilityFailuresNeverReturnUsableOwner(t *testing.T) {
+	failure := errors.New("injected durability failure")
+	for _, action := range []string{"begin", "resume"} {
+		for _, boundary := range []string{"brain_root", "marker_file", "runtime_directory"} {
+			t.Run(action+"_"+boundary, func(t *testing.T) {
+				root := t.TempDir()
+				id := maintenanceFixtureID()
+				if action == "resume" {
+					m, err := BeginBrainMaintenance(root, id)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err = m.Close(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				directoryCalls := 0
+				syncs := maintenanceSyncs{
+					file: func(file *os.File) error {
+						if boundary == "marker_file" {
+							return failure
+						}
+						return file.Sync()
+					},
+					directory: func(dir *os.Root) error {
+						directoryCalls++
+						if boundary == "brain_root" && directoryCalls == 1 || boundary == "runtime_directory" && directoryCalls == 2 {
+							return failure
+						}
+						return maintenanceSync(dir)
+					},
+				}
+				var m *BrainMaintenance
+				var err error
+				if action == "begin" {
+					m, err = beginBrainMaintenance(root, id, syncs)
+				} else {
+					m, err = resumeBrainMaintenance(root, id, syncs)
+				}
+				if m != nil || !errors.Is(err, failure) {
+					if m != nil {
+						_ = m.Close()
+					}
+					t.Fatalf("durability failure returned usable owner: %v", err)
+				}
+				// Root-entry sync failure precedes first marker creation. Every failure
+				// after publication, and every Resume failure, must retain the gate.
+				markerExists := action == "resume" || boundary != "brain_root"
+				if markerExists {
+					if writer, err := AcquireBrain(root); writer != nil || !errors.Is(err, ErrMaintenancePending) {
+						if writer != nil {
+							_ = writer.Close()
+						}
+						t.Fatalf("failed durability unblocked writers: %v", err)
+					}
+					m, err = ResumeBrainMaintenance(root, id)
+				} else {
+					if _, err := os.Lstat(markerPath(root)); !errors.Is(err, os.ErrNotExist) {
+						t.Fatal("root failure published marker")
+					}
+					m, err = BeginBrainMaintenance(root, id)
+				}
+				if err != nil {
+					t.Fatal("durable retry could not acquire owner", err)
+				}
+				defer m.Close()
+				if err = m.Finish(id); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
