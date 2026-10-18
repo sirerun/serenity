@@ -850,8 +850,17 @@ index.RuntimeTables remains authoritative for DB-only jobs, disposition/history,
 spend, caches and events; completed status never makes rows disposable. Derived
 source_paths contains private paths and remains part of later copy disposition.
 Use a fresh in-memory current index schema reference where supported, avoiding
-unattributed source-bearing scratch copies. SQLite may create/update SHM only in
-the explicit operation-owned inspection copy; never ignore unqualified WAL with
+unattributed source-bearing scratch copies. SQLite may create/update SHM and create an absent zero-byte WAL only in
+the explicit operation-owned inspection copy; existing WAL identity and contents
+must remain unchanged. Never ignore unqualified WAL with
 immutable mode. This is eligibility evidence, not authenticated cold maintenance
 or physical purge. Real activation still requires qualified owner/fresh authority
 and rejection or explicit preservation of unclassified runtime artifacts.
+
+E12 initial aggregate9b6745: full writer race52.663s passed. Index race exposed
+SQLite readonly WAL-mode behavior: a closed owned copy without sidecars creates
+private zero-byte WAL and32KiB SHM. A bounded synthetic diagnostic confirmed exact
+before/after effects; qualification now admits only new empty WAL, never existing
+WAL changes or new nonempty data. The unsafe-WAL-mode negative fixture now uses
+explicit chmod rather than relying on process umask. Revised index checks and
+independent re-review remain required; these initial failures are not waived.

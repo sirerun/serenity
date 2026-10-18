@@ -18,10 +18,21 @@ type maintenancePoolEmbedding struct{}
 
 func (maintenancePoolEmbedding) ModelVersion() string { return "maintenance-cohort-test@v1" }
 func (maintenancePoolEmbedding) Embed(context.Context, string) ([]float32, error) {
-	panic("canonical pool fixture must not call a provider")
+	panic("maintenance pool fixture must not call a provider")
 }
 
 func TestMaintenanceCopyActualCanonicalPoolOpenDrop(t *testing.T) {
+	for _, canonical := range []bool{true, false} {
+		name := "ordinary"
+		if canonical {
+			name = "canonical"
+		}
+		t.Run(name, func(t *testing.T) { testMaintenancePoolOpenDrop(t, canonical) })
+	}
+}
+
+func testMaintenancePoolOpenDrop(t *testing.T, canonical bool) {
+	t.Helper()
 	ctx := context.Background()
 	brains, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -50,7 +61,13 @@ func TestMaintenanceCopyActualCanonicalPoolOpenDrop(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	runtime, release, err := runtimePool.AcquireCanonical(ctx, id)
+	var runtime *pool.Runtime
+	var release func()
+	if canonical {
+		runtime, release, err = runtimePool.AcquireCanonical(ctx, id)
+	} else {
+		runtime, release, err = runtimePool.Acquire(ctx, id)
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

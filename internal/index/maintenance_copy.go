@@ -31,7 +31,8 @@ type MaintenanceFamilyFile struct {
 }
 
 // Qualification is preparation evidence, never erasure/activation authority.
-// SQLite may create, modify or remove SHM in this explicitly owned copy.
+// SQLite may create, modify or remove SHM and create an empty WAL in this
+// explicitly owned copy. Existing DB/WAL identity and contents must not change.
 type Qualification struct {
 	Schema             string                  `json:"schema"`
 	SchemaSHA256       string                  `json:"schema_sha256"`
@@ -60,7 +61,8 @@ type maintenanceSchemaRow struct {
 // SQLite family copy in a dedicated directory containing index.db[-wal/-shm].
 // The caller owns source-copy custody and exclusion. This API never opens the
 // original database, runs migrations on the copy, discards files or invokes a
-// provider. Its read-only SQL may change owned-copy SHM; this is not an immutable
+// provider. Its read-only SQL may change owned-copy SHM and create an empty
+// WAL; this is not an immutable
 // filesystem inspection. All runtime/control tables must be empty.
 func QualifyMaintenanceCopy(ctx context.Context, copyPath string) (Qualification, error) {
 	return qualifyMaintenanceCopy(ctx, copyPath, nil)
@@ -190,6 +192,15 @@ func qualifyMaintenanceCopy(ctx context.Context, copyPath string, observe func(s
 	for _, name := range []string{"index.db", "index.db-wal"} {
 		first, was := before.files[name]
 		last, is := after.files[name]
+		if name == "index.db-wal" && !was && is {
+			// Observed SQLite read-only WAL initialization creates an empty
+			// WAL beside SHM. Only that bounded owned-copy side effect is
+			// admitted; acknowledged frames may never appear or be replaced.
+			if last.file.Bytes != 0 {
+				return result, ErrMaintenanceCopyUnqualified
+			}
+			continue
+		}
 		if was != is || was && (!os.SameFile(first.info, last.info) || first.file != last.file) {
 			return result, ErrMaintenanceCopyUnqualified
 		}
@@ -198,7 +209,7 @@ func qualifyMaintenanceCopy(ctx context.Context, copyPath string, observe func(s
 		return result, ErrMaintenanceCopyUnqualified
 	}
 	digest := sha256.Sum256(actualJSON)
-	return Qualification{Schema: "serenity.index-maintenance-cohort/v1", SchemaSHA256: hex.EncodeToString(digest[:]), Before: before.publicFiles(), After: after.publicFiles(), EmptyRuntimeTables: controls, SidecarEffects: "owned_copy_shm_may_change"}, nil
+	return Qualification{Schema: "serenity.index-maintenance-cohort/v1", SchemaSHA256: hex.EncodeToString(digest[:]), Before: before.publicFiles(), After: after.publicFiles(), EmptyRuntimeTables: controls, SidecarEffects: "owned_copy_shm_may_change_empty_wal_may_appear"}, nil
 }
 
 func maintenanceExactFamily(a, b maintenanceFamily) bool {
