@@ -218,3 +218,26 @@ func TestInitialRecoveryGateSyncPrecedesEvidence(t *testing.T) {
 		})
 	}
 }
+
+type initialRejectPrecreate struct{ initialUnitAdmission }
+
+func (a initialRejectPrecreate) CheckInitialRecovery(ctx context.Context, p InitialRecoveryPins) error {
+	if p.Phase == "precreate" {
+		return context.Canceled
+	}
+	return a.initialUnitAdmission.CheckInitialRecovery(ctx, p)
+}
+
+func TestInitialRecoveryAttemptedCreateConservativeCustody(t *testing.T) {
+	ref := transactionPrepared(t)
+	admission := initialRejectPrecreate{initialUnitAdmission{transactionAdmissionFor(t, ref)}}
+	owner, result, err := RecoverInitialMaintenance(context.Background(), ref, admission)
+	if err == nil || owner != nil || !result.MarkerHeld || result.State != "incomplete" {
+		t.Fatal("attempted creation error concealed possible gate")
+	}
+	// This particular rejection happened before creation. The public error flag
+	// intentionally remains conservative because later failure paths can retain it.
+	if _, err = os.Lstat(filepath.Join(ref.Source, ".serenity", "canonical-maintenance.json")); !os.IsNotExist(err) {
+		t.Fatal("rejected precreate mutated marker")
+	}
+}
