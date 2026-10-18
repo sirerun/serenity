@@ -1,0 +1,379 @@
+{
+  "base": "0181d989333f1db9bbc4478fa3bf118a3a6da8f0",
+  "source": "docs/plans/shared-agent-memory-implementation-20261016.md",
+  "revision": "automatic-memory-r3",
+  "before_sha256": "dbe5856f8faa927e959f7df7935f3bfdcfed846744fcbc2aa2d1a612d9fafe16",
+  "after_sha256": "d88a4f36439e2007789d6fc1c3e437653e9274572d7749c40a191bc2dbbc8111",
+  "before_tasks": 91,
+  "after_tasks": 139,
+  "completed_before": 60,
+  "completed_after": 60,
+  "original_ids_preserved": [
+    "T1.1",
+    "T1.2",
+    "T1.3",
+    "T1.4",
+    "T1.5",
+    "T1.6",
+    "T1.7",
+    "T1.8",
+    "T1.9",
+    "T1.10",
+    "T1.11",
+    "T1.12",
+    "T1.13",
+    "T1.14",
+    "T1.15",
+    "T1.16",
+    "T1.17",
+    "T1.18",
+    "T1.19",
+    "T1.20",
+    "T1.21",
+    "T1.22",
+    "T1.23",
+    "T1.24",
+    "T1.25",
+    "T1.26",
+    "T1.27",
+    "T1.28",
+    "T1.29",
+    "T1.30",
+    "T1.31",
+    "T2.0",
+    "T2.9",
+    "T2.10",
+    "T2.1",
+    "T2.2",
+    "T2.3",
+    "T2.4",
+    "T2.5",
+    "T2.6",
+    "T2.7",
+    "T2.8",
+    "T2.11",
+    "T2.12",
+    "T2.13",
+    "T2.14",
+    "T2.15",
+    "T2.16",
+    "T2.17",
+    "T2.18",
+    "T2.19",
+    "T2.20",
+    "T2.21",
+    "T2.22",
+    "T3.1",
+    "T3.2",
+    "T3.3",
+    "T3.4",
+    "T3.5",
+    "T3.6",
+    "T3.7",
+    "T3.8",
+    "T3.9",
+    "T3.10",
+    "T3.11",
+    "T3.12",
+    "T3.13",
+    "T3.14",
+    "T3.15",
+    "T3.16",
+    "T3.17",
+    "T3.18",
+    "T3.19",
+    "T3.20",
+    "T3.21",
+    "T3.22",
+    "T3.23",
+    "T3.24",
+    "T3.25",
+    "T4.0",
+    "T4.1",
+    "T4.2",
+    "T4.3",
+    "T4.4",
+    "T4.5",
+    "T4.6",
+    "T4.7",
+    "T4.8",
+    "T4.9",
+    "T4.10",
+    "T4.11"
+  ],
+  "unchanged_rows": 78,
+  "amended_open_rows": [
+    {
+      "id": "T1.3",
+      "before": "- [ ] T1.3 Qualify exclusion and physical erasure recovery  Owner: integration  kind: agent  stage: implement  deps: [T1.2]  acc: [tests distinguish immediate exclusion from physical purge and prevent stale imports, indexes, derivatives and restored backups from resurrecting deleted content; capture remains disabled for unqualified paths]",
+      "after": "- [ ] T1.3 Qualify exclusion and physical erasure recovery  Owner: integration  kind: agent  stage: implement  deps: [T1.2, T5.2, T5.3]  acc: [tests distinguish immediate exclusion from physical purge and prevent stale imports, indexes, derivatives and restored backups from resurrecting deleted content; capture remains disabled for unqualified paths Complete original mixed-brain, controlled-copy and activation coverage from T5.0-T5.3; unsupported required safety paths keep capture unavailable.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    },
+    {
+      "id": "T1.4",
+      "before": "- [ ] T1.4 Verify archive candidate  Owner: integration  kind: agent  stage: verify  deps: [T1.3]  acc: [affected tests and race checks, format and file-first checks pass on exact candidate with redaction, quota, retry, isolation and restart evidence; Wazi plan validates]",
+      "after": "- [ ] T1.4 Verify archive candidate  Owner: integration  kind: agent  stage: verify  deps: [T1.3]  acc: [affected tests and race checks, format and file-first checks pass on exact candidate with redaction, quota, retry, isolation and restart evidence; Wazi plan validates Coverage includes T5.0-T5.3 and actual API/export/restore responses, preserved unrelated sources and interrupted physical cleanup.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    },
+    {
+      "id": "T1.5",
+      "before": "- [ ] T1.5 Independently review archive candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T1.4]  acc: [separate reviewer records exact base and head, full T1.1 through T1.4 diff, findings and resolved re-review evidence]",
+      "after": "- [ ] T1.5 Independently review archive candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T1.4]  acc: [separate reviewer records exact base and head, full T1.1 through T1.4 diff, findings and resolved re-review evidence Review scope explicitly includes T5.0-T5.3, all current erasure/backup/copy contracts and the complete candidate.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    },
+    {
+      "id": "T2.1",
+      "before": "- [ ] T2.1 Implement protected shared client and import  Owner: client-lane  kind: agent  stage: implement  deps: [T1.7, T2.0]  acc: [bounded protected queue redacts before staging, preserves stable history identities and progress, pauses private or unmapped sessions, verifies brain and fences before drain, and reports attachment and format gaps]",
+      "after": "- [ ] T2.1 Implement protected shared client and import  Owner: client-lane  kind: agent  stage: implement  deps: [T1.7, T2.0, T5.5]  acc: [bounded protected queue redacts before staging, preserves stable history identities and progress, pauses private or unmapped sessions, verifies brain and fences before drain, and reports attachment and format gaps T5.5 supplies the complete enrolled client; local queue acknowledgment, remote canonical acknowledgment and derived knowledge remain distinct.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    },
+    {
+      "id": "T2.2",
+      "before": "- [ ] T2.2 Qualify the archive bridge to Zati-owned continuation  Owner: integration  kind: agent  stage: implement  deps: [T2.1]  acc: [owning Zati E-FO0 contract and E-FO1 runtime receipts are pinned without advancing upstream tasks; map authorized canonical history ranges, complete current work and pending snapshots, actual artifact refs and checkpoints to acknowledged Serenity archive bytes with current scope and deletion fences; joined tests preserve whole-request budgets, intact tool pairs, original effect identity and cumulative limits across greater-than-200-message continuation, restart and cross-agent recovery; contract-only or local continuation never proves archive custody]",
+      "after": "- [ ] T2.2 Qualify the archive bridge to Zati-owned continuation  Owner: integration  kind: agent  stage: implement  deps: [T2.1, T5.11, T5.12]  acc: [owning Zati E-FO0 contract and E-FO1 runtime receipts are pinned without advancing upstream tasks; map authorized canonical history ranges, complete current work and pending snapshots, actual artifact refs and checkpoints to acknowledged Serenity archive bytes with current scope and deletion fences; joined tests preserve whole-request budgets, intact tool pairs, original effect identity and cumulative limits across greater-than-200-message continuation, restart and cross-agent recovery; contract-only or local continuation never proves archive custody Any Zati code follows its owning canonical review/merge/landed lifecycle; this row consumes those receipts and qualifies the archive bridge rather than advancing foreign tasks.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    },
+    {
+      "id": "T2.3",
+      "before": "- [ ] T2.3 Qualify requested host adapters  Owner: client-lane  kind: agent  stage: implement  deps: [T2.2]  acc: [Cursor, Codex, Claude Code and Antigravity each have official current capability evidence, configuration-preserving installation, actual host capture and import receipts, pause controls and honest unsupported fields]",
+      "after": "- [ ] T2.3 Qualify requested host adapters  Owner: client-lane  kind: agent  stage: implement  deps: [T2.2, T5.18, T5.23, T5.28, T5.33]  acc: [Cursor, Codex, Claude Code and Antigravity each have official current capability evidence, configuration-preserving installation, actual host capture and import receipts, pause controls and honest unsupported fields Aggregate all four T5.14-T5.33 host receipts without substituting one version or surface for another.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    },
+    {
+      "id": "T2.4",
+      "before": "- [ ] T2.4 Qualify durable facts and bounded recall  Owner: integration  kind: agent  stage: implement  deps: [T2.3]  acc: [standing-policy source-linked facts exclude recursive recall evidence and retain uncertainty; bounded historical retrieval and handoff retain originals and report measured coverage]",
+      "after": "- [ ] T2.4 Qualify durable facts and bounded recall  Owner: integration  kind: agent  stage: implement  deps: [T2.3, T5.11]  acc: [standing-policy source-linked facts exclude recursive recall evidence and retain uncertainty; bounded historical retrieval and handoff retain originals and report measured coverage T5.6-T5.7 own the fact/retrieval source delivered at T5.11; this original row closes aggregate host and handoff coverage, not duplicate implementation.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    },
+    {
+      "id": "T2.5",
+      "before": "- [ ] T2.5 Verify client and host candidates  Owner: integration  kind: agent  stage: verify  deps: [T2.4]  acc: [all T2 implementation acceptance fixtures pass including revoked grants, rotation, interruption, queue capacity and malicious quoted instructions; actual host gaps are recorded]",
+      "after": "- [ ] T2.5 Verify client and host candidates  Owner: integration  kind: agent  stage: verify  deps: [T2.4]  acc: [all T2 implementation acceptance fixtures pass including revoked grants, rotation, interruption, queue capacity and malicious quoted instructions; actual host gaps are recorded Include independently landed SDK and host receipts plus the actual Zati bridge owner candidate; a new joined code change must be reviewed before T2.7.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    },
+    {
+      "id": "T2.6",
+      "before": "- [ ] T2.6 Independently review client and host candidates  Owner: independent-reviewer  kind: agent  stage: review  deps: [T2.5]  acc: [separate exact-revision review covers T2.1 through T2.5 and accepted findings are fixed and re-reviewed]",
+      "after": "- [ ] T2.6 Independently review client and host candidates  Owner: independent-reviewer  kind: agent  stage: review  deps: [T2.5]  acc: [separate exact-revision review covers T2.1 through T2.5 and accepted findings are fixed and re-reviewed Review original joined scope and any T2.2 bridge changes plus all E5 source receipts; never self-approve prior shared or host code.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    },
+    {
+      "id": "T3.3",
+      "before": "- [ ] T3.3 Verify live archive behavior  Owner: integration  kind: agent  stage: verify  deps: [T3.2]  acc: [actual deployed revision passes synthetic authenticated narrow API and isolation checks; unqualified capture and erasure remain unavailable]",
+      "after": "- [ ] T3.3 Verify live archive behavior  Owner: integration  kind: agent  stage: verify  deps: [T3.2, T3.15, T1.7]  acc: [actual deployed revision passes synthetic authenticated narrow API and isolation checks; unqualified capture and erasure remain unavailable Actual synthetic API acceptance includes current safety source and cleanup receipts; source deployment alone does not close this gate.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    },
+    {
+      "id": "T3.14",
+      "before": "- [ ] T3.14 Deploy and exercise bounded synthetic replay increment  Owner: integration  kind: agent  stage: deploy  deps: [T3.13]  acc: [fresh verified target and rollback authorization permit guarded existing-capacity authority and host deployment plus exactly two scoped synthetic fixtures; no real capture or customer-data migration is enabled]",
+      "after": "- [ ] T3.14 Deploy and exercise bounded synthetic replay increment  Owner: integration  kind: agent  stage: deploy  deps: [T3.13, T5.40]  acc: [fresh verified target and rollback authorization permit guarded existing-capacity authority and host deployment plus exactly two scoped synthetic fixtures; no real capture or customer-data migration is enabled T5.40 is the new exact operational review; the earlier T3.13 approval is retained as historical evidence and cannot authorize changed current-state packets.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    },
+    {
+      "id": "T3.4",
+      "before": "- [ ] T3.4 Deploy qualified client and host release  Owner: integration  kind: agent  stage: deploy  deps: [T2.8, T3.3]  acc: [qualified host packages and Zati release have version-bound deployment receipts without unrelated UI changes]",
+      "after": "- [ ] T3.4 Deploy qualified client and host release  Owner: integration  kind: agent  stage: deploy  deps: [T2.8, T3.3, T5.46]  acc: [qualified host packages and Zati release have version-bound deployment receipts without unrelated UI changes Use the current T5.46 reviewed release and qualified capability/enrollment envelope; no old synthetic gate is used as a real-history bypass.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    },
+    {
+      "id": "T3.5",
+      "before": "- [ ] T3.5 Measure continuity and operations  Owner: integration  kind: agent  stage: verify  deps: [T3.4]  acc: [live recovery and continuation receipts, predeclared capacity workloads, purge and rebuild evidence distinguish measured limits from pending scale and soak coverage]",
+      "after": "- [ ] T3.5 Measure continuity and operations  Owner: integration  kind: agent  stage: verify  deps: [T3.4, T5.47]  acc: [live recovery and continuation receipts, predeclared capacity workloads, purge and rebuild evidence distinguish measured limits from pending scale and soak coverage Include cold restore and origin-loss recovery, RAM-01 through RAM-06, per-host supported limits and RFC0002 scale/soak receipts; failure leaves the affected support claim open.]",
+      "reason": "Preserve original acceptance and add explicit implementation/safety/release prerequisites for remaining automatic-memory scope"
+    }
+  ],
+  "new_tasks": [
+    {
+      "id": "T5.0",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.1",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.2",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.3",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.4",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.5",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.6",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.7",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.8",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.9",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.10",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.11",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.12",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.13",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.14",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.15",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.16",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.17",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.18",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.19",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.20",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.21",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.22",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.23",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.24",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.25",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.26",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.27",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.28",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.29",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.30",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.31",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.32",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.33",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.34",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.35",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.36",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.37",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.38",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.39",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.40",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.41",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.42",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.43",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.44",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.45",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.46",
+      "batch": "automatic-memory-r3"
+    },
+    {
+      "id": "T5.47",
+      "batch": "automatic-memory-r3"
+    }
+  ]
+}

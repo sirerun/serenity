@@ -142,3 +142,17 @@ all85 unaffected rows, and full old/new amended rows in the alignment receipt.
 Current-memory UX work can proceed before archive activation; joined continuity
 still waits for the bridge and qualified Zati runtime. No source, enrollment,
 model, provider, installation, release or production mutation was performed.
+
+## 2026-10-17 — Plan reliable automatic memory and recovery
+
+Refined the existing shared-memory source at0181d989 into explicit outcome
+batches: safe mixed-brain/copy purge; enrolled shared client and fact/retrieval
+path; Zati-owned recovery bridge; separate actual Codex/Claude Code/Cursor/
+Antigravity adapters; current-state maintenance; default-off production capability;
+reviewed release and canary/operations. Reused episode client/capture/host,
+existing writer/replay and erasure candidate source, with observed synthetic-only
+limits retained as gaps.48 new task rows extend91 existing rows;13 open aggregate
+gates retain original acceptance with strengthened prerequisites. All60 completed
+rows, IDs, owners and evidence remain. Existing Zati/Gist owners and no mandatory
+Serenity backend are preserved; no task was implemented, no real history enrolled,
+and no release/production action performed by this planning invocation.

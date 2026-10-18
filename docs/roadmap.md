@@ -1,5 +1,15 @@
 # Serenity roadmap
 
+## Reliable automatic-memory delivery plan — 2026-10-17
+
+The [existing implementation plan](plans/shared-agent-memory-implementation-20261016.md)
+now decomposes safe archive completion, enrolled capture/import, source-linked
+facts and actual-path retrieval, the Zati bridge and each of four host adapters.
+Default-off production capability, current-state maintenance, exact activation
+review and origin-loss/operations evidence are explicit gates. This is planned
+work; current source still advertises synthetic-only capture and incomplete
+physical erasure/export/restore. All prior completed evidence remains unchanged.
+
 ## Current shared-memory integration direction — 2026-10-17
 
 Zati owns bounded conversation continuation and current task/effect state;
