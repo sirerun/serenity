@@ -15,7 +15,7 @@ operator. Existing v1/v2 admission stays unchanged.
 
 Read [CONTRACT.md](CONTRACT.md) for exact inputs, trust boundaries and recovery
 rules. In particular, expiry retains the hold, interrupted children cannot be
-reported successful, and root never reads SQLite or fixture credentials. The
+reported successful, and operational root code never queries SQLite or reads fixture credentials. The
 metadata-only tool mode compares custody; its digests confer no authority.
 
 Source checks require owner-only temporary storage and umask077. Python tests

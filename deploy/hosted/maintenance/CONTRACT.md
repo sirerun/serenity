@@ -346,3 +346,25 @@ admissions under FRESH authority; completing old bytes never executes an expired
 grant. Incomplete admission stages remain retained, ineligible evidence; a fresh
 complete admission may proceed only when no dependent progress binds the
 incomplete one. Unknown bytes are never truncated or silently deleted.
+
+Readiness and startup-permit publication refinements: an interrupted deterministic
+readiness stage may remain as validated, owned prefix evidence during a verified
+no-child abort; it is never promoted into fixture admission during closeout.
+Supervisor-specific guard prefixes may be completed only from uniquely known
+baseline/durable admission context under fresh authority, without reloading an
+old supervisor, before the fresh guard is published.
+
+Before permit creation, persist its immutable exact progress context. Permit
+staging names bind expected permit hashes. Fresh closeout may validate and revoke
+only exactly identified old stages/final permits, synchronizing the permit
+directory before issuing a new grant. Old partial permits are never completed
+into executable startup permission, and guards never consume pending files.
+Unknown bytes/context remain preserved and refused. Containment still stops
+owned units even when unknown artifact reconciliation refuses; it never starts
+services, releases a hold or invents authority after expiry.
+
+Permit context files are `closeout-permit-<progress_record_sha256>.json` under the
+operation stage, with at most32 complete and32 inactive unfinished copies.
+Complete contexts must bind a valid immutable admission and exact held
+`authority-restored` progress before they can identify a revocable permit.
+Partial contexts have no authority; no dependent permit may rely on them.

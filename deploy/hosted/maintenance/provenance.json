@@ -45,7 +45,7 @@
     {
       "donor": "fixture-release-linux/helper.go",
       "sha256": "7bd3525161fbc6d1abe13af8f2ca2905ee42dfc5a54a2c151931f5a3c722e17f",
-      "status": "Synthetic source only; adapted read-only verification supports reissued credentials; no private artifacts imported."
+      "status": "Synthetic source only; adapted UID/storage verification and explicit synthetic external revocation retain fixture custody; helper never linked into operational child. No private artifacts imported."
     },
     {
       "donor": "fixture-release-linux/qualify_linux.py",

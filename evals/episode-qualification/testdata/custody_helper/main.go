@@ -71,7 +71,8 @@ func execute() {
 		must(db.QueryRowContext(ctx, query, args...).Scan(&n))
 		return n
 	}
-	if mode == "init" {
+	switch mode {
+	case "init":
 		require(store.SchemaVersion == 10 && count("SELECT count(*) FROM schema_migrations") == 10)
 		require(count("SELECT min(version) FROM schema_migrations") == 1 && count("SELECT max(version) FROM schema_migrations") == 10)
 		require(count("SELECT count(*) FROM accounts") == 0)
@@ -89,14 +90,14 @@ func execute() {
 		must(rows.Err())
 		must(rows.Close())
 		require(hex.EncodeToString(h.Sum(nil)) == schemaSHA)
-	} else if mode == "future-schema" {
+	case "future-schema":
 		// Corrupt only this already initialized synthetic DB; never invent migrations.
 		_, err = db.ExecContext(ctx, "UPDATE schema_migrations SET version=11 WHERE version=10")
 		must(err)
-	} else if mode == "extra-schema-object" {
+	case "extra-schema-object":
 		_, err = db.ExecContext(ctx, "CREATE TABLE supplemental_unknown_object (value TEXT)")
 		must(err)
-	} else {
+	default:
 		require(mode == "active" || mode == "reissued" || mode == "revoked" || mode == "externally-revoke" || mode == "retained-revoked")
 		m := readManifest(filepath.Join(private, "manifest.json"))
 		original := readManifest(filepath.Join(root, "original-manifest.json"))
@@ -122,7 +123,8 @@ func execute() {
 			must(err)
 			require(info.IsDir())
 			binding, err := issuer.Verify(ctx, o.Key)
-			if mode == "active" || mode == "externally-revoke" {
+			switch mode {
+			case "active", "externally-revoke":
 				must(err)
 				require(a.Key == o.Key && binding.AccountID == a.AccountID && binding.BrainID == a.BrainID && binding.CredentialID == a.CredentialIDs[0])
 				if mode == "externally-revoke" {
@@ -133,23 +135,24 @@ func execute() {
 					_, revokedErr := issuer.Verify(ctx, o.Key)
 					require(errors.Is(revokedErr, credential.ErrRevoked))
 				}
-			} else if mode == "retained-revoked" {
+			case "retained-revoked":
 				require(a.Key == o.Key && errors.Is(err, credential.ErrRevoked))
-			} else if mode == "reissued" {
+			case "reissued":
 				require(len(a.CredentialIDs) == 2 && a.Key != "" && a.Key != o.Key && errors.Is(err, credential.ErrRevoked))
 				current, verifyErr := issuer.Verify(ctx, a.Key)
 				must(verifyErr)
 				require(current.AccountID == a.AccountID && current.BrainID == a.BrainID && current.CredentialID == a.CredentialIDs[1])
-			} else {
+			default:
 				require(a.Key == "" && errors.Is(err, credential.ErrRevoked))
 			}
 		}
-		if mode == "active" {
+		switch mode {
+		case "active":
 			require(count("SELECT count(*) FROM client_credentials WHERE revoked_at IS NULL") == 2)
-		} else if mode == "reissued" {
+		case "reissued":
 			require(count("SELECT count(*) FROM client_credentials WHERE revoked_at IS NULL") == 2)
 			require(count("SELECT count(*) FROM client_credentials WHERE revoked_at IS NOT NULL") == 2)
-		} else {
+		default:
 			require(count("SELECT count(*) FROM client_credentials WHERE revoked_at IS NOT NULL") == credentialCount)
 		}
 	}

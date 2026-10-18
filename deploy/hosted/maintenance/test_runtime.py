@@ -52,14 +52,21 @@ class FakeRunner:
 
 
 class SyntheticTransaction(m.Transaction):
-    def __init__(self, *args, crash=None, partial=None, partial_after=1, **kwargs):
+    def __init__(self, *args, crash=None, partial=None, partial_after=1, sync_crash=None, **kwargs):
         self.crash = crash
         self.partial = partial
         self.partial_after = partial_after
         self.partial_seen = 0
+        self.sync_crash = sync_crash
         self.stalled = set()
         super().__init__(*args, **kwargs)
         self.runner.transaction = self
+
+    def sync_dir(self, path):
+        if self.sync_crash is not None and Path(path) == self.p(self.sync_crash):
+            self.sync_crash = None
+            raise Crash('directory sync interrupted')
+        return super().sync_dir(path)
 
     def write_record(self, fd, data, name):
         if self.partial is not None and name.startswith(self.partial[0]):
@@ -398,6 +405,147 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(closed['services_started'])
         self.assertFalse(any('fixture-outcome-' in p.name for p in t.p(t.stage).iterdir()))
 
+    def test_pending_permit_never_admits_and_expired_containment_revokes_known(self):
+        unit = m.WRITERS[1]
+        for cutoff in (0, 150, None):
+            with self.subTest(cutoff=cutoff), tempfile.TemporaryDirectory() as directory:
+                f = Fixture(directory)
+                t = f.transaction()
+                t.enter()
+                f.final_revoke(t)
+                interrupted = f.transaction(crash='record-synced:' + unit + '.permit' if cutoff is None else None,
+                    partial=(unit + '.permit', cutoff) if cutoff is not None else None)
+                with self.assertRaises(Crash):
+                    interrupted.closeout(f.receipt(t))
+                stages = list(t.p(m.RUN).glob('.*.permit-*.maintenance-write'))
+                self.assertEqual(len(stages), 1)
+                prefix = stages[0].read_bytes()
+                self.assertFalse(t.p(m.RUN + '/' + unit + '.permit').exists())
+                with self.assertRaises((RuntimeError, OSError)):
+                    interrupted.guard(unit)
+                self.assertEqual(stages[0].read_bytes(), prefix)
+                f.now = 1600
+                interrupted.supervisor_exit()
+                self.assertFalse(stages[0].exists())
+                self.assertTrue(all(f.runner.states[u] == 'inactive' for u in (*m.WRITERS, m.TIMER)))
+                self.assertTrue(f.transaction().closeout(f.receipt(t), f.authorization(t))['services_started'])
+                self.assertFalse(any(t.p(m.RUN).iterdir()))
+
+    def test_unknown_permit_prefix_or_context_preserved_but_exit_still_stops(self):
+        unit = m.WRITERS[1]
+        for corruption in ('prefix', 'context'):
+            with self.subTest(corruption=corruption), tempfile.TemporaryDirectory() as directory:
+                f = Fixture(directory)
+                t = f.transaction()
+                t.enter()
+                f.final_revoke(t)
+                interrupted = f.transaction(partial=(unit + '.permit', 150))
+                with self.assertRaises(Crash):
+                    interrupted.closeout(f.receipt(t))
+                path = next(t.p(m.RUN).glob('.*.permit-*.maintenance-write'))
+                if corruption == 'prefix':
+                    path.write_bytes(b'unknown')
+                else:
+                    context = next(t.p(t.stage).glob('closeout-permit-*.json'))
+                    context.write_bytes(b'unknown')
+                old = path.read_bytes()
+                f.runner.states[m.WRITERS[0]] = 'active'
+                f.runner.states[m.TIMER] = 'active'
+                f.now = 1600
+                with self.assertRaises(RuntimeError):
+                    interrupted.supervisor_exit()
+                self.assertEqual(path.read_bytes(), old)
+                self.assertTrue(all(f.runner.states[u] == 'inactive' for u in (*m.WRITERS, m.TIMER)))
+                with self.assertRaises(RuntimeError):
+                    f.transaction().closeout(f.receipt(t), f.authorization(t))
+                self.assertEqual(path.read_bytes(), old)
+                self.assertTrue(t.p(m.HOLD).exists())
+
+    def test_partial_permit_revocation_crash_and_directory_sync_retry(self):
+        unit = m.WRITERS[1]
+        for during in ('revoked', 'directory-sync'):
+            with self.subTest(during=during), tempfile.TemporaryDirectory() as directory:
+                f = Fixture(directory)
+                t = f.transaction()
+                t.enter()
+                f.final_revoke(t)
+                interrupted = f.transaction(partial=(unit + '.permit', 150))
+                with self.assertRaises(Crash):
+                    interrupted.closeout(f.receipt(t))
+                path = next(t.p(m.RUN).glob('.*.permit-*.maintenance-write'))
+                f.now = 1600
+                auth = f.authorization(t)
+                fresh = f.transaction(crash='unlinked:' + path.name if during == 'revoked' else None,
+                                      sync_crash=m.RUN if during == 'directory-sync' else None)
+                with self.assertRaises(Crash):
+                    fresh.closeout(f.receipt(t), auth)
+                self.assertFalse(path.exists())
+                self.assertTrue(t.p(m.HOLD).exists())
+                self.assertTrue(f.transaction().closeout(f.receipt(t), auth)['services_started'])
+                self.assertFalse(any(t.p(m.RUN).iterdir()))
+
+    def test_ready_prefix_remains_inactive_during_expired_entry_abort(self):
+        for cutoff in (0, 160, None):
+            with self.subTest(cutoff=cutoff), tempfile.TemporaryDirectory() as directory:
+                f = Fixture(directory)
+                if cutoff is None:
+                    t = f.transaction(crash='record-synced:maintenance-ready.json')
+                else:
+                    t = f.transaction(partial=('maintenance-ready.json', cutoff))
+                with self.assertRaises(Crash):
+                    t.enter()
+                path = t.p(t.stage + '/.maintenance-ready.json.maintenance-write')
+                prefix = path.read_bytes()
+                self.assertTrue(m.encoded(t.expected_ready()).startswith(prefix))
+                f.now = 1600
+                self.assertTrue(f.transaction().closeout(f.receipt(t), f.authorization(t))['services_started'])
+                self.assertEqual(path.read_bytes(), prefix)
+                self.assertFalse(t.p(t.stage + '/maintenance-ready.json').exists())
+                self.assertFalse(any(p.name.startswith('fixture-outcome-') for p in t.p(t.stage).iterdir()))
+
+    def test_old_guard_prefix_reconciles_without_old_supervisor_reload(self):
+        for during in ('entry', 'closeout'):
+            with self.subTest(during=during), tempfile.TemporaryDirectory() as directory:
+                f = Fixture(directory)
+                t = f.transaction()
+                if during == 'entry':
+                    old_supervisor = t.c['supervisor']
+                else:
+                    t.enter()
+                    f.final_revoke(t)
+                    f.now = 1600
+                    old_auth = f.authorization(t)
+                    old_supervisor = m.decoded(t.read(old_auth))['supervisor']
+                old_data = next(iter(t.transient_names(old_supervisor).values()))
+                cutoff = old_data.index(b'After=') + len(b'After=') + len(old_supervisor)
+                interrupted = f.transaction(partial=('91-serenity-release-maintenance.conf', cutoff))
+                with self.assertRaises(Crash):
+                    if during == 'entry':
+                        interrupted.enter()
+                    else:
+                        interrupted.closeout(f.receipt(t), old_auth)
+                f.now = 1800
+                auth = f.authorization(t)
+                auth_value = m.decoded(t.read(auth))
+                auth_value['supervisor'] = 'serenity-release-' + f.operation + '-closeout-' + '6'*64 + '.service'
+                f.put(auth, m.encoded(auth_value))
+                expected_supervisor = auth_value['supervisor']
+                original_run = f.runner.run
+                loaded = []
+                def inspect_reload(argv, **kwargs):
+                    if argv == ['/usr/bin/systemctl', 'daemon-reload']:
+                        for unit in m.WRITERS:
+                            path = t.p('/etc/systemd/system/' + unit + '.d/91-serenity-release-maintenance.conf')
+                            if path.exists():
+                                self.assertIn(expected_supervisor.encode(), path.read_bytes())
+                                loaded.append(expected_supervisor)
+                    return original_run(argv, **kwargs)
+                f.runner.run = inspect_reload
+                self.assertTrue(f.transaction().closeout(f.receipt(t), auth)['services_started'])
+                self.assertTrue(loaded)
+                self.assertFalse(any(t.p('/etc/systemd/system/' + unit + '.d/.91-serenity-release-maintenance.conf.maintenance-write').exists()
+                                     for unit in m.WRITERS))
+
     def test_torn_pending_records_reconcile_by_sha_under_new_admission(self):
         for write_number, cutoff in ((1, 0), (1, 120), (2, 200), (3, 300), (4, 500), (5, 700), (6, 150)):
             with self.subTest(write_number=write_number, cutoff=cutoff), tempfile.TemporaryDirectory() as directory:
@@ -549,7 +697,7 @@ class RuntimeTests(unittest.TestCase):
                 elif history in ('request', 'proof'):
                     f.put(f.stage + '/fixture-' + history + '-' + '8'*64 + '.json', b'unknown')
                 elif history == 'partial-ready':
-                    f.put(f.stage + '/.maintenance-ready.json.maintenance-write', b'{')
+                    f.put(f.stage + '/.maintenance-ready.json.maintenance-write', b'{unknown')
                 elif history == 'ready-symlink':
                     t.p(f.stage + '/maintenance-ready.json').symlink_to('/missing')
                 elif history == 'snapshot':
