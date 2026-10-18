@@ -6,6 +6,7 @@ package episodeinstall
 import (
 	"context"
 	"errors"
+
 	"github.com/sirerun/serenity/internal/episodeerase"
 	"github.com/sirerun/serenity/internal/index"
 	"github.com/sirerun/serenity/internal/store"

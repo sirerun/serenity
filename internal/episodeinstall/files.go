@@ -96,7 +96,7 @@ func inventoryPathLimits(ctx context.Context, name string, entryLimit int, byteL
 	if err != nil {
 		return nil, ErrUnqualified
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	opened, err := root.Stat(".")
 	if err != nil || !os.SameFile(info, opened) {
 		return nil, ErrUnqualified
@@ -134,7 +134,7 @@ func inventoryPathLimits(ctx context.Context, name string, entryLimit int, byteL
 		if err != nil {
 			return ErrUnqualified
 		}
-		defer directory.Close()
+		defer func() { _ = directory.Close() }()
 		opened, err := directory.Stat()
 		if err != nil || !os.SameFile(fi, opened) {
 			return ErrUnqualified
@@ -184,7 +184,7 @@ func inventoryFile(ctx context.Context, name, p string, info os.FileInfo) (inven
 	if err != nil {
 		return inventoryEntry{}, ErrUnqualified
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	entry, err := inventoryOpened(ctx, f, p, info)
 	if err != nil {
 		return inventoryEntry{}, err
@@ -292,7 +292,7 @@ func copyInventory(ctx context.Context, source, destination string, want invento
 	if rootErr != nil {
 		return ErrUnqualified
 	}
-	defer sourceRoot.Close()
+	defer func() { _ = sourceRoot.Close() }()
 	for _, e := range want {
 		if ctx.Err() != nil {
 			return ErrUnqualified
@@ -534,7 +534,7 @@ func boundedDirectoryEntries(ctx context.Context, p string, limit int) ([]os.Dir
 	if err != nil {
 		return nil, ErrUnqualified
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	entries, err := f.ReadDir(limit + 1)
 	if ctx.Err() != nil || (err != nil && err != io.EOF) || len(entries) > limit {
 		return nil, ErrUnqualified
