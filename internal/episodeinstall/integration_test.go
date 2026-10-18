@@ -104,12 +104,20 @@ func TestInstalledHostedBrainPreservesLexicalRecallAfterOwnerCloseout(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer view.Close()
+	defer func() {
+		if err := view.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	report, err := index.OpenReport(filepath.Join(req.Source, ".serenity", "index.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer report.Close()
+	defer func() {
+		if err := report.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	hits, err := report.SearchFTS(ctx, "ember", 20)
 	if err != nil || len(hits) == 0 {
 		t.Fatalf("installed lexical recall lost: %v", err)
