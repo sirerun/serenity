@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/sirerun/serenity/internal/domain"
 	"github.com/sirerun/serenity/internal/store"
 )
 
@@ -146,4 +147,70 @@ exec %q "$@"
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	assertEpisodeExportDenied(t, g, account, brain)
+}
+
+func TestLegacyEpisodeExportOrdinaryIndexOnlyCanonicalSource(t *testing.T) {
+	g, p, _, account, brain, root := newLifecycleExportFixture(t)
+	warmLifecycleRuntime(t, context.Background(), p, brain, root)
+	if err := p.Drop(brain); err != nil {
+		t.Fatal(err)
+	}
+	sources := store.NewSourceStore(root)
+	src, err := sources.Write([]byte("independent private source bytes"), domain.Source{Kind: "file", URI: "fixture://index-only", IndexOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chainGit(t, root, "add", "--all")
+	chainGit(t, root, "commit", "-m", "ordinary index-only source")
+	bytesPath := filepath.ToSlash(filepath.Join("brain", "sources", src.SHA256[:2], src.SHA256, "bytes"))
+	metaPath := filepath.ToSlash(filepath.Join("brain", "sources", src.SHA256[:2], src.SHA256, "meta.yaml"))
+	if got := chainGit(t, root, "ls-tree", "--name-only", "HEAD", "--", bytesPath); len(got) != 0 {
+		t.Fatal("index-only bytes unexpectedly tracked")
+	}
+	if got := chainGit(t, root, "ls-tree", "--name-only", "HEAD", "--", metaPath); len(got) == 0 {
+		t.Fatal("index-only metadata not tracked")
+	}
+	var output bytes.Buffer
+	if err = g.Export(context.Background(), account, brain, &output); err != nil || output.Len() == 0 {
+		t.Fatalf("ordinary index-only source refused: %v", err)
+	}
+}
+
+func TestLegacyEpisodeExportMissingSourcePairsRemainUnsupported(t *testing.T) {
+	for _, scenario := range []string{"missing_bytes", "missing_metadata", "unknown_kind", "reserved_index_only"} {
+		t.Run(scenario, func(t *testing.T) {
+			g, p, _, account, brain, root := newLifecycleExportFixture(t)
+			warmLifecycleRuntime(t, context.Background(), p, brain, root)
+			if err := p.Drop(brain); err != nil {
+				t.Fatal(err)
+			}
+			sources := store.NewSourceStore(root)
+			kind := "file"
+			if scenario == "unknown_kind" {
+				kind = "unknown_raw_kind"
+			}
+			src, err := sources.Write([]byte("ordinary source"), domain.Source{Kind: kind, URI: "fixture://source"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := sources.DirFor(src.SHA256)
+			switch scenario {
+			case "missing_bytes":
+				err = os.Remove(filepath.Join(dir, "bytes"))
+			case "missing_metadata":
+				err = os.Remove(filepath.Join(dir, "meta.yaml"))
+			case "reserved_index_only":
+				err = os.WriteFile(filepath.Join(dir, "meta.yaml"), []byte("kind: memory_fact\nuri: fixture://source\nindex_only: true\n"), 0600)
+				if err == nil {
+					err = os.Remove(filepath.Join(dir, "bytes"))
+				}
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			chainGit(t, root, "add", "--all")
+			chainGit(t, root, "commit", "-m", "unsupported source inventory")
+			assertEpisodeExportDenied(t, g, account, brain)
+		})
+	}
 }

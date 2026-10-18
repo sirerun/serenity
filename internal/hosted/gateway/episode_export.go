@@ -102,6 +102,8 @@ func (g *Gateway) checkLegacyEpisodeExport(ctx context.Context, brain string, ru
 	if len(commits) == 0 || len(commits) > episodeExportMaxCommits {
 		return ErrEpisodeExportUnsupported
 	}
+	// Cache both qualification and whether this exact metadata permits an
+	// untracked index-only raw payload.
 	seen := map[string]bool{}
 	for _, commit := range commits {
 		if !episodeExportGitID(commit) {
@@ -116,6 +118,7 @@ func (g *Gateway) checkLegacyEpisodeExport(ctx context.Context, brain string, ru
 			return ErrEpisodeExportUnsupported
 		}
 		pairs := map[string]int{}
+		metadataOnly := map[string]bool{}
 		for _, entry := range entries[:len(entries)-1] {
 			details, path, ok := strings.Cut(string(entry), "\t")
 			fields := strings.Fields(details)
@@ -133,13 +136,13 @@ func (g *Gateway) checkLegacyEpisodeExport(ctx context.Context, brain string, ru
 				return ErrEpisodeExportUnsupported
 			}
 			object := fields[2]
-			if seen[object] {
+			if allowed, known := seen[object]; known {
+				metadataOnly[parts[3]] = allowed
 				continue
 			}
 			if len(seen) >= episodeExportMaxMetadata {
 				return ErrEpisodeExportUnsupported
 			}
-			seen[object] = true
 			raw, err := git.read(ctx, "cat-file", "blob", object)
 			if err != nil {
 				return err
@@ -148,7 +151,8 @@ func (g *Gateway) checkLegacyEpisodeExport(ctx context.Context, brain string, ru
 				return ErrEpisodeExportUnsupported
 			}
 			var meta struct {
-				Kind string `yaml:"kind"`
+				Kind      string `yaml:"kind"`
+				IndexOnly bool   `yaml:"index_only"`
 			}
 			decoder := yaml.NewDecoder(bytes.NewReader(raw))
 			if decoder.Decode(&meta) != nil {
@@ -160,14 +164,23 @@ func (g *Gateway) checkLegacyEpisodeExport(ctx context.Context, brain string, ru
 			}
 			// Parsing every unique historical metadata blob avoids relying on a diff
 			// regex, HEAD-only inventory, or the current spelling of generated YAML.
+			ordinaryRaw := false
 			switch meta.Kind {
-			case "file", "email", "voice", "git_repo", store.SourceKindMemoryFact, store.SourceKindMemoryExpiry, store.SourceKindTombstone, store.GovernedMemoryKind:
+			case "file", "email", "voice", "git_repo":
+				ordinaryRaw = true
+			case store.SourceKindMemoryFact, store.SourceKindMemoryExpiry, store.SourceKindTombstone, store.GovernedMemoryKind:
+				if meta.IndexOnly {
+					return ErrEpisodeExportUnsupported
+				}
 			default:
 				return ErrEpisodeExportUnsupported
 			}
+			allowMetadataOnly := ordinaryRaw && meta.IndexOnly
+			seen[object] = allowMetadataOnly
+			metadataOnly[parts[3]] = allowMetadataOnly
 		}
-		for _, present := range pairs {
-			if present != 3 {
+		for sha, present := range pairs {
+			if present != 3 && (present != 2 || !metadataOnly[sha]) {
 				return ErrEpisodeExportUnsupported
 			}
 		}
