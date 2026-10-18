@@ -801,9 +801,9 @@ Acceptance: A permanent shared-reader/exclusive-maintenance view lock fences qua
 - [x] T5.74 Fence canonical readers and maintenance  Owner: authority-integration  kind: agent  stage: implement  deps: [T5.73]  acc: [permanent nofollow regular canonical-view lock initialized only by writer ownership, read acquisition opens existing state without mutation and checks persistent marker after shared ownership, maintenance holds exclusive view before existing writer lock and retains both through Finish/Close, unsafe/missing state refuses and no normal writer API or stable lock inode changes]
 - [x] T5.75 Integrate qualified canonical read paths  Owner: archive-integration  kind: agent  stage: implement  deps: [T5.74]  acc: [CLI canonical read exemptions and hosted warm/cold inspector, account inventory, governed lookup and pre-runtime episode replay hold shared view across bounded read use; hosted cold inspection remains initialization-free, normal writer/non-brain commands preserve behavior, maintenance or unsafe/missing gates refuse before callbacks or canonical outputs; explicit unsupported old binaries/direct file readers remain a qualification gap]
 - [x] T5.76 Verify canonical read gate  Owner: integration  kind: agent  stage: verify  deps: [T5.75]  acc: [real cross-process read/maintenance races and process-death pending marker plus actual CLI/gateway warm/cold paths prove no partial maintenance view and no cold filesystem mutation; writer/maintenance/read compatibility and affected bounded race vet lint build/full Wazi pass]
-- [ ] T5.77 Independently review canonical read gate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.76]  acc: [non-author exact candidate review covers file ownership lock order CLI and gateway reader coverage cancellation compatibility and tests; findings fixed checked and re-reviewed]
-- [ ] T5.78 Merge reviewed canonical read gate  Owner: integration  kind: agent  stage: merge  deps: [T5.77]  acc: [current holds protections and checks permit exact-reviewed-head guarded rebase without production activation]
-- [ ] T5.79 Verify landed canonical read gate  Owner: integration  kind: agent  stage: verify  deps: [T5.78]  acc: [reviewed tree equality and main reachability verified with affected checks; full active transaction installation crash recovery copy disposition and old-reader drain remain open]
+- [x] T5.77 Independently review canonical read gate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.76]  acc: [non-author exact candidate review covers file ownership lock order CLI and gateway reader coverage cancellation compatibility and tests; findings fixed checked and re-reviewed]
+- [x] T5.78 Merge reviewed canonical read gate  Owner: integration  kind: agent  stage: merge  deps: [T5.77]  acc: [current holds protections and checks permit exact-reviewed-head guarded rebase without production activation]
+- [x] T5.79 Verify landed canonical read gate  Owner: integration  kind: agent  stage: verify  deps: [T5.78]  acc: [reviewed tree equality and main reachability verified with affected checks; full active transaction installation crash recovery copy disposition and old-reader drain remain open]
 
 Batch ceiling3, actual2 compatible outcomes with disjoint writer primitive and
 CLI/gateway integration ownership. Lock order maintenance view-exclusive then
@@ -825,3 +825,33 @@ lint zero, zero called vulnerabilities (two module-only advisories), CLI build,
 format/diff/gitleaks and full Wazi pass. Restore runtime omission and hook no-op/
 blocking-exit regressions are corrected with real owner bootstrap and actual
 read-use admission, not generic read repair. No active installation or purge.
+
+T5.77–T5.79 completed: non-author final reviewbf334d87 against2529d034
+has no findings. PR409 guarded rebase landedb9c8733789203e3b6915bfa311f0468362f139fd;
+full reviewed-tree equality and main ancestry verified. Final gitleaks4commits/
+52.89KB clean. Actions39121275183 had14jobs/zero steps and explicit billing lock;
+ADR024 fallback without changing protections. Capture/installation remain off.
+
+### E12 — Qualify maintenance runtime state and ownership
+fidelity: executable
+Acceptance: A bounded qualification of an operation-owned closed SQLite family copy recognizes the exact current schema and refuses every nonempty database-only control table, preserving originals and exposing no row contents; an exact live maintenance owner can be bound to its canonical root and marker. Neither result installs or disposes of copies.
+
+- [ ] T5.80 Qualify the narrow maintenance index cohort  Owner: authority-integration  kind: agent  stage: implement  deps: [T5.79]  acc: [operation-owned private regular single-link database family copy is bounded and pinned; readonly query-only inspection honors WAL without migrations, compares bounded exact sorted schema including FTS shadows indexes triggers and views to current fresh index schema, requires every RuntimeTables table empty regardless of status, and returns content-free schema/family evidence with owned sidecar effects explicit; unsafe unknown changed corrupt canceled or nonempty state refuses without touching originals or granting activation authority]
+- [ ] T5.81 Verify actual pool-created cohort qualification  Owner: integration  kind: agent  stage: verify  deps: [T5.80, T5.85]  acc: [actual canonical pool open/drop and exact closed family copies prove supported empty controls and allowed derived/source-path data; each control table including WAL-resident rows, foreign or altered schema, symlink hardlink replacement corruption bounds and cancellation refuse with source family unchanged and no payload-bearing errors; maintenance owner validation rejects foreign roots changed lock or marker inodes wrong pins finished/closed/empty owners without mutation; bounded affected race vet lint and full Wazi pass]
+- [ ] T5.82 Independently review maintenance cohort qualification  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.81]  acc: [non-author exact candidate review covers SQLite family snapshot semantics WAL sidecar custody schema equality all DB-only control tables source preservation live maintenance owner/root/marker binding limits and tests; accepted findings fixed checked and re-reviewed]
+- [ ] T5.83 Merge reviewed maintenance cohort qualification  Owner: integration  kind: agent  stage: merge  deps: [T5.82]  acc: [current holds protections and checks permit exact-reviewed-head guarded rebase without installation or production activation]
+- [ ] T5.84 Verify landed maintenance cohort qualification  Owner: integration  kind: agent  stage: verify  deps: [T5.83]  acc: [reviewed tree equality and main reachability verified with affected checks; runtime artifact allowlist component transaction cold authority controlled-copy disposition and full T5.2/T5.3 remain open]
+
+- [ ] T5.85 Bind maintenance ownership to the exact canonical root  Owner: integration  kind: agent  stage: implement  deps: [T5.79]  acc: [writer-owned read-only ValidateFor method rejects nil empty closed finished or wrong-identity owners and verifies canonical root/runtime directory plus retained stable writer/view lock and exact marker inode identity; foreign roots source-root/runtime symlinks replacement files or changed pins cannot become an installation capability, with authority and copy disposition explicitly outside the method]
+
+Batch ceiling3, actual2 compatible implementation outcomes under disjoint
+internal/index and writer owner-validation files. Existing
+index.RuntimeTables remains authoritative for DB-only jobs, disposition/history,
+spend, caches and events; completed status never makes rows disposable. Derived
+source_paths contains private paths and remains part of later copy disposition.
+Use a fresh in-memory current index schema reference where supported, avoiding
+unattributed source-bearing scratch copies. SQLite may create/update SHM only in
+the explicit operation-owned inspection copy; never ignore unqualified WAL with
+immutable mode. This is eligibility evidence, not authenticated cold maintenance
+or physical purge. Real activation still requires qualified owner/fresh authority
+and rejection or explicit preservation of unclassified runtime artifacts.
