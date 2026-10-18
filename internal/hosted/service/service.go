@@ -25,6 +25,7 @@ import (
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 	"github.com/sirerun/serenity/internal/hosted/credential"
 	"github.com/sirerun/serenity/internal/hosted/dashboard"
+	"github.com/sirerun/serenity/internal/hosted/episodemaintenance"
 	"github.com/sirerun/serenity/internal/hosted/gateway"
 	"github.com/sirerun/serenity/internal/hosted/identity"
 	"github.com/sirerun/serenity/internal/hosted/meter"
@@ -99,6 +100,7 @@ type StartupAdmission interface {
 type StartupLease interface{ Close(context.Context) error }
 
 type LifecycleDependencies struct {
+	EpisodeMaintenance episodemaintenance.Source
 	// AuthorizedBackup is supplied by the admitted factory for witness-bound backups.
 	AuthorizedBackup        func(context.Context, string) error
 	Startup                 StartupAdmission
@@ -275,6 +277,7 @@ func readSecret(dir, name string) (string, error) {
 }
 
 type Service struct {
+	episodeMaintenance      episodemaintenance.Source
 	authorizedBackup        func(context.Context, string) error
 	startup                 StartupAdmission
 	startupLease            StartupLease
@@ -466,7 +469,7 @@ func AssembleWithDependencies(ctx context.Context, cfg Config, dev bool, db *sto
 	provisioner := &provision.Provisioner{Store: db, BrainsRoot: filepath.Join(cfg.DataDir, "brains")}
 	dash := &dashboard.Dashboard{Gateway: g, Identity: id, Provision: provisioner, Issuer: issuer, Meter: metering, Origin: cfg.PublicOrigin, Dev: dev, Billing: cfg.BillingEnabled}
 	operationReconciler := gateway.NewOperationReconciler(g)
-	s := &Service{authorizedBackup: deps.AuthorizedBackup, startup: deps.Startup, startupLease: deps.StartupLease, operations: operations, operationReconciler: operationReconciler, operatorReviewAdmission: deps.OperatorReviewAdmission, operatorReviewLedger: operations, operatorReviewFence: operationReconciler, Store: db, Pool: p, Gateway: g, journal: deps.Journal, buildSHA: deps.BuildSHA, cfg: cfg, embedder: embedding}
+	s := &Service{episodeMaintenance: deps.EpisodeMaintenance, authorizedBackup: deps.AuthorizedBackup, startup: deps.Startup, startupLease: deps.StartupLease, operations: operations, operationReconciler: operationReconciler, operatorReviewAdmission: deps.OperatorReviewAdmission, operatorReviewLedger: operations, operatorReviewFence: operationReconciler, Store: db, Pool: p, Gateway: g, journal: deps.Journal, buildSHA: deps.BuildSHA, cfg: cfg, embedder: embedding}
 	if cfg.billingConfig != nil {
 		dash.BillingService = &billing.Service{Store: db, Identity: id, Config: *cfg.billingConfig}
 		s.billingCloser = dash.BillingService

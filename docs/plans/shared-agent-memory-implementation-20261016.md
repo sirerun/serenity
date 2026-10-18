@@ -692,9 +692,9 @@ Acceptance: The legacy full-Git export refuses archived episode material before 
 
 - [x] T5.63 Fence legacy export against archived episode history  Owner: integration  kind: agent  stage: implement  deps: [T5.1]  acc: [actual account-owned legacy export refuses canonical archived episode sources or pending exclusion evidence before writing output, including stale disabled capture mode; no truncated or summary-only substitute, unknown publication or missing authority treated as safe; ordinary episode-free exports retain existing behavior]
 - [x] T5.64 Verify export disclosure refusal  Owner: integration  kind: agent  stage: verify  deps: [T5.63]  acc: [actual gateway append/exclude and legacy export fixtures prove zero output for episode history before and after restart, no cross-brain effect, compatibility for ordinary brains and exact refusal on invalid episode inventory; affected race/vet/static and Wazi pass]
-- [ ] T5.65 Independently review export refusal  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.64]  acc: [non-author exact source and full caller/test/contract review closes accepted findings with affected checks and re-review; unsupported portable export stays false]
-- [ ] T5.66 Merge reviewed export refusal  Owner: integration  kind: agent  stage: merge  deps: [T5.65]  acc: [current holds protections and checks permit guarded exact-reviewed-head rebase without runtime activation]
-- [ ] T5.67 Verify landed export refusal  Owner: integration  kind: agent  stage: verify  deps: [T5.66]  acc: [reviewed tree equality main reachability and affected checks pass; full portable export and T5.3 remain incomplete]
+- [x] T5.65 Independently review export refusal  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.64]  acc: [non-author exact source and full caller/test/contract review closes accepted findings with affected checks and re-review; unsupported portable export stays false]
+- [x] T5.66 Merge reviewed export refusal  Owner: integration  kind: agent  stage: merge  deps: [T5.65]  acc: [current holds protections and checks permit guarded exact-reviewed-head rebase without runtime activation]
+- [x] T5.67 Verify landed export refusal  Owner: integration  kind: agent  stage: verify  deps: [T5.66]  acc: [reviewed tree equality main reachability and affected checks pass; full portable export and T5.3 remain incomplete]
 
 Third disjoint batch actual1 implementation outcome T5.63 under ceiling3. Existing
 legacy full-bundle export is not an episode-v1 exact-export capability; unsupported
@@ -779,3 +779,10 @@ legitimate ordinary index-only imports is corrected with actual SourceStore/Git
 coverage; malformed historical pairs are tested with repaired valid HEAD so the
 export guard itself refuses without output. Two module-level advisories are not
 called by scoped code. Full portable export and T5.3 remain open.
+
+T5.65-T5.67 completed: independent final review accepted536509fc on54e321b8
+after EXP-R1 compatibility correction and fullgateway race39.693s/vet/lint0.
+PR407 guarded rebase landede81590013e0bda743eef4f105c513e024c552d2f;
+full reviewed-tree equality/main ancestry verified. Actions39117964327 was
+billing-blocked before steps under ADR024 fallback, without protection changes.
+No exact portable export or full T5.3 completion.
