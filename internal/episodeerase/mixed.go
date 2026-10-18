@@ -51,7 +51,7 @@ func BuildMixed(ctx context.Context, req MixedRequest) (Result, error) {
 		m.bySHA[pin.SHA256] = pin.MetadataSHA256
 	}
 	sort.Slice(m.pins, func(i, j int) bool { return m.pins[i].SHA256 < m.pins[j].SHA256 })
-	return build(ctx, req.Request, m)
+	return build(ctx, req.Request, m, nil)
 }
 
 func rawDigest(data []byte) string {
