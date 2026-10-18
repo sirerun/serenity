@@ -378,6 +378,9 @@ class Transaction:
             self.authority(self._authorization, self._authorization_hold)
             self.pair()
 
+    def write_record(self, fd, data, name):
+        return os.write(fd, data)
+
     def atomic(self, name, data, mode=0o600, prior=None):
         self.before_mutation()
         path = self.p(name)
@@ -388,7 +391,8 @@ class Transaction:
                 self.sync_dir(path.parent)
                 return
             require(prior is not None and existing == prior)
-        temporary = path.with_name('.' + path.name + '.maintenance-write')
+        staging_identity = '-' + digest(data) if path.name in ('closeout-pending.json', 'closed.json') else ''
+        temporary = path.with_name('.' + path.name + staging_identity + '.maintenance-write')
         if temporary.exists() or temporary.is_symlink():
             prefix = self.read('/' + str(temporary.relative_to(self.root)), private=(mode == 0o600))
             require(data.startswith(prefix))
@@ -399,9 +403,10 @@ class Transaction:
         try:
             os.fchown(fd, self.uid, self.gid)
             os.fchmod(fd, mode)
+            self.checkpoint('record-created:' + path.name)
             suffix = memoryview(data)[len(prefix):]
             while suffix:
-                count = os.write(fd, suffix)
+                count = self.write_record(fd, suffix, path.name)
                 require(count > 0)
                 suffix = suffix[count:]
             os.fsync(fd)
@@ -543,26 +548,32 @@ class Transaction:
         require(self.unit_state(unit) == state)
         return state
 
+    def authorization_identity(self, raw, hold_raw):
+        auth = decoded(raw)
+        exact(auth, 'version purpose operation_id manifest_sha256 hold_sha256 state_sha256 executable_sha256 broker_sha256 config_sha256 boot_id runtime_sha256 supervisor issued_at expires_at entry_baseline_sha256')
+        require(type(auth['version']) is int and auth['version'] == 1 and auth['purpose'] == 'serenity.fixture-closeout-authorization/v1')
+        require(auth['operation_id'] == self.c['operation_id'] and auth['manifest_sha256'] == self.c['manifest_sha256'] and
+                auth['hold_sha256'] == digest(hold_raw) and auth['boot_id'] == self.c['boot_id'] and
+                auth['runtime_sha256'] == digest(self.read(self.runtime)) and
+                auth['entry_baseline_sha256'] == digest(self.read(self.stage + '/baseline.json', private=True)))
+        for field, expected in [('state_sha256', self.s['state_sha256']), ('executable_sha256', self.s['binary_sha256']),
+                                ('broker_sha256', self.s['broker_sha256']), ('config_sha256', self.s['config_sha256'])]:
+            require(auth[field] == expected)
+        require(type(auth['issued_at']) is int and type(auth['expires_at']) is int and
+                0 < auth['expires_at'] - auth['issued_at'] <= 300)
+        supervisor = auth['supervisor']
+        require(supervisor == self.c['supervisor'] or re.fullmatch(
+            'serenity-release-' + self.c['operation_id'] + r'-closeout-[0-9a-f]{64}\.service', supervisor))
+        return auth
+
     def authority(self, authorization=None, hold_raw=None, main=False):
         now = int(self.clock())
         require(self.read('/proc/sys/kernel/random/boot_id').decode().strip() == self.c['boot_id'])
         supervisor, expiry = self.c['supervisor'], self.c['expires_at']
         if authorization is not None:
-            auth = decoded(self.read(authorization, private=True, limit=16384))
-            exact(auth, 'version purpose operation_id manifest_sha256 hold_sha256 state_sha256 executable_sha256 broker_sha256 config_sha256 boot_id runtime_sha256 supervisor issued_at expires_at entry_baseline_sha256')
-            require(auth['version'] == 1 and auth['purpose'] == 'serenity.fixture-closeout-authorization/v1')
-            require(auth['operation_id'] == self.c['operation_id'] and auth['manifest_sha256'] == self.c['manifest_sha256'] and
-                    auth['hold_sha256'] == digest(hold_raw) and auth['boot_id'] == self.c['boot_id'] and
-                    auth['runtime_sha256'] == digest(self.read(self.runtime)) and
-                    auth['entry_baseline_sha256'] == digest(self.read(self.stage + '/baseline.json', private=True)))
-            for field, expected in [('state_sha256', self.s['state_sha256']), ('executable_sha256', self.s['binary_sha256']),
-                                    ('broker_sha256', self.s['broker_sha256']), ('config_sha256', self.s['config_sha256'])]:
-                require(auth[field] == expected)
-            require(type(auth['issued_at']) is int and type(auth['expires_at']) is int and
-                    0 < auth['expires_at'] - auth['issued_at'] <= 300 and auth['issued_at'] <= now)
+            auth = self.authorization_identity(self.read(authorization, private=True, limit=16384), hold_raw)
+            require(auth['issued_at'] <= now)
             supervisor, expiry = auth['supervisor'], auth['expires_at']
-            require(supervisor == self.c['supervisor'] or re.fullmatch(
-                'serenity-release-' + self.c['operation_id'] + r'-closeout-[0-9a-f]{64}\.service', supervisor))
         else:
             require(self.c['issued_at'] <= now)
         require(now < expiry)
@@ -687,7 +698,7 @@ class Transaction:
     def baseline(self):
         value = decoded(self.read(self.stage + '/baseline.json', private=True))
         exact(value, 'version operation_id manifest_sha256 timestamp files lock_device lock_inode fixture_snapshot expected_hold')
-        require(value['version'] == 1 and value['operation_id'] == self.c['operation_id'] and
+        require(type(value['version']) is int and value['version'] == 1 and value['operation_id'] == self.c['operation_id'] and
                 value['manifest_sha256'] == self.c['manifest_sha256'])
         require(type(value['timestamp']) is int and self.c['issued_at'] <= value['timestamp'] < self.c['expires_at'])
         require(isinstance(value['files'], dict) and set(value['files']) == {x['path'] for x in self.s['unit_files']})
@@ -726,12 +737,15 @@ class Transaction:
         return self.validate_snapshot(value)
 
     def entry_nonexecution(self):
-        require(not self.p(self.stage + '/maintenance-ready.json').exists())
+        require(not self.p(self.stage + '/maintenance-ready.json').exists() and
+                not self.p(self.stage + '/maintenance-ready.json').is_symlink() and
+                not self.p(self.stage + '/.maintenance-ready.json.maintenance-write').exists() and
+                not self.p(self.stage + '/.maintenance-ready.json.maintenance-write').is_symlink())
         self.child_drained()
         with os.scandir(self.p(self.stage)) as entries:
             for count, entry in enumerate(entries, 1):
                 require(count <= 4096 and not entry.name.startswith((
-                    '.fixture-used-', 'fixture-proof-', 'fixture-outcome-')))
+                    '.fixture-used-', 'fixture-proof-', 'fixture-outcome-', 'fixture-request-')))
         require(self.fixture_snapshot() == self.baseline()['fixture_snapshot'])
         original = self.baseline()['files']
         desired = {name: [raw] for name, raw in {**self.guard_names(), **self.transient_names(self.c['supervisor'])}.items()}
@@ -1001,13 +1015,186 @@ class Transaction:
             if path.exists() or path.is_symlink():
                 self.empty_cgroup('/system.slice/' + self.f['unit'])
 
+    def admission_bindings(self, value, identity):
+        return dict(authorization_path=value['authorization_path'],
+                    authorization_sha256=value['authorization_sha256'],
+                    supervisor=value['supervisor'], expires_at=value['expires_at'], admission_sha256=identity)
+
+    def admissions(self):
+        result, incomplete = {}, []
+        with os.scandir(self.p(self.stage)) as entries:
+            for count, entry in enumerate(entries, 1):
+                require(count <= 4096)
+                match = re.fullmatch(r'closeout-admission-([0-9a-f]{64})\.json', entry.name)
+                pending = re.fullmatch(r'\.closeout-admission-([0-9a-f]{64})\.json\.maintenance-write', entry.name)
+                if pending:
+                    self.read(self.stage + '/' + entry.name, private=True, limit=32768)
+                    incomplete.append(pending.group(1))
+                    continue
+                if entry.name.startswith(('closeout-admission-', '.closeout-admission-')):
+                    require(match is not None)
+                if match is None:
+                    continue
+                raw = self.read(self.stage + '/' + entry.name, private=True, limit=32768)
+                value = decoded(raw)
+                require(encoded(value) == raw and digest(raw) == match.group(1))
+                exact(value, 'version purpose operation_id manifest_sha256 entry_baseline_sha256 hold_sha256 runtime_sha256 authorization_path authorization_sha256 authorization_bytes supervisor expires_at')
+                require(type(value['version']) is int and value['version'] == 1 and value['purpose'] == PURPOSE and
+                        value['operation_id'] == self.c['operation_id'] and value['manifest_sha256'] == self.c['manifest_sha256'] and
+                        value['entry_baseline_sha256'] == digest(self.read(self.stage + '/baseline.json', private=True)) and
+                        value['hold_sha256'] == digest(encoded(self.expected_hold())) and
+                        value['runtime_sha256'] == digest(self.read(self.runtime)))
+                if value['authorization_path'] is None:
+                    require(value['authorization_sha256'] is None and value['authorization_bytes'] is None and
+                            value['supervisor'] == self.c['supervisor'] and value['expires_at'] == self.c['expires_at'])
+                else:
+                    require(isinstance(value['authorization_path'], str) and value['authorization_path'].startswith('/'))
+                    auth_raw = base64.b64decode(value['authorization_bytes'], validate=True)
+                    require(digest(auth_raw) == value['authorization_sha256'])
+                    auth = self.authorization_identity(auth_raw, encoded(self.expected_hold()))
+                    require(value['supervisor'] == auth['supervisor'] and value['expires_at'] == auth['expires_at'])
+                result[match.group(1)] = value
+        require(len(result) + len(incomplete) <= 32 and len(result) <= 16 and len(incomplete) <= 16)
+        return result, incomplete
+
+    def publish_admission(self, authorization, hold_raw):
+        known, _ = self.admissions()  # Bound all retained complete and unfinished inputs.
+        raw = self.read(authorization, private=True, limit=16384) if authorization else None
+        supervisor, expiry = self.authority(authorization, hold_raw)
+        value = dict(version=1, purpose=PURPOSE, operation_id=self.c['operation_id'],
+            manifest_sha256=self.c['manifest_sha256'], entry_baseline_sha256=digest(self.read(self.stage + '/baseline.json', private=True)),
+            hold_sha256=digest(hold_raw), runtime_sha256=digest(self.read(self.runtime)), authorization_path=authorization,
+            authorization_sha256=digest(raw) if raw is not None else None,
+            authorization_bytes=base64.b64encode(raw).decode() if raw is not None else None,
+            supervisor=supervisor, expires_at=expiry)
+        identity = digest(encoded(value))
+        require(identity in known or len(known) < 16)
+        self.atomic(self.stage + '/closeout-admission-' + identity + '.json', encoded(value))
+        known, _ = self.admissions()
+        require(identity in known)
+        return self.admission_bindings(value, identity)
+
+    def staged_records(self, name):
+        require(name in ('closeout-pending.json', 'closed.json'))
+        require(not self.p(self.stage + '/.' + name + '.maintenance-write').exists() and
+                not self.p(self.stage + '/.' + name + '.maintenance-write').is_symlink())
+        result = []
+        with os.scandir(self.p(self.stage)) as entries:
+            for count, entry in enumerate(entries, 1):
+                require(count <= 4096)
+                if not entry.name.startswith('.' + name + '-'):
+                    continue
+                match = re.fullmatch(re.escape('.' + name + '-') + r'([0-9a-f]{64})\.maintenance-write', entry.name)
+                require(match is not None)
+                raw = self.read(self.stage + '/' + entry.name, private=True, limit=65536)
+                result.append((match.group(1), raw))
+        require(len(result) <= (1 if name == 'closeout-pending.json' else 16))
+        return result
+
+    def initial_closeout_record(self, bindings, entry_abort, outcomes):
+        return dict(version=1, purpose=PURPOSE, operation_id=self.c['operation_id'],
+            manifest_sha256=self.c['manifest_sha256'], hold=self.expected_hold(),
+            **bindings, guard_supervisor=self.c['supervisor'], outcomes_sha256=outcomes,
+            entry_abort=entry_abort, rehold_from=None, phase='intent')
+
+    def reconcile_pending_record(self, prior):
+        staged = self.staged_records('closeout-pending.json')
+        if not staged:
+            return prior
+        known, incomplete = self.admissions()
+        target, prefix = staged[0]
+        # A dependent progress record is eligible only from a fully published
+        # admission. Incomplete admission copies never become authority.
+        require(known)
+        candidates = {}
+        transitions = {'intent': ('authority-restored',), 'authority-restored': ('writers-ready',),
+            'writers-ready': ('guards-restored', 'reholding'), 'guards-restored': ('hold-released', 'reholding'),
+            'hold-released': ('timer-restored', 'reholding'), 'timer-restored': ('reholding',),
+            'reholding': ('authority-restored',)}
+        if prior is None:
+            entry_abort = not self.p(self.stage + '/maintenance-ready.json').exists()
+            if entry_abort:
+                self.entry_nonexecution()
+                outcomes = None
+            else:
+                outcomes = self.fixture_outcomes()
+        for identity, admission in known.items():
+            bindings = self.admission_bindings(admission, identity)
+            if prior is None:
+                options = [self.initial_closeout_record(bindings, entry_abort, outcomes)]
+            else:
+                base = {**prior, **bindings}
+                options = [base, {**base, 'guard_supervisor': admission['supervisor']}]
+                for phase in transitions[prior['phase']]:
+                    candidate = {**base, 'phase': phase}
+                    if phase == 'reholding':
+                        candidate['rehold_from'] = prior['phase']
+                    options.append(candidate)
+                    options.append({**candidate, 'guard_supervisor': admission['supervisor']})
+            for candidate in options:
+                raw = encoded(candidate)
+                if digest(raw) == target:
+                    candidates[raw] = candidate
+        require(len(candidates) == 1)
+        raw = next(iter(candidates))
+        require(raw.startswith(prefix))
+        # Current fresh admission authorizes byte reconciliation. The recovered
+        # historical admission is never used to execute any expired effect.
+        self.atomic(self.stage + '/closeout-pending.json', raw, prior=encoded(prior) if prior else None)
+        return self.closeout_record()
+
+    def completion(self, record):
+        return dict(version=1, purpose=PURPOSE, operation_id=self.c['operation_id'],
+            manifest_sha256=self.c['manifest_sha256'], hold_sha256=digest(encoded(record['hold'])),
+            state_sha256=self.s['state_sha256'], closeout_sha256=digest(encoded(record)),
+            services_started=True, backup_timer='active')
+
+    def validate_staged_completion(self, prior):
+        staged = self.staged_records('closed.json')
+        known = {}
+        incomplete = 0
+        with os.scandir(self.p(self.stage)) as entries:
+            for count, entry in enumerate(entries, 1):
+                require(count <= 4096)
+                match = re.fullmatch(r'closeout-completion-([0-9a-f]{64})\.json', entry.name)
+                pending = re.fullmatch(r'\.closeout-completion-([0-9a-f]{64})\.json\.maintenance-write', entry.name)
+                if pending:
+                    self.read(self.stage + '/' + entry.name, private=True, limit=65536)
+                    incomplete += 1
+                    continue
+                if entry.name.startswith(('closeout-completion-', '.closeout-completion-')):
+                    require(match is not None)
+                if match is None:
+                    continue
+                raw = self.read(self.stage + '/' + entry.name, private=True, limit=65536)
+                require(digest(raw) == match.group(1))
+                value = self.validate_closeout_record(decoded(raw))
+                require(encoded(value) == raw and value['phase'] == 'timer-restored')
+                completion = encoded(self.completion(value))
+                known[digest(completion)] = completion
+        require(len(known) <= 16 and incomplete <= 16)
+        for target, prefix in staged:
+            require(target in known and known[target].startswith(prefix))
+        # A prior complete/partial completion remains inactive. Actual readiness
+        # and a new record are required to publish success after containment.
+        return len(known), incomplete
+
     def closeout_record(self):
-        value = decoded(self.read(self.stage + '/closeout-pending.json', private=True, limit=65536))
-        exact(value, 'version purpose operation_id manifest_sha256 hold authorization_path authorization_sha256 supervisor guard_supervisor expires_at outcomes_sha256 entry_abort phase')
-        require(value['version'] == 1 and value['purpose'] == PURPOSE and
+        return self.validate_closeout_record(decoded(self.read(self.stage + '/closeout-pending.json', private=True, limit=65536)))
+
+    def validate_closeout_record(self, value):
+        exact(value, 'version purpose operation_id manifest_sha256 hold authorization_path authorization_sha256 supervisor guard_supervisor expires_at outcomes_sha256 entry_abort rehold_from admission_sha256 phase')
+        require(type(value['version']) is int and value['version'] == 1 and value['purpose'] == PURPOSE and
                 value['operation_id'] == self.c['operation_id'] and value['manifest_sha256'] == self.c['manifest_sha256'] and
                 value['hold'] == self.expected_hold() and
-                value['phase'] in ('intent', 'authority-restored', 'writers-ready', 'guards-restored', 'hold-released', 'timer-restored'))
+                value['phase'] in ('intent', 'reholding', 'authority-restored', 'writers-ready', 'guards-restored', 'hold-released', 'timer-restored'))
+        require(isinstance(value['admission_sha256'], str) and HEX.fullmatch(value['admission_sha256']))
+        known, _ = self.admissions()
+        require(value['admission_sha256'] in known and all(value[key] == expected for key, expected in
+                self.admission_bindings(known[value['admission_sha256']], value['admission_sha256']).items()))
+        require(value['rehold_from'] is None or value['rehold_from'] in
+                ('writers-ready', 'guards-restored', 'hold-released', 'timer-restored'))
+        require(value['phase'] != 'reholding' or value['rehold_from'] is not None)
         for name in ('supervisor', 'guard_supervisor'):
             require(value[name] == self.c['supervisor'] or (isinstance(value[name], str) and re.fullmatch(
                 'serenity-release-' + self.c['operation_id'] + r'-closeout-[0-9a-f]{64}\.service', value[name])))
@@ -1030,7 +1217,7 @@ class Transaction:
     def receipt(self, path, hold_raw):
         receipt = decoded(self.read(path, private=True, limit=32768))
         exact(receipt, 'version purpose operation_id manifest_sha256 hold_sha256 state_sha256 boot_id observed_at scope session_id concurrency_target concurrency phase revision metadata_sha256 tip_sha256 request_ids generator_path generator_sha256')
-        require(receipt['version'] == 1 and receipt['purpose'] == 'serenity.fixture-authority-restored/v1' and
+        require(type(receipt['version']) is int and receipt['version'] == 1 and receipt['purpose'] == 'serenity.fixture-authority-restored/v1' and
                 receipt['operation_id'] == self.c['operation_id'] and receipt['manifest_sha256'] == self.c['manifest_sha256'] and
                 receipt['hold_sha256'] == digest(hold_raw) and receipt['state_sha256'] == self.s['state_sha256'] and
                 receipt['boot_id'] == self.c['boot_id'])
@@ -1131,6 +1318,13 @@ class Transaction:
             entry_abort = existing is not None and existing['entry_abort'] is True
             if self.p(HOLD).exists():
                 hold_raw = self.matching_hold()
+                if existing is None and not self.p(self.stage + '/maintenance-ready.json').exists():
+                    # An entry that never published fixture readiness cannot
+                    # manufacture a final revoke. Exact fresh closeout-only
+                    # authority may reconcile verified nonexecution instead.
+                    require(authorization_path is not None and
+                            not self.p(self.stage + '/maintenance-ready.json').is_symlink())
+                    entry_abort = True
             else:
                 require(authorization_path is not None)
                 if existing is None:
@@ -1138,11 +1332,16 @@ class Transaction:
                     hold_raw = encoded(self.expected_hold())
                     entry_abort = True
                 else:
-                    require(existing['phase'] in ('hold-released', 'timer-restored') or existing.get('entry_abort') is True)
+                    require(existing['phase'] in ('hold-released', 'timer-restored') or
+                            (existing['phase'] == 'reholding' and existing['rehold_from'] in ('hold-released', 'timer-restored')) or
+                            (existing.get('entry_abort') is True and existing['phase'] == 'intent'))
                     hold_raw = encoded(existing['hold'])
                     entry_abort = existing.get('entry_abort') is True
             supervisor, expiry = self.authority(authorization_path, hold_raw, main=True)
             self._authorization, self._authorization_hold, self._gate = authorization_path, hold_raw, True
+            self.validate_staged_completion(existing)
+            existing = self.reconcile_pending_record(existing)
+            entry_abort = existing['entry_abort'] if existing is not None else entry_abort
             if self.p(self.stage + '/closed.json').exists():
                 require(existing is not None and existing['phase'] == 'timer-restored' and not self.p(HOLD).exists())
                 closed = decoded(self.read(self.stage + '/closed.json', private=True))
@@ -1165,11 +1364,8 @@ class Transaction:
                     for unit in UNITS:
                         self.drained(unit)
                     outcomes = self.fixture_outcomes()
-                record = dict(version=1, purpose=PURPOSE, operation_id=self.c['operation_id'],
-                    manifest_sha256=self.c['manifest_sha256'], hold=decoded(hold_raw),
-                    authorization_path=authorization_path,
-                    authorization_sha256=digest(self.read(authorization_path, private=True)) if authorization_path else None,
-                    supervisor=supervisor, guard_supervisor=self.c['supervisor'], expires_at=expiry, outcomes_sha256=outcomes, entry_abort=entry_abort, phase='intent')
+                bindings = self.publish_admission(authorization_path, hold_raw)
+                record = self.initial_closeout_record(bindings, entry_abort, outcomes)
                 self.atomic(self.stage + '/closeout-pending.json', encoded(record))
             else:
                 record = existing
@@ -1178,9 +1374,8 @@ class Transaction:
                     require(record['outcomes_sha256'] is None)
                 elif self.p(HOLD).exists():
                     require(self.fixture_outcomes() == record['outcomes_sha256'])
-                changed = {**record, 'authorization_path': authorization_path,
-                    'authorization_sha256': digest(self.read(authorization_path, private=True)) if authorization_path else None,
-                    'supervisor': supervisor, 'expires_at': expiry}
+                bindings = self.publish_admission(authorization_path, hold_raw)
+                changed = {**record, **bindings}
                 if changed != record:
                     self.atomic(self.stage + '/closeout-pending.json', encoded(changed), prior=encoded(record))
                     record = changed
@@ -1191,8 +1386,30 @@ class Transaction:
                     self.checkpoint('entry-abort-hold-published')
                 self.install_guards(supervisor, record['guard_supervisor'])
                 self.stop_all()
-            if record['phase'] in ('writers-ready', 'guards-restored') and record['guard_supervisor'] != supervisor:
+            late = record['phase'] in ('writers-ready', 'guards-restored', 'hold-released', 'timer-restored')
+            writers_running = all(self.unit_state(unit)['ActiveState'] == 'active' and
+                                  self.unit_state(unit)['SubState'] == 'running' for unit in WRITERS)
+            needs_rehold = late and (record['guard_supervisor'] != supervisor or not writers_running or
+                (record['phase'] == 'timer-restored' and self.unit_state(TIMER)['ActiveState'] != 'active'))
+            if needs_rehold:
+                require(authorization_path is not None)
                 self.receipt(restore_receipt_path, hold_raw)
+                prior = encoded(record)
+                record = {**record, 'rehold_from': record['phase'], 'phase': 'reholding'}
+                self.atomic(self.stage + '/closeout-pending.json', encoded(record), prior=prior)
+                self.checkpoint('closeout:reholding')
+            if record['phase'] == 'reholding':
+                require(authorization_path is not None)
+                self.closeout_authority(record, main=True)
+                self.receipt(restore_receipt_path, hold_raw)
+                if not self.p(HOLD).exists():
+                    self.atomic(HOLD, hold_raw)
+                    self.checkpoint('reholding:hold-published')
+                require(self.matching_hold() == hold_raw)
+                if record['entry_abort']:
+                    self.entry_nonexecution()
+                else:
+                    require(self.fixture_outcomes() == record['outcomes_sha256'])
                 self.install_guards(supervisor, record['guard_supervisor'])
                 prior = encoded(record)
                 record = {**record, 'guard_supervisor': supervisor, 'phase': 'authority-restored'}
@@ -1235,11 +1452,13 @@ class Transaction:
                 self.closeout_authority(record)
                 self.receipt(restore_receipt_path, hold_raw)
                 self.readiness()
+                self.qualified_guards(supervisor, baseline=True)
                 if self.p(HOLD).exists():
                     self.unlink_exact(HOLD, hold_raw)
                 self.checkpoint('hold-released')
                 self.closeout_authority(record)
                 self.systemctl('start', TIMER)
+                self.checkpoint('timer-started')
                 require(self.unit_state(TIMER)['ActiveState'] == 'active')
                 record = self.advance(record, 'timer-restored')
             self.closeout_authority(record)
@@ -1247,10 +1466,11 @@ class Transaction:
             self.qualified_guards(supervisor, baseline=True)
             require(not self.p(HOLD).exists() and self.unit_state(TIMER)['ActiveState'] == 'active')
             self.drained(BACKUP)
-            self.atomic(self.stage + '/closed.json', encoded(dict(version=1, purpose=PURPOSE,
-                operation_id=self.c['operation_id'], manifest_sha256=self.c['manifest_sha256'],
-                hold_sha256=digest(hold_raw), state_sha256=self.s['state_sha256'],
-                closeout_sha256=digest(encoded(record)), services_started=True, backup_timer='active')))
+            completion_base = self.stage + '/closeout-completion-' + digest(encoded(record)) + '.json'
+            complete_count, _ = self.validate_staged_completion(record)
+            require(self.p(completion_base).exists() or complete_count < 16)
+            self.atomic(completion_base, encoded(record))
+            self.atomic(self.stage + '/closed.json', encoded(self.completion(record)))
             return decoded(self.read(self.stage + '/closed.json', private=True))
 
     def supervisor_exit(self):
@@ -1268,7 +1488,8 @@ class Transaction:
                     self.systemctl('stop', TIMER, *WRITERS)
                     return
                 record = self.closeout_record()
-                require(record['phase'] in ('hold-released', 'timer-restored'))
+                require(record['phase'] in ('hold-released', 'timer-restored') or
+                        (record['phase'] == 'reholding' and record['rehold_from'] in ('hold-released', 'timer-restored')))
                 if self.p(self.stage + '/closed.json').exists():
                     return
             self.revoke_permits()
