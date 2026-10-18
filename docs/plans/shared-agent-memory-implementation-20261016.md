@@ -372,8 +372,8 @@ Acceptance: RAM-01 through RAM-06 have separately source-bound and released rece
 fidelity: executable
 Acceptance: An additive inactive candidate can preserve explicitly pinned independent raw file/email/voice sources while removing excluded episode history; unsupported hosted config/derivatives/activation remain refused and full T5.2/T1.3 stay open.
 
-- [ ] T5.48 Implement pinned mixed raw-source candidate  Owner: mixed-source-lane  kind: agent  stage: implement  deps: [T5.1]  acc: [additive BuildMixed preserves exact content and metadata of explicitly trusted SHA256-pinned independent raw sources across actual Git history, refuses missing/duplicate/mismatched/unsupported pins, foreign brain and unknown derivatives, removes excluded episode/checkpoint objects, and keeps Build legacy refusal and no-activation/purge semantics]
-- [ ] T5.49 Verify mixed-source candidate increment  Owner: integration  kind: agent  stage: verify  deps: [T5.48]  acc: [meaningful real-Git tests cover mixed retained/deleted history, raw metadata identity and changed/missing/unused pins, unlisted/derived sources, preservation and object closure; focused package race/vet, format and Wazi checks pass on exact source under qualified bounds]
+- [x] T5.48 Implement pinned mixed raw-source candidate  Owner: mixed-source-lane  kind: agent  stage: implement  deps: [T5.1]  acc: [additive BuildMixed preserves exact content and metadata of explicitly trusted SHA256-pinned independent raw sources across actual Git history, refuses missing/duplicate/mismatched/unsupported pins, foreign brain and unknown derivatives, removes excluded episode/checkpoint objects, and keeps Build legacy refusal and no-activation/purge semantics]
+- [x] T5.49 Verify mixed-source candidate increment  Owner: integration  kind: agent  stage: verify  deps: [T5.48]  acc: [meaningful real-Git tests cover mixed retained/deleted history, raw metadata identity and changed/missing/unused pins, unlisted/derived sources, preservation and object closure; focused package race/vet, format and Wazi checks pass on exact source under qualified bounds]
 - [ ] T5.50 Independently review mixed-source increment  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.49]  acc: [non-author exact base/head review covers full source/tests/contract/plan diff and no false authority or physical completion; accepted findings have tracked fixes and affected checks and re-review]
 - [ ] T5.51 Merge reviewed mixed-source increment  Owner: integration  kind: agent  stage: merge  deps: [T5.50]  acc: [current holds/protections/checks permit guarded exact-head rebase of the reviewed inactive-source candidate]
 - [ ] T5.52 Verify mixed-source source landing  Owner: integration  kind: agent  stage: verify  deps: [T5.51]  acc: [reviewed/landed tree and main reachability plus affected checks pass; broader mixed-derivative activation and managed-copy purge remain explicitly incomplete]
@@ -602,3 +602,14 @@ fields, policy/release/version/expiry bindings, current publication rechecks,
 legacy/unknown-client refusal and sanitized denial semantics. This is a contract
 correction only; no endpoint is implemented or enabled. Existing T5.41-T5.45
 remain the code/check/review/landing owners.
+
+## 2026-10-17 — Pinned mixed raw-source preparation
+
+T5.48-T5.49 source snapshot fbaa1e626f285c13142232fcc8e061c6ac4405e7
+passes real-Git episodeerase/store/gitrun race checks, existing gateway erasure
+and portable-restore race scenarios, affected vet, episodeerase lint and scoped
+vulnerability checks on bounded Linux ARM64 Go1.26.9. All139 prior rows retain
+exact status/criteria; five additive source-delivery rows cover this inactive
+increment. Legacy Build still refuses mixed sources. Full T5.2/T5.3/T1.3 stay
+open; no authenticated activation, hosted derivative/copy purge or live recovery
+claim follows. See the mixed-source preparation receipt for the exact boundary.

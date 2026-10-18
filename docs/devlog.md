@@ -166,3 +166,14 @@ purge. Prior Resume01 claim and clean worktrees preserved; foreign PR273/277
 untouched. Mac load blocks heavy local builds; existing ARM64 host has cached
 Go1.26.9 for bounded isolated source checks. This receipt is design/preflight,
 not implementation, production activation or host acceptance.
+
+## 2026-10-17 — Inactive mixed-source erasure preparation
+
+Added separately versioned BuildMixed with exact caller-trusted data/metadata
+pins for independent raw file/email/voice sources across bounded Git history.
+Shared episode/checkpoint closure removes excluded objects while preserving
+legacy Build refusal and inactive/unsupported-purge semantics. Real-Git tests
+and existing restore integration race checks, affected vet, lint and scoped
+vulnerability checks pass on bounded Linux ARM64 Go1.26.9. Full mixed hosted
+activation, authoritative fences, managed copies and real capture remain open.
+Independent source review and guarded landing are tracked by T5.50-T5.52.
