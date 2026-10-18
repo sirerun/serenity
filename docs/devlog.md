@@ -207,3 +207,15 @@ read-only SQLite sidecar creation; only observed empty-WAL/SHM effects are admit
 and recorded. Added exact live maintenance root/lock/marker validation with a
 retained root descriptor. Full index/writer races and affected static/build checks
 pass; no active installation, original-copy disposal or capture activation occurs.
+
+## 2026-10-18 — Prepared installation and forward recovery library
+
+Added internal durable preparation and fixed-component episode installation under
+existing persistent maintenance ownership. Complete inventories, fresh cold
+admission and exclusive renames preserve unrelated canonical memory and rebuilt
+lexical recall. Review caught and closed unbounded listing, torn-record recovery
+and caller-slice aliasing. Full Linux race/process-death checks pass, including
+record partial writes and component rename/fsync boundaries, with affected static
+and CLI build checks. This remains an unwired library: retained copies, partial
+initial markers, current cold owner, host acceptance and capture remain open. See
+the prepared-installation receipt and internal design for exact limits.

@@ -87,3 +87,13 @@ older ADR or describe active-search removal as historical erasure.
 [ADR 017](017-hosted-operation-and-recovery-contracts.md),
 [ADR 025](025-postcanonical-search-indexing-for-hosted-remember.md),
 [current erasure limits](../operator/forget.md).
+
+## Implementation evidence — 2026-10-18
+
+The internal [prepared installation design](../../internal/episodeinstall/DESIGN.md)
+implements a narrow forward transaction over a qualified hosted source and empty
+database control-state cohort. Its [qualification receipt](../receipts/2026-10-18-prepared-episode-installation.md)
+separates inactive preparation, marker-held installation and retained-copy custody.
+This does not complete the ADR's physical-erasure or automatic-capture contract.
+Actual cold-owner integration, controlled-copy disposition, ambiguous initial
+markers and host/production acceptance remain required.
