@@ -36,7 +36,7 @@ func TestMaintenancePersistsAndReconcilesExactOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 	if other, err := AcquireBrain(root); other != nil || !errors.Is(err, ErrBrainOwned) {
 		t.Fatalf("competing writer: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestMaintenancePersistsAndReconcilesExactOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 	if err = m.Finish(wrong); !errors.Is(err, ErrMaintenanceIdentity) {
 		t.Fatal("wrong finish accepted")
 	}
@@ -81,7 +81,7 @@ func TestMaintenancePersistsAndReconcilesExactOwner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer writer.Close()
+	defer func() { _ = writer.Close() }()
 	current, err := writer.Stat()
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestMaintenancePartialUnsafeAndReplacedMarkersFailClosed(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer m.Close()
+			defer func() { _ = m.Close() }()
 			path := markerPath(root)
 			raw, err := os.ReadFile(path)
 			if err != nil {
@@ -167,7 +167,7 @@ func TestMaintenancePartialUnsafeAndReplacedMarkersFailClosed(t *testing.T) {
 			resumed, err := ResumeBrainMaintenance(root, id)
 			if resumed != nil || err == nil {
 				if resumed != nil {
-					resumed.Close()
+					_ = resumed.Close()
 				}
 				t.Fatalf("unsafe resume: %v", err)
 			}
@@ -263,7 +263,7 @@ func TestMaintenanceProcessExitRetainsGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 	if err = m.Finish(maintenanceFixtureID()); err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +334,7 @@ func TestMaintenanceDurabilityFailuresNeverReturnUsableOwner(t *testing.T) {
 				if err != nil {
 					t.Fatal("durable retry could not acquire owner", err)
 				}
-				defer m.Close()
+				defer func() { _ = m.Close() }()
 				if err = m.Finish(id); err != nil {
 					t.Fatal(err)
 				}
