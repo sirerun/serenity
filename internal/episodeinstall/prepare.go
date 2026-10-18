@@ -58,11 +58,13 @@ func prepare(ctx context.Context, req Request, observe func(string)) (ref Prepar
 		return ref, ErrUnqualified
 	}
 	source, operation := req.Source, req.OperationDirectory
-	if json.Unmarshal(raw, &req) != nil {
+	var detached Request
+	if json.Unmarshal(raw, &detached) != nil {
 		return ref, ErrUnqualified
 	}
-	req.Source = source
-	req.OperationDirectory = operation
+	detached.Source = source
+	detached.OperationDirectory = operation
+	req = detached
 	sort.Slice(req.CurrentFences, func(i, j int) bool { return req.CurrentFences[i].Generation < req.CurrentFences[j].Generation })
 	ref.Identity = writer.MaintenanceIdentity{Schema: "serenity.canonical-maintenance/v1", OperationID: req.OperationID, BrainID: req.BrainID, SourceHead: req.SourceHead, FenceDigest: store.EpisodeHash(req.CurrentFences)}
 	owner, ownerErr := writer.AcquireBrain(req.Source)

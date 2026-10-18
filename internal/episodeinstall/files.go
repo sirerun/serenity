@@ -284,6 +284,15 @@ func copyInventory(ctx context.Context, source, destination string, want invento
 	if want[0].Kind == "absent" {
 		return nil
 	}
+	sourceBase := source
+	if want[0].Kind == "file" {
+		sourceBase = filepath.Dir(source)
+	}
+	sourceRoot, rootErr := os.OpenRoot(sourceBase)
+	if rootErr != nil {
+		return ErrUnqualified
+	}
+	defer sourceRoot.Close()
 	for _, e := range want {
 		if ctx.Err() != nil {
 			return ErrUnqualified
@@ -300,8 +309,21 @@ func copyInventory(ctx context.Context, source, destination string, want invento
 			}
 			continue
 		}
-		in, err := os.Open(src)
+		relative := e.Path
+		if want[0].Kind == "file" {
+			relative = filepath.Base(src)
+		}
+		before, statErr := sourceRoot.Lstat(relative)
+		if statErr != nil || !before.Mode().IsRegular() || !ownedInfo(before) || !singleLink(before) || before.Size() != e.Bytes || uint32(before.Mode().Perm()) != e.Mode {
+			return ErrUnqualified
+		}
+		in, err := sourceRoot.Open(relative)
 		if err != nil {
+			return ErrUnqualified
+		}
+		opened, statErr := in.Stat()
+		if statErr != nil || !os.SameFile(before, opened) {
+			_ = in.Close()
 			return ErrUnqualified
 		}
 		out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)

@@ -181,8 +181,18 @@ Transaction durable record refinement: `install.json` is an immutable complete
 intent for ALL fixed component moves, synced before the first rename. Actual
 slot inventories determine progress, avoiding mutable phase counters. A separate
 fixed `installed.json` is exclusive-created and synced after final verification;
-existing exact canonical completion bytes are idempotent, partial/unknown bytes
-refuse with marker held. Both names are the only additional operation entries.
+existing exact canonical completion bytes are idempotent. Fixed content-free
+`install.json.pending` and `installed.json.pending` stages are written and synced
+before exclusive final publication; these two stages are the only extra names.
+A private owned regular single-link pending file must match a byte prefix of the
+exact deterministic record; Resume may append the missing expected bytes after
+actual-slot and fresh-authority validation, never truncate or remove unknown
+bytes. A final record plus pending stage is ambiguous and refuses. Pending
+completion requires all actual components final. Resume syncs the operation
+directory before another canonical mutation. Unknown or malformed final records
+refuse, but process interruption at creation/midwrite of the admitted pending
+records recovers forward. Tests cover both record create/write/sync/publish
+boundaries as well as component renames.
 
 Header freeze correction during integration: `Inspection inventory` pins the
 complete closed post-qualification inspection directory (including SQLite-owned
