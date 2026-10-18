@@ -112,6 +112,7 @@ type Queue struct {
 	closed bool
 	seq    map[string]uint64
 	jobs   chan submitted
+	done   chan struct{} // closed only by the drain goroutine after all jobs finish
 	wg     sync.WaitGroup
 	hook   func(Result)
 
@@ -175,6 +176,7 @@ func NewQueue(hook func(Result)) *Queue {
 		jobs:    make(chan submitted),
 		submit:  make(chan struct{}, 1),
 		hook:    hook,
+		done:    make(chan struct{}),
 	}
 	q.submit <- struct{}{}
 	q.wg.Add(1)
@@ -183,7 +185,7 @@ func NewQueue(hook func(Result)) *Queue {
 }
 
 func (q *Queue) drain() {
-	defer q.wg.Done()
+	defer func() { q.wg.Done(); close(q.done) }()
 	for s := range q.jobs {
 		if (s.flush || s.canonical) && !s.state.begin() {
 			res := Result{Job: s.job, Seq: s.seq, Err: s.flushCtx.Err()}
@@ -472,8 +474,28 @@ func (q *Queue) MarkTouched(path string) {
 // finish everything already queued. A Queue is not usable after Close.
 var ErrQueueClosed = errors.New("writer: queue closed")
 
-func (q *Queue) Close() {
-	<-q.submit
+func (q *Queue) Close() { _ = q.CloseContext(context.Background()) }
+
+// CloseContext stops admission while holding the ordered submit token, then
+// waits for the actual drain goroutine. Cancellation never joins a running job
+// or makes its side effects stop: the caller must retain resources and retry.
+// If cancellation precedes token acquisition the queue may remain open.
+func (q *Queue) CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		return ErrNilCommitContext
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-q.submit:
+	}
+	if err := ctx.Err(); err != nil {
+		q.submit <- struct{}{}
+		return err
+	}
 	q.mu.Lock()
 	if !q.closed {
 		q.closed = true
@@ -481,5 +503,10 @@ func (q *Queue) Close() {
 	}
 	q.mu.Unlock()
 	q.submit <- struct{}{}
-	q.wg.Wait()
+	select {
+	case <-q.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

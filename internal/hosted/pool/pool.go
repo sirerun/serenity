@@ -23,6 +23,8 @@ import (
 )
 
 var ErrCapacity = errors.New("hosted runtime capacity reached")
+var ErrRuntimeClosing = errors.New("hosted runtime closing; lifecycle retry required")
+var ErrNilLifecycleContext = errors.New("hosted pool: lifecycle context required")
 
 type Config struct {
 	MaxOpen, MaxInFlight int
@@ -31,17 +33,18 @@ type Config struct {
 	Embedder             embed.Embedder
 }
 type Runtime struct {
-	flush     func() error
-	Sources   *store.SourceStore
-	Queue     *writer.Queue
-	Mutations sync.Mutex
-	Tools     []mcp.Tool
-	Root      string
-	brainID   string
-	queue     *writer.Queue
-	close     func() error
-	users     int
-	last      time.Time
+	Sources      *store.SourceStore
+	Queue        *writer.Queue
+	Mutations    sync.Mutex
+	Tools        []mcp.Tool
+	Root         string
+	brainID      string
+	queue        *writer.Queue
+	close        func() error
+	closeContext func(context.Context) error
+	closing      bool // guarded by Pool.mu; unavailable until exact close retry succeeds
+	users        int
+	last         time.Time
 }
 type Pool struct {
 	cfg      Config
@@ -95,10 +98,16 @@ func (p *Pool) acquire(ctx context.Context, id string, existingOnly, canonicalOn
 	if p.closed || p.inFlight >= p.cfg.MaxInFlight {
 		return nil, nil, ErrCapacity
 	}
+	if current := p.open[id]; current != nil && current.closing {
+		return nil, nil, ErrRuntimeClosing
+	}
 	if !existingOnly {
 		for key, item := range p.open {
+			if item.closing {
+				continue
+			}
 			if item.users == 0 && p.cfg.IdleTimeout > 0 && time.Since(item.last) >= p.cfg.IdleTimeout {
-				if err := item.close(); err != nil {
+				if err := closeRuntime(ctx, item); err != nil {
 					return nil, nil, err
 				}
 				delete(p.open, key)
@@ -114,7 +123,7 @@ func (p *Pool) acquire(ctx context.Context, id string, existingOnly, canonicalOn
 			var oldest string
 			var candidate *Runtime
 			for key, item := range p.open {
-				if item.users == 0 && (candidate == nil || item.last.Before(candidate.last)) {
+				if !item.closing && item.users == 0 && (candidate == nil || item.last.Before(candidate.last)) {
 					oldest = key
 					candidate = item
 				}
@@ -122,7 +131,7 @@ func (p *Pool) acquire(ctx context.Context, id string, existingOnly, canonicalOn
 			if candidate == nil {
 				return nil, nil, ErrCapacity
 			}
-			if err := candidate.close(); err != nil {
+			if err := closeRuntime(ctx, candidate); err != nil {
 				return nil, nil, err
 			}
 			delete(p.open, oldest)
@@ -160,8 +169,11 @@ func (p *Pool) Close() error {
 	defer p.mu.Unlock()
 	var err error
 	for id, r := range p.open {
-		err = errors.Join(err, r.close())
-		delete(p.open, id)
+		closeErr := closeRuntime(context.Background(), r)
+		err = errors.Join(err, closeErr)
+		if closeErr == nil {
+			delete(p.open, id)
+		}
 	}
 	return err
 }
@@ -278,19 +290,45 @@ func open(ctx context.Context, cfg Config, id string, canonicalOnly bool) (*Runt
 			tools = append(tools, tool)
 		}
 	}
-	return &Runtime{Root: root, Sources: store.NewSourceStore(root), Queue: q, brainID: id, queue: q, Tools: tools, flush: func() error {
-		_, err := writer.FlushContext(context.Background(), q, root)
-		return err
-	}, close: func() error {
-		q.Close()
-		_, flushErr := writer.FlushContext(context.Background(), q, root)
-		return errors.Join(flushErr, eng.Close(), owner.Close())
-	}}, nil
+	indexClosed := false
+	ownerClosed := false
+	closeContext := func(closeCtx context.Context) error {
+		if err := q.CloseContext(closeCtx); err != nil {
+			return err
+		}
+		if _, err := writer.FlushContext(closeCtx, q, root); err != nil {
+			return err
+		}
+		// Retain canonical ownership until all actual work and publication have
+		// joined. Partial close failures remain unavailable for exact retry.
+		if !indexClosed {
+			if err := eng.Close(); err != nil {
+				return err
+			}
+			indexClosed = true
+		}
+		if !ownerClosed {
+			if err := owner.Close(); err != nil {
+				return err
+			}
+			ownerClosed = true
+		}
+		return nil
+	}
+	return &Runtime{Root: root, Sources: store.NewSourceStore(root), Queue: q, brainID: id, queue: q, Tools: tools,
+		closeContext: closeContext, close: func() error { return closeContext(context.Background()) },
+	}, nil
 }
 
 // Drop joins no new work and closes an idle runtime before its storage is removed.
-func (p *Pool) Drop(id string) error {
-	p.mu.Lock()
+func (p *Pool) Drop(id string) error { return p.DropContext(context.Background(), id) }
+
+// DropContext retains a closing runtime on cancellation or failure. Every
+// acquisition mode refuses that runtime until an exact retry joins and closes it.
+func (p *Pool) DropContext(ctx context.Context, id string) error {
+	if err := p.lockContext(ctx); err != nil {
+		return err
+	}
 	defer p.mu.Unlock()
 	r := p.open[id]
 	if r == nil {
@@ -299,25 +337,70 @@ func (p *Pool) Drop(id string) error {
 	if r.users != 0 {
 		return ErrCapacity
 	}
-	if err := r.close(); err != nil {
+	if err := closeRuntime(ctx, r); err != nil {
 		return err
 	}
 	delete(p.open, id)
 	return nil
 }
 
-func (p *Pool) FlushAll() error {
-	p.mu.Lock()
+func closeRuntime(ctx context.Context, r *Runtime) error {
+	r.closing = true
+	if r.closeContext != nil {
+		return r.closeContext(ctx)
+	}
+	if r.close != nil {
+		return r.close()
+	}
+	return ErrRuntimeClosing
+}
+
+func (p *Pool) FlushAll() error { return p.FlushAllContext(context.Background()) }
+
+func (p *Pool) FlushAllContext(ctx context.Context) error {
+	if err := p.lockContext(ctx); err != nil {
+		return err
+	}
 	defer p.mu.Unlock()
 	for _, r := range p.open {
 		if r.users != 0 {
 			return ErrCapacity
 		}
-		if err := r.flush(); err != nil {
+		if r.closing {
+			return ErrRuntimeClosing
+		}
+		if err := r.FlushContext(ctx); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// Waiters own no work while waiting for Pool.mu. No helper goroutine can outlive
+// cancellation and later acquire the mutex on behalf of a departed caller.
+func (p *Pool) lockContext(ctx context.Context) error {
+	if ctx == nil {
+		return ErrNilLifecycleContext
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if p.mu.TryLock() {
+			if err := ctx.Err(); err != nil {
+				p.mu.Unlock()
+				return err
+			}
+			return nil
+		}
+		timer := time.NewTimer(time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 func (r *Runtime) Flush() error { return r.FlushContext(context.Background()) }
