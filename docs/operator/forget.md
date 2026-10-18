@@ -32,12 +32,36 @@ noncurrent versions 30 days after they become noncurrent. A version may spend
 time in both states, so this permits retention for nearly two 30-day
 intervals; it does not establish a 31-day maximum or a fixed purge deadline.
 
-Hosted brain export at this checkout bundles all Git refs. It may therefore
-include Git history; the history-free export default described in ADR 019 is
-not yet reflected in this hosted export path. Treat an export as containing
-historical data and handle it accordingly.
+Hosted brain export at this checkout bundles all Git refs for its qualified
+ordinary-source cohort. It refuses archived episode history, pending episode
+exclusions and unsupported history before emitting a bundle; disabling capture
+does not bypass that refusal. A history-free portable episode export is still
+unimplemented. Successful ordinary-source exports contain Git history and must
+be handled as historical copies.
 
 This hosted lifecycle description reports the checked-in configuration; it
 does not certify a live bucket's current state or prove that every historical
 version has expired. See [the threat model](../threat-model.md#right-to-forget-the-deletion-chain)
 for the erasure scope and limits.
+
+## Episodic maintenance boundary
+
+Episode exclusion immediately fences eligible reads and replay; it does not
+mean historical copies have been erased. Internal authority-bound preparation
+constructs an inactive candidate only. Active installation, crash recovery,
+complete derivative closure and controlled-copy disposal remain separate gates.
+Automatic capture remains disabled pending their qualification.
+
+Cooperating canonical readers use a permanent shared view lock; maintenance
+requires its exclusive ownership plus the existing writer lock and durable
+marker. A surviving maintenance marker blocks ordinary readers and writers
+until its exact operation is reconciled. Never remove marker or lock files to
+clear an error. Matching local pins alone do not authorize recovery or erasure.
+
+Only ordinary writer ownership initializes a missing view lock. Admitted
+recovery may explicitly obtain that ownership before reading restored brains,
+whose runtime directories are intentionally omitted. Read-only commands and cold
+inspectors never initialize or repair it. Older binaries and direct filesystem
+readers are outside this protocol and must be drained or qualified before any
+active installation is enabled. The reader lock excludes maintenance, not
+ordinary concurrent writes; existing queue/runtime snapshot rules still apply.

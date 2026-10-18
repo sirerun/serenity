@@ -187,3 +187,14 @@ copies attributable and pool/queue cancellation retain ownership until work
 drains. Bounded Linux ARM64 race, vet, lint, vulnerability and CLI build checks
 pass; no production, installed-runtime or physical-purge acceptance is claimed.
 See the authority-bound preparation receipt for evidence and remaining gates.
+
+## 2026-10-18 — Cooperating canonical reader barrier
+
+Added permanent shared-reader/exclusive-maintenance view ownership without
+changing ordinary writer ownership. CLI, inspector, inventory, governed lookup
+and replay now fence canonical use. Actual restore and hook regressions led to
+explicit recovery-writer bootstrap and input-only hook no-op handling; serve
+configuration is decoded only after ownership. Full service/CLI/gateway races
+and writer component races pass with affected static/build checks. Automatic
+capture stays off; installed reader drain, runtime-state classification, active
+transaction and controlled-copy disposition remain open.
