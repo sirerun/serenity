@@ -163,3 +163,15 @@ Root owns the current plan/T5.2/T5.3 preflight; no authority implementation is
 admitted by this document. E15 source scope is exact authority kernel/wire/client
 plus trusted CLOSED history observer and joined tests. E16 actual caller and
 controlled-copy work remain explicit downstream outcomes.
+
+## E16 mechanism preflight (not implementation)
+
+An actual isolated Linux root/fork/socketpair probe on 2026-10-18 confirmed:
+root-created SOCK_SEQPACKET peer credentials retain creation identity, while
+SO_PASSCRED/SCM_CREDENTIALS identify the actual UID/GID-dropped child with empty
+supplementary groups. Forged root credentials refuse; unexpected SCM_RIGHTS are
+identified and closed; truncation is checked; pidfd lifetime and EOF distinguish
+live/dead peers, and the owned child is reaped. No service, user, credential,
+canonical path or database was changed. This validates only the mechanism; the
+versioned seventh-FD API, complete root/child admission and installed-host behavior
+are not implemented or qualified. Existing six fixture FDs remain unchanged.
