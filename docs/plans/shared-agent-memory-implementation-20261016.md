@@ -798,9 +798,9 @@ unchanged. Complete active installation and copy disposition remain open.
 fidelity: executable
 Acceptance: A permanent shared-reader/exclusive-maintenance view lock fences qualified CLI and hosted inspector reads across processes, without changing stable writer ownership or allowing a cold inspector to initialize files.
 
-- [ ] T5.74 Fence canonical readers and maintenance  Owner: authority-integration  kind: agent  stage: implement  deps: [T5.73]  acc: [permanent nofollow regular canonical-view lock initialized only by writer ownership, read acquisition opens existing state without mutation and checks persistent marker after shared ownership, maintenance holds exclusive view before existing writer lock and retains both through Finish/Close, unsafe/missing state refuses and no normal writer API or stable lock inode changes]
-- [ ] T5.75 Integrate qualified canonical read paths  Owner: archive-integration  kind: agent  stage: implement  deps: [T5.74]  acc: [CLI canonical read exemptions and hosted warm/cold inspector, account inventory, governed lookup and pre-runtime episode replay hold shared view across bounded read use; hosted cold inspection remains initialization-free, normal writer/non-brain commands preserve behavior, maintenance or unsafe/missing gates refuse before callbacks or canonical outputs; explicit unsupported old binaries/direct file readers remain a qualification gap]
-- [ ] T5.76 Verify canonical read gate  Owner: integration  kind: agent  stage: verify  deps: [T5.75]  acc: [real cross-process read/maintenance races and process-death pending marker plus actual CLI/gateway warm/cold paths prove no partial maintenance view and no cold filesystem mutation; writer/maintenance/read compatibility and affected bounded race vet lint build/full Wazi pass]
+- [x] T5.74 Fence canonical readers and maintenance  Owner: authority-integration  kind: agent  stage: implement  deps: [T5.73]  acc: [permanent nofollow regular canonical-view lock initialized only by writer ownership, read acquisition opens existing state without mutation and checks persistent marker after shared ownership, maintenance holds exclusive view before existing writer lock and retains both through Finish/Close, unsafe/missing state refuses and no normal writer API or stable lock inode changes]
+- [x] T5.75 Integrate qualified canonical read paths  Owner: archive-integration  kind: agent  stage: implement  deps: [T5.74]  acc: [CLI canonical read exemptions and hosted warm/cold inspector, account inventory, governed lookup and pre-runtime episode replay hold shared view across bounded read use; hosted cold inspection remains initialization-free, normal writer/non-brain commands preserve behavior, maintenance or unsafe/missing gates refuse before callbacks or canonical outputs; explicit unsupported old binaries/direct file readers remain a qualification gap]
+- [x] T5.76 Verify canonical read gate  Owner: integration  kind: agent  stage: verify  deps: [T5.75]  acc: [real cross-process read/maintenance races and process-death pending marker plus actual CLI/gateway warm/cold paths prove no partial maintenance view and no cold filesystem mutation; writer/maintenance/read compatibility and affected bounded race vet lint build/full Wazi pass]
 - [ ] T5.77 Independently review canonical read gate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.76]  acc: [non-author exact candidate review covers file ownership lock order CLI and gateway reader coverage cancellation compatibility and tests; findings fixed checked and re-reviewed]
 - [ ] T5.78 Merge reviewed canonical read gate  Owner: integration  kind: agent  stage: merge  deps: [T5.77]  acc: [current holds protections and checks permit exact-reviewed-head guarded rebase without production activation]
 - [ ] T5.79 Verify landed canonical read gate  Owner: integration  kind: agent  stage: verify  deps: [T5.78]  acc: [reviewed tree equality and main reachability verified with affected checks; full active transaction installation crash recovery copy disposition and old-reader drain remain open]
@@ -817,3 +817,11 @@ ownership, before any canonical read; unsafe, busy or pending state cannot be
 repaired. This preserves restored runtime-free brain recovery. Existing readers
 that bypass this protocol
 must be drained/qualified before any installation capability can activate.
+
+T5.74–T5.76 source88783409 on2529d034: full writer51.700s (static diagnostic
+only subsequent delta), gateway40.227s (unchanged at887), CLI52.877s and full
+service357.626s races pass on bounded Linux ARM64 Go1.26.9. Four-package vet,
+lint zero, zero called vulnerabilities (two module-only advisories), CLI build,
+format/diff/gitleaks and full Wazi pass. Restore runtime omission and hook no-op/
+blocking-exit regressions are corrected with real owner bootstrap and actual
+read-use admission, not generic read repair. No active installation or purge.
