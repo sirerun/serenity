@@ -32,6 +32,9 @@ func (p *Pool) AcquireExistingForRead(ctx context.Context, id string) (*Runtime,
 	if runtime == nil {
 		return nil, nil, ErrNotOpen
 	}
+	if runtime.closing {
+		return nil, nil, ErrRuntimeClosing
+	}
 	runtime.users++
 	runtime.last = time.Now()
 	p.inFlight++
