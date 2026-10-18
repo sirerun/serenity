@@ -662,9 +662,9 @@ Acceptance: Cooperating CLI and hosted writers refuse a brain with an interrupte
 
 - [x] T5.53 Implement persistent canonical maintenance admission  Owner: integration  kind: agent  stage: implement  deps: [T5.1]  acc: [existing writer ownership rejects present or unsafe maintenance markers after acquiring the unchanged stable lock; separately owned maintenance admission may retain the lock and atomically publish a bounded content-free marker; missing parent and symlink/partial marker cases fail closed without removing another owner state; no activation or production caller]
 - [x] T5.54 Verify maintenance admission and real writer exclusion  Owner: integration  kind: agent  stage: verify  deps: [T5.53]  acc: [real filesystem and cooperating process tests prove ordinary CLI/pool refusal, lock contention, persistent interrupted refusal and exact owned cleanup semantics; affected race/vet/static and full Wazi checks pass]
-- [ ] T5.55 Independently review maintenance admission  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.54]  acc: [non-author exact base/head review covers complete implementation callers tests and contract; accepted findings fixed checked and re-reviewed without physical-completion claims]
-- [ ] T5.56 Merge reviewed maintenance admission  Owner: integration  kind: agent  stage: merge  deps: [T5.55]  acc: [current holds protections and checks permit guarded exact-reviewed-head rebase; no runtime activation]
-- [ ] T5.57 Verify landed maintenance admission  Owner: integration  kind: agent  stage: verify  deps: [T5.56]  acc: [reviewed tree correspondence main reachability and affected checks pass; full T5.2/T5.3/T1.3 remain open until integrated authority activation and controlled-copy evidence]
+- [x] T5.55 Independently review maintenance admission  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.54]  acc: [non-author exact base/head review covers complete implementation callers tests and contract; accepted findings fixed checked and re-reviewed without physical-completion claims]
+- [x] T5.56 Merge reviewed maintenance admission  Owner: integration  kind: agent  stage: merge  deps: [T5.55]  acc: [current holds protections and checks permit guarded exact-reviewed-head rebase; no runtime activation]
+- [x] T5.57 Verify landed maintenance admission  Owner: integration  kind: agent  stage: verify  deps: [T5.56]  acc: [reviewed tree correspondence main reachability and affected checks pass; full T5.2/T5.3/T1.3 remain open until integrated authority activation and controlled-copy evidence]
 
 Batch ceiling3, actual1 implementation outcome T5.53 under current inherited
 selection; T5.54-T5.57 are verification/delivery gates. Parent owns plan,
@@ -675,8 +675,8 @@ without pretending the complete archive transaction is implemented.
 fidelity: executable
 Acceptance: Actual provisioned canonical config and explicitly pinned independent canonical paths survive history reconstruction, while source eligibility and unknown dependencies stay fail closed; no active repository is rewritten.
 
-- [ ] T5.58 Implement hosted canonical erasure preparation  Owner: archive-lane  kind: agent  stage: implement  deps: [T5.1]  acc: [separate additive preparer accepts actual hosted baseline/config plus exact caller-trusted independent canonical path pins across qualified history, preserves unrelated bytes and removes excluded episodes/checkpoints; reserved source paths cannot be relabeled as arbitrary pins, unsafe paths/modes/unknown dependencies refuse, ignored runtime is never copied and legacy builders remain unchanged]
-- [ ] T5.59 Verify actual hosted canonical preparation  Owner: integration  kind: agent  stage: verify  deps: [T5.58]  acc: [actual hosted provisioning and runtime initialization fixture plus real Git history prove config/raw/independent canonical preservation, excluded object closure, pin drift/refusal, runtime isolation and legacy compatibility under bounded race/vet/static and Wazi checks]
+- [x] T5.58 Implement hosted canonical erasure preparation  Owner: archive-lane  kind: agent  stage: implement  deps: [T5.1]  acc: [separate additive preparer accepts actual hosted baseline/config plus exact caller-trusted independent canonical path pins across qualified history, preserves unrelated bytes and removes excluded episodes/checkpoints; reserved source paths cannot be relabeled as arbitrary pins, unsafe paths/modes/unknown dependencies refuse, ignored runtime is never copied and legacy builders remain unchanged]
+- [x] T5.59 Verify actual hosted canonical preparation  Owner: integration  kind: agent  stage: verify  deps: [T5.58]  acc: [actual hosted provisioning and runtime initialization fixture plus real Git history prove config/raw/independent canonical preservation, excluded object closure, pin drift/refusal, runtime isolation and legacy compatibility under bounded race/vet/static and Wazi checks]
 - [ ] T5.60 Independently review hosted preparation  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.59]  acc: [non-author exact base/head full source callers tests and contract review closes accepted findings with affected verification and re-review; no authority or activation inference]
 - [ ] T5.61 Merge reviewed hosted preparation  Owner: integration  kind: agent  stage: merge  deps: [T5.60]  acc: [current holds protections and checks permit guarded exact-reviewed-head rebase of inactive source]
 - [ ] T5.62 Verify landed hosted preparation  Owner: integration  kind: agent  stage: verify  deps: [T5.61]  acc: [reviewed tree correspondence main reachability and affected source checks pass; active transaction copy accounting and full T5.2/T5.3/T1.3 remain open]
@@ -709,3 +709,26 @@ cases and real subprocess/pool refusal are exercised. Initial pool assertion and
 five unchecked test cleanup returns were corrected; initial failure evidence is
 preserved. Independent MAINT-R1/R2 source re-review acceptedb13720a1; exact
 final documentation review remains required before merge. Full parent gates open.
+
+T5.55-T5.57 completed: final independent review acceptededb9e9a6 against
+eef5abf6 with MAINT-R1/R2 fixed. PR405 guarded rebase landed
+7fe9b46375f24bfbacb74b9aaf72de6f9382e6a0; full reviewed-tree equality and
+main ancestry verified, tested production source unchanged. Actions39117158483
+job117645164545 had zero steps with explicit billing lock; ADR024 scoped source
+fallback used without protection changes. Full archive/runtime parents stay open.
+
+Hosted preparation initial tests failed ignored-status parsing; corrected
+NUL-delimited admission passes race9.099s and vet. HOST-Q1 requires actual pool
+initialization, replacing a synthetic config fixture before qualification. Export
+source initial scoped race5.163s/vet/lint pass; independent EXP-R1 identifies
+legitimate index-only imports that need compatibility regression coverage. Both
+new source candidates remain unmerged pending exact fixes/checks/re-review.
+
+T5.58-T5.59 revised source3813cdbe5cc602b3ba8242be5a60f1ee04fc72b2
+passes episodeerase race8.739s, affected vet, lint zero issues and scoped
+vulnerability checks with none found on bounded Linux ARM64 Go1.26.9.
+The actual Provisioner/pool.AcquireCanonical/release/Close fixture pins generated
+config and verifies runtime lock/files stay outside the candidate. Legacy APIs
+remain strict; explicit caller-trusted pins do not infer derivative independence
+or authenticate fences. Full T5.2/T5.3/T1.3 remain open. Final exact review and
+landing are T5.60-T5.62.
