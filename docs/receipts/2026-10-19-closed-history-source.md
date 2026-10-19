@@ -1,8 +1,7 @@
 # E15 authenticated current CLOSED history source
 
-Status: T5.104 qualification complete. The source/test delta has independent
-review clearance; T5.105 full PR-base review and T5.106-T5.107 merge/landing
-gates remain open.
+Status: T5.104 qualification and T5.105 complete PR-base review pass.
+T5.106-T5.107 guarded merge and landed verification remain open.
 
 The owner explicitly assigned the `R-hosted-authority` source resource to this
 batch on 2026-10-19. The previous claim was released by exact compare-and-swap
@@ -40,30 +39,21 @@ This ran in the one-CPU existing DGX Spark pod
 `serenity-e15-final-20261019` using `golang:1.26.9-bookworm`. The exact source
 patch SHA-256 was
 `732d86d91424c71ff4a8e64c275ebce967cfff0c76d1935b82f4d2f7af782141`.
-`git diff --check` also passed. Independent exact review of the source/test
-delta from base
-`ac1c9cc707db1edf7f092f42f3131cc7c5330e4d` to source head
-`fb456d59c232018c673194f2824c1d817b22ab36` found no remaining issues. This is
-not the full PR review: PR #414 is based on
-`5fe6048e60bfb2c06a29cc8eced5047f0f95cf13`, and T5.105 remains open until that
-complete base-to-head diff is reviewed.
+`git diff --check` also passed. Independent exact review of the complete PR #414
+diff from base `5fe6048e60bfb2c06a29cc8eced5047f0f95cf13` to head
+`b26811b16e35e5f7a89756e518309495d8393c2c` covered design, preparation, plan,
+source/tests and receipt, with no findings. The source-patch digest above was
+unchanged by the documentation commits.
 
-Wazi validation confirms the 199-task plan remains valid after T5.104; T5.105 is
-still open pending full PR review. `authorityAuthenticated=false` is the
-validator's expected result and is not authority evidence. The final PR head
-Actions run `39215456751` had 14 jobs
-with zero steps; its test-job annotation states that the account is locked due
-to a billing issue. This is unavailable hosted CI, not a pass. Owner-accepted
-ADR 024 local-validation fallback was used without changing billing or branch
-protection.
-
-Wazi validation reports 199 tasks, `schemaValid=true`, `semanticValid=true`,
-`readerCompatible=true`, and source digest
-`sha256:7912d26f2f6ef0dbfc590b395b49bd478ff005a9b3509ba121ad4cb527e58f1e`.
-This digest preceded reopening T5.105 for the full PR-base review. The final
-Wazi validation after that status correction reports source digest
-`sha256:c2deddc7011797be5e9674cabe84358480d77eb85899dc950d1c602b64e2c146`.
+Wazi validation after recording the full review reports 199 tasks,
+`schemaValid=true`, `semanticValid=true`, `readerCompatible=true`, and source
+digest `sha256:339c4fd97fe5ce0dd8dc5109fbe431be2937d9ecc47654fa02e92237a1218d46`.
 `authorityAuthenticated=false` is expected and is not authority evidence.
+
+Actions run `39215746725` on reviewed source/review head `b26811b16e35e5f7a89756e518309495d8393c2c` had 14 jobs with zero steps; the test-job annotation says the
+account is locked due to a billing issue. This is unavailable hosted CI, not a
+pass. Owner-accepted ADR 024 local-validation fallback was used without changing
+billing or branch protection.
 
 This is source and synthetic-fixture evidence. No production authority,
 provider, IAM policy, enrollment, installation, capture setting or external
