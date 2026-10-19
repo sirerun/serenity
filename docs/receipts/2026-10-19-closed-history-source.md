@@ -1,7 +1,7 @@
 # E15 authenticated current CLOSED history source
 
-Status: T5.104 source qualification complete; T5.105-T5.107 exact committed-head
-review, guarded merge, and landed verification remain open.
+Status: T5.104 qualification and T5.105 exact source-head review complete;
+T5.106-T5.107 guarded merge and landed verification remain open.
 
 The owner explicitly assigned the `R-hosted-authority` source resource to this
 batch on 2026-10-19. The previous claim was released by exact compare-and-swap
@@ -39,14 +39,20 @@ This ran in the one-CPU existing DGX Spark pod
 `serenity-e15-final-20261019` using `golang:1.26.9-bookworm`. The exact source
 patch SHA-256 was
 `732d86d91424c71ff4a8e64c275ebce967cfff0c76d1935b82f4d2f7af782141`.
-`git diff --check` also passed. The independent reviewer found no remaining
-issues in the current working diff; committed-head review remains open.
+`git diff --check` also passed. Independent exact review of base
+`ac1c9cc707db1edf7f092f42f3131cc7c5330e4d` to source head
+`3c6adb35098d2b3d388884b19de77cf2ab15fe2d` found no remaining issues. The
+reviewed Go source and test patch has the same SHA-256 above.
 
-Wazi validation after recording T5.104 qualification reports 199 tasks,
+Wazi validation after recording T5.105 review reports 199 tasks,
 `schemaValid=true`, `semanticValid=true`, `readerCompatible=true`, and source
-digest `sha256:7919863d4d9094d8eaae8e91ff1f545f1dbe5ec73d9ad08f57e027a1f5c9afb3`.
+digest `sha256:7912d26f2f6ef0dbfc590b395b49bd478ff005a9b3509ba121ad4cb527e58f1e`.
 `authorityAuthenticated=false` is the validator's expected result and is not
-authority evidence.
+authority evidence. The final PR head Actions run `39215286389` had 14 jobs
+with zero steps; its test-job annotation states that the account is locked due
+to a billing issue. This is unavailable hosted CI, not a pass. Owner-accepted
+ADR 024 local-validation fallback was used without changing billing or branch
+protection.
 
 This is source and synthetic-fixture evidence. No production authority,
 provider, IAM policy, enrollment, installation, capture setting or external
