@@ -52,7 +52,9 @@ digest `sha256:2f8ee1691c6ade740505fb5803456eec64f8af47c291c3965c07c790ef939aa2`
 Actions run `39215924845` on reviewed source/review head `47ee6e225ab6ac0d73b1bfd993a40e07fb6aba55` had 14 jobs with zero steps; the test-job annotation says the
 account is locked due to a billing issue. This is unavailable hosted CI, not a
 pass. Owner-accepted ADR 024 local-validation fallback was used without changing
-billing or branch protection.
+billing or branch protection. The documentation-only closeout PR #415 Actions run
+`39216342092` likewise completed 14 jobs with zero steps (13 failed, one
+cancelled); no hosted test step ran.
 
 This is source and synthetic-fixture evidence. No production authority,
 provider, IAM policy, enrollment, installation, capture setting or external
