@@ -34,6 +34,74 @@ type Authority interface {
 	CutReader(authority.Cut) contracts.JournalObjectReader
 }
 
+// ClosedAuthority is supplied by the existing trusted owner factory. Its
+// transport authenticates the owner principal; ClosedPosition is only a
+// comparison pin and cannot authenticate an arbitrary implementation.
+type ClosedAuthority interface {
+	ObserveClosed(context.Context) (authority.ClosedPosition, error)
+	ClosedReader(authority.ClosedPosition) contracts.JournalObjectReader
+}
+
+type ClosedSource interface {
+	Observe(context.Context) (ClosedSnapshot, error)
+}
+
+type ClosedSnapshot struct {
+	Observation contracts.JournalObservation
+	Position    authority.ClosedPosition
+	Recheck     func(context.Context) error
+}
+
+type closedSource struct{ authority ClosedAuthority }
+
+func NewClosedSource(a ClosedAuthority) (ClosedSource, error) {
+	if nilCapability(a) {
+		return nil, ErrAuthorityUnavailable
+	}
+	return &closedSource{authority: a}, nil
+}
+
+func (s *closedSource) Observe(ctx context.Context) (ClosedSnapshot, error) {
+	if s == nil || nilCapability(s.authority) || ctx == nil || ctx.Err() != nil {
+		return ClosedSnapshot{}, ErrAuthorityUnavailable
+	}
+	position, err := s.authority.ObserveClosed(ctx)
+	if err != nil || position.Validate() != nil || ctx.Err() != nil {
+		return ClosedSnapshot{}, ErrAuthorityUnavailable
+	}
+	reader := s.authority.ClosedReader(position)
+	if nilCapability(reader) {
+		return ClosedSnapshot{}, ErrAuthorityUnavailable
+	}
+	journal, err := deletion.NewJournalReader(reader, position.Position)
+	if err != nil {
+		return ClosedSnapshot{}, ErrAuthorityUnavailable
+	}
+	observed, err := journal.Observe(ctx)
+	if err != nil || observed.Position != position.Position || ctx.Err() != nil {
+		return ClosedSnapshot{}, ErrAuthorityUnavailable
+	}
+	latest, err := s.authority.ObserveClosed(ctx)
+	if err != nil || latest != position || ctx.Err() != nil {
+		return ClosedSnapshot{}, ErrAuthorityUnavailable
+	}
+	// Keep the recheck pin private and detach slices exposed to callers.
+	privatePosition := position
+	observed.Read.Entries = append([]contracts.DeletionEntry(nil), observed.Read.Entries...)
+	observed.WriterUses = append([]contracts.JournalWriterUse(nil), observed.WriterUses...)
+	recheck := func(checkCtx context.Context) error {
+		if checkCtx == nil || checkCtx.Err() != nil {
+			return ErrAuthorityUnavailable
+		}
+		current, checkErr := s.authority.ObserveClosed(checkCtx)
+		if checkErr != nil || current != privatePosition || checkCtx.Err() != nil {
+			return ErrAuthorityUnavailable
+		}
+		return nil
+	}
+	return ClosedSnapshot{Observation: observed, Position: position, Recheck: recheck}, nil
+}
+
 type source struct {
 	authority Authority
 	lease     func() authority.Lease

@@ -173,6 +173,23 @@ func TestGatewayRejectsForgedContextAndOversizedBody(t *testing.T) {
 	if err != nil || accepted.StatusCode != 200 {
 		t.Fatalf("authenticated owner without accessKey refused: %d %v", accepted.StatusCode, err)
 	}
+	for _, body := range []string{
+		`{"action":"closed_current","operation_id":"` + strings.Repeat("a", 64) + `"}`,
+		`{"action":"get","key":"deletion-journal/0000000001/0000000001.json","closed_position":{"position":{},"epoch":1,"anchor":{},"future":true}}`,
+		`{"action":"get","key":"deletion-journal/0000000001/0000000001.json","cut_id":"` + strings.Repeat("b", 64) + `","closed_position":{"position":{},"epoch":1,"anchor":{}}}`,
+	} {
+		ownerEvent.Body = body
+		response, callErr := g.Handle(context.Background(), ownerEvent)
+		if callErr != nil || response.StatusCode != 400 {
+			t.Fatalf("malformed or mixed CLOSED request accepted: %d %v body=%s", response.StatusCode, callErr, body)
+		}
+	}
+	ownerEvent = good
+	ownerEvent.Body = `{"action":"closed_current"}`
+	denied, callErr := g.Handle(context.Background(), ownerEvent)
+	if callErr != nil || denied.StatusCode != 403 {
+		t.Fatalf("runtime route accepted owner-only CLOSED observation: %d %v", denied.StatusCode, callErr)
+	}
 	tests := map[string]func(*events.APIGatewayProxyRequest){"wrong api": func(e *events.APIGatewayProxyRequest) { e.RequestContext.APIID = "other" }, "wrong account": func(e *events.APIGatewayProxyRequest) { e.RequestContext.AccountID = "other" }, "wrong principal": func(e *events.APIGatewayProxyRequest) { e.RequestContext.Identity.UserArn = owner }, "wrong caller": func(e *events.APIGatewayProxyRequest) { e.RequestContext.Identity.Caller = "attacker" }, "empty principal": func(e *events.APIGatewayProxyRequest) { e.RequestContext.Identity.UserArn = "" }, "empty caller": func(e *events.APIGatewayProxyRequest) { e.RequestContext.Identity.Caller = "" }, "wrong resource": func(e *events.APIGatewayProxyRequest) { e.Resource = "/owner" }, "wrong context path": func(e *events.APIGatewayProxyRequest) { e.RequestContext.ResourcePath = "/owner" }, "wrong stage": func(e *events.APIGatewayProxyRequest) { e.RequestContext.Stage = "other" }, "wrong domain": func(e *events.APIGatewayProxyRequest) { e.RequestContext.DomainName = "other" }, "owner path with runtime": func(e *events.APIGatewayProxyRequest) { e.Path = "/owner" }, "authorizer spoof": func(e *events.APIGatewayProxyRequest) {
 		e.RequestContext.Authorizer = map[string]interface{}{"principalId": "owner"}
 	}}

@@ -55,6 +55,18 @@ func TestOwnerCurrentUIDPrivateFiles(t *testing.T) {
 	}
 }
 
+func TestOpenClosedMaintenanceUsesAuthenticatedOwnerFactory(t *testing.T) {
+	config, _ := ownerFiles(t)
+	source, closeSource, err := OpenClosedMaintenance(context.Background(), config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeSource()
+	if source == nil || closeSource == nil {
+		t.Fatal("trusted CLOSED maintenance source was not constructed")
+	}
+}
+
 func TestOwnerRejectsUnsafeFiles(t *testing.T) {
 	for _, target := range []string{"config", "credentials"} {
 		for _, hazard := range []string{"mode", "symlink", "directory"} {

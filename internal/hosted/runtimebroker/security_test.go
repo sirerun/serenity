@@ -103,10 +103,57 @@ func TestRemoteSignsExactScopedBodyAndBoundsResponse(t *testing.T) {
 	}
 }
 func TestOperatorTransportCannotMutate(t *testing.T) {
-	for _, action := range []string{"prepare", "append", "activate", "renew", "close", "cut"} {
+	for _, action := range []string{"prepare", "append", "activate", "renew", "close", "cut", "closed_current"} {
 		if _, err := (operatorTransport{}).Invoke(context.Background(), authority.Request{Action: action}); !errors.Is(err, authority.ErrForbidden) {
 			t.Fatalf("operator mutation %s accepted", action)
 		}
+	}
+	if _, err := (operatorTransport{}).Invoke(context.Background(), authority.Request{Action: "get", ClosedPosition: &authority.ClosedPosition{}}); !errors.Is(err, authority.ErrForbidden) {
+		t.Fatal("operator accepted CLOSED selector")
+	}
+}
+
+func TestOwnerTransportAllowsOnlyCurrentClosedReads(t *testing.T) {
+	calls := 0
+	seen := []authority.Request{}
+	tr := &remote{endpoint: validTestConfig().Endpoint, region: "us-west-2", credentials: credentials.NewStaticCredentialsProvider("fixture-key", "fixture-secret", ""), signer: v4.NewSigner()}
+	tr.client = &http.Client{Transport: roundTripTest(func(req *http.Request) (*http.Response, error) {
+		if !strings.Contains(req.Header.Get("Authorization"), "/us-west-2/execute-api/aws4_request") {
+			t.Error("owner read request was not signed for the configured route")
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, err
+		}
+		var q authority.Request
+		if err = json.Unmarshal(body, &q); err != nil {
+			return nil, err
+		}
+		calls++
+		seen = append(seen, q)
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{}`)), Header: http.Header{}}, nil
+	})}
+	transport := ownerTransport{remote: tr}
+	requests := []authority.Request{
+		{Action: "closed_current"},
+		{Action: "get", Key: "deletion-journal/0000000001/0000000001.json", ClosedPosition: &authority.ClosedPosition{}},
+		{Action: "list", Prefix: "deletion-journal/", Limit: 1, ClosedPosition: &authority.ClosedPosition{}},
+	}
+	for _, q := range requests {
+		if _, err := transport.Invoke(context.Background(), q); err != nil {
+			t.Fatalf("owner CLOSED request refused: %s: %v", q.Action, err)
+		}
+	}
+	if calls != len(requests) || len(seen) != len(requests) || seen[0].Action != "closed_current" || seen[1].ClosedPosition == nil || seen[2].ClosedPosition == nil {
+		t.Fatalf("signed owner request path not reached exactly once: calls=%d seen=%+v", calls, seen)
+	}
+	for _, q := range []authority.Request{{Action: "closed_current", OperationID: strings.Repeat("a", 64)}, {Action: "get", CutID: strings.Repeat("b", 64)}, {Action: "list", ReservationID: strings.Repeat("c", 64)}} {
+		if _, err := transport.Invoke(context.Background(), q); !errors.Is(err, authority.ErrForbidden) {
+			t.Fatalf("owner transport widened beyond CLOSED reads: %+v: %v", q, err)
+		}
+	}
+	if calls != len(requests) {
+		t.Fatalf("refused owner request reached remote: calls=%d", calls)
 	}
 }
 func TestTransportCloseInterruptsInflightRequest(t *testing.T) {

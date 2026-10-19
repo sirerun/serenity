@@ -12,6 +12,7 @@ import (
 	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/sirerun/serenity/internal/hosted/authority"
+	"github.com/sirerun/serenity/internal/hosted/episodemaintenance"
 	"github.com/sirerun/serenity/internal/hosted/privatefs"
 )
 
@@ -34,6 +35,22 @@ func OpenOperator(ctx context.Context, path string) (*authority.Client, func(), 
 // impersonate runtime measurements or ordinary appends.
 func OpenOwner(ctx context.Context, path string) (*authority.Client, func(), error) {
 	return openOperator(ctx, path, true)
+}
+
+// OpenClosedMaintenance constructs the CLOSED history source only from the
+// authenticated owner client opened by this trusted factory. Service-UID
+// children must not receive this source or the owner credentials behind it.
+func OpenClosedMaintenance(ctx context.Context, path string) (episodemaintenance.ClosedSource, func(), error) {
+	client, closeClient, err := OpenOwner(ctx, path)
+	if err != nil {
+		return nil, nil, err
+	}
+	source, err := episodemaintenance.NewClosedSource(client)
+	if err != nil {
+		closeClient()
+		return nil, nil, err
+	}
+	return source, closeClient, nil
 }
 func openOperator(ctx context.Context, path string, owner bool) (*authority.Client, func(), error) {
 	if ctx == nil {
@@ -87,6 +104,9 @@ func openOperator(ctx context.Context, path string, owner bool) (*authority.Clie
 type operatorTransport struct{ remote *remote }
 
 func (t operatorTransport) Invoke(ctx context.Context, q authority.Request) (authority.Response, error) {
+	if q.Action == "closed_current" || q.ClosedPosition != nil {
+		return authority.Response{}, authority.ErrForbidden
+	}
 	switch q.Action {
 	case "read_finalized_cut", "get", "list":
 		return t.remote.Invoke(ctx, q)
@@ -142,7 +162,31 @@ func (t ownerTransport) Invoke(ctx context.Context, q authority.Request) (author
 	switch q.Action {
 	case "inspect", "close", "enroll", "restore", "seal":
 		return t.remote.Invoke(ctx, q)
+	case "closed_current":
+		if onlyClosedCurrent(q) {
+			return t.remote.Invoke(ctx, q)
+		}
+		return authority.Response{}, authority.ErrForbidden
+	case "get", "list":
+		if closedPositionRead(q) {
+			return t.remote.Invoke(ctx, q)
+		}
+		return authority.Response{}, authority.ErrForbidden
 	default:
 		return authority.Response{}, authority.ErrForbidden
 	}
+}
+
+func onlyClosedCurrent(q authority.Request) bool {
+	return q.Action == "closed_current" && q.Adoption == nil && q.DataInventorySHA256 == "" && q.OperationID == "" && q.ChallengeID == "" && q.Nonce == "" && q.Measurement == nil && q.ReservationID == "" && q.LeaseID == "" && q.CutID == "" && q.ClosedPosition == nil && q.HistorySHA256 == "" && q.ManifestSHA256 == "" && q.Key == "" && len(q.Body) == 0 && q.Prefix == "" && q.StartAfter == "" && q.Limit == 0 && q.SnapshotAttemptID == ""
+}
+
+func closedPositionRead(q authority.Request) bool {
+	if q.ClosedPosition == nil || q.LeaseID != "" || q.ReservationID != "" || q.CutID != "" || q.OperationID != "" || q.ChallengeID != "" || q.Nonce != "" || q.Measurement != nil || q.Adoption != nil || q.DataInventorySHA256 != "" || q.HistorySHA256 != "" || q.ManifestSHA256 != "" || len(q.Body) != 0 || q.SnapshotAttemptID != "" {
+		return false
+	}
+	if q.Action == "get" {
+		return q.Key != "" && q.Prefix == "" && q.StartAfter == "" && q.Limit == 0
+	}
+	return q.Action == "list" && q.Key == "" && q.Prefix != "" && q.Limit > 0
 }
