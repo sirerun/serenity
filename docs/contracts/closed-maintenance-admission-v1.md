@@ -1,7 +1,8 @@
-# CLOSED history and installation admission — proposed v1
+# CLOSED history and installation admission — v1
 
-Status: API/source design independently reviewed on 2026-10-18; ownership
-coordination and complete Wazi admission precede implementation. No operational permission is granted.
+Status: API/source design independently reviewed on 2026-10-18 and frozen for
+the owner-assigned E15 implementation on 2026-10-19. Implementation qualification
+remains in progress. No operational permission is granted.
 
 ## Required outcome and staged delivery
 

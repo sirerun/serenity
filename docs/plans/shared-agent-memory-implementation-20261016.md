@@ -1024,12 +1024,14 @@ and Current/Inspect may mutate pending recovery. Proposed contract:
 E15 is the real history producer; dependent E16 must supply a non-test root-to-
 service-UID installer admission channel/caller. It does not substitute historical
 cuts, callback-only assertions or transport success for host coldness/installation.
-The foreign R-hosted-authority claim must be coordinated before protocol edits.
+The owner directly assigned R-hosted-authority to this batch on 2026-10-19. Its
+previous exact claim was released through the canonical compare-and-swap flow;
+the source resource and T5.102-T5.104 are now held by this integration batch.
 
-- [ ] T5.101 Freeze complete CLOSED history and actual caller boundary  Owner: integration  kind: agent  stage: preflight  deps: [T5.100]  acc: [independent design review accepts strict no-mutation kernel and owner-only exact CLOSED observation and bounded history reader without requiring old cuts; exact API and ownership are frozen; E16 actual root-child fresh admission and full controlled-copy scope remain explicit]
-- [ ] T5.102 Implement observational kernel and existing-owner CLOSED protocol  Owner: authority-lane  kind: agent  stage: implement  deps: [T5.101]  acc: [resource ownership is verified before edits; actual independent witness body binds exact stable META state without resolving pending; owner-only closed_current and exclusive closed-position get list route before mutation or receipt recovery and recheck exact state before any response; actual owner transport permits only new CLOSED reads while operator transport rejects them; old roles selectors and flows retain compatibility]
-- [ ] T5.103 Implement authenticated complete CLOSED history source  Owner: integration  kind: agent  stage: implement  deps: [T5.102]  acc: [existing authenticated owner client and trusted CLOSED source verify full bounded deletion history against exact current position epoch witness anchor with detached snapshot and fresh recheck; no cut or live lease required and no host coldness authority is invented]
-- [ ] T5.104 Qualify joined CLOSED current-history source  Owner: integration  kind: agent  stage: verify  deps: [T5.103]  acc: [real server client observer tests cover no-cut empty CLOSED newer exclusions historical expired cuts generations zero-mutation pending and state witness mismatch restored metadata role and phase refusal strict bounds missing malformed extra-tail objects paging and final drift cancellation; existing authority and maintenance regressions race static and Wazi pass]
+- [x] T5.101 Freeze complete CLOSED history and actual caller boundary  Owner: integration  kind: agent  stage: preflight  deps: [T5.100]  acc: [independent design review accepts strict no-mutation kernel and owner-only exact CLOSED observation and bounded history reader without requiring old cuts; exact API and ownership are frozen; E16 actual root-child fresh admission and full controlled-copy scope remain explicit]
+- [x] T5.102 Implement observational kernel and existing-owner CLOSED protocol  Owner: authority-lane  kind: agent  stage: implement  deps: [T5.101]  acc: [resource ownership is verified before edits; actual independent witness body binds exact stable META state without resolving pending; owner-only closed_current and exclusive closed-position get list route before mutation or receipt recovery and recheck exact state before any response; actual owner transport permits only new CLOSED reads while operator transport rejects them; old roles selectors and flows retain compatibility]
+- [x] T5.103 Implement authenticated complete CLOSED history source  Owner: integration  kind: agent  stage: implement  deps: [T5.102]  acc: [existing authenticated owner client and trusted CLOSED source verify full bounded deletion history against exact current position epoch witness anchor with detached snapshot and fresh recheck; no cut or live lease required and no host coldness authority is invented]
+- [x] T5.104 Qualify joined CLOSED current-history source  Owner: integration  kind: agent  stage: verify  deps: [T5.103]  acc: [real server client observer tests cover no-cut empty CLOSED newer exclusions historical expired cuts generations zero-mutation pending and state witness mismatch actual restored/rebound CLOSED observation malformed and oversized latest witness between-read revision and tip drift role and phase refusal strict bounds missing malformed extra-tail objects paging and final drift cancellation; existing authority and maintenance regressions race static and Wazi pass]
 - [ ] T5.105 Independently review CLOSED history candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.104]  acc: [non-author exact complete base head review covers actual auth path kernel provider mutation counters data bounds complete history freshness downstream limits and all source evidence; findings fixed verified and re-reviewed]
 - [ ] T5.106 Merge reviewed CLOSED history source  Owner: integration  kind: agent  stage: merge  deps: [T5.105]  acc: [current exact head base holds protections required checks or qualified fallback allow guarded rebase without operational deployment or permission widening]
 - [ ] T5.107 Verify landed CLOSED history source  Owner: integration  kind: agent  stage: verify  deps: [T5.106]  acc: [reviewed landed tree equality main ancestry and affected source behavior evidenced; dependent E16 actual custody admission caller controlled copies full T5.2 T5.3 and live qualification remain open]
@@ -1039,12 +1041,14 @@ owner with root-owned joined acceptance; resource/claims/Wazi/design gate preced
 implementation. Existing SDK/auth/authority infrastructure is reused. No provider
 mutation, live inspection, enrollment or installation is authorized by this plan.
 
-E15 design review accepts the complete current CLOSED observational producer,
-exact API and downstream actual-caller separation. Current resource read confirms
-R-hosted-authority=e3fdea936bf4432ecd08386facb833ceefa2ab0c, held for episode
-subject validation/gateway rollout (PR391 merged2026-10-16). The claim remains
-preserved; prior merge/timestamp does not establish ownership handoff. T5.101
-ownership admission stays open and protocol implementation has not started.
+E15 design review accepted the complete current CLOSED observational producer,
+exact API and downstream actual-caller separation. On 2026-10-19 the owner
+explicitly assigned R-hosted-authority to this batch. The prior token was released
+with the canonical exact-value CAS, then the source resource and T5.102-T5.104
+were acquired under this batch. Source implementation and joined tests now exist;
+T5.104 race, vet, source-static and Wazi qualification pass. Independent review
+cleared the working diff; exact committed-head review, guarded merge and landed
+verification remain T5.105-T5.107.
 
 ### Current Zati baseline discovery (T4.0 remains open)
 

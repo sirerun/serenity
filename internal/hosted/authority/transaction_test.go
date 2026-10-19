@@ -1,9 +1,11 @@
 package authority
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -200,11 +202,176 @@ func TestCurrentDetectsRestoredOlderTable(t *testing.T) {
 	if _, e := k.Current(ctx); !errors.Is(e, ErrConflict) {
 		t.Fatalf("rollback accepted: %v", e)
 	}
+	if _, e := k.ObserveCurrent(ctx); !errors.Is(e, ErrConflict) {
+		t.Fatalf("observational rollback accepted: %v", e)
+	}
 	h, e := History(ctx, w, w.tip, 20, 1024*1024)
 	if e != nil || len(h) != 2 {
 		t.Fatalf("history %d %v", len(h), e)
 	}
 }
+
+type mutationCountingStore struct {
+	AtomicStore
+	writes int
+}
+
+func (s *mutationCountingStore) Commit(ctx context.Context, revision uint64, record Record, items []ImmutableItem, receipt Receipt) error {
+	s.writes++
+	return s.AtomicStore.Commit(ctx, revision, record, items, receipt)
+}
+func (s *mutationCountingStore) Complete(ctx context.Context, record Record) error {
+	s.writes++
+	return s.AtomicStore.Complete(ctx, record)
+}
+func (s *mutationCountingStore) Import(ctx context.Context, items []ImmutableItem) error {
+	s.writes++
+	return s.AtomicStore.Import(ctx, items)
+}
+
+type mutationCountingWitness struct {
+	WitnessStore
+	writes int
+}
+
+func (w *mutationCountingWitness) Advance(ctx context.Context, pending Pending) error {
+	w.writes++
+	return w.WitnessStore.Advance(ctx, pending)
+}
+
+func TestObserveCurrentRefusesPendingWithoutMutation(t *testing.T) {
+	k, _, w := fixture(t)
+	w.fail = true
+	if _, err := k.Apply(context.Background(), Record{}, json.RawMessage(`{"phase":"pending"}`), nil, Receipt{OperationID: opID(t), RequestSHA256: digest([]byte("pending")), Principal: "owner"}, true); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("setup did not leave an unknown transaction: %v", err)
+	}
+	store := &mutationCountingStore{AtomicStore: k.Store}
+	witness := &mutationCountingWitness{WitnessStore: k.Witness}
+	k.Store, k.Witness = store, witness
+	before, _, _ := store.Load(context.Background())
+	beforeTip, _, _ := witness.Tip(context.Background())
+	if _, err := k.ObserveCurrent(context.Background()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("pending state observed as current: %v", err)
+	}
+	after, _, _ := store.Load(context.Background())
+	afterTip, _, _ := witness.Tip(context.Background())
+	if store.writes != 0 || witness.writes != 0 || after.Pending == nil || after.Revision != before.Revision || after.Tip != before.Tip || afterTip != beforeTip {
+		t.Fatalf("observation mutated pending authority state: store=%d witness=%d before=%+v after=%+v", store.writes, witness.writes, before, after)
+	}
+}
+
+func TestObserveCurrentBindsWitnessStateAndReturnsDetachedRecord(t *testing.T) {
+	k, a, w := fixture(t)
+	if _, err := k.Apply(context.Background(), Record{}, json.RawMessage(`{"phase":"closed"}`), nil, Receipt{OperationID: opID(t), RequestSHA256: digest([]byte("closed")), Principal: "owner"}, true); err != nil {
+		t.Fatal(err)
+	}
+	record, err := k.ObserveCurrent(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.State[0] = ' '
+	again, err := k.ObserveCurrent(context.Background())
+	if err != nil || string(again.State) != `{"phase":"closed"}` {
+		t.Fatalf("returned record aliases canonical state: %s %v", again.State, err)
+	}
+	a.mu.Lock()
+	a.r.State = []byte(`{"phase":"different"}`)
+	a.mu.Unlock()
+	if _, err = k.ObserveCurrent(context.Background()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("META state differing from exact witness state accepted: %v", err)
+	}
+	a.mu.Lock()
+	a.r.State = []byte(`{"phase":"closed"}`)
+	a.mu.Unlock()
+	w.mu.Lock()
+	w.items[again.Tip.Key] = []byte(`{"version":1,"tampered":true}`)
+	w.mu.Unlock()
+	if _, err = k.ObserveCurrent(context.Background()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("witness body mismatch accepted: %v", err)
+	}
+}
+
+func TestObserveCurrentRejectsMalformedAndOversizedLatestWitnessBodies(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body func() []byte
+	}{
+		{name: "malformed", body: func() []byte { return []byte("{") }},
+		{name: "oversized", body: func() []byte { return bytes.Repeat([]byte("x"), 4*MaxBodyBytes+1) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			k, a, w := fixture(t)
+			if _, err := k.Apply(context.Background(), Record{}, json.RawMessage(`{"phase":"closed"}`), nil, Receipt{OperationID: opID(t), RequestSHA256: digest([]byte("closed")), Principal: "owner"}, true); err != nil {
+				t.Fatal(err)
+			}
+			a.mu.Lock()
+			record := clone(a.r)
+			a.mu.Unlock()
+			body, err := w.Read(context.Background(), record.Tip)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var latest witnessRecord
+			if err = strictDecode(body, &latest); err != nil {
+				t.Fatal(err)
+			}
+			bad := test.body()
+			tip := record.Tip
+			tip.SHA256 = digest(bad)
+			tip.TotalBytes = latest.Previous.TotalBytes + int64(len(bad))
+			tip.Key = fmt.Sprintf("%020d/%s.json", tip.Sequence, tip.SHA256)
+			a.mu.Lock()
+			a.r.Tip = tip
+			a.mu.Unlock()
+			w.mu.Lock()
+			delete(w.items, record.Tip.Key)
+			w.items[tip.Key] = bad
+			w.tip = tip
+			w.mu.Unlock()
+			if _, err = k.ObserveCurrent(context.Background()); err == nil {
+				t.Fatalf("%s latest witness accepted: %v", test.name, err)
+			}
+		})
+	}
+}
+
+type changingLoadStore struct {
+	AtomicStore
+	loads  int
+	change func()
+}
+
+func (s *changingLoadStore) Load(ctx context.Context) (Record, bool, error) {
+	s.loads++
+	if s.loads == 2 && s.change != nil {
+		s.change()
+	}
+	return s.AtomicStore.Load(ctx)
+}
+
+func TestObserveCurrentRejectsRevisionOrTipDriftBetweenReads(t *testing.T) {
+	for _, field := range []string{"revision", "tip"} {
+		t.Run(field, func(t *testing.T) {
+			k, a, _ := fixture(t)
+			if _, err := k.Apply(context.Background(), Record{}, json.RawMessage(`{"phase":"closed"}`), nil, Receipt{OperationID: opID(t), RequestSHA256: digest([]byte("closed")), Principal: "owner"}, true); err != nil {
+				t.Fatal(err)
+			}
+			k.Store = &changingLoadStore{AtomicStore: a, change: func() {
+				a.mu.Lock()
+				defer a.mu.Unlock()
+				if field == "revision" {
+					a.r.Revision++
+				} else {
+					a.r.Tip.TotalBytes++
+				}
+			}}
+			if _, err := k.ObserveCurrent(context.Background()); !errors.Is(err, ErrConflict) {
+				t.Fatalf("second-read %s drift accepted: %v", field, err)
+			}
+		})
+	}
+}
+
 func TestServerGenesisReplayAndLeaseFence(t *testing.T) {
 	k, _, _ := fixture(t)
 	now := time.Date(2026, 10, 10, 1, 0, 0, 0, time.UTC)

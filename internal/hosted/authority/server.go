@@ -82,11 +82,17 @@ func (s *Server) execute(ctx context.Context, principal string, q Request) (Resp
 		return Response{}, err
 	}
 	owner := principal == s.config.OwnerPrincipal
-	if (q.Action == "enroll" || q.Action == "restore" || q.Action == "inspect") && !owner || q.Action == "seal" && !owner {
+	if (q.Action == "enroll" || q.Action == "restore" || q.Action == "inspect" || q.Action == "closed_current") && !owner || q.Action == "seal" && !owner {
 		return Response{}, ErrForbidden
 	}
-	if owner && q.Action != "inspect" && q.Action != "enroll" && q.Action != "restore" && q.Action != "seal" && q.Action != "read_finalized_cut" && q.Action != "get" && q.Action != "list" && q.Action != "current" && q.Action != "close" {
+	if owner && q.Action != "inspect" && q.Action != "enroll" && q.Action != "restore" && q.Action != "seal" && q.Action != "read_finalized_cut" && q.Action != "get" && q.Action != "list" && q.Action != "current" && q.Action != "close" && q.Action != "closed_current" {
 		return Response{}, ErrForbidden
+	}
+	if q.Action == "closed_current" || (q.Action == "get" || q.Action == "list") && q.ClosedPosition != nil {
+		if !owner {
+			return Response{}, ErrForbidden
+		}
+		return s.executeClosedRead(ctx, q)
 	}
 	raw, err := json.Marshal(q)
 	if err != nil {
@@ -543,6 +549,7 @@ func validateAppend(st protocolState, q Request, owner bool, now time.Time) (pro
 		st.Position.ActiveGeneration++
 		st.Position.LastObjectInGeneration = contracts.DeletionWatermark{}
 		st.Position.PredecessorSeal = mark
+		st.Position.GenesisIssuanceID = ""
 		st.Position.SuccessorAllocationID = id
 		st.Phase = "CLOSED"
 		st.Lease = nil
@@ -551,8 +558,87 @@ func validateAppend(st protocolState, q Request, owner bool, now time.Time) (pro
 	return st, nil
 }
 
+func (s *Server) executeClosedRead(ctx context.Context, q Request) (Response, error) {
+	_, firstState, firstPosition, err := s.observeClosed(ctx)
+	if err != nil {
+		return Response{}, err
+	}
+	if q.Action == "closed_current" {
+		_, _, secondPosition, err := s.observeClosed(ctx)
+		if err != nil {
+			return Response{}, err
+		}
+		if secondPosition != firstPosition {
+			return Response{}, ErrConflict
+		}
+		if err = ctx.Err(); err != nil {
+			return Response{}, err
+		}
+		return Response{ClosedPosition: &firstPosition}, nil
+	}
+	if !validClosedPosition(*q.ClosedPosition) || *q.ClosedPosition != firstPosition {
+		return Response{}, ErrConflict
+	}
+	reader := boundedReader{store: s.kernel.Store, position: firstState.Position, strict: true}
+	var out Response
+	if q.Action == "get" {
+		body, found, readErr := reader.Get(ctx, q.Key)
+		if readErr != nil {
+			return Response{}, readErr
+		}
+		out = Response{Body: body, Found: found}
+	} else {
+		out, err = reader.listPage(ctx, q.Prefix, q.StartAfter, q.Limit)
+		if err != nil {
+			return Response{}, err
+		}
+	}
+	_, _, secondPosition, err := s.observeClosed(ctx)
+	if err != nil {
+		return Response{}, err
+	}
+	if secondPosition != firstPosition {
+		return Response{}, ErrConflict
+	}
+	if err = ctx.Err(); err != nil {
+		return Response{}, err
+	}
+	return out, nil
+}
+
+func (s *Server) observeClosed(ctx context.Context) (Record, protocolState, ClosedPosition, error) {
+	record, err := s.kernel.ObserveCurrent(ctx)
+	if err != nil {
+		return Record{}, protocolState{}, ClosedPosition{}, err
+	}
+	var state protocolState
+	if err = strictDecode(record.State, &state); err != nil {
+		return Record{}, protocolState{}, ClosedPosition{}, err
+	}
+	if state.Phase != "CLOSED" || state.Lease != nil || state.Prepared != nil {
+		return Record{}, protocolState{}, ClosedPosition{}, ErrConflict
+	}
+	// Before successor-position validation was enforced, seal transitions kept
+	// the generation-one issuance ID in persisted CLOSED state. It has no
+	// meaning after generation one; project that legacy field away for the
+	// deletion journal contract while retaining the raw state in the witness
+	// anchor above. The anchor still pins the exact persisted bytes.
+	journalPosition := state.Position
+	if journalPosition.ActiveGeneration > 1 && validID(journalPosition.GenesisIssuanceID) {
+		journalPosition.GenesisIssuanceID = ""
+	}
+	position := ClosedPosition{Position: journalPosition, Epoch: state.Epoch, Anchor: record.Tip}
+	if !validClosedPosition(position) || position.Anchor.Lineage != s.kernel.Lineage || position.Anchor.TableARN != s.kernel.TableARN {
+		return Record{}, protocolState{}, ClosedPosition{}, ErrConflict
+	}
+	if err = ctx.Err(); err != nil {
+		return Record{}, protocolState{}, ClosedPosition{}, err
+	}
+	return record, state, position, nil
+}
+
 func validateRequest(q Request) error {
-	allowed := map[string]string{"inspect": "", "enroll": "operation_id adoption", "restore": "operation_id", "challenge": "operation_id", "prepare": "operation_id challenge_id nonce measurement", "activate": "operation_id reservation_id history_sha256 data_inventory_sha256", "current": "lease_id", "renew": "operation_id lease_id measurement", "close": "operation_id lease_id reservation_id", "append": "operation_id lease_id key body", "seal": "operation_id lease_id key body", "get": "lease_id reservation_id cut_id key", "list": "lease_id reservation_id cut_id prefix start_after limit", "cut": "operation_id lease_id snapshot_attempt_id", "finalize_cut": "operation_id cut_id manifest_sha256", "read_finalized_cut": "cut_id"}
+	allowed := map[string]string{"inspect": "", "enroll": "operation_id adoption", "restore": "operation_id", "challenge": "operation_id", "prepare": "operation_id challenge_id nonce measurement", "activate": "operation_id reservation_id history_sha256 data_inventory_sha256", "current": "lease_id", "renew": "operation_id lease_id measurement", "close": "operation_id lease_id reservation_id", "append": "operation_id lease_id key body", "seal": "operation_id lease_id key body", "get": "lease_id reservation_id cut_id closed_position key", "list": "lease_id reservation_id cut_id closed_position prefix start_after limit", "closed_current": "", "cut": "operation_id lease_id snapshot_attempt_id", "finalize_cut": "operation_id cut_id manifest_sha256", "read_finalized_cut": "cut_id"}
 	fields, ok := allowed[q.Action]
 	if !ok {
 		return ErrInvalid
@@ -580,6 +666,9 @@ func validateRequest(q Request) error {
 			return err
 		}
 	}
+	if q.ClosedPosition != nil && !validClosedPosition(*q.ClosedPosition) {
+		return ErrInvalid
+	}
 	if strings.Contains(fields, "operation_id") && q.OperationID == "" {
 		return ErrInvalid
 	}
@@ -589,6 +678,9 @@ func validateRequest(q Request) error {
 			if id != "" {
 				n++
 			}
+		}
+		if q.ClosedPosition != nil {
+			n++
 		}
 		if n != 1 {
 			return ErrInvalid

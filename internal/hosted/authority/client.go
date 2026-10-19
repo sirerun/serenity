@@ -118,11 +118,33 @@ func (c *Client) ReadFinalizedCut(ctx context.Context, id string) (FinalizedCut,
 	}
 	return *r.FinalizedCut, nil
 }
+func (c *Client) ObserveClosed(ctx context.Context) (ClosedPosition, error) {
+	if ctx == nil || ctx.Err() != nil {
+		if ctx == nil {
+			return ClosedPosition{}, ErrInvalid
+		}
+		return ClosedPosition{}, ctx.Err()
+	}
+	r, err := c.invoke(ctx, Request{Action: "closed_current"})
+	if err != nil {
+		return ClosedPosition{}, err
+	}
+	if err = ctx.Err(); err != nil {
+		return ClosedPosition{}, err
+	}
+	if r.ClosedPosition == nil || !validClosedPosition(*r.ClosedPosition) {
+		return ClosedPosition{}, ErrUnavailable
+	}
+	return *r.ClosedPosition, nil
+}
 func (c *Client) Reader(p Prepared) contracts.JournalObjectReader {
 	return &objectClient{c: c, reservation: p.ReservationID}
 }
 func (c *Client) CutReader(cut Cut) contracts.JournalObjectReader {
 	return &objectClient{c: c, cut: cut.ID}
+}
+func (c *Client) ClosedReader(position ClosedPosition) contracts.JournalObjectReader {
+	return &objectClient{c: c, closed: &position, invalidClosed: !validClosedPosition(position)}
 }
 func (c *Client) Store(l Lease) contracts.JournalObjectStore { return &objectClient{c: c, lease: l.ID} }
 
@@ -131,12 +153,20 @@ type objectClient struct {
 	cache                   map[string][]byte
 	c                       *Client
 	reservation, lease, cut string
+	closed                  *ClosedPosition
+	invalidClosed           bool
 }
 
 func (o *objectClient) request(action string) Request {
-	return Request{Action: action, ReservationID: o.reservation, LeaseID: o.lease, CutID: o.cut}
+	return Request{Action: action, ReservationID: o.reservation, LeaseID: o.lease, CutID: o.cut, ClosedPosition: o.closed}
 }
 func (o *objectClient) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	if ctx == nil {
+		return nil, false, ErrInvalid
+	}
+	if o.invalidClosed || o.closed != nil && !validClosedPosition(*o.closed) {
+		return nil, false, ErrInvalid
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, false, err
 	}
@@ -153,12 +183,26 @@ func (o *objectClient) Get(ctx context.Context, key string) ([]byte, bool, error
 	if err != nil {
 		return nil, false, err
 	}
+	if o.closed != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, false, err
+		}
+	}
 	if len(r.Body) > MaxObjectBytes {
 		return nil, false, ErrInvalid
 	}
 	return r.Body, r.Found, nil
 }
 func (o *objectClient) ListAfter(ctx context.Context, prefix, after string, limit int) ([]string, bool, error) {
+	if ctx == nil {
+		return nil, false, ErrInvalid
+	}
+	if o.invalidClosed || o.closed != nil && !validClosedPosition(*o.closed) {
+		return nil, false, ErrInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
 	if limit < 1 || limit > MaxPageKeys {
 		return nil, false, ErrInvalid
 	}
@@ -169,6 +213,11 @@ func (o *objectClient) ListAfter(ctx context.Context, prefix, after string, limi
 	r, err := o.c.invoke(ctx, q)
 	if err != nil {
 		return nil, false, err
+	}
+	if o.closed != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, false, err
+		}
 	}
 
 	if len(r.Keys) > limit || len(r.Objects) != len(r.Keys) || r.More && len(r.Keys) == 0 {

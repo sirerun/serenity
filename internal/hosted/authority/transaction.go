@@ -165,6 +165,84 @@ func (k *Kernel) Current(ctx context.Context) (Record, error) {
 	return r, nil
 }
 
+// ObserveCurrent verifies the durable META state against the independent
+// witness without reconciling or completing an in-flight transaction. It is
+// deliberately separate from Current: owner inspection must never turn a
+// read into recovery work.
+func (k *Kernel) ObserveCurrent(ctx context.Context) (Record, error) {
+	if ctx == nil || ctx.Err() != nil {
+		if ctx == nil {
+			return Record{}, ErrInvalid
+		}
+		return Record{}, ctx.Err()
+	}
+	if err := k.validate(); err != nil {
+		return Record{}, err
+	}
+	first, found, err := k.Store.Load(ctx)
+	if err != nil {
+		return Record{}, err
+	}
+	if !found || first.Pending != nil || first.Revision == 0 || !json.Valid(first.State) || !validTip(first.Tip) || first.Tip.Lineage != k.Lineage || first.Tip.TableARN != k.TableARN {
+		return Record{}, ErrConflict
+	}
+	if err = ctx.Err(); err != nil {
+		return Record{}, err
+	}
+	firstTip, exists, err := k.Witness.Tip(ctx)
+	if err != nil {
+		return Record{}, err
+	}
+	if !exists || firstTip != first.Tip {
+		return Record{}, ErrConflict
+	}
+	if err = ctx.Err(); err != nil {
+		return Record{}, err
+	}
+	body, err := k.Witness.Read(ctx, firstTip)
+	if err != nil {
+		return Record{}, err
+	}
+	if err = ctx.Err(); err != nil {
+		return Record{}, err
+	}
+	if len(body) == 0 || len(body) > 4*MaxBodyBytes || digest(body) != firstTip.SHA256 {
+		return Record{}, ErrConflict
+	}
+	var latest witnessRecord
+	if err = strictDecode(body, &latest); err != nil {
+		return Record{}, err
+	}
+	if latest.Version != 1 || latest.Sequence != firstTip.Sequence || latest.Revision != first.Revision || latest.Lineage != k.Lineage || latest.TableARN != k.TableARN || !bytes.Equal(latest.State, first.State) || latest.Previous.Sequence+1 != latest.Sequence || latest.Previous.TotalBytes+int64(len(body)) != firstTip.TotalBytes {
+		return Record{}, ErrConflict
+	}
+	if latest.Sequence == 1 {
+		if latest.Previous != (WitnessTip{}) || latest.Revision != 1 {
+			return Record{}, ErrConflict
+		}
+	} else if !validTip(latest.Previous) || latest.Previous.Sequence+1 != latest.Sequence || latest.Previous.Lineage != k.Lineage {
+		return Record{}, ErrConflict
+	}
+	if err = ctx.Err(); err != nil {
+		return Record{}, err
+	}
+	second, found, err := k.Store.Load(ctx)
+	if err != nil {
+		return Record{}, err
+	}
+	secondTip, tipFound, err := k.Witness.Tip(ctx)
+	if err != nil {
+		return Record{}, err
+	}
+	if !found || second.Pending != nil || !tipFound || second.Revision != first.Revision || second.Tip != first.Tip || secondTip != firstTip || !bytes.Equal(second.State, first.State) {
+		return Record{}, ErrConflict
+	}
+	if err = ctx.Err(); err != nil {
+		return Record{}, err
+	}
+	return Record{Revision: first.Revision, State: bytes.Clone(first.State), Tip: first.Tip}, nil
+}
+
 // Apply executes one validated state transition. Validation and authorization
 // are the handler responsibility; serialization and durability are enforced here.
 func (k *Kernel) Apply(ctx context.Context, old Record, state json.RawMessage, items []ImmutableItem, receipt Receipt, bootstrap bool) (Response, error) {

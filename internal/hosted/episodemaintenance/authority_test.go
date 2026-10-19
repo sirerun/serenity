@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -237,29 +238,36 @@ func operationID(t *testing.T) string {
 }
 
 type authorityFixture struct {
-	client *authority.Client
-	lease  authority.Lease
-	now    time.Time
-	store  *memoryAtomic
+	client  *authority.Client
+	owner   *authority.Client
+	server  *authority.Server
+	lease   authority.Lease
+	now     time.Time
+	store   *memoryAtomic
+	witness *memoryWitness
 }
 
 func newAuthorityFixture(t *testing.T) *authorityFixture {
 	t.Helper()
-	f := &authorityFixture{now: time.Now().UTC().Truncate(time.Second), store: newMemoryAtomic()}
-	witness := &memoryWitness{items: map[string][]byte{}}
-	kernel := &authority.Kernel{Store: f.store, Witness: witness, Lineage: "synthetic-lineage", TableARN: "arn:aws:dynamodb:eu-west-1:123456789012:table/synthetic"}
+	f := &authorityFixture{now: time.Now().UTC().Truncate(time.Second), store: newMemoryAtomic(), witness: &memoryWitness{items: map[string][]byte{}}}
+	kernel := &authority.Kernel{Store: f.store, Witness: f.witness, Lineage: "synthetic-lineage", TableARN: "arn:aws:dynamodb:eu-west-1:123456789012:table/synthetic"}
 	measurement := authority.Measurement{ExecutableSHA256: digest([]byte("synthetic-binary")), ProcessLifetime: "synthetic-pid-start"}
 	binding := authority.GatewayBinding{APIID: "synthetic-api", AccountID: "123456789012", Stage: "synthetic", DomainName: "synthetic.execute-api.test", RuntimePath: "/runtime", OwnerPath: "/owner", RuntimeARN: "arn:aws:iam::123456789012:role/runtime", RuntimeCallerID: "runtime-caller", OwnerARN: "arn:aws:iam::123456789012:role/owner", OwnerCallerID: "owner-caller"}
 	server, err := authority.NewServer(kernel, authority.ServerConfig{RuntimePrincipal: binding.RuntimeARN, OwnerPrincipal: binding.OwnerARN, ApprovedBuilds: map[string]string{measurement.ExecutableSHA256: strings.Repeat("a", 40)}, LeaseLifetime: time.Hour, ChallengeLifetime: time.Minute, GenesisLifetime: time.Hour, Now: func() time.Time { return f.now }})
 	if err != nil {
 		t.Fatal(err)
 	}
+	f.server = server
 	gateway, err := authority.NewGateway(server, binding)
 	if err != nil {
 		t.Fatal(err)
 	}
-	owner := gatewayTransport{gateway: gateway, binding: binding, owner: true}
-	if _, err = owner.Invoke(context.Background(), authority.Request{Action: "enroll", OperationID: operationID(t)}); err != nil {
+	ownerTransport := gatewayTransport{gateway: gateway, binding: binding, owner: true}
+	if _, err = ownerTransport.Invoke(context.Background(), authority.Request{Action: "enroll", OperationID: operationID(t)}); err != nil {
+		t.Fatal(err)
+	}
+	f.owner, err = authority.NewClient(ownerTransport)
+	if err != nil {
 		t.Fatal(err)
 	}
 	f.client, err = authority.NewClient(gatewayTransport{gateway: gateway, binding: binding, measurement: measurement})
@@ -288,6 +296,274 @@ func newAuthorityFixture(t *testing.T) *authorityFixture {
 	}
 	return f
 }
+
+func TestClosedSourceUsesCompleteCurrentHistoryWithoutCut(t *testing.T) {
+	f := newAuthorityFixture(t)
+	f.append(t, 1)
+	cut, err := f.client.Cut(context.Background(), f.lease, operationID(t), operationID(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.append(t, 2)
+	if err = f.owner.Close(context.Background(), f.lease, operationID(t)); err != nil {
+		t.Fatal(err)
+	}
+	f.now = f.now.Add(2 * time.Hour) // historical cuts stay readable to their owner after expiry.
+	closed, err := f.owner.ObserveClosed(context.Background())
+	if err != nil || closed.Position.LastObjectInGeneration.SequenceID != 2 {
+		t.Fatalf("current CLOSED position missing newer history: %+v %v", closed, err)
+	}
+	if _, err = f.client.ObserveClosed(context.Background()); err == nil {
+		t.Fatal("runtime principal used owner-only CLOSED route")
+	}
+	source, err := NewClosedSource(f.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := source.Observe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Recheck == nil || snapshot.Position != closed || snapshot.Observation.Position != closed.Position || len(snapshot.Observation.Read.Entries) != 2 {
+		t.Fatalf("wrong complete CLOSED history: %+v", snapshot)
+	}
+	if err = snapshot.Recheck(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	oldReader, err := deletion.NewJournalReader(f.owner.CutReader(cut), cut.Position)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, err := oldReader.Observe(context.Background())
+	if err != nil || len(old.Read.Entries) != 1 {
+		t.Fatalf("expired historical cut lost its original scope: %+v %v", old, err)
+	}
+}
+
+func TestClosedSourceRejectsInvalidPositionAndDetachesRecheckPin(t *testing.T) {
+	f := newAuthorityFixture(t)
+	if err := f.owner.Close(context.Background(), f.lease, operationID(t)); err != nil {
+		t.Fatal(err)
+	}
+	source, err := NewClosedSource(f.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := source.Observe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot.Position.Epoch++
+	if err = snapshot.Recheck(context.Background()); err != nil {
+		t.Fatalf("public snapshot mutation changed private recheck pin: %v", err)
+	}
+	if _, err = source.Observe(nil); !errors.Is(err, ErrAuthorityUnavailable) {
+		t.Fatalf("nil context accepted: %v", err)
+	}
+	if _, err = NewClosedSource((*authority.Client)(nil)); !errors.Is(err, ErrAuthorityUnavailable) {
+		t.Fatalf("typed nil owner accepted: %v", err)
+	}
+}
+
+func TestClosedSourceTraversesSealedGenerationAndEmptySuccessor(t *testing.T) {
+	f := newAuthorityFixture(t)
+	f.append(t, 1)
+	current, err := f.client.Current(context.Background(), f.lease)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seal, err := (contracts.JournalObject{Kind: contracts.JournalKindSeal, Generation: 1, SequenceID: 2, WriterID: f.lease.WriterID, PrevHash: current.Position.LastObjectInGeneration.EntryHash, RecordedAt: f.now}).Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.owner.Seal(context.Background(), f.lease, contracts.JournalKey(1, 2), seal, operationID(t)); err != nil {
+		t.Fatal(err)
+	}
+	position, err := f.owner.ObserveClosed(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := deletion.NewJournalReader(f.owner.ClosedReader(position), position.Position)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation, observeErr := reader.Observe(context.Background()); observeErr != nil || len(observation.Read.Entries) != 1 {
+		t.Fatalf("journal observer rejected sealed generation and empty successor: %+v %v", observation, observeErr)
+	}
+	source, err := NewClosedSource(f.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := source.Observe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Position.Position.ActiveGeneration != 2 || snapshot.Position.Position.PredecessorSeal.SequenceID != 2 || !snapshot.Position.Position.LastObjectInGeneration.IsZero() || len(snapshot.Observation.Read.Entries) != 1 || !snapshot.Observation.Read.Sealed {
+		t.Fatalf("sealed generation or empty successor misread: %+v", snapshot)
+	}
+}
+
+func TestClosedSourceAcceptsPreFixSuccessorStateWithExactWitnessAnchor(t *testing.T) {
+	f := newAuthorityFixture(t)
+	f.append(t, 1)
+	var prior struct {
+		Position contracts.JournalPosition `json:"position"`
+	}
+	if err := json.Unmarshal(f.store.r.State, &prior); err != nil {
+		t.Fatal(err)
+	}
+	legacyGenesis := prior.Position.GenesisIssuanceID
+	current, err := f.client.Current(context.Background(), f.lease)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seal, err := (contracts.JournalObject{Kind: contracts.JournalKindSeal, Generation: 1, SequenceID: 2, WriterID: f.lease.WriterID, PrevHash: current.Position.LastObjectInGeneration.EntryHash, RecordedAt: f.now}).Encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.owner.Seal(context.Background(), f.lease, contracts.JournalKey(1, 2), seal, operationID(t)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Recreate the durable shape produced by the old seal transition, including
+	// a fresh witness whose exact state bytes and anchor agree with META.
+	var state map[string]json.RawMessage
+	if err = json.Unmarshal(f.store.r.State, &state); err != nil {
+		t.Fatal(err)
+	}
+	var position contracts.JournalPosition
+	if err = json.Unmarshal(state["position"], &position); err != nil {
+		t.Fatal(err)
+	}
+	position.GenesisIssuanceID = legacyGenesis
+	state["position"], err = json.Marshal(position)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyState, err := json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type witnessEnvelope struct {
+		Version  int                       `json:"version"`
+		Previous authority.WitnessTip      `json:"previous"`
+		Sequence uint64                    `json:"sequence"`
+		Lineage  string                    `json:"lineage"`
+		TableARN string                    `json:"table_arn"`
+		Revision uint64                    `json:"revision"`
+		State    json.RawMessage           `json:"state"`
+		Items    []authority.ImmutableItem `json:"items"`
+		Receipt  authority.Receipt         `json:"receipt"`
+	}
+	previous := f.store.r.Tip
+	var old witnessEnvelope
+	oldBody := f.witness.items[previous.Key]
+	if err = json.Unmarshal(oldBody, &old); err != nil {
+		t.Fatal(err)
+	}
+	record := old
+	record.State = legacyState
+	legacyBody, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tip := authority.WitnessTip{Lineage: previous.Lineage, TableARN: previous.TableARN, Sequence: record.Sequence, TotalBytes: record.Previous.TotalBytes + int64(len(legacyBody)), SHA256: digest(legacyBody)}
+	tip.Key = fmt.Sprintf("%020d/%s.json", tip.Sequence, tip.SHA256)
+	f.store.mu.Lock()
+	f.store.r.State = legacyState
+	f.store.r.Tip = tip
+	f.store.mu.Unlock()
+	f.witness.mu.Lock()
+	f.witness.items[tip.Key] = legacyBody
+	f.witness.tip = tip
+	f.witness.mu.Unlock()
+
+	closed, err := f.owner.ObserveClosed(context.Background())
+	if err != nil {
+		t.Fatalf("pre-fix successor state was rejected: %v", err)
+	}
+	if closed.Position.ActiveGeneration != 2 || closed.Position.GenesisIssuanceID != "" || closed.Anchor != tip {
+		t.Fatalf("legacy projection lost its exact anchor: %+v", closed)
+	}
+	source, err := NewClosedSource(f.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := source.Observe(context.Background())
+	if err != nil || len(snapshot.Observation.Read.Entries) != 1 || !snapshot.Observation.Read.Sealed {
+		t.Fatalf("legacy CLOSED history was not readable: %+v %v", snapshot, err)
+	}
+}
+
+func TestClosedSourceReadsAcrossBoundedPages(t *testing.T) {
+	f := newAuthorityFixture(t)
+	for sequence := int64(1); sequence <= 300; sequence++ {
+		f.append(t, sequence)
+	}
+	if err := f.owner.Close(context.Background(), f.lease, operationID(t)); err != nil {
+		t.Fatal(err)
+	}
+	source, err := NewClosedSource(f.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := source.Observe(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Observation.Read.Entries) != 300 || snapshot.Observation.Position.LastObjectInGeneration.SequenceID != 300 || snapshot.Recheck == nil {
+		t.Fatalf("bounded page continuation lost current history: entries=%d pos=%+v", len(snapshot.Observation.Read.Entries), snapshot.Observation.Position)
+	}
+}
+
+func TestClosedSourceRefusesCanceledObservation(t *testing.T) {
+	f := newAuthorityFixture(t)
+	if err := f.owner.Close(context.Background(), f.lease, operationID(t)); err != nil {
+		t.Fatal(err)
+	}
+	source, err := NewClosedSource(f.owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if snapshot, err := source.Observe(ctx); !errors.Is(err, ErrAuthorityUnavailable) || snapshot.Recheck != nil {
+		t.Fatalf("canceled source returned usable authority: %+v %v", snapshot, err)
+	}
+}
+
+func TestClosedSourceRejectsMissingMalformedOversizedAndExtraTailObjects(t *testing.T) {
+	for _, scenario := range []string{"missing", "malformed", "oversized", "extra_tail"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newAuthorityFixture(t)
+			f.append(t, 1)
+			if err := f.owner.Close(context.Background(), f.lease, operationID(t)); err != nil {
+				t.Fatal(err)
+			}
+			key := "OBJ#" + contracts.JournalKey(1, 1)
+			f.store.mu.Lock()
+			switch scenario {
+			case "missing":
+				delete(f.store.items, key)
+			case "malformed":
+				f.store.items[key] = []byte("not-json")
+			case "oversized":
+				f.store.items[key] = make([]byte, authority.MaxObjectBytes+1)
+			case "extra_tail":
+				f.store.items["OBJ#"+contracts.JournalKey(1, 2)] = []byte("unadmitted tail")
+			}
+			f.store.mu.Unlock()
+			source, err := NewClosedSource(f.owner)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if snapshot, err := source.Observe(context.Background()); !errors.Is(err, ErrAuthorityUnavailable) || snapshot.Recheck != nil || len(snapshot.Observation.Read.Entries) != 0 {
+				t.Fatalf("invalid current history returned a usable snapshot: %+v %v", snapshot, err)
+			}
+		})
+	}
+}
+
 func (f *authorityFixture) source(t *testing.T, a Authority) *source {
 	t.Helper()
 	s, err := NewSource(a, func() authority.Lease { return f.lease })

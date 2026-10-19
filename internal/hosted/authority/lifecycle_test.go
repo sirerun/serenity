@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -179,6 +180,18 @@ func TestHistoricalCutOperatorReadAndTableRestore(t *testing.T) {
 	got, e = newOwner.ReadFinalizedCut(ctx, cut.ID)
 	if e != nil || got.ManifestSHA256 != manifest {
 		t.Fatalf("restored cut invalid: %v", e)
+	}
+	closed, e := newOwner.ObserveClosed(ctx)
+	if e != nil {
+		t.Fatalf("restored and rebound authority was not observable as CLOSED: %v", e)
+	}
+	reader, e := deletion.NewJournalReader(newOwner.ClosedReader(closed), closed.Position)
+	if e != nil {
+		t.Fatal(e)
+	}
+	observation, e := reader.Observe(ctx)
+	if e != nil || len(observation.Read.Entries) != 1 {
+		t.Fatalf("restored CLOSED history unavailable: %+v %v", observation, e)
 	}
 }
 func TestRequestDuplicateFieldsAndIrrelevantMeasurement(t *testing.T) {
@@ -357,5 +370,135 @@ func TestOwnerInspectAndExactCloseAfterLostResponse(t *testing.T) {
 	}
 	if e = owner.ClosePrepared(ctx, *status.Prepared, opID(t)); e != nil {
 		t.Fatal(e)
+	}
+}
+
+func TestClosedReadsRequireOwnerCurrentPositionAndClosedPhase(t *testing.T) {
+	s, runtime, lease, now, _, _ := activeFixture(t)
+	owner, err := NewClient(localTransport{s: s, principal: "owner"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = owner.ObserveClosed(context.Background()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("ACTIVE namespace observed as CLOSED: %v", err)
+	}
+	*now = now.Add(2 * time.Hour)
+	if _, err = owner.ObserveClosed(context.Background()); !errors.Is(err, ErrConflict) {
+		t.Fatalf("expired ACTIVE lease observed as CLOSED: %v", err)
+	}
+	if _, err = s.execute(context.Background(), "owner", Request{Action: "close", OperationID: opID(t), LeaseID: lease.ID}); err != nil {
+		t.Fatal(err)
+	}
+	position, err := owner.ObserveClosed(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.execute(context.Background(), "owner", Request{Action: "get", LeaseID: lease.ID, ClosedPosition: &position, Key: contracts.JournalKey(1, 1)}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("combined selectors accepted: %v", err)
+	}
+	if _, err = s.execute(context.Background(), "owner", Request{Action: "closed_current", OperationID: opID(t)}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("mutation field accepted on closed_current: %v", err)
+	}
+	if _, _, err = runtime.ClosedReader(position).Get(context.Background(), contracts.JournalKey(1, 1)); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("runtime principal used owner CLOSED selector: %v", err)
+	}
+	position.Epoch++
+	if _, _, err = owner.ClosedReader(position).Get(context.Background(), contracts.JournalKey(1, 1)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("stale CLOSED pin accepted: %v", err)
+	}
+}
+
+func TestClosedCurrentRefusesEnrolledAndPreparingStates(t *testing.T) {
+	for _, phase := range []string{"ENROLLED", "PREPARING"} {
+		t.Run(phase, func(t *testing.T) {
+			k, _, _ := fixture(t)
+			now := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+			measurement := Measurement{ExecutableSHA256: digest([]byte("phase-binary")), ProcessLifetime: "synthetic-process"}
+			server, err := NewServer(k, ServerConfig{RuntimePrincipal: "runtime", OwnerPrincipal: "owner", ApprovedBuilds: map[string]string{measurement.ExecutableSHA256: strings.Repeat("a", 40)}, LeaseLifetime: time.Hour, ChallengeLifetime: time.Minute, GenesisLifetime: time.Hour, Now: func() time.Time { return now }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = server.execute(context.Background(), "owner", Request{Action: "enroll", OperationID: opID(t)}); err != nil {
+				t.Fatal(err)
+			}
+			owner, err := NewClient(localTransport{s: server, principal: "owner"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if phase == "PREPARING" {
+				runtime, err := NewClient(localTransport{s: server, principal: "runtime", measurement: measurement})
+				if err != nil {
+					t.Fatal(err)
+				}
+				challenge, err := runtime.Challenge(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err = runtime.Prepare(context.Background(), challenge); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err = owner.ObserveClosed(context.Background()); !errors.Is(err, ErrConflict) {
+				t.Fatalf("%s state observed as CLOSED: %v", phase, err)
+			}
+		})
+	}
+}
+
+type driftAtomicStore struct {
+	AtomicStore
+	once  sync.Once
+	after func()
+}
+
+func (s *driftAtomicStore) Get(ctx context.Context, key string) ([]byte, bool, error) {
+	body, found, err := s.AtomicStore.Get(ctx, key)
+	s.once.Do(s.after)
+	return body, found, err
+}
+func (s *driftAtomicStore) ListObjects(ctx context.Context, prefix, after string, limit int) ([]ImmutableItem, bool, error) {
+	items, more, err := s.AtomicStore.ListObjects(ctx, prefix, after, limit)
+	s.once.Do(s.after)
+	return items, more, err
+}
+
+func TestClosedGetAndListDiscardResultsWhenPositionDrifts(t *testing.T) {
+	for _, action := range []string{"get", "list"} {
+		t.Run(action, func(t *testing.T) {
+			s, runtime, lease, now, store, _ := activeFixture(t)
+			object, err := (contracts.JournalObject{Kind: contracts.JournalKindEntry, Generation: 1, SequenceID: 1, WriterID: lease.WriterID, SubjectType: contracts.DeletionSubjectAccount, SubjectID: "synthetic-closed-read", Outcome: contracts.DeletionIntentRequested, RecordedAt: *now}).Encode()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = runtime.Store(lease).PutIfAbsent(context.Background(), contracts.JournalKey(1, 1), object); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = s.execute(context.Background(), "owner", Request{Action: "close", OperationID: opID(t), LeaseID: lease.ID}); err != nil {
+				t.Fatal(err)
+			}
+			owner, err := NewClient(localTransport{s: s, principal: "owner"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			position, err := owner.ObserveClosed(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.kernel.Store = &driftAtomicStore{AtomicStore: store, after: func() {
+				store.mu.Lock()
+				store.r.State = []byte(`{"initialized":true,"phase":"CHANGED"}`)
+				store.mu.Unlock()
+			}}
+			q := Request{Action: action, ClosedPosition: &position}
+			if action == "get" {
+				q.Key = contracts.JournalKey(1, 1)
+			} else {
+				q.Prefix, q.Limit = "deletion-journal/", 1
+			}
+			out, err := s.execute(context.Background(), "owner", q)
+			if !errors.Is(err, ErrConflict) || len(out.Body) != 0 || len(out.Keys) != 0 || len(out.Objects) != 0 {
+				t.Fatalf("drift exposed partial CLOSED read: response=%+v err=%v", out, err)
+			}
+		})
 	}
 }
