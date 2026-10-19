@@ -1032,7 +1032,7 @@ the source resource and T5.102-T5.104 are now held by this integration batch.
 - [x] T5.102 Implement observational kernel and existing-owner CLOSED protocol  Owner: authority-lane  kind: agent  stage: implement  deps: [T5.101]  acc: [resource ownership is verified before edits; actual independent witness body binds exact stable META state without resolving pending; owner-only closed_current and exclusive closed-position get list route before mutation or receipt recovery and recheck exact state before any response; actual owner transport permits only new CLOSED reads while operator transport rejects them; old roles selectors and flows retain compatibility]
 - [x] T5.103 Implement authenticated complete CLOSED history source  Owner: integration  kind: agent  stage: implement  deps: [T5.102]  acc: [existing authenticated owner client and trusted CLOSED source verify full bounded deletion history against exact current position epoch witness anchor with detached snapshot and fresh recheck; no cut or live lease required and no host coldness authority is invented]
 - [x] T5.104 Qualify joined CLOSED current-history source  Owner: integration  kind: agent  stage: verify  deps: [T5.103]  acc: [real server client observer tests cover no-cut empty CLOSED newer exclusions historical expired cuts generations zero-mutation pending and state witness mismatch actual restored/rebound CLOSED observation malformed and oversized latest witness between-read revision and tip drift role and phase refusal strict bounds missing malformed extra-tail objects paging and final drift cancellation; existing authority and maintenance regressions race static and Wazi pass]
-- [ ] T5.105 Independently review CLOSED history candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.104]  acc: [non-author exact complete PR-base to final-head review covers design, actual auth path, kernel, provider mutation counters, data bounds, complete history freshness, downstream limits and all source evidence; findings fixed verified and re-reviewed]
+- [x] T5.105 Independently review CLOSED history candidate  Owner: independent-reviewer  kind: agent  stage: review  deps: [T5.104]  acc: [non-author exact complete PR-base to final-head review covers design, actual auth path, kernel, provider mutation counters, data bounds, complete history freshness, downstream limits and all source evidence; findings fixed verified and re-reviewed]
 - [ ] T5.106 Merge reviewed CLOSED history source  Owner: integration  kind: agent  stage: merge  deps: [T5.105]  acc: [current exact head base holds protections required checks or qualified fallback allow guarded rebase without operational deployment or permission widening]
 - [ ] T5.107 Verify landed CLOSED history source  Owner: integration  kind: agent  stage: verify  deps: [T5.106]  acc: [reviewed landed tree equality main ancestry and affected source behavior evidenced; dependent E16 actual custody admission caller controlled copies full T5.2 T5.3 and live qualification remain open]
 
@@ -1046,15 +1046,15 @@ exact API and downstream actual-caller separation. On 2026-10-19 the owner
 explicitly assigned R-hosted-authority to this batch. The prior token was released
 with the canonical exact-value CAS, then the source resource and T5.102-T5.104
 were acquired under this batch. Source implementation and joined tests now exist;
-T5.104 race, vet, source-static and Wazi qualification pass. An independent
-review cleared the source/test delta from `ac1c9cc707db1edf7f092f42f3131cc7c5330e4d`
-through `fb456d59c232018c673194f2824c1d817b22ab36`, with source-patch digest
-`732d86d91424c71ff4a8e64c275ebce967cfff0c76d1935b82f4d2f7af782141` and no
-findings. PR #414's actual base is `5fe6048e60bfb2c06a29cc8eced5047f0f95cf13`;
-its earlier design/preparation commits still need inclusion in T5.105's complete
-base-to-head review. The final-head Actions run failed before any steps because
-the account is billing-locked. Owner-authorized ADR 024 local-validation fallback
-applies; hosted CI is not reported as passing. T5.105-T5.107 remain open.
+T5.104 race, vet, source-static and Wazi qualification pass. Independent review
+cleared the complete PR #414 base `5fe6048e60bfb2c06a29cc8eced5047f0f95cf13`
+through exact head `b26811b16e35e5f7a89756e518309495d8393c2c`, including design,
+preparation, plan, source/tests and receipt. The reviewed Go source-patch digest
+is `732d86d91424c71ff4a8e64c275ebce967cfff0c76d1935b82f4d2f7af782141`; no
+findings remain. The exact-head Actions run failed before any steps because the
+account is billing-locked. Owner-authorized ADR 024 local-validation fallback
+applies; hosted CI is not reported as passing. Guarded merge and landed
+verification remain T5.106-T5.107.
 
 ### Current Zati baseline discovery (T4.0 remains open)
 
