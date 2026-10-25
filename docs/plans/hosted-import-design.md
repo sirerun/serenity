@@ -120,9 +120,9 @@ JSON Schema or accepted interface):
 | Field | Required meaning / validation |
 | --- | --- |
 | `version` | Integer `1`; unknown versions rejected before target writes. |
-| `inputs` | Sorted list of canonical repo identity, full commit OID, allowed source paths, input kind (`dira` or `hq-distill`), and mapper name/version. Distillation also identifies the HQ-DISTILL-01 output revision and review receipt; no floating branch references. |
-| `payloads` | Exactly `brain.bundle` and `facts.json`, each with SHA256 and uncompressed byte length; no manifest self-hash. |
-| `canonical` | Bundle ref, source commit OID, canonical tree OID and Git object format; independently verified from bundle contents. |
+| `inputs` | Sorted list of canonical repo identity, full commit OID, allowed source paths, input kind (`dira` or `hq-distill`), and mapper name/version; also records the pinned build-contract revision and projection as-of instant. Distillation also identifies the HQ-DISTILL-01 output revision and review receipt; no floating branch references. |
+| `payloads` | Exactly `brain.bundle` and `facts.json`, each with exact-byte SHA256 and uncompressed byte length; both payloads must be reproducible under the pinned build contract below. No manifest self-hash. |
+| `canonical` | Fixed bundle ref, reproducible scratch commit OID, canonical tree OID and Git object format; independently verified from bundle contents. The scratch commit is a transfer artifact, distinct from the original source commit OIDs in `inputs` and `source_refs`. |
 | `files` | Sorted canonical-tree relative paths with SHA256 and byte length for every regular file; validate against the bundle tree and the reviewed allowlist. No undeclared paths or filesystem-supplied permissions. |
 | `counts` | Input entries, candidate claims, reviewed/pending claims and canonical payload bytes. These are recomputed, never trusted for admission. |
 | `claims` | Sorted records described below, covering every transported claim exactly once. No payload claim without provenance and no orphan manifest claim. |
@@ -150,13 +150,43 @@ prose distillation is an unresolved producer contract; fail closed if absent.
 
 Proposed dedupe key is a versioned SHA256 over a length-delimited canonical
 encoding of `(canonical repo, stable source path, entry/row id, output role)`.
-Source commit, transform version and content digest are recorded separately so
+Original source commit, transform version and content digest are recorded
+separately so
 a revision does not accidentally mint a duplicate of the same logical claim.
 Relocation/alias handling needs explicit producer review; no heuristic matching
 by similar text. Exact JSON canonicalization, digest encoding and role vocabulary
-must be frozen with the eventual schema. Array ordering, timestamps and input
-pinning must make repeated builds produce byte-identical `manifest.json`;
-ZIP/Git byte identity is not required when tree and payload digests verify.
+must be frozen with the eventual schema. This proposal chooses **reproducible
+payloads and scratch commits**, retaining exact payload digests and a
+byte-identical full manifest requirement, rather than a variable per-build
+envelope. For identical pinned inputs and build-contract revision, independent
+scratch builds must produce the same scratch commit OID and byte-identical
+`brain.bundle`, `facts.json` and `manifest.json`. Equal canonical trees alone
+prove neither equal commits nor equal bundle bytes; all three member files
+must be compared independently. Only the outer ZIP container may vary in bytes,
+since its bytes are not hashed by this manifest.
+
+The eventual build contract must pin builder/mapper/Git versions, Git object
+format, bundle ref, parent topology, commit author/committer identities and
+timestamps, commit message and headers, and bundle object ordering/packing
+settings. Scratch IDs, canonical serialization, file ordering and metadata,
+manifest ordering and projection serialization must also be deterministic.
+Neither wall-clock build time nor ambient user/Git configuration may enter
+these artifacts. `facts.json` must use an explicit, input-pinned projection
+as-of instant and deterministic ordering/encoding, not the build's current
+time; original source commit timestamps remain provenance, not a substitute
+for pinning scratch commit metadata. The projection instant and build-contract revision
+must be recorded in `inputs`. Import still checks expiry at admission; a
+reproducible artifact does not authorize refreshing expired claims.
+
+These are proposed acceptance requirements, not guarantees of the existing
+exporter or a claimed reproducible builder. The precise byte-reproducible
+serialization/commit/packing recipe remains unresolved and requires review;
+a format that demonstrates only tree equality does not satisfy v1. An ordinary
+Export plus generated manifest must be checked against this contract, not
+assumed compliant. Changing the pinned inputs or build-contract revision can
+change all payload and manifest digests without changing a logical provenance
+key. A retry of a recorded operation must retain its original exact artifact;
+a rebuild with different bytes is a fingerprint mismatch, not the same retry.
 
 ## Additive publication into the default brain
 
@@ -310,14 +340,15 @@ part of HM.2.
 | Design boundary | Required future evidence / unresolved interface |
 | --- | --- |
 | Native dira and HQ-DISTILL-01 producers | Version-pinned `entry.schema.json` mapping, decision/why/alternative attribution, stable provenance identities, current-only distillation, founder review dispositions and canonical original-source citations; no retired gbrain/raw-doc mirroring. |
-| Transfer format | Reviewed JSON schema/canonicalization/path allowlist; existing export payloads plus generated manifest validate; repeated builds have identical manifest; malformed/private/foreign content refuses without target writes. |
+| Transfer format | Reviewed JSON schema/canonicalization/path allowlist and reproducible build recipe; existing export payloads plus generated manifest validate only if they satisfy that recipe. Independent builds of identical pinned inputs and build-contract revision yield the same scratch commit OID and byte-identical bundle, facts and full manifest; compare member bytes, not just trees. Outer ZIP bytes may differ. Malformed/private/foreign content refuses without target writes. |
 | Default-brain additive publisher | Shared writer/process exclusion and whole-batch recovery mechanism; existing claims/preferences preserved, same-key no-op, conflicting revisions refuse; expected merged tree verified through export with secondary field audit. |
 | Operation and allowance adapter | Live account allowance read, counted shortfall, measured VM admission receipt, agreed batch units, ledger evidence and counter reconciliation; no hard-bound claim. |
 | Crash and restore qualification | Kill points around fetch, canonical entry/publication, finalization and lost reply; no partial visible batch or duplicate charge. Later E23 off-host restore rehearsal verifies artifact consistency and accounting separately from ADR017's three-fact restore fence: sealed journal generation, provider-verified old-instance stop, and revocation of all old credentials/sessions. None is supplied here. |
 | Customer upload v2 | Authenticated account/brain-scoped begin/upload/status/commit design only after T23.44 storage admission qualification and separate review. The operator exception cannot be reused as customer-route qualification. |
 
-Chief-architect re-review must resolve the schema, producer identities, whole-batch
-publisher/recovery, lock coverage, batch accounting and retention interfaces
+Chief-architect re-review must resolve the schema, reproducible build recipe,
+producer identities, whole-batch publisher/recovery, lock coverage, batch
+accounting and retention interfaces
 before implementation authority is inferred. This document claims no third-party
 approval, live import, measured corpus/account allowance, round-trip result,
 recovery rehearsal or production acceptance.
