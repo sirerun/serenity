@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -20,6 +21,64 @@ type metadataRoundTrip func(*http.Request) (*http.Response, error)
 func (f metadataRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
 const testMetadataID = "https://client.example/oauth.json"
+
+// Public Codex metadata observed 2026-10-29. This is callback metadata, not
+// account identity, a secret, or an authenticated acceptance receipt.
+const codexMetadataID = "https://chatgpt.com/oauth/codex/5Y2V9NOgLTbc/client.json"
+const codexMetadataDocument = `{"client_id":"https://chatgpt.com/oauth/codex/5Y2V9NOgLTbc/client.json","client_uri":"https://chatgpt.com/codex","application_type":"native","redirect_uris":["http://127.0.0.1/callback/5Y2V9NOgLTbc","http://localhost/callback/5Y2V9NOgLTbc"],"token_endpoint_auth_method":"none","token_endpoint_auth_methods_supported":["none"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"client_name":"Codex","logo_uri":"https://persistent.oaistatic.com/sonic/misc/openai-logo.png"}`
+
+func TestCIMDCodexMetadataAllowsExactLocalhostCallback(t *testing.T) {
+	r := NewCIMDResolver()
+	client, err := r.parseMetadata(codexMetadataID, []byte(codexMetadataDocument))
+	want := []string{"http://127.0.0.1/callback/5Y2V9NOgLTbc", "http://localhost/callback/5Y2V9NOgLTbc"}
+	if err != nil || client.ID != codexMetadataID || client.Name != "Codex" || !reflect.DeepEqual(client.RedirectURIs, want) {
+		t.Fatalf("observed public Codex metadata rejected/changed: client=%+v err=%v", client, err)
+	}
+}
+
+func TestCIMDLocalhostCallbackBoundary(t *testing.T) {
+	for _, raw := range []string{"http://localhost/callback", "http://localhost:1455/callback", "http://127.0.0.1/callback", "http://[::1]:1455/callback"} {
+		if !validMetadataRedirect(raw) {
+			t.Errorf("supported native callback rejected: %s", raw)
+		}
+	}
+	for _, raw := range []string{
+		"http://evil.localhost/callback", "http://localhost.evil/callback", "http://localhost./callback", "http://LOCALHOST/callback",
+		"http://[localhost]/callback", "http://localhost:/callback",
+		"http://8.8.8.8/callback", "http://192.168.1.1/callback", "http://client.example/callback",
+		"http://user@localhost/callback", "ftp://localhost/callback", "file://localhost/callback",
+		"http://localhost:0/callback", "http://localhost:65536/callback", "http://localhost:-1/callback", "http://localhost:bad/callback",
+		"http://localhost/callback#fragment", "http://localhost/callback\n", "http://localhost/call back",
+	} {
+		if validMetadataRedirect(raw) {
+			t.Errorf("unsafe/nonliteral native callback accepted: %q", raw)
+		}
+	}
+}
+
+func TestCIMDLocalhostCallbackDoesNotPermitMetadataFetch(t *testing.T) {
+	if !validMetadataRedirect("http://localhost/callback") {
+		t.Fatal("localhost callback fixture rejected")
+	}
+	if validClientMetadataURL("http://localhost/client.json") {
+		t.Fatal("callback rule admitted HTTP metadata URL")
+	}
+	for _, ip := range []string{"127.0.0.1", "::1"} {
+		dials := 0
+		dial := publicDialContext(func(_ context.Context, _, hostname string) ([]netip.Addr, error) {
+			if hostname != "localhost" {
+				t.Errorf("unexpected metadata hostname %s", hostname)
+			}
+			return []netip.Addr{netip.MustParseAddr(ip)}, nil
+		}, func(context.Context, string, string) (net.Conn, error) {
+			dials++
+			return nil, errors.New("metadata connection must not occur")
+		})
+		if _, err := dial(context.Background(), "tcp", "localhost:443"); err == nil || dials != 0 {
+			t.Fatalf("HTTPS metadata fetch reached loopback: ip=%s dials=%d err=%v", ip, dials, err)
+		}
+	}
+}
 
 func metadataBody(t *testing.T, extra map[string]any) string {
 	t.Helper()
