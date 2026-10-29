@@ -160,8 +160,17 @@ func TestHostedJourneyAndIsolation(t *testing.T) {
 	if e := json.Unmarshal(body, &listed); e != nil {
 		t.Fatal(e)
 	}
-	if len(listed.Result.Tools) != 5 {
+	if len(listed.Result.Tools) != 6 {
 		t.Fatalf("tools: %s", body)
+	}
+	promptToolListed := false
+	for _, tool := range listed.Result.Tools {
+		if tool.Name == "recall_prompt_context" {
+			promptToolListed = true
+		}
+	}
+	if !promptToolListed {
+		t.Fatalf("prompt context tool missing: %s", body)
 	}
 	call(tokenA, sessionA, "remember", map[string]any{"fact": "My launch codeword is silver otter", "provenance": "hosted integration test", "operation_key": "first-memory"})
 	body = call(tokenA, sessionA, "recall", map[string]any{"query": "silver otter", "limit": 10})
