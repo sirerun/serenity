@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -96,10 +98,70 @@ func TestPromptMCPRejectsArgumentsBeforeRecall(t *testing.T) {
 	if called != 0 {
 		t.Fatal("invalid arguments reached governed callback")
 	}
-	for _, kind := range []mcp.FailureKind{mcp.InvalidArguments, mcp.ExecutionFailed} {
-		if decodeNativeTool(t, tool.Failure(kind)).Decision != "block" {
-			t.Fatal("MCP schema/dispatch failure lost native block")
-		}
+}
+
+func TestPromptMCPDispatchErrorBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		args    string
+		panic   bool
+		isError bool
+	}{
+		{name: "schema rejection", args: `{}`, isError: true},
+		{name: "execution panic", args: `{"query":"query"}`, panic: true, isError: true},
+		{name: "handler domain failure", args: `{"query":"query"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var callback GovernedRecall
+			if tc.panic {
+				callback = func(context.Context, Binding, json.RawMessage) (VerifiedRecall, error) {
+					panic("sensitive diagnostic")
+				}
+			}
+			server, err := mcp.New("fixture", []mcp.Tool{NewPromptContextTool(testBinding, callback)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			handler := mcp.NewHTTPHandler(server)
+			defer handler.Close()
+			sessionID := ""
+			post := func(body string) *httptest.ResponseRecorder {
+				r := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+				r.Header.Set("Content-Type", "application/json")
+				if sessionID != "" {
+					r.Header.Set(mcp.SessionIDHeader, sessionID)
+					r.Header.Set(mcp.ProtocolVersionHeader, mcp.ProtocolVersion)
+				}
+				w := httptest.NewRecorder()
+				handler.ServeHTTP(w, r)
+				return w
+			}
+			initialized := post(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"fixture","version":"1"}}}`)
+			sessionID = initialized.Header().Get(mcp.SessionIDHeader)
+			if initialized.Code != http.StatusOK || sessionID == "" {
+				t.Fatalf("initialization failed: %s", initialized.Body.String())
+			}
+			if ready := post(`{"jsonrpc":"2.0","method":"notifications/initialized"}`); ready.Code != http.StatusAccepted {
+				t.Fatalf("ready notification rejected: %s", ready.Body.String())
+			}
+			response := post(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"recall_prompt_context","arguments":` + tc.args + `}}`)
+			var frame struct {
+				Result *mcp.Result     `json:"result"`
+				Error  json.RawMessage `json:"error"`
+			}
+			if response.Code != http.StatusOK || json.Unmarshal(response.Body.Bytes(), &frame) != nil || frame.Result == nil || len(frame.Error) != 0 {
+				t.Fatalf("expected MCP tool result: %s", response.Body.String())
+			}
+			if frame.Result.IsError != tc.isError || len(frame.Result.Content) != 1 || frame.Result.Content[0].Type != "text" {
+				t.Fatalf("dispatch changed failure boundary: %+v", frame.Result)
+			}
+			var native output
+			if json.Unmarshal([]byte(frame.Result.Content[0].Text), &native) != nil || native.Decision != "block" || strings.Contains(response.Body.String(), "sensitive diagnostic") {
+				t.Fatalf("expected sanitized native block payload: %s", response.Body.String())
+			}
+			// Even though the text is blocking JSON, IsError=true means a native
+			// host may discard it and fail open. Only the domain row is ordinary.
+		})
 	}
 }
 
