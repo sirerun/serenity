@@ -370,6 +370,11 @@ func validMetadataRedirect(raw string) bool {
 	if u.Scheme == "https" {
 		return true
 	}
+	// Callback compatibility only; metadata fetching still requires public IPs.
+	// Match the literal native hostname, without suffixes or bracket aliases.
+	if u.Scheme == "http" && u.Hostname() == "localhost" && (u.Host == "localhost" || (u.Port() != "" && u.Host == "localhost:"+u.Port())) {
+		return true
+	}
 	ip, err := netip.ParseAddr(u.Hostname())
 	return u.Scheme == "http" && err == nil && ip.IsLoopback()
 }
