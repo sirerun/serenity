@@ -62,6 +62,7 @@ func newConnectCmd() *cobra.Command {
 	addCredentialProfileFlag(cmd)
 	cmd.MarkFlagsMutuallyExclusive("rotate-token", "provision-token")
 	cmd.AddCommand(newConnectClaudeCmd())
+	cmd.AddCommand(newConnectHostedCmd())
 	return cmd
 }
 
