@@ -112,7 +112,7 @@ func TestPromptMCPFailsClosedOnUnverifiedAndMalformedRecall(t *testing.T) {
 		strings.Replace(emptyRecall, `"budget_tokens":512`, `"budget_tokens":1`, 1),
 		strings.Replace(emptyRecall, `"dropped_count":0`, `"dropped_count":-1`, 1),
 		strings.Replace(emptyRecall, `"facts":[]`, `"facts":[{"id":1,"fact":"text"}]`, 1),
-		`{"protocol_version":1,"facts":[{"id":1,"fact_id":"citation","fact":"` + strings.Repeat("<", 3000) + `"}],"total":1,"budget_tokens":512,"budget_used":512,"dropped_count":0}`,
+		`{"protocol_version":1,"facts":[{"id":1,"fact_id":"citation","fact":"` + strings.Repeat("<", 3000) + `","provenance":"source"}],"total":1,"budget_tokens":512,"budget_used":512,"dropped_count":0}`,
 		strings.Repeat(" ", maxRecallResultBytes+1),
 	} {
 		tool := NewPromptContextTool(testBinding, func(context.Context, Binding, json.RawMessage) (VerifiedRecall, error) {
