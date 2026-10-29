@@ -135,7 +135,7 @@ func renderPromptRecall(result mcp.Result) mcp.Result {
 		return promptToolBlock("invalid recall accounting")
 	}
 	for _, fact := range *env.Facts {
-		if fact.ID <= 0 || !validText(fact.FactID) || !validText(fact.Fact) {
+		if fact.ID <= 0 || !validText(fact.FactID) || !validText(fact.Fact) || !validText(fact.Provenance) {
 			return promptToolBlock("missing fact citation")
 		}
 	}
