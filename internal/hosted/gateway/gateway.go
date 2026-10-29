@@ -16,7 +16,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
+	"github.com/sirerun/serenity/internal/agentmemory"
 	"github.com/sirerun/serenity/internal/hosted/contracts"
 	hoststore "github.com/sirerun/serenity/internal/hosted/store"
 	brainstore "github.com/sirerun/serenity/internal/store"
@@ -43,6 +45,12 @@ type sessionBinding struct {
 	last       time.Time
 }
 type Gateway struct {
+	// PromptRecallPolicy is trusted service integration, never tool input. Nil
+	// keeps prompt recall unavailable. Implementations must verify current host
+	// enrollment/private-session policy and return an approved redacted query.
+	// This change wires no production policy or automatic host enrollment.
+	PromptRecallPolicy func(context.Context, credential.Binding, string, string) (string, error)
+
 	EpisodeArchiveEnabled  bool
 	EpisodeSyntheticBrains []string
 	episodeQualification   *episodeQualification
@@ -167,6 +175,9 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// A refreshed access token keeps the grant/session identity, but
 				// must use the current request token, never a captured old token.
 				current, _ := ctx.Value(requestCredentialKey{}).(string)
+				if name == agentmemory.PromptToolName {
+					return g.promptContextTool(current, binding).Handler(ctx, args)
+				}
 				return g.call(ctx, current, name, args)
 			}
 		}
@@ -205,7 +216,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Tools []json.RawMessage `json:"tools"`
 		} `json:"result"`
 	}
-	if method == "tools/list" && recorder.status == 200 && json.Unmarshal(recorder.body.Bytes(), &listed) == nil && len(listed.Result.Tools) == 5 {
+	if method == "tools/list" && recorder.status == 200 && json.Unmarshal(recorder.body.Bytes(), &listed) == nil && len(listed.Result.Tools) == 6 {
 		_ = g.record(r.Context(), binding, "connected")
 	}
 	if r.Method == http.MethodDelete && session != "" {
@@ -250,6 +261,7 @@ func (g *Gateway) bootstrapTools(ctx context.Context, raw string, expected crede
 	defer release()
 	tools := make([]mcp.Tool, len(runtime.Tools))
 	copy(tools, runtime.Tools)
+	tools = append(tools, g.promptContextTool(raw, current))
 	return tools, nil
 }
 
@@ -325,7 +337,95 @@ func (g *Gateway) call(ctx context.Context, raw, name string, args json.RawMessa
 	if err != nil {
 		return failure("scope_denied", time.Time{}), nil
 	}
+	if name == agentmemory.PromptToolName {
+		return g.promptContextTool(raw, binding).Handler(ctx, args)
+	}
 	return g.callBound(ctx, binding, name, args)
+}
+
+// promptContextTool runs before callBound takes maintenance/account/runtime
+// locks. Only its approved callback re-enters the existing recall path once.
+func (g *Gateway) promptContextTool(raw string, expected credential.Binding) mcp.Tool {
+	trusted := agentmemory.Binding{Account: expected.AccountID, Brain: expected.BrainID, Workspace: "hosted-brain:" + expected.BrainID}
+	return agentmemory.NewPromptContextTool(trusted, func(ctx context.Context, requested agentmemory.Binding, args json.RawMessage) (agentmemory.VerifiedRecall, error) {
+		var unavailable agentmemory.VerifiedRecall
+		if requested != trusted || g.PromptRecallPolicy == nil || g.Meter == nil {
+			return unavailable, errors.New("prompt recall policy unavailable")
+		}
+		current, err := g.verifyPromptBinding(ctx, raw, expected)
+		if err != nil {
+			return unavailable, err
+		}
+		var input struct {
+			Query        string `json:"query"`
+			SessionID    string `json:"session_id,omitempty"`
+			BudgetTokens int    `json:"budget_tokens"`
+			Limit        int    `json:"limit"`
+		}
+		if json.Unmarshal(args, &input) != nil {
+			return unavailable, errors.New("invalid prompt recall arguments")
+		}
+		query, err := g.PromptRecallPolicy(ctx, current, input.Query, input.SessionID)
+		if err != nil || !utf8.ValidString(query) || strings.TrimSpace(query) == "" || len(query) > agentmemory.PromptQueryBytes {
+			return unavailable, errors.New("prompt recall policy denied")
+		}
+		input.Query = query
+		approvedArgs, err := json.Marshal(input)
+		if err != nil {
+			return unavailable, err
+		}
+		// Recheck the exact expected binding after policy evaluation. Calling
+		// the ordinary authorized/metered path with this binding avoids using
+		// stale authority or adopting a different grant returned by a refresh.
+		current, err = g.verifyPromptBinding(ctx, raw, expected)
+		if err != nil {
+			return unavailable, err
+		}
+		result, err := g.callBound(ctx, current, "recall", approvedArgs)
+		if err != nil {
+			return unavailable, err
+		}
+		if _, err = g.verifyPromptBinding(ctx, raw, expected); err != nil {
+			return unavailable, err
+		}
+		return agentmemory.VerifiedRecall{Binding: trusted, Verified: true, Result: result}, nil
+	})
+}
+
+func (g *Gateway) verifyPromptBinding(ctx context.Context, raw string, expected credential.Binding) (credential.Binding, error) {
+	current, err := g.Issuer.Verify(ctx, raw)
+	if err != nil || current.AccountID != expected.AccountID || current.BrainID != expected.BrainID || current.CredentialID != expected.CredentialID || current.Generation != expected.Generation || current.PartnerID != expected.PartnerID {
+		return credential.Binding{}, errors.New("prompt recall binding unavailable")
+	}
+	read := false
+	for _, scope := range current.Scopes {
+		if scope == "memory:read" {
+			read = true
+		}
+	}
+	if !read {
+		return credential.Binding{}, errors.New("prompt recall read scope unavailable")
+	}
+	for _, scope := range expected.Scopes {
+		found := false
+		for _, actual := range current.Scopes {
+			if scope == actual {
+				found = true
+			}
+		}
+		if !found {
+			return credential.Binding{}, errors.New("prompt recall scope changed")
+		}
+	}
+	brain, err := g.Issuer.Store.BrainByID(ctx, current.AccountID, current.BrainID)
+	if err != nil || brain.State != "ready" {
+		return credential.Binding{}, errors.New("prompt recall brain unavailable")
+	}
+	var status string
+	if err := g.Issuer.Store.DB().QueryRowContext(ctx, `SELECT status FROM accounts WHERE id=?`, current.AccountID).Scan(&status); err != nil || status != "active" {
+		return credential.Binding{}, errors.New("prompt recall account unavailable")
+	}
+	return current, nil
 }
 
 func (g *Gateway) callBound(ctx context.Context, binding credential.Binding, name string, args json.RawMessage) (result mcp.Result, err error) {
