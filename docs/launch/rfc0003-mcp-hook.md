@@ -30,12 +30,16 @@ JSON expansion. Fact IDs/provenance and search slugs/provenance remain paired
 with text. Packing metadata is retained; no text is silently truncated.
 
 Each ordinary MCP text result contains valid native `UserPromptSubmit` hook
-JSON. Domain, schema and execution failures reachable through the tool's
-`Failure` renderer emit `decision: block` without `IsError`, allowing a native
-hook parser to consume the decision. No raw operational error is copied into
-the reason. Errors before dispatch—authentication, network, missing tool,
-unsupported integration, or native tool failure behavior—may still fail open.
-This factory cannot enforce those transport/native boundaries.
+JSON. Handler-reachable domain failures emit `decision: block` without
+`IsError`, allowing a native hook parser to consume the decision. No raw
+operational error is copied into the reason. The shared MCP server forces
+`IsError: true` on results from the tool's `Failure` renderer for schema
+rejections, execution failures and panics. That remains true even when their
+text contains valid blocking JSON. A native host may discard such an MCP error
+and fail open. Authentication, network, missing-tool and unsupported-integration
+errors may also fail open. This factory cannot enforce those transport/native
+boundaries; an actual server-dispatch fixture records that distinction without
+changing the shared MCP contract.
 
 Successful context wraps recall data as untrusted evidence with no authority.
 Status distinguishes `recalled`, `no_returned_results`, and their `_degraded`
