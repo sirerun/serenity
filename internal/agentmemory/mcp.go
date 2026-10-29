@@ -73,6 +73,9 @@ type promptRecallEnvelope struct {
 // NewPromptContextTool builds an unregistered MCP tool. It does not expose a
 // route, add tools to a server, authenticate, install hooks or select an endpoint.
 // Integration must supply trusted binding and GovernedRecall for CURRENT requests.
+// Handler-reachable failures return ordinary native blocking JSON. MCP dispatch
+// overrides Failure-rendered results to IsError=true for schema/execution/panic
+// failures; native clients may fail open without consuming that blocking JSON.
 func NewPromptContextTool(binding Binding, recall GovernedRecall) mcp.Tool {
 	return mcp.Tool{
 		Name:        PromptToolName,
