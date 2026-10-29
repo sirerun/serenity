@@ -72,7 +72,7 @@ func TestConnectHostedRejectsInvalidInvocation(t *testing.T) {
 
 func TestConnectHostedDoesNotTouchBrainOrHostConfiguration(t *testing.T) {
 	command, _, err := newRootCmd().Find([]string{"connect", "hosted"})
-	if err != nil || commandOwnsWriter(command) {
+	if err != nil || commandOwnsBrain(command) {
 		t.Fatalf("connection planning must not acquire a writer: %v", err)
 	}
 	home := t.TempDir()
