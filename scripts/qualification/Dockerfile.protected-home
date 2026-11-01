@@ -1,0 +1,6 @@
+# PROPOSAL ONLY: not built, pulled or published. No runtime root/capability change.
+FROM docker.io/library/golang@sha256:3d79ef488855a5ad990b346addf552d6671f20ca2710ad29da7232e0326785de
+USER 0
+RUN install -d -m 0700 -o 1000 -g 1000 /qualification-home
+ENV HOME=/qualification-home
+USER 1000:1000
