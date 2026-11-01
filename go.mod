@@ -15,7 +15,7 @@ require (
 	github.com/aws/smithy-go v1.28.5
 	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/fsnotify/fsnotify v1.10.1
-	github.com/kazi-org/dira v0.2.0
+	github.com/kazi-org/dira v0.2.1-0.20261101212829-cd0ec6c16d81
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.10.2
 	github.com/tiktoken-go/tokenizer v0.8.1
