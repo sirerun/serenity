@@ -1,0 +1,1004 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Conditions": {
+    "HasJournalIncarnation": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "JournalIncarnation"
+            },
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  "Description": "UNACTIVATED reviewed-source candidate; journal authority and separately pinned release signing. Requires exact owner activation approval.",
+  "Outputs": {
+    "GatewayARN": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Gateway",
+          "Arn"
+        ]
+      }
+    },
+    "GatewayVersionARN": {
+      "Value": {
+        "Ref": "GatewayVersionCIMD6efadaeD74d211e"
+      }
+    },
+    "JournalARN": {
+      "Value": {
+        "Fn::GetAtt": [
+          "Journal",
+          "Arn"
+        ]
+      }
+    },
+    "OwnerEndpoint": {
+      "Value": {
+        "Fn::Sub": "https://${API}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod/owner"
+      }
+    },
+    "RuntimeEndpoint": {
+      "Value": {
+        "Fn::Sub": "https://${API}.execute-api.${AWS::Region}.${AWS::URLSuffix}/prod/runtime"
+      }
+    },
+    "RuntimeInvokeARN": {
+      "Value": {
+        "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${API}/prod/POST/runtime"
+      }
+    },
+    "SigningKeyARN": {
+      "Value": {
+        "Fn::GetAtt": [
+          "ReleaseKey",
+          "Arn"
+        ]
+      }
+    },
+    "WitnessBucket": {
+      "Value": {
+        "Ref": "Witness"
+      }
+    }
+  },
+  "Parameters": {
+    "ApprovedBuilds": {
+      "Description": "Canonical JSON measured executable SHA256 to source commit map",
+      "Type": "String"
+    },
+    "ArtifactBucket": {
+      "Description": "Existing private versioned bucket containing independently verified Lambda zip",
+      "Type": "String"
+    },
+    "ArtifactCodeSHA256": {
+      "Default": "0pK9jeF0ddtZda5eVEK+7AzvDCM7r74RuSvdqVYC6HY=",
+      "Description": "Base64 SHA256 of exact reviewed zip",
+      "MaxLength": 44,
+      "MinLength": 44,
+      "Type": "String"
+    },
+    "ArtifactKey": {
+      "Type": "String"
+    },
+    "ArtifactVersion": {
+      "MinLength": 1,
+      "Type": "String"
+    },
+    "JournalIncarnation": {
+      "AllowedPattern": "^$|recovery-[a-f0-9]{8}$",
+      "Default": "recovery-20261011",
+      "Description": "Empty retains the original generated table name; reviewed recovery incarnation replaces only the journal and retains its predecessor",
+      "Type": "String"
+    },
+    "KeyAdministrator": {
+      "Description": "Exact owner administrator ARN",
+      "Type": "String"
+    },
+    "Lineage": {
+      "AllowedPattern": "[a-f0-9]{64}",
+      "Type": "String"
+    },
+    "Namespace": {
+      "AllowedPattern": "[a-z0-9-]{1,64}",
+      "Default": "serenity-hosted-production",
+      "Type": "String"
+    },
+    "OwnerCallerID": {
+      "Description": "Exact IAM unique caller ID",
+      "Type": "String"
+    },
+    "OwnerPrincipal": {
+      "Description": "Explicit owner IAM principal; no wildcard",
+      "Type": "String"
+    },
+    "RuntimeCallerID": {
+      "Description": "Exact IAM role unique ID colon instance session",
+      "Type": "String"
+    },
+    "RuntimePrincipal": {
+      "Description": "Exact STS assumed role session ARN for enrolled instance",
+      "Type": "String"
+    },
+    "RuntimeRoleARN": {
+      "AllowedPattern": "arn:aws:iam::[0-9]{12}:role/.+",
+      "Type": "String"
+    },
+    "RuntimeRoleName": {
+      "Description": "Exact existing instance role name; activation adds scoped invoke and explicit direct-authority denial",
+      "Type": "String"
+    }
+  },
+  "Resources": {
+    "API": {
+      "Properties": {
+        "EndpointConfiguration": {
+          "Types": [
+            "REGIONAL"
+          ]
+        },
+        "Name": "serenity-journal-authority",
+        "Policy": {
+          "Statement": [
+            {
+              "Action": "execute-api:Invoke",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Ref": "RuntimeRoleARN"
+                }
+              },
+              "Resource": "execute-api:/prod/POST/runtime"
+            },
+            {
+              "Action": "execute-api:Invoke",
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Ref": "OwnerPrincipal"
+                }
+              },
+              "Resource": "execute-api:/prod/POST/owner"
+            },
+            {
+              "Action": "execute-api:Invoke",
+              "Condition": {
+                "ArnNotEquals": {
+                  "aws:PrincipalArn": [
+                    {
+                      "Ref": "RuntimeRoleARN"
+                    },
+                    {
+                      "Ref": "OwnerPrincipal"
+                    }
+                  ]
+                }
+              },
+              "Effect": "Deny",
+              "Principal": "*",
+              "Resource": "execute-api:/*"
+            }
+          ],
+          "Version": "2012-10-17"
+        }
+      },
+      "Type": "AWS::ApiGateway::RestApi"
+    },
+    "Deployment38cf1dcb7bfed6a4c321097f": {
+      "DependsOn": [
+        "RuntimeMethod",
+        "OwnerMethod"
+      ],
+      "Properties": {
+        "Description": {
+          "Ref": "ArtifactCodeSHA256"
+        },
+        "RestApiId": {
+          "Ref": "API"
+        }
+      },
+      "Type": "AWS::ApiGateway::Deployment"
+    },
+    "DeploymentEpisodeReplay30919c2fe1581dcead6b": {
+      "DependsOn": [
+        "RuntimeMethod",
+        "OwnerMethod"
+      ],
+      "Properties": {
+        "Description": "Reviewed episode-aware authority code and measured host profiles",
+        "RestApiId": {
+          "Ref": "API"
+        }
+      },
+      "Type": "AWS::ApiGateway::Deployment"
+    },
+    "DeploymentEpisodes8242459bc6a88d880813": {
+      "DependsOn": [
+        "RuntimeMethod",
+        "OwnerMethod"
+      ],
+      "Properties": {
+        "Description": "Reviewed default-off episodes and schema10 fallback allowlist",
+        "RestApiId": {
+          "Ref": "API"
+        }
+      },
+      "Type": "AWS::ApiGateway::Deployment"
+    },
+    "DeploymentGoverned972d3692": {
+      "DependsOn": [
+        "RuntimeMethod",
+        "OwnerMethod"
+      ],
+      "Properties": {
+        "Description": "Governed memory release 972d3692",
+        "RestApiId": {
+          "Ref": "API"
+        }
+      },
+      "Type": "AWS::ApiGateway::Deployment"
+    },
+    "DeploymentHandoff1319479700f2": {
+      "DependsOn": [
+        "RuntimeMethod",
+        "OwnerMethod"
+      ],
+      "Properties": {
+        "Description": "Browser handoff release 1319479700f2feb5df036bdada8565d13b8329be",
+        "RestApiId": {
+          "Ref": "API"
+        }
+      },
+      "Type": "AWS::ApiGateway::Deployment"
+    },
+    "DeploymentOAuthDa5c346": {
+      "DependsOn": [
+        "RuntimeMethod",
+        "OwnerMethod"
+      ],
+      "Properties": {
+        "Description": "OAuth interoperability release da5c346",
+        "RestApiId": {
+          "Ref": "API"
+        }
+      },
+      "Type": "AWS::ApiGateway::Deployment"
+    },
+    "Gateway": {
+      "Properties": {
+        "Architectures": [
+          "arm64"
+        ],
+        "Code": {
+          "S3Bucket": {
+            "Ref": "ArtifactBucket"
+          },
+          "S3Key": {
+            "Ref": "ArtifactKey"
+          },
+          "S3ObjectVersion": {
+            "Ref": "ArtifactVersion"
+          }
+        },
+        "Description": "Reviewed CIMD source 6efadae23a9572529ad12309ce230ee83ac18b6c executable d74d211e3289be433086ffbeb3808226ad0d262c73b6e11c263906d1a38c927a",
+        "Environment": {
+          "Variables": {
+            "ACCOUNT_ID": {
+              "Ref": "AWS::AccountId"
+            },
+            "API_DOMAIN": {
+              "Fn::Sub": "${API}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+            },
+            "API_ID": {
+              "Ref": "API"
+            },
+            "APPROVED_BUILDS": {
+              "Ref": "ApprovedBuilds"
+            },
+            "AUTHORITY_LINEAGE": {
+              "Ref": "Lineage"
+            },
+            "AUTHORITY_NAMESPACE": {
+              "Ref": "Namespace"
+            },
+            "AUTHORITY_TABLE": {
+              "Ref": "Journal"
+            },
+            "AUTHORITY_TABLE_ARN": {
+              "Fn::GetAtt": [
+                "Journal",
+                "Arn"
+              ]
+            },
+            "OWNER_CALLER_ID": {
+              "Ref": "OwnerCallerID"
+            },
+            "OWNER_PRINCIPAL": {
+              "Ref": "OwnerPrincipal"
+            },
+            "RUNTIME_CALLER_ID": {
+              "Ref": "RuntimeCallerID"
+            },
+            "RUNTIME_PRINCIPAL": {
+              "Ref": "RuntimePrincipal"
+            },
+            "WITNESS_BUCKET": {
+              "Ref": "Witness"
+            }
+          }
+        },
+        "Handler": "bootstrap",
+        "LoggingConfig": {
+          "LogGroup": {
+            "Ref": "GatewayLogs"
+          }
+        },
+        "MemorySize": 256,
+        "ReservedConcurrentExecutions": 0,
+        "Role": {
+          "Fn::GetAtt": [
+            "GatewayRole",
+            "Arn"
+          ]
+        },
+        "Runtime": "provided.al2023",
+        "Timeout": 25
+      },
+      "Type": "AWS::Lambda::Function"
+    },
+    "GatewayLogs": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "RetentionInDays": 14
+      },
+      "Type": "AWS::Logs::LogGroup"
+    },
+    "GatewayRole": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              }
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "Policies": [
+          {
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Action": [
+                    "dynamodb:GetItem",
+                    "dynamodb:Query",
+                    "dynamodb:PutItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:ConditionCheckItem"
+                  ],
+                  "Condition": {
+                    "ForAllValues:StringEquals": {
+                      "dynamodb:LeadingKeys": [
+                        {
+                          "Ref": "Namespace"
+                        }
+                      ]
+                    }
+                  },
+                  "Effect": "Allow",
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Journal",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Action": [
+                    "s3:GetObject",
+                    "s3:PutObject"
+                  ],
+                  "Effect": "Allow",
+                  "Resource": {
+                    "Fn::Sub": "${Witness.Arn}/journal/*"
+                  }
+                },
+                {
+                  "Action": "s3:ListBucket",
+                  "Effect": "Allow",
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "Witness",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Effect": "Allow",
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "GatewayLogs",
+                      "Arn"
+                    ]
+                  }
+                }
+              ],
+              "Version": "2012-10-17"
+            },
+            "PolicyName": "ExactJournalAndWitness"
+          }
+        ]
+      },
+      "Type": "AWS::IAM::Role"
+    },
+    "GatewayVersion38cf1dcb7bfed6a4c321097f": {
+      "Properties": {
+        "CodeSha256": {
+          "Ref": "ArtifactCodeSHA256"
+        },
+        "FunctionName": {
+          "Ref": "Gateway"
+        }
+      },
+      "Type": "AWS::Lambda::Version"
+    },
+    "GatewayVersionEpisodeReplay30919c2fe1581dcead6b": {
+      "Properties": {
+        "CodeSha256": "Hc6ta5gLIUfkxbzWpDapvYbUi9TLSiRPxR74pXifTzU=",
+        "Description": "Episode replay and compatible safety source 30919c2fe1581ff2c0e31475dc0b49cb2fd0926a",
+        "FunctionName": {
+          "Ref": "Gateway"
+        }
+      },
+      "Type": "AWS::Lambda::Version"
+    },
+    "GatewayVersionEpisodes8242459bc6a88d880813": {
+      "Properties": {
+        "CodeSha256": {
+          "Ref": "ArtifactCodeSHA256"
+        },
+        "Description": "Default-off episodes 8242459bc6a8689d81c96d0b66ed7f751a0de090 and schema10 fallback 92b785fe6da569fa537b7ec92fb4a14197c8c3ae",
+        "FunctionName": {
+          "Ref": "Gateway"
+        }
+      },
+      "Type": "AWS::Lambda::Version"
+    },
+    "GatewayVersionGoverned972d3692": {
+      "Properties": {
+        "CodeSha256": {
+          "Ref": "ArtifactCodeSHA256"
+        },
+        "Description": "Governed memory release 972d3692",
+        "FunctionName": {
+          "Ref": "Gateway"
+        }
+      },
+      "Type": "AWS::Lambda::Version"
+    },
+    "GatewayVersionHandoff1319479700f2": {
+      "Properties": {
+        "CodeSha256": {
+          "Ref": "ArtifactCodeSHA256"
+        },
+        "Description": "Browser handoff release 1319479700f2feb5df036bdada8565d13b8329be",
+        "FunctionName": {
+          "Ref": "Gateway"
+        }
+      },
+      "Type": "AWS::Lambda::Version"
+    },
+    "GatewayVersionOAuthDa5c346": {
+      "Properties": {
+        "CodeSha256": {
+          "Ref": "ArtifactCodeSHA256"
+        },
+        "Description": "OAuth interoperability release da5c346",
+        "FunctionName": {
+          "Ref": "Gateway"
+        }
+      },
+      "Type": "AWS::Lambda::Version"
+    },
+    "Journal": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "AttributeDefinitions": [
+          {
+            "AttributeName": "pk",
+            "AttributeType": "S"
+          },
+          {
+            "AttributeName": "sk",
+            "AttributeType": "S"
+          }
+        ],
+        "BillingMode": "PAY_PER_REQUEST",
+        "DeletionProtectionEnabled": true,
+        "KeySchema": [
+          {
+            "AttributeName": "pk",
+            "KeyType": "HASH"
+          },
+          {
+            "AttributeName": "sk",
+            "KeyType": "RANGE"
+          }
+        ],
+        "OnDemandThroughput": {
+          "MaxReadRequestUnits": 1000,
+          "MaxWriteRequestUnits": 1000
+        },
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true
+        },
+        "SSESpecification": {
+          "SSEEnabled": true
+        },
+        "TableName": {
+          "Fn::If": [
+            "HasJournalIncarnation",
+            {
+              "Fn::Sub": "${AWS::StackName}-journal-${JournalIncarnation}"
+            },
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        }
+      },
+      "Type": "AWS::DynamoDB::Table",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "OwnerInvoke": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "GatewayVersionEpisodes8242459bc6a88d880813"
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceAccount": {
+          "Ref": "AWS::AccountId"
+        },
+        "SourceArn": {
+          "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${API}/prod/POST/owner"
+        }
+      },
+      "Type": "AWS::Lambda::Permission"
+    },
+    "OwnerInvokeEpisodeReplay30919c2fe158": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "GatewayVersionEpisodeReplay30919c2fe1581dcead6b"
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceAccount": {
+          "Ref": "AWS::AccountId"
+        },
+        "SourceArn": {
+          "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${API}/prod/POST/owner"
+        }
+      },
+      "Type": "AWS::Lambda::Permission"
+    },
+    "OwnerMethod": {
+      "Properties": {
+        "AuthorizationType": "AWS_IAM",
+        "HttpMethod": "POST",
+        "Integration": {
+          "IntegrationHttpMethod": "POST",
+          "Type": "AWS_PROXY",
+          "Uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GatewayVersionCIMD6efadaeD74d211e}/invocations"
+          }
+        },
+        "ResourceId": {
+          "Ref": "OwnerResource"
+        },
+        "RestApiId": {
+          "Ref": "API"
+        }
+      },
+      "Type": "AWS::ApiGateway::Method"
+    },
+    "OwnerResource": {
+      "Properties": {
+        "ParentId": {
+          "Fn::GetAtt": [
+            "API",
+            "RootResourceId"
+          ]
+        },
+        "PathPart": "owner",
+        "RestApiId": {
+          "Ref": "API"
+        }
+      },
+      "Type": "AWS::ApiGateway::Resource"
+    },
+    "ReleaseKey": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "Description": "Serenity explicit release manifest signing only",
+        "KeyPolicy": {
+          "Statement": [
+            {
+              "Action": [
+                "kms:DescribeKey",
+                "kms:GetKeyPolicy",
+                "kms:PutKeyPolicy",
+                "kms:EnableKey",
+                "kms:DisableKey",
+                "kms:ScheduleKeyDeletion",
+                "kms:CancelKeyDeletion",
+                "kms:TagResource",
+                "kms:UntagResource",
+                "kms:ListResourceTags"
+              ],
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Ref": "KeyAdministrator"
+                }
+              },
+              "Resource": "*",
+              "Sid": "OwnerAdministration"
+            },
+            {
+              "Action": [
+                "kms:Sign",
+                "kms:GetPublicKey"
+              ],
+              "Condition": {
+                "StringEqualsIfExists": {
+                  "kms:SigningAlgorithm": "ECDSA_SHA_256"
+                }
+              },
+              "Effect": "Allow",
+              "Principal": {
+                "AWS": {
+                  "Ref": "OwnerPrincipal"
+                }
+              },
+              "Resource": "*",
+              "Sid": "OwnerReleaseSigning"
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "KeySpec": "ECC_NIST_P256",
+        "KeyUsage": "SIGN_VERIFY"
+      },
+      "Type": "AWS::KMS::Key",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "RuntimeAuthorityBoundary": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "execute-api:Invoke",
+              "Effect": "Allow",
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${API}/prod/POST/runtime"
+              }
+            },
+            {
+              "Action": "dynamodb:*",
+              "Effect": "Deny",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "Journal",
+                  "Arn"
+                ]
+              }
+            },
+            {
+              "Action": "s3:*",
+              "Effect": "Deny",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "Witness",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${Witness.Arn}/*"
+                }
+              ]
+            },
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Deny",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "Gateway",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${Gateway.Arn}:*"
+                }
+              ]
+            },
+            {
+              "Action": "kms:Sign",
+              "Effect": "Deny",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "ReleaseKey",
+                  "Arn"
+                ]
+              }
+            }
+          ],
+          "Version": "2012-10-17"
+        },
+        "PolicyName": "SerenityAuthorityBrokerOnly",
+        "Roles": [
+          {
+            "Ref": "RuntimeRoleName"
+          }
+        ]
+      },
+      "Type": "AWS::IAM::Policy"
+    },
+    "RuntimeInvoke": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "GatewayVersionEpisodes8242459bc6a88d880813"
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceAccount": {
+          "Ref": "AWS::AccountId"
+        },
+        "SourceArn": {
+          "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${API}/prod/POST/runtime"
+        }
+      },
+      "Type": "AWS::Lambda::Permission"
+    },
+    "RuntimeInvokeEpisodeReplay30919c2fe158": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "GatewayVersionEpisodeReplay30919c2fe1581dcead6b"
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceAccount": {
+          "Ref": "AWS::AccountId"
+        },
+        "SourceArn": {
+          "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${API}/prod/POST/runtime"
+        }
+      },
+      "Type": "AWS::Lambda::Permission"
+    },
+    "RuntimeMethod": {
+      "Properties": {
+        "AuthorizationType": "AWS_IAM",
+        "HttpMethod": "POST",
+        "Integration": {
+          "IntegrationHttpMethod": "POST",
+          "Type": "AWS_PROXY",
+          "Uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GatewayVersionCIMD6efadaeD74d211e}/invocations"
+          }
+        },
+        "ResourceId": {
+          "Ref": "RuntimeResource"
+        },
+        "RestApiId": {
+          "Ref": "API"
+        }
+      },
+      "Type": "AWS::ApiGateway::Method"
+    },
+    "RuntimeResource": {
+      "Properties": {
+        "ParentId": {
+          "Fn::GetAtt": [
+            "API",
+            "RootResourceId"
+          ]
+        },
+        "PathPart": "runtime",
+        "RestApiId": {
+          "Ref": "API"
+        }
+      },
+      "Type": "AWS::ApiGateway::Resource"
+    },
+    "Stage": {
+      "Properties": {
+        "DeploymentId": {
+          "Ref": "DeploymentCIMD6efadaeD74d211e"
+        },
+        "MethodSettings": [
+          {
+            "DataTraceEnabled": false,
+            "HttpMethod": "*",
+            "ResourcePath": "/*",
+            "ThrottlingBurstLimit": 200,
+            "ThrottlingRateLimit": 100
+          }
+        ],
+        "RestApiId": {
+          "Ref": "API"
+        },
+        "StageName": "prod"
+      },
+      "Type": "AWS::ApiGateway::Stage"
+    },
+    "Witness": {
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        },
+        "OwnershipControls": {
+          "Rules": [
+            {
+              "ObjectOwnership": "BucketOwnerEnforced"
+            }
+          ]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "VersioningConfiguration": {
+          "Status": "Enabled"
+        }
+      },
+      "Type": "AWS::S3::Bucket",
+      "UpdateReplacePolicy": "Retain"
+    },
+    "WitnessPolicy": {
+      "Properties": {
+        "Bucket": {
+          "Ref": "Witness"
+        },
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "s3:*",
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              },
+              "Effect": "Deny",
+              "Principal": "*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "Witness",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::Sub": "${Witness.Arn}/*"
+                }
+              ],
+              "Sid": "TLSOnly"
+            },
+            {
+              "Action": [
+                "s3:PutObject"
+              ],
+              "Condition": {
+                "ArnNotEquals": {
+                  "aws:PrincipalArn": {
+                    "Fn::GetAtt": [
+                      "GatewayRole",
+                      "Arn"
+                    ]
+                  }
+                }
+              },
+              "Effect": "Deny",
+              "Principal": "*",
+              "Resource": {
+                "Fn::Sub": "${Witness.Arn}/*"
+              },
+              "Sid": "OnlyGatewayWrites"
+            },
+            {
+              "Action": [
+                "s3:DeleteObject",
+                "s3:DeleteObjectVersion"
+              ],
+              "Effect": "Deny",
+              "Principal": "*",
+              "Resource": {
+                "Fn::Sub": "${Witness.Arn}/*"
+              },
+              "Sid": "NoWitnessDeletion"
+            }
+          ],
+          "Version": "2012-10-17"
+        }
+      },
+      "Type": "AWS::S3::BucketPolicy"
+    },
+    "GatewayVersionCIMD6efadaeD74d211e": {
+      "Properties": {
+        "CodeSha256": "Hc6ta5gLIUfkxbzWpDapvYbUi9TLSiRPxR74pXifTzU=",
+        "Description": "CIMD exact localhost callbacks; approved source6efadae binaryd74d211e",
+        "FunctionName": {
+          "Ref": "Gateway"
+        }
+      },
+      "Type": "AWS::Lambda::Version"
+    },
+    "DeploymentCIMD6efadaeD74d211e": {
+      "DependsOn": [
+        "RuntimeMethod",
+        "OwnerMethod"
+      ],
+      "Properties": {
+        "Description": "CIMD enrollment6efadae exact binaryd74d211e",
+        "RestApiId": {
+          "Ref": "API"
+        }
+      },
+      "Type": "AWS::ApiGateway::Deployment"
+    },
+    "OwnerInvokeCIMD6efadae": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "GatewayVersionCIMD6efadaeD74d211e"
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceAccount": {
+          "Ref": "AWS::AccountId"
+        },
+        "SourceArn": {
+          "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${API}/prod/POST/owner"
+        }
+      },
+      "Type": "AWS::Lambda::Permission"
+    },
+    "RuntimeInvokeCIMD6efadae": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Ref": "GatewayVersionCIMD6efadaeD74d211e"
+        },
+        "Principal": "apigateway.amazonaws.com",
+        "SourceAccount": {
+          "Ref": "AWS::AccountId"
+        },
+        "SourceArn": {
+          "Fn::Sub": "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${API}/prod/POST/runtime"
+        }
+      },
+      "Type": "AWS::Lambda::Permission"
+    }
+  }
+}
