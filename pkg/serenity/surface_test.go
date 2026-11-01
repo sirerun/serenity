@@ -115,6 +115,7 @@ func TestGoDocListsExactlyTheReadSurface(t *testing.T) {
 
 	want := []string{
 		"func (b *Brain) Brief(ctx context.Context, budget Budget) (Brief, error)",
+		"func (b *Brain) CheckLexical(ctx context.Context, plan string) (*LexicalVerdict, error)",
 		"func (b *Brain) CheckPlan(ctx context.Context, actions []Action) (Verdict, error)",
 		"func (b *Brain) Recall(ctx context.Context, q string, budget Budget) (RecallResult, error)",
 		"func Open(brainPath string, opts ...Option) (*Brain, error)",
@@ -127,6 +128,7 @@ func TestGoDocListsExactlyTheReadSurface(t *testing.T) {
 		"type Citation struct",
 		"type Constraint struct",
 		"type Hit struct",
+		"type LexicalVerdict = engine.CheckResult",
 		"type Option func(*Brain) error",
 		"type RecallResult struct",
 		"type Supersession struct",

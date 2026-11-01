@@ -75,6 +75,8 @@ github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
 github.com/kazi-org/dira v0.2.0 h1:kvaUjpBoQ5b2URXb+z2ZIRAcOUG4o4v3ziRdGUseWuE=
 github.com/kazi-org/dira v0.2.0/go.mod h1:JQaFWHx6jCaFZjTGkd1KlpTcL2uj6ps35HNAlcl+Yy0=
+github.com/kazi-org/dira v0.2.1-0.20261101212829-cd0ec6c16d81 h1:oeedNfvjDQFWU0InRpFTkNUp6a5RA5vq3vt+fsW5qzw=
+github.com/kazi-org/dira v0.2.1-0.20261101212829-cd0ec6c16d81/go.mod h1:JQaFWHx6jCaFZjTGkd1KlpTcL2uj6ps35HNAlcl+Yy0=
 github.com/mattn/go-isatty v0.0.24 h1:tGZZoVgT/KiqK1c8ocVLeDS8BSWMRd47J3Lbz7vsReI=
 github.com/mattn/go-isatty v0.0.24/go.mod h1:nMCL3Zebbrt45jsMDgnfIwz6ydEQApk5oEI3HqDio6A=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
